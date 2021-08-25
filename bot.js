@@ -1,10 +1,10 @@
-const Discord = require('discord.js');
+const { Client, Intents } = require('discord.js');
 const auth = require('./config/auth.json');
 
 const Storage = require('./storage');
 const storage = new Storage('./data/');
 
-const client = new Discord.Client();
+const client = new Client({ intents: [Intents.FLAGS.GUILDS] });
 
 let goodMorningChannel;
 
@@ -24,14 +24,16 @@ const advanceDate = () => {
     nextMessageDate.setSeconds(randInt(0, 60));
     // Write the new date
     storage.write('nextDate', nextMessageDate.toJSON());
-    // Notify channel
-    goodMorningChannel.send(`Next date is ${nextMessageDate.toString()}`);
 };
 
 const sayGoodMorning = () => {
     if (goodMorningChannel) {
         goodMorningChannel.send('Have a blessed morning!');
         advanceDate();
+
+        // Notify channel
+        goodMorningChannel.send(`Next date is ${nextMessageDate.toString()}`);
+
         const millisUntilMessage = nextMessageDate.getTime() - new Date().getTime();
         console.log(`Waiting ${millisUntilMessage} millis until next message`);
         setTimeout(sayGoodMorning, millisUntilMessage);
@@ -39,23 +41,32 @@ const sayGoodMorning = () => {
 };
 
 client.on('ready', async () => {
-    goodMorningChannel = client.channels.filter(channel => channel.type === 'text' && channel.name === 'bot-testing').first();
+    await client.guilds.fetch();
+    const guild = client.guilds.cache.first();
+
+    await guild.channels.fetch();
+
+    goodMorningChannel = guild.channels.cache.filter(channel => channel.name === 'bot-testing').first();
     if (goodMorningChannel) {
-        goodMorningChannel.send('Bot had to restart...');
-
         nextMessageDate = new Date((await storage.read('nextDate')).trim());
-        console.log(nextMessageDate.toString());
+        console.log(`Loaded up next message date as ${nextMessageDate.toString()}`);
 
-        const millisUntilMessage = nextMessageDate.getTime() - new Date().getTime();
+        // Repeatedly advance the date until it's in the future
+        while (nextMessageDate.getTime() < (new Date()).getTime()) {
+          advanceDate();
+          console.log(`Date is in the past, advanced to ${nextMessageDate.toJSON()}`);
+        }
+
+        const millisUntilMessage = nextMessageDate.getTime() - (new Date()).getTime();
         console.log(`Waiting ${millisUntilMessage} millis until next message`);
-        goodMorningChannel.send(`Next date is ${nextMessageDate.toString()}`);
+        goodMorningChannel.send(`Bot had to restart... next date is ${nextMessageDate.toString()}`);
         setTimeout(sayGoodMorning, millisUntilMessage);
     } else {
         console.log('Failed to find good morning channel!');
     }
 });
 
-client.on('message', (msg) => {
+client.on('messageCreate', (msg) => {
     if (goodMorningChannel && msg.channel.id === goodMorningChannel.id && !msg.author.bot) {
         msg.reply('Good morning! Your message sending privileges have been revoked');
         /*msg.channel.overwritePermissions(msg.author, {
