@@ -4,7 +4,12 @@ const auth = require('./config/auth.json');
 const Storage = require('./storage');
 const storage = new Storage('./data/');
 
-const client = new Client({ intents: [Intents.FLAGS.GUILDS] });
+const client = new Client({
+    intents: [
+        Intents.FLAGS.GUILDS,
+        Intents.FLAGS.GUILD_MESSAGES
+    ]
+});
 
 let goodMorningChannel;
 
