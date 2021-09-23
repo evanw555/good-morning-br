@@ -18,6 +18,31 @@ let goodMorningChannel;
 let state;
 let history;
 
+// Tuples of (user ID, points)
+const getTopPlayers = (n) => {
+    return Object.entries(state.points)
+        .sort((x, y) => y[1] - x[1])
+        .slice(0, n);
+};
+
+const sendGoodMorningMessage = async () => {
+    if (goodMorningChannel) {
+        const now = new Date();
+        switch (now.getDay()) {
+        case 0: // Sunday
+            const top = getTopPlayers(1)[0];
+            goodMorningChannel.send(`Good morning! We are deep into season **${state.season}**, and <@${top[0]}> is leading with **${top[1]}** points.`);
+            break;
+        case 5: // Friday
+            goodMorningChannel.send('Happy Friday! I wish each of you a blessed morning 🐒');
+            break;
+        default: // Other days
+            goodMorningChannel.send('Have a blessed morning!');
+            break;
+        }
+    }
+}
+
 const registerGoodMorningTimeout = async () => {
     const MIN_HOUR = 7;
     const MAX_HOUR_EXCLUSIVE = 11;
@@ -51,10 +76,11 @@ const TIMEOUT_CALLBACKS = {
         // Register timeout for tomorrow's good morning message
         await registerGoodMorningTimeout();
 
+        // Update the bot's status
+        client.user.setPresence({ status: 'online' , activities: [{ name: 'GOOD MORNING! 🌞', type: 'PLAYING' }] });
+
         // Send the good morning message
-        if (goodMorningChannel) {
-            goodMorningChannel.send('Have a blessed morning!');
-        }
+        await sendGoodMorningMessage();
 
         console.log('Said good morning!');
     },
@@ -62,6 +88,9 @@ const TIMEOUT_CALLBACKS = {
         // Update and dump state
         state.isMorning = false;
         await dumpState();
+
+        // Update the bot's status
+        client.user.setPresence({ status: 'idle' });
     }
 };
 
@@ -115,6 +144,8 @@ client.on('ready', async () => {
 
         goodMorningChannel.send(`Bot had to restart... next date is ${timeoutManager.getDate(NEXT_GOOD_MORNING).toString()}`);
 
+        // Update the bot's status
+        client.user.setPresence({ status: 'idle' });
     } else {
         console.log('Failed to find good morning channel!');
     }
@@ -141,9 +172,7 @@ client.on('messageCreate', async (msg) => {
                 }
                 // Asking about rankings
                 else if (sanitizedText.includes('rank') || sanitizedText.includes('winning') || sanitizedText.includes('standings')) {
-                    const top = Object.entries(state.points)
-                        .sort((x, y) => y[1] - x[1])
-                        .slice(0, 3);
+                    const top = getTopPlayers(3);
                     let replyText = '';
                     if (top.length >= 1) {
                         replyText += `<@${top[0][0]}> is in first with **${top[0][1]}** points`;
@@ -168,6 +197,8 @@ client.on('messageCreate', async (msg) => {
                 state.dailyStatus[msg.author.id] = { rank };
                 state.points[msg.author.id] = (state.points[msg.author.id] || 0) + Math.max(5 - rank, 1);
                 dumpState();
+                // TODO: Disabling for now, perhaps we should enable this or do it at another time?
+                /*
                 switch (rank) {
                 case 1:
                     msg.react('🥇');
@@ -179,6 +210,7 @@ client.on('messageCreate', async (msg) => {
                     msg.react('🥉');
                     break;
                 }
+                */
             }
         } else {
             // It's not morning, so punish the player accordingly...
