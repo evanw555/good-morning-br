@@ -43,6 +43,23 @@ const sendGoodMorningMessage = async () => {
     }
 }
 
+const setStatus = async (active) => {
+    if (active) {
+        client.user.setPresence({
+            status: 'online',
+            activities: [{
+                name: 'GOOD MORNING! 🌞',
+                type: 'PLAYING'
+            }]
+        });
+    } else {
+        client.user.setPresence({
+            status: 'idle',
+            activities: []
+        });
+    }
+}
+
 const registerGoodMorningTimeout = async () => {
     const MIN_HOUR = 7;
     const MAX_HOUR_EXCLUSIVE = 11;
@@ -76,8 +93,8 @@ const TIMEOUT_CALLBACKS = {
         // Register timeout for tomorrow's good morning message
         await registerGoodMorningTimeout();
 
-        // Update the bot's status
-        client.user.setPresence({ status: 'online' , activities: [{ name: 'GOOD MORNING! 🌞', type: 'PLAYING' }] });
+        // Update the bot's status to active
+        await setStatus(true);
 
         // Send the good morning message
         await sendGoodMorningMessage();
@@ -90,7 +107,7 @@ const TIMEOUT_CALLBACKS = {
         await dumpState();
 
         // Update the bot's status
-        client.user.setPresence({ status: 'idle' });
+        await setStatus(false);
     }
 };
 
@@ -145,7 +162,7 @@ client.on('ready', async () => {
         goodMorningChannel.send(`Bot had to restart... next date is ${timeoutManager.getDate(NEXT_GOOD_MORNING).toString()}`);
 
         // Update the bot's status
-        client.user.setPresence({ status: 'idle' });
+        setStatus(false);
     } else {
         console.log('Failed to find good morning channel!');
     }
