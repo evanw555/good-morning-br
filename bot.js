@@ -6,6 +6,10 @@ const storage = new Storage('./data/');
 
 const TimeoutManager = require('./timeout-manager');
 
+const LanguageGenerator = require('./language-generator');
+const languageConfig = require('./config/language.json');
+const languageGenerator = new LanguageGenerator(languageConfig);
+
 const client = new Client({
     intents: [
         Intents.FLAGS.GUILDS,
@@ -37,7 +41,7 @@ const sendGoodMorningMessage = async () => {
             goodMorningChannel.send('Happy Friday! I wish each of you a blessed morning 🐒');
             break;
         default: // Other days
-            goodMorningChannel.send('Have a blessed morning!');
+            goodMorningChannel.send(languageGenerator.generateGoodMorning());
             break;
         }
     }

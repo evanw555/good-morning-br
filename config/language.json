@@ -1,0 +1,78 @@
+{
+    "nouns": {
+        "positive": [
+            "affection",
+            "compassion",
+            "creativity",
+            "curiosity",
+            "determination",
+            "enthusiasm",
+            "happiness",
+            "hope",
+            "joy",
+            "love",
+            "peace",
+            "perseverance",
+            "serenity",
+            "serendipity",
+            "tranquility"
+        ],
+        "treasure": [
+            "good fortune",
+            "fond memories",
+            "bright smiles",
+            "hearty laughter",
+            "golden rays of sunshine"
+        ]
+    },
+    "adjectives": {
+        "positive": [
+            "wonderful",
+            "delightful",
+            "amazing",
+            "great"
+        ]
+    },
+    "phrases": {
+        "morningIntro": [
+            "Good morning",
+            "Good morning",
+            "Have a blessed morning",
+            "It's a new day",
+            "Wishing you a {adjectives.positive?} morning today",
+            "Good morning to you",
+            "Yet another good morning"
+        ],
+        "wellWish": [
+            "May every step you take be filled with {nouns.positive?1-3}",
+            "I {!hope|wish that|pray} you find {nouns.positive?1-2} today",
+            "I {!hope|wish that|pray} your day is filled with {nouns.positive?1-2}",
+            "May this {!day|morning} {!bring to|gift|bestow upon} you {nouns.treasure?}",
+            "Count your blessings and {!recognize|remember} that life is a {!treasure|wonderful gift}",
+            "I have a {!feeling|hunch} that today will be all about {nouns.positive?}",
+            "Cherish your {!friends|fellow Discord users|fellow MCMP dogs}, for they are a blessing",
+            "Each day is an opportunity to grow. I hope you make the most of it",
+            "Every morning brings you new hopes and new opportunities. Don’t miss any one of them while you’re sleeping",
+            "Wake up and make yourself a part of this beautiful morning. A {!beautiful|wide|whole} world is {!waiting|there} outside your door.",
+            "Welcome this beautiful morning with a smile on your face",
+            "I hope {!you'll|you|you all} have a great day today",
+            "There is no way you can miss the {!beauty|radiance|brilliance} of today’s morning. Wake up, my {!dear|dogs|dearest dogs}. I wish this message be your {!alarm|motivation} for today.",
+            "It’s time to wake up, take a deep breath, and enjoy the {!sweetness|wonder|beauty} of nature with all your heart",
+            "Mornings define our day. It’s all about how we start every morning. So, get up and make a good start of yet another beautiful day",
+            "Breathing in the fresh morning air makes you healthier and wiser. Don’t ignore the blessings that every morning offers to us",
+            "You have been blessed with yet another day. What a {adjectives.positive?} way of welcoming the blessing with such a beautiful morning",
+            "May you have a day full of sweet wonders ahead",
+            "Sending you good vibes to start your morning with positive energy",
+            "May your day {!shine|be} as bright as the sun is today",
+            "Nothing is more refreshing than a beautiful morning that calms your mind and gives you reasons to smile",
+            "Welcome the blessings of this beautiful {!morning|world}",
+            "Wake up like the sun every morning and light up the world with your awesomeness. You have so many great things to achieve today",
+            "No matter how {!hard|difficult} yesterday was, today is a new beginning",
+            "May the freshness of this morning keep your mind fresh and calm the whole day",
+            "A new day has come with so many new opportunities for you. Grab them all and make the best out of your day",
+            "The darkness of night has ended. {!A new|Today's} sun is up there to guide you towards life so bright and blissful"
+
+        ]
+    },
+    "goodMorning": "{phrases.morningIntro?}! {phrases.wellWish?}"
+}
