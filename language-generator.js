@@ -60,7 +60,7 @@ class LanguageGenerator {
     }
 
     generate(input) {
-        const p = /{\!?([a-zA-Z\.\|\' ]+)(\?\d*\-?\d*)?}/;
+        const p = /{\!?([^{}]+)(\?\d*\-?\d*)?}/;
         let result = input;
         while (result.search(p) !== -1) {
             result = result.replace(p, this._resolve.bind(this));

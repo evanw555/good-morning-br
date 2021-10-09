@@ -30,7 +30,9 @@
             "wonderful",
             "delightful",
             "amazing",
-            "great"
+            "good",
+            "great",
+            "pleasant"
         ]
     },
     "phrases": {
@@ -71,8 +73,32 @@
             "May the freshness of this morning keep your mind fresh and calm the whole day",
             "A new day has come with so many new opportunities for you. Grab them all and make the best out of your day",
             "The darkness of night has ended. {!A new|Today's} sun is up there to guide you towards life so bright and blissful"
-
         ]
     },
-    "goodMorning": "{phrases.morningIntro?}! {phrases.wellWish?}"
+    "goodMorning": "{phrases.morningIntro?}! {phrases.wellWish?}",
+    "goodMorningReply": {
+        "standard": [
+            "Good morning!",
+            "Good morning, {!my|dear} {!friend|dog}",
+            "Good morning to you as well!",
+            "Good morning to you too!",
+            "A very {adjectives.positive?} morning to you!",
+            "Glad to hear from you this morning!",
+            "Hello there!",
+            "{!🌞|😊|😌}"
+        ],
+        "new": [
+            "Good morning!",
+            "Good morning, {!glad|happy} to hear from you!",
+            "Good morning, {!glad|happy} to see you around here"
+        ],
+        "negative": [
+            "Good morning!",
+            "Good morning, didn't expect to hear from you",
+            "Good morning, wasn't expecting to hear from you",
+            "You may be a {!naughty|bad} {!boy|dog|man}, but good morning to you!",
+            "Well, well, well... look who's up!",
+            "Uhhhhhhh hey."
+        ]
+    }
 }

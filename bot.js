@@ -216,7 +216,8 @@ client.on('messageCreate', async (msg) => {
             if (!state.dailyStatus.hasOwnProperty(msg.author.id)) {
                 const rank = Object.keys(state.dailyStatus).length + 1;
                 state.dailyStatus[msg.author.id] = { rank };
-                state.points[msg.author.id] = (state.points[msg.author.id] || 0) + Math.max(5 - rank, 1);
+                const priorPoints = state.points[msg.author.id] || 0;
+                state.points[msg.author.id] = priorPoints + Math.max(5 - rank, 1);
                 dumpState();
                 // TODO: Disabling for now, perhaps we should enable this or do it at another time?
                 /*
@@ -232,6 +233,17 @@ client.on('messageCreate', async (msg) => {
                     break;
                 }
                 */
+                // Reply to the user based on how many points they had
+                if (rank <= 3) {
+                    if (priorPoints < 0) {
+                        msg.reply(languageGenerator.generate('{goodMorningReply.negative?}'));
+                    } else if (priorPoints === 0) {
+                        // TODO: this isn't a solid assumption; a player can have zero points and not be new
+                        msg.reply(languageGenerator.generate('{goodMorningReply.new?}'));
+                    } else {
+                        msg.reply(languageGenerator.generate('{goodMorningReply.standard?}'));
+                    }
+                }
             }
         } else {
             // It's not morning, so punish the player accordingly...
