@@ -1,5 +1,6 @@
 const { Client, Intents } = require('discord.js');
 const auth = require('./config/auth.json');
+const config = require('./config/config.json');
 
 const Storage = require('./storage');
 const storage = new Storage('./data/');
@@ -18,9 +19,11 @@ const client = new Client({
 });
 
 let goodMorningChannel;
+let guildOwner;
 
 let state;
 let history;
+
 
 // Tuples of (user ID, points)
 const getTopPlayers = (n) => {
@@ -29,19 +32,49 @@ const getTopPlayers = (n) => {
         .slice(0, n);
 };
 
+const getTopScore = () => {
+    return getTopPlayers(1)[0][1];
+};
+
+const advanceSeason = async (winner) => {
+    // Add new entry for this season
+    const newHistoryEntry = {
+        season: state.season,
+        finishedAt: new Date().toJSON(),
+        points: state.points
+    };
+    history.seasons.push(newHistoryEntry);
+    // Award the winner a chicken dinner
+    if (history.dinners === undefined) {
+        history.dinners = {};
+    }
+    if (history.dinners[winner] === undefined) {
+        history.dinners[winner] = 0;
+    }
+    history.dinners[winner]++;
+    // Reset the state
+    state.season++;
+    state.points = {};
+    // Dump the state and history
+    await dumpState();
+    await dumpHistory();
+};
+
 const sendGoodMorningMessage = async () => {
     if (goodMorningChannel) {
         const now = new Date();
         switch (now.getDay()) {
         case 0: // Sunday
             const top = getTopPlayers(1)[0];
-            goodMorningChannel.send(`Good morning! We are deep into season **${state.season}**, and <@${top[0]}> is leading with **${top[1]}** points.`);
+            goodMorningChannel.send(`Good morning! We are deep into season **${state.season}**, and <@${top[0]}> is in the lead!`);
             break;
         case 5: // Friday
             goodMorningChannel.send('Happy Friday! I wish each of you a blessed morning 🐒');
             break;
         default: // Other days
-            goodMorningChannel.send(languageGenerator.generateGoodMorning());
+            if (Math.random() < config.goodMorningMessageProbability) {
+                goodMorningChannel.send(languageGenerator.generateGoodMorning());
+            }
             break;
         }
     }
@@ -112,6 +145,28 @@ const TIMEOUT_CALLBACKS = {
 
         // Update the bot's status
         await setStatus(false);
+
+        // If anyone's score is above the season goal, then proceed to the next season
+        if (getTopScore() >= config.seasonGoal) {
+            const prevSeason = state.season;
+            const winner = getTopPlayers(1)[0][0];
+            await advanceSeason(winner);
+            const numWins = history.dinners[winner];
+            // TODO: Better message
+            let messageText = `It's the end of season **${prevSeason}**, and <@${winner}> is `
+                + `the Good Morning king with **${numWins}** win${numWins > 1 ? 's' : ''}!`;
+            const top = getTopPlayers(3);
+            if (top.length >= 1) {
+                messageText += `\n\n🥇 <@${top[0][0]}>`;
+            }
+            if (top.length >= 2) {
+                messageText += `\n🥈 <@${top[1][0]}>`;
+            }
+            if (top.length >= 3) {
+                messageText += `\n🥉 <@${top[2][0]}>`;
+            }
+            goodMorningChannel.send(messageText);
+        }
     }
 };
 
@@ -149,6 +204,8 @@ client.on('ready', async () => {
 
     await guild.channels.fetch();
 
+    guildOwner = await guild.fetchOwner();
+
     goodMorningChannel = guild.channels.cache.filter(channel => channel.name === 'bot-testing').first();
     if (goodMorningChannel) {
         console.log(`Found good morning channel as ${goodMorningChannel.id}`);
@@ -172,45 +229,49 @@ client.on('ready', async () => {
     }
 });
 
+const processCommands = async (msg) => {
+    const sanitizedText = msg.content.trim().toLowerCase();
+    if (sanitizedText.includes('?') && msg.author.id === guildOwner.id) {
+        // Asking about points
+        if (sanitizedText.includes('points')) {
+            const points = state.points[msg.author.id] || 0;
+            if (points < 0) {
+                msg.reply(`You have **${points}** points this season... bro...`);
+            } else if (points === 0) {
+                msg.reply(`You have no points this season`);
+            } else if (points === 1) {
+                msg.reply(`You have **1** point this season`);
+            } else {
+                msg.reply(`You have **${points}** points this season`);
+            }
+        }
+        // Asking about rankings
+        else if (sanitizedText.includes('rank') || sanitizedText.includes('winning') || sanitizedText.includes('standings')) {
+            const top = getTopPlayers(3);
+            let replyText = '';
+            if (top.length >= 1) {
+                replyText += `<@${top[0][0]}> is in first with **${top[0][1]}** points`;
+            }
+            if (top.length >= 2) {
+                replyText += `, then <@${top[1][0]}> with **${top[1][1]}** points`;
+            }
+            if (top.length >= 3) {
+                replyText += `, and finally <@${top[2][0]}> with **${top[2][1]}** points`;
+            }
+            msg.reply(replyText);
+        }
+        // Asking about the season
+        else if (sanitizedText.includes('season')) {
+            msg.reply(`It\'s season **${state.season}**!`);
+        }
+    }
+};
+
 client.on('messageCreate', async (msg) => {
     if (goodMorningChannel && msg.channel.id === goodMorningChannel.id && !msg.author.bot) {
         if (state.isMorning || msg.content.includes('MORNING')) {
             // Handle "commands" by looking for keywords
-            const sanitizedText = msg.content.trim().toLowerCase();
-            if (sanitizedText.includes('?')) {
-                // Asking about points
-                if (sanitizedText.includes('points')) {
-                    const points = state.points[msg.author.id] || 0;
-                    if (points < 0) {
-                        msg.reply(`You have **${points}** points this season... bro...`);
-                    } else if (points === 0) {
-                        msg.reply(`You have no points this season`);
-                    } else if (points === 1) {
-                        msg.reply(`You have **1** point this season`);
-                    } else {
-                        msg.reply(`You have **${points}** points this season`);
-                    }
-                }
-                // Asking about rankings
-                else if (sanitizedText.includes('rank') || sanitizedText.includes('winning') || sanitizedText.includes('standings')) {
-                    const top = getTopPlayers(3);
-                    let replyText = '';
-                    if (top.length >= 1) {
-                        replyText += `<@${top[0][0]}> is in first with **${top[0][1]}** points`;
-                    }
-                    if (top.length >= 2) {
-                        replyText += `, then <@${top[1][0]}> with **${top[1][1]}** points`;
-                    }
-                    if (top.length >= 3) {
-                        replyText += `, and finally <@${top[2][0]}> with **${top[2][1]}** points`;
-                    }
-                    msg.reply(replyText);
-                }
-                // Asking about the season
-                else if (sanitizedText.includes('season')) {
-                    msg.reply(`It\'s season **${state.season}**!`);
-                }
-            }
+            await processCommands(msg);
 
             // In the morning, award the player accordingly if it's their first message...
             if (!state.dailyStatus.hasOwnProperty(msg.author.id)) {
@@ -219,20 +280,6 @@ client.on('messageCreate', async (msg) => {
                 const priorPoints = state.points[msg.author.id] || 0;
                 state.points[msg.author.id] = priorPoints + Math.max(5 - rank, 1);
                 dumpState();
-                // TODO: Disabling for now, perhaps we should enable this or do it at another time?
-                /*
-                switch (rank) {
-                case 1:
-                    msg.react('🥇');
-                    break;
-                case 2:
-                    msg.react('🥈');
-                    break;
-                case 3:
-                    msg.react('🥉');
-                    break;
-                }
-                */
                 // Reply to the user based on how many points they had
                 if (rank <= 3) {
                     if (priorPoints < 0) {
