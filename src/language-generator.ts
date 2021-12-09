@@ -1,19 +1,21 @@
 class LanguageGenerator {
-    constructor(config) {
+    private readonly _config: Record<string, any>;
+
+    constructor(config: Record<string, any>) {
         this._config = config;
     }
 
-    _resolve(token) {
-        let stripped = token.substring(1, token.length - 1);
+    private _resolve(token: string): string {
+        let stripped: string = token.substring(1, token.length - 1);
 
         // In the simple case (list of literals), handle this upfront
         if (stripped.startsWith('!')) {
-            const options = stripped.substring(1).split('|');
+            const options: string[] = stripped.substring(1).split('|');
             return options[Math.floor(Math.random() * options.length)];
         }
 
         // Check if there's a random modifier at the end
-        let pickRandom = 0;
+        let pickRandom: number = 0;
         if (stripped.endsWith('?')) {
             pickRandom = 1;
             stripped = stripped.substring(0, stripped.length - 1);
@@ -21,15 +23,15 @@ class LanguageGenerator {
             pickRandom = parseInt(stripped.substring(stripped.lastIndexOf('?') + 1));
             stripped = stripped.substring(0, stripped.lastIndexOf('?'));
         }else if (stripped.match(/\?\d+\-\d+$/)) {
-            const execResult = /\?(\d+)\-(\d+)$/.exec(stripped);
-            const lo = parseInt(execResult[1]);
-            const hi = parseInt(execResult[2]);
+            const execResult: string[] = /\?(\d+)\-(\d+)$/.exec(stripped);
+            const lo: number = parseInt(execResult[1]);
+            const hi: number = parseInt(execResult[2]);
             pickRandom = Math.floor(Math.random() * (hi - lo + 1)) + lo;
             stripped = stripped.substring(0, stripped.lastIndexOf('?'));
         }
 
-        const segments = stripped.split('.');
-        let node = this._config;
+        const segments: string[] = stripped.split('.');
+        let node: any = this._config;
         while (segments.length > 0) {
             const segment = segments.shift();
             if (!node || !node.hasOwnProperty(segment)) {
@@ -44,7 +46,7 @@ class LanguageGenerator {
         } else if (pickRandom === 1) {
             return node[Math.floor(Math.random() * node.length)].toString();
         } else if (pickRandom > 1) {
-            let result = ''
+            let result: string = ''
             for (let i = 0; i < pickRandom; i++) {
                 if (pickRandom === 2 && i === 1) {
                     result += ' and ';
@@ -59,18 +61,18 @@ class LanguageGenerator {
         }
     }
 
-    generate(input) {
-        const p = /{\!?([^{}]+)(\?\d*\-?\d*)?}/;
-        let result = input;
+    generate(input: string): string {
+        const p: RegExp = /{\!?([^{}]+)(\?\d*\-?\d*)?}/;
+        let result: string = input;
         while (result.search(p) !== -1) {
             result = result.replace(p, this._resolve.bind(this));
         }
         return result;
     }
 
-    generateGoodMorning() {
+    generateGoodMorning(): string {
         return this.generate('{goodMorning}');
     }
 }
 
-module.exports = LanguageGenerator;
+export default LanguageGenerator;

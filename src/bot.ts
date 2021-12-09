@@ -1,14 +1,17 @@
-const { Client, Intents } = require('discord.js');
-const auth = require('./config/auth.json');
-const config = require('./config/config.json');
+import { Client, Intents } from 'discord.js';
+import TimeoutManager from './timeout-manager.js';
 
-const Storage = require('./storage');
-const storage = new Storage('./data/');
+import { loadJson } from './load-json.js';
+const auth = loadJson('config/auth.json');
+const config = loadJson('config/config.json');
 
-const TimeoutManager = require('./timeout-manager');
+import FileStorage from './file-storage.js';
+const storage = new FileStorage('./data/');
 
-const LanguageGenerator = require('./language-generator');
-const languageConfig = require('./config/language.json');
+import LanguageGenerator from './language-generator.js';
+import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'discord.js';
+import { GoodMorningHistory, GoodMorningState, Season, TimeoutType } from './types.js';
+const languageConfig = loadJson('config/language.json');
 const languageGenerator = new LanguageGenerator(languageConfig);
 
 const client = new Client({
@@ -18,27 +21,26 @@ const client = new Client({
     ]
 });
 
-let goodMorningChannel;
-let guildOwner;
+let goodMorningChannel: TextBasedChannels;
+let guildOwner: GuildMember;
 
-let state;
-let history;
-
+let state: GoodMorningState;
+let history: GoodMorningHistory;
 
 // Tuples of (user ID, points)
-const getTopPlayers = (n) => {
+const getTopPlayers = (n: number): any[][] => {
     return Object.entries(state.points)
         .sort((x, y) => y[1] - x[1])
         .slice(0, n);
 };
 
-const getTopScore = () => {
+const getTopScore = (): number => {
     return getTopPlayers(1)[0][1];
 };
 
-const advanceSeason = async (winner) => {
+const advanceSeason = async (winner: Snowflake): Promise<void> => {
     // Add new entry for this season
-    const newHistoryEntry = {
+    const newHistoryEntry: Season = {
         season: state.season,
         finishedAt: new Date().toJSON(),
         points: state.points
@@ -60,12 +62,12 @@ const advanceSeason = async (winner) => {
     await dumpHistory();
 };
 
-const sendGoodMorningMessage = async () => {
+const sendGoodMorningMessage = async (): Promise<void> => {
     if (goodMorningChannel) {
-        const now = new Date();
+        const now: Date = new Date();
         switch (now.getDay()) {
         case 0: // Sunday
-            const top = getTopPlayers(1)[0];
+            const top: any[] = getTopPlayers(1)[0];
             goodMorningChannel.send(`Good morning! We are deep into season **${state.season}**, and <@${top[0]}> is in the lead!`);
             break;
         case 5: // Friday
@@ -80,7 +82,7 @@ const sendGoodMorningMessage = async () => {
     }
 }
 
-const setStatus = async (active) => {
+const setStatus = async (active: boolean): Promise<void> => {
     if (active) {
         client.user.setPresence({
             status: 'online',
@@ -97,11 +99,11 @@ const setStatus = async (active) => {
     }
 }
 
-const registerGoodMorningTimeout = async () => {
-    const MIN_HOUR = 7;
-    const MAX_HOUR_EXCLUSIVE = 11;
+const registerGoodMorningTimeout = async (): Promise<void> => {
+    const MIN_HOUR: number = 7;
+    const MAX_HOUR_EXCLUSIVE: number = 11;
 
-    const morningTomorrow = new Date();
+    const morningTomorrow: Date = new Date();
     // Set date as tomorrow if it's after the earliest possible morning time
     if (morningTomorrow.getHours() >= MIN_HOUR) {
         morningTomorrow.setDate(morningTomorrow.getDate() + 1);
@@ -109,23 +111,20 @@ const registerGoodMorningTimeout = async () => {
     // Set time as sometime between 7am and 10am
     morningTomorrow.setHours(randInt(MIN_HOUR, MAX_HOUR_EXCLUSIVE), randInt(0, 60), randInt(0, 60));
 
-    await timeoutManager.registerTimeout(NEXT_GOOD_MORNING, morningTomorrow);
+    await timeoutManager.registerTimeout(TimeoutType.NextGoodMorning, morningTomorrow);
 };
 
-const NEXT_GOOD_MORNING = 'NEXT_GOOD_MORNING';
-const NEXT_NOON = 'NEXT_NOON';
-
 const TIMEOUT_CALLBACKS = {
-    [NEXT_GOOD_MORNING]: async (id) => {
+    [TimeoutType.NextGoodMorning]: async (): Promise<void> => {
         // Update and dump state
         state.isMorning = true;
         state.dailyStatus = {};
         await dumpState();
 
         // Set timeout for when morning ends
-        const noonToday = new Date();
+        const noonToday: Date = new Date();
         noonToday.setHours(12, 0, 0, 0);
-        await timeoutManager.registerTimeout(NEXT_NOON, noonToday);
+        await timeoutManager.registerTimeout(TimeoutType.NextNoon, noonToday);
 
         // Register timeout for tomorrow's good morning message
         await registerGoodMorningTimeout();
@@ -138,7 +137,7 @@ const TIMEOUT_CALLBACKS = {
 
         console.log('Said good morning!');
     },
-    [NEXT_NOON]: async (id) => {
+    [TimeoutType.NextNoon]: async (): Promise<void> => {
         // Update and dump state
         state.isMorning = false;
         await dumpState();
@@ -148,14 +147,14 @@ const TIMEOUT_CALLBACKS = {
 
         // If anyone's score is above the season goal, then proceed to the next season
         if (getTopScore() >= config.seasonGoal) {
-            const prevSeason = state.season;
-            const winner = getTopPlayers(1)[0][0];
+            const prevSeason: number = state.season;
+            const winner: Snowflake = getTopPlayers(1)[0][0];
             await advanceSeason(winner);
-            const numWins = history.dinners[winner];
+            const numWins: number = history.dinners[winner];
             // TODO: Better message
-            let messageText = `It's the end of season **${prevSeason}**, and <@${winner}> is `
+            let messageText: string = `It's the end of season **${prevSeason}**, and <@${winner}> is `
                 + `the Good Morning king with **${numWins}** win${numWins > 1 ? 's' : ''}!`;
-            const top = getTopPlayers(3);
+            const top: any[][] = getTopPlayers(3);
             if (top.length >= 1) {
                 messageText += `\n\n🥇 <@${top[0][0]}>`;
             }
@@ -172,41 +171,72 @@ const TIMEOUT_CALLBACKS = {
 
 const timeoutManager = new TimeoutManager(storage, TIMEOUT_CALLBACKS);
 
-const randInt = (lo, hi) => {
-    return parseInt(Math.random() * (hi - lo)) + lo;
+const randInt = (lo: number, hi: number): number => {
+    return Math.floor(Math.random() * (hi - lo)) + lo;
 };
 
-const randChoice = (...choices) => {
+const randChoice = (...choices: any[]): any => {
     return choices[randInt(0, choices.length)];
 };
 
-const loadState = async () => {
-    state = await storage.readJson('state');
+const loadState = async (): Promise<void> => {
+    try {
+        state = await storage.readJson('state');
+    } catch (err) {
+        // Specifically check for file-not-found errors to make sure we don't overwrite anything
+        if (err.code === 'ENOENT') {
+            console.log('Existing state file not found, creating a fresh state...');
+            state = {
+                channelId: goodMorningChannel.id,
+                season: 1,
+                isMorning: false,
+                dailyStatus: {},
+                points: {}
+            };
+            await dumpState();
+        } else if (goodMorningChannel) {
+            goodMorningChannel.send(`Unhandled exception while loading state file:\n\`\`\`${err.message}\`\`\``);
+        }
+    }
 };
 
-const dumpState = async () => {
+const dumpState = async (): Promise<void> => {
     await storage.write('state', JSON.stringify(state, null, 2));
     console.log(`Dumped state as ${JSON.stringify(state)}`);
 };
 
-const loadHistory = async () => {
-    history = await storage.readJson('history');
+const loadHistory = async (): Promise<void> => {
+    try {
+        history = await storage.readJson('history');
+    } catch (err) {
+        // Specifically check for file-not-found errors to make sure we don't overwrite anything
+        if (err.code === 'ENOENT') {
+            console.log('Existing history file not found, creating a fresh history...');
+            history = {
+                seasons: [],
+                dinners: {}
+            };
+            await dumpHistory();
+        } else if (goodMorningChannel) {
+            goodMorningChannel.send(`Unhandled exception while loading history file:\n\`\`\`${err.message}\`\`\``);
+        }
+    }
 };
 
-const dumpHistory = async () => {
+const dumpHistory = async (): Promise<void> => {
     await storage.write('history', JSON.stringify(history, null, 2));
     console.log(`Dumped history as ${JSON.stringify(history)}`);
 };
 
-client.on('ready', async () => {
+client.on('ready', async (): Promise<void> => {
     await client.guilds.fetch();
-    const guild = client.guilds.cache.first();
+    const guild: Guild = client.guilds.cache.first();
 
     await guild.channels.fetch();
 
     guildOwner = await guild.fetchOwner();
 
-    goodMorningChannel = guild.channels.cache.filter(channel => channel.name === 'bot-testing').first();
+    goodMorningChannel = guild.channels.cache.filter(channel => channel.name === 'bot-testing').first() as TextBasedChannels;
     if (goodMorningChannel) {
         console.log(`Found good morning channel as ${goodMorningChannel.id}`);
 
@@ -215,12 +245,12 @@ client.on('ready', async () => {
         await timeoutManager.loadTimeouts();
 
         // Register the next good morning callback if it doesn't exist
-        if (!timeoutManager.hasTimeout(NEXT_GOOD_MORNING)) {
+        if (!timeoutManager.hasTimeout(TimeoutType.NextGoodMorning)) {
             console.log('Found no existing timeout for the next good morning, so registering a new one...');
             await registerGoodMorningTimeout();
         }
 
-        goodMorningChannel.send(`Bot had to restart... next date is ${timeoutManager.getDate(NEXT_GOOD_MORNING).toString()}`);
+        goodMorningChannel.send(`Bot had to restart... next date is ${timeoutManager.getDate(TimeoutType.NextGoodMorning).toString()}`);
 
         // Update the bot's status
         setStatus(false);
@@ -229,12 +259,12 @@ client.on('ready', async () => {
     }
 });
 
-const processCommands = async (msg) => {
-    const sanitizedText = msg.content.trim().toLowerCase();
+const processCommands = async (msg: Message): Promise<void> => {
+    const sanitizedText: string = msg.content.trim().toLowerCase();
     if (sanitizedText.includes('?') && msg.author.id === guildOwner.id) {
         // Asking about points
         if (sanitizedText.includes('points')) {
-            const points = state.points[msg.author.id] || 0;
+            const points: number = state.points[msg.author.id] || 0;
             if (points < 0) {
                 msg.reply(`You have **${points}** points this season... bro...`);
             } else if (points === 0) {
@@ -247,8 +277,8 @@ const processCommands = async (msg) => {
         }
         // Asking about rankings
         else if (sanitizedText.includes('rank') || sanitizedText.includes('winning') || sanitizedText.includes('standings')) {
-            const top = getTopPlayers(3);
-            let replyText = '';
+            const top: any[][] = getTopPlayers(3);
+            let replyText: string = '';
             if (top.length >= 1) {
                 replyText += `<@${top[0][0]}> is in first with **${top[0][1]}** points`;
             }
@@ -267,7 +297,7 @@ const processCommands = async (msg) => {
     }
 };
 
-client.on('messageCreate', async (msg) => {
+client.on('messageCreate', async (msg: Message): Promise<void> => {
     if (goodMorningChannel && msg.channel.id === goodMorningChannel.id && !msg.author.bot) {
         if (state.isMorning || msg.content.includes('MORNING')) {
             // Handle "commands" by looking for keywords
@@ -275,20 +305,24 @@ client.on('messageCreate', async (msg) => {
 
             // In the morning, award the player accordingly if it's their first message...
             if (!state.dailyStatus.hasOwnProperty(msg.author.id)) {
-                const rank = Object.keys(state.dailyStatus).length + 1;
+                const rank: number = Object.keys(state.dailyStatus).length + 1;
                 state.dailyStatus[msg.author.id] = { rank };
-                const priorPoints = state.points[msg.author.id] || 0;
+                const priorPoints: number = state.points[msg.author.id] || 0;
                 state.points[msg.author.id] = priorPoints + Math.max(5 - rank, 1);
                 dumpState();
                 // Reply to the user based on how many points they had
                 if (rank <= 3) {
-                    if (priorPoints < 0) {
-                        msg.reply(languageGenerator.generate('{goodMorningReply.negative?}'));
-                    } else if (priorPoints === 0) {
-                        // TODO: this isn't a solid assumption; a player can have zero points and not be new
-                        msg.reply(languageGenerator.generate('{goodMorningReply.new?}'));
+                    if (Math.random() < .3) {
+                        msg.react('🌞');
                     } else {
-                        msg.reply(languageGenerator.generate('{goodMorningReply.standard?}'));
+                        if (priorPoints < 0) {
+                            msg.reply(languageGenerator.generate('{goodMorningReply.negative?}'));
+                        } else if (priorPoints === 0) {
+                            // TODO: this isn't a solid assumption; a player can have zero points and not be new
+                            msg.reply(languageGenerator.generate('{goodMorningReply.new?}'));
+                        } else {
+                            msg.reply(languageGenerator.generate('{goodMorningReply.standard?}'));
+                        }
                     }
                 }
             }
