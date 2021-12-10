@@ -10,6 +10,13 @@ export interface Timeout {
     date: string
 }
 
+export interface GoodMorningConfig {
+    goodMorningChannelId: Snowflake,
+    seasonGoal: number,
+    goodMorningMessageProbability: number,
+    replyViaReactionProbability: number,
+}
+
 export interface DailyStatus {
     rank?: number,
     penalized?: boolean

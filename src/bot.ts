@@ -1,16 +1,17 @@
-import { Client, Intents } from 'discord.js';
+import { Client, DMChannel, Intents } from 'discord.js';
 import TimeoutManager from './timeout-manager.js';
+import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'discord.js';
+import { GoodMorningConfig, GoodMorningHistory, GoodMorningState, Season, TimeoutType } from './types.js';
 
 import { loadJson } from './load-json.js';
 const auth = loadJson('config/auth.json');
-const config = loadJson('config/config.json');
+const config: GoodMorningConfig = loadJson('config/config.json');
 
 import FileStorage from './file-storage.js';
 const storage = new FileStorage('./data/');
 
 import LanguageGenerator from './language-generator.js';
-import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'discord.js';
-import { GoodMorningHistory, GoodMorningState, Season, TimeoutType } from './types.js';
+import { randChoice, randInt, validateConfig } from './util.js';
 const languageConfig = loadJson('config/language.json');
 const languageGenerator = new LanguageGenerator(languageConfig);
 
@@ -23,6 +24,7 @@ const client = new Client({
 
 let goodMorningChannel: TextBasedChannels;
 let guildOwner: GuildMember;
+let guildOwnerDmChannel: DMChannel;
 
 let state: GoodMorningState;
 let history: GoodMorningHistory;
@@ -97,7 +99,7 @@ const setStatus = async (active: boolean): Promise<void> => {
             activities: []
         });
     }
-}
+};
 
 const registerGoodMorningTimeout = async (): Promise<void> => {
     const MIN_HOUR: number = 7;
@@ -171,14 +173,6 @@ const TIMEOUT_CALLBACKS = {
 
 const timeoutManager = new TimeoutManager(storage, TIMEOUT_CALLBACKS);
 
-const randInt = (lo: number, hi: number): number => {
-    return Math.floor(Math.random() * (hi - lo)) + lo;
-};
-
-const randChoice = (...choices: any[]): any => {
-    return choices[randInt(0, choices.length)];
-};
-
 const loadState = async (): Promise<void> => {
     try {
         state = await storage.readJson('state');
@@ -194,8 +188,8 @@ const loadState = async (): Promise<void> => {
                 points: {}
             };
             await dumpState();
-        } else if (goodMorningChannel) {
-            goodMorningChannel.send(`Unhandled exception while loading state file:\n\`\`\`${err.message}\`\`\``);
+        } else if (guildOwnerDmChannel) {
+            guildOwnerDmChannel.send(`Unhandled exception while loading state file:\n\`\`\`${err.message}\`\`\``);
         }
     }
 };
@@ -217,8 +211,8 @@ const loadHistory = async (): Promise<void> => {
                 dinners: {}
             };
             await dumpHistory();
-        } else if (goodMorningChannel) {
-            goodMorningChannel.send(`Unhandled exception while loading history file:\n\`\`\`${err.message}\`\`\``);
+        } else if (guildOwnerDmChannel) {
+            guildOwnerDmChannel.send(`Unhandled exception while loading history file:\n\`\`\`${err.message}\`\`\``);
         }
     }
 };
@@ -229,34 +223,50 @@ const dumpHistory = async (): Promise<void> => {
 };
 
 client.on('ready', async (): Promise<void> => {
+    // First, validate the config file to ensure it conforms to the schema
+    validateConfig(config);
+
+    // Then, fetch the guilds and guild channels
     await client.guilds.fetch();
     const guild: Guild = client.guilds.cache.first();
-
     await guild.channels.fetch();
 
+    // Determine the guild owner and the guild owner's DM channel
     guildOwner = await guild.fetchOwner();
-
-    goodMorningChannel = guild.channels.cache.filter(channel => channel.name === 'bot-testing').first() as TextBasedChannels;
-    if (goodMorningChannel) {
-        console.log(`Found good morning channel as ${goodMorningChannel.id}`);
-
-        await loadState();
-        await loadHistory();
-        await timeoutManager.loadTimeouts();
-
-        // Register the next good morning callback if it doesn't exist
-        if (!timeoutManager.hasTimeout(TimeoutType.NextGoodMorning)) {
-            console.log('Found no existing timeout for the next good morning, so registering a new one...');
-            await registerGoodMorningTimeout();
-        }
-
-        goodMorningChannel.send(`Bot had to restart... next date is ${timeoutManager.getDate(TimeoutType.NextGoodMorning).toString()}`);
-
-        // Update the bot's status
-        setStatus(false);
+    if (guildOwner) {
+        guildOwnerDmChannel = await guildOwner.createDM();
+        console.log(`Determined guild owner: ${guildOwner.displayName}`);
     } else {
-        console.log('Failed to find good morning channel!');
+        console.log('Could not determine the guild\'s owner!');
     }
+
+    // Attempt to load the good morning channel (abort if not successful)
+    try {
+        goodMorningChannel = (await client.channels.fetch(config.goodMorningChannelId)) as TextBasedChannels;
+    } catch (err) {}
+    if (!goodMorningChannel) {
+        console.log(`Couldn't load good morning channel with Id "${config.goodMorningChannelId}", aborting...`);
+        process.exit(1);
+    }
+    console.log(`Found good morning channel as ${goodMorningChannel.id}`);
+
+    // Load all necessary data from disk
+    await loadState();
+    await loadHistory();
+    await timeoutManager.loadTimeouts();
+
+    // Register the next good morning callback if it doesn't exist
+    if (!timeoutManager.hasTimeout(TimeoutType.NextGoodMorning)) {
+        console.log('Found no existing timeout for the next good morning, so registering a new one...');
+        await registerGoodMorningTimeout();
+    }
+
+    if (guildOwnerDmChannel) {
+        guildOwnerDmChannel.send(`Bot had to restart... next date is ${timeoutManager.getDate(TimeoutType.NextGoodMorning).toString()}`);
+    }
+
+    // Update the bot's status
+    setStatus(false);
 });
 
 const processCommands = async (msg: Message): Promise<void> => {
@@ -299,7 +309,7 @@ const processCommands = async (msg: Message): Promise<void> => {
 
 client.on('messageCreate', async (msg: Message): Promise<void> => {
     if (goodMorningChannel && msg.channel.id === goodMorningChannel.id && !msg.author.bot) {
-        if (state.isMorning || msg.content.includes('MORNING')) {
+        if (state.isMorning) {
             // Handle "commands" by looking for keywords
             await processCommands(msg);
 
@@ -307,22 +317,20 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             if (!state.dailyStatus.hasOwnProperty(msg.author.id)) {
                 const rank: number = Object.keys(state.dailyStatus).length + 1;
                 state.dailyStatus[msg.author.id] = { rank };
+                const firstTime: boolean = !state.points.hasOwnProperty(msg.author.id);
                 const priorPoints: number = state.points[msg.author.id] || 0;
                 state.points[msg.author.id] = priorPoints + Math.max(5 - rank, 1);
                 dumpState();
                 // Reply to the user based on how many points they had
                 if (rank <= 3) {
-                    if (Math.random() < .3) {
+                    if (Math.random() < config.replyViaReactionProbability) {
                         msg.react('🌞');
+                    } else if (firstTime) {
+                        msg.reply(languageGenerator.generate('{goodMorningReply.new?}'));
+                    } else if (priorPoints > 0) {
+                        msg.reply(languageGenerator.generate('{goodMorningReply.standard?}'));
                     } else {
-                        if (priorPoints < 0) {
-                            msg.reply(languageGenerator.generate('{goodMorningReply.negative?}'));
-                        } else if (priorPoints === 0) {
-                            // TODO: this isn't a solid assumption; a player can have zero points and not be new
-                            msg.reply(languageGenerator.generate('{goodMorningReply.new?}'));
-                        } else {
-                            msg.reply(languageGenerator.generate('{goodMorningReply.standard?}'));
-                        }
+                        msg.reply(languageGenerator.generate('{goodMorningReply.negative?}'));
                     }
                 }
             }

@@ -1,4 +1,6 @@
 {
     "goodMorningMessageProbability": 0.75,
-    "seasonGoal": 80
+    "goodMorningReactProbability": 0.3,
+    "seasonGoal": 80,
+    "goodMorningChannelId": "531423873292304384"
 }

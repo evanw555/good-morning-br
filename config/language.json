@@ -90,7 +90,8 @@
         "new": [
             "Good morning!",
             "Good morning, {!glad|happy} to hear from you!",
-            "Good morning, {!glad|happy} to see you around here"
+            "Good morning, {!glad|happy} to see you around here",
+            "{!Hello|Hi there|Greetings}! May this {adjectives.positive?} morning be the first of many..."
         ],
         "negative": [
             "Good morning!",
