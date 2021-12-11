@@ -69,8 +69,14 @@ const sendGoodMorningMessage = async (): Promise<void> => {
         const now: Date = new Date();
         switch (now.getDay()) {
         case 0: // Sunday
+            // TODO: This logic makes some assumptions... fix it!
             const top: any[] = getTopPlayers(1)[0];
-            goodMorningChannel.send(`Good morning! We are deep into season **${state.season}**, and <@${top[0]}> is in the lead!`);
+            const second: any[] = getTopPlayers(2)[1];
+            // TODO: We definitely should be doing this via parameters in the generation itself...
+            goodMorningChannel.send(languageGenerator.generate('{weeklyUpdate}')
+                .replace('$season', state.season.toString())
+                .replace('$top', top[0])
+                .replace('$second', second[0]));
             break;
         case 5: // Friday
             goodMorningChannel.send(languageGenerator.generate('{happyFriday}'));

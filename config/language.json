@@ -73,10 +73,24 @@
             "May the freshness of this morning keep your mind fresh and calm the whole day",
             "A new day has come with so many new opportunities for you. Grab them all and make the best out of your day",
             "The darkness of night has ended. {!A new|Today's} sun is up there to guide you towards life so bright and blissful"
+        ],
+        "seasonUpdate": [
+            "We are {!deep|well} into season **$season**, and <@$top> is in the lead with <@$second> {!not far behind|on his tail}!",
+            "Let's all {!acknowledge|thank|recognize} <@$top> for spreading the most Good Morning {!cheer|spirit} in season **$season**",
+            "It's season **$season** and so far, <@$top> has been showing the {!most|strongest} Good Morning spirit",
+            "It's season **$season** and so far, <@$top> and <@$second> are poised to {!grab|snag|earn} gold and silver medals. Will you let this happen?",
+            "Thanks to <@$top> for blessing our mornings throughout season **$season**",
+            "If saying Good Morning were a {!game|contest|tournament}, <@$top> would be winning season **$season**!",
+            "Saying Good Morning is a {!game|contest|tournament}, and <@$top> is currently the king of season **$season**!",
+            "<@$top> is currently the {!top dog|king|big dog} of Good Morning season **$season**! There's still time to steal the {!title|crown}...",
+            "<@$top> is currently the {!top dog|king|big dog} of Good Morning season **$season**! Though <@$second> isn't far behind...",
+            "<@$top> is leading the pack in Good Morning season **$season**! ...but for how long?",
+            "<@$top> is leading the pack in Good Morning season **$season**! ...but how long until <@$second> snags first place?"
         ]
     },
     "goodMorning": "{phrases.morningIntro?}! {phrases.wellWish?}",
     "happyFriday": "Happy Friday! {phrases.wellWish?} 🐒",
+    "weeklyUpdate": "{!Good morning|Happy Sunday}! {phrases.seasonUpdate?}",
     "goodMorningReply": {
         "standard": [
             "Good morning!",
