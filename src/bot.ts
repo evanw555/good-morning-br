@@ -73,11 +73,11 @@ const sendGoodMorningMessage = async (): Promise<void> => {
             goodMorningChannel.send(`Good morning! We are deep into season **${state.season}**, and <@${top[0]}> is in the lead!`);
             break;
         case 5: // Friday
-            goodMorningChannel.send('Happy Friday! I wish each of you a blessed morning 🐒');
+            goodMorningChannel.send(languageGenerator.generate('{happyFriday}'));
             break;
         default: // Other days
             if (Math.random() < config.goodMorningMessageProbability) {
-                goodMorningChannel.send(languageGenerator.generateGoodMorning());
+                goodMorningChannel.send(languageGenerator.generate('{goodMorning}'));
             }
             break;
         }
@@ -235,6 +235,7 @@ client.on('ready', async (): Promise<void> => {
     guildOwner = await guild.fetchOwner();
     if (guildOwner) {
         guildOwnerDmChannel = await guildOwner.createDM();
+        languageGenerator.setEmergencyLogChannel(guildOwnerDmChannel);
         console.log(`Determined guild owner: ${guildOwner.displayName}`);
     } else {
         console.log('Could not determine the guild\'s owner!');
@@ -309,44 +310,58 @@ const processCommands = async (msg: Message): Promise<void> => {
 
 client.on('messageCreate', async (msg: Message): Promise<void> => {
     if (goodMorningChannel && msg.channel.id === goodMorningChannel.id && !msg.author.bot) {
+        // Initialize daily status for the user if it doesn't exist
+        if (!(msg.author.id in state.dailyStatus)) {
+            state.dailyStatus[msg.author.id] = {};
+        }
+
         if (state.isMorning) {
             // Handle "commands" by looking for keywords
             await processCommands(msg);
 
             // In the morning, award the player accordingly if it's their first message...
-            if (!state.dailyStatus.hasOwnProperty(msg.author.id)) {
+            if (!state.dailyStatus[msg.author.id].hasSaidGoodMorning) {
                 const rank: number = Object.keys(state.dailyStatus).length + 1;
-                state.dailyStatus[msg.author.id] = { rank };
-                const firstTime: boolean = !state.points.hasOwnProperty(msg.author.id);
+                state.dailyStatus[msg.author.id] = {
+                    rank,
+                    hasSaidGoodMorning: true
+                };
+                const firstMessageThisSeason: boolean = !(msg.author.id in state.points);
                 const priorPoints: number = state.points[msg.author.id] || 0;
-                state.points[msg.author.id] = priorPoints + Math.max(5 - rank, 1);
+                const isFriday: boolean = (new Date()).getDay() === 5;
+                const messagesHasAttachments: boolean = msg.attachments.size > 0;
+                const multiplier: number = (isFriday && messagesHasAttachments) ? 2 : 1;
+                state.points[msg.author.id] = priorPoints + (Math.max(5 - rank, 1) * multiplier);
                 dumpState();
-                // Reply to the user based on how many points they had
-                if (rank <= 3) {
-                    if (Math.random() < config.replyViaReactionProbability) {
-                        msg.react('🌞');
-                    } else if (firstTime) {
-                        msg.reply(languageGenerator.generate('{goodMorningReply.new?}'));
-                    } else if (priorPoints > 0) {
-                        msg.reply(languageGenerator.generate('{goodMorningReply.standard?}'));
-                    } else {
-                        msg.reply(languageGenerator.generate('{goodMorningReply.negative?}'));
+                // If it's Friday and the user sent attachments (images or videos), react with a monkey (else, reply as normal)
+                if (isFriday && messagesHasAttachments) {
+                    msg.react('🐒');
+                } else {
+                    // Reply (or react) to the user based on how many points they had
+                    if (rank <= 3) {
+                        if (Math.random() < config.replyViaReactionProbability) {
+                            msg.react('🌞');
+                        } else if (firstMessageThisSeason) {
+                            msg.reply(languageGenerator.generate('{goodMorningReply.new?}'));
+                        } else if (priorPoints < 0) {
+                            msg.reply(languageGenerator.generate('{goodMorningReply.negative?}'));
+                        } else {
+                            msg.reply(languageGenerator.generate('{goodMorningReply.standard?}'));
+                        }
                     }
                 }
             }
         } else {
             // It's not morning, so punish the player accordingly...
-            if (!state.dailyStatus.hasOwnProperty(msg.author.id)) {
+            // If this is the user's first penalty since last morning, react to the message
+            if (!state.dailyStatus[msg.author.id].penalized) {
+                state.dailyStatus[msg.author.id].penalized = true ;
                 if (new Date().getHours() < 12) {
                     msg.react('😴');
                 } else {
                     msg.react(randChoice('😡', '😬', '😒', '😐'));
                 }
             }
-            if (!state.dailyStatus.hasOwnProperty(msg.author.id)) {
-                state.dailyStatus[msg.author.id] = {};
-            }
-            state.dailyStatus[msg.author.id].penalized = true ;
             state.points[msg.author.id] = (state.points[msg.author.id] || 0) - 1;
             dumpState();
             if (state.points[msg.author.id] == -5) {

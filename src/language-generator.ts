@@ -1,8 +1,15 @@
+import { TextBasedChannels } from "discord.js";
+
 class LanguageGenerator {
     private readonly _config: Record<string, any>;
+    private _emergencyLogChannel?: TextBasedChannels;
 
     constructor(config: Record<string, any>) {
         this._config = config;
+    }
+
+    setEmergencyLogChannel(emergencyLogChannel: TextBasedChannels): void {
+        this._emergencyLogChannel = emergencyLogChannel;
     }
 
     private _resolve(token: string): string {
@@ -61,17 +68,30 @@ class LanguageGenerator {
         }
     }
 
+    /**
+     * @param input Unresolved input text (may contain tokens)
+     * @returns Processed text with all tokens recursively resolved
+     */
     generate(input: string): string {
         const p: RegExp = /{\!?([^{}]+)(\?\d*\-?\d*)?}/;
-        let result: string = input;
-        while (result.search(p) !== -1) {
-            result = result.replace(p, this._resolve.bind(this));
+        // This logic can be retried a number of times, in case a bad result is generated
+        let attemptsRemaining: number = 15;
+        while (attemptsRemaining-- > 0) {
+            let result: string = input;
+            while (result.search(p) !== -1) {
+                result = result.replace(p, this._resolve.bind(this));
+            }
+            // If the resulting output seems to be malformed, log it and try again!
+            if (result.includes('{') || result.includes('}') || result.includes('|')) {
+                const errorMessage: string = `LanguageGenerator processed input \`${input}\` and produced a bad output: \`${result}\``;
+                console.log(errorMessage);
+                this._emergencyLogChannel?.send(errorMessage);
+                continue;
+            }
+            return result;
         }
-        return result;
-    }
-
-    generateGoodMorning(): string {
-        return this.generate('{goodMorning}');
+        // Ultimate fallback text (ideally it should never get here)
+        return "Hello";
     }
 }
 
