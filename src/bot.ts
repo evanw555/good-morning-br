@@ -327,11 +327,10 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
 
             // In the morning, award the player accordingly if it's their first message...
             if (!state.dailyStatus[msg.author.id].hasSaidGoodMorning) {
-                const rank: number = Object.keys(state.dailyStatus).length + 1;
-                state.dailyStatus[msg.author.id] = {
-                    rank,
-                    hasSaidGoodMorning: true
-                };
+                const rank: number = Object.keys(state.dailyStatus).length;
+                state.dailyStatus[msg.author.id].rank = rank;
+                state.dailyStatus[msg.author.id].hasSaidGoodMorning = true;
+
                 const firstMessageThisSeason: boolean = !(msg.author.id in state.points);
                 const priorPoints: number = state.points[msg.author.id] || 0;
                 const isFriday: boolean = (new Date()).getDay() === 5;
