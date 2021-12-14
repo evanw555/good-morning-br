@@ -187,7 +187,6 @@ const loadState = async (): Promise<void> => {
         if (err.code === 'ENOENT') {
             console.log('Existing state file not found, creating a fresh state...');
             state = {
-                channelId: goodMorningChannel.id,
                 season: 1,
                 isMorning: false,
                 dailyStatus: {},

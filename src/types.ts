@@ -24,7 +24,6 @@ export interface DailyStatus {
 }
 
 export interface GoodMorningState {
-    channelId: string,
     season: number,
     isMorning: boolean,
     dailyStatus: Record<Snowflake, DailyStatus>,
