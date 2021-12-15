@@ -352,6 +352,8 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                         } else {
                             msg.reply(languageGenerator.generate('{goodMorningReply.standard?}'));
                         }
+                    } else {
+                        msg.react('🌞');
                     }
                 }
             }
