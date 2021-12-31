@@ -286,7 +286,7 @@ client.on('ready', async (): Promise<void> => {
     }
 
     // Update the bot's status
-    setStatus(false);
+    setStatus(state.isMorning);
 });
 
 const processCommands = async (msg: Message): Promise<void> => {
