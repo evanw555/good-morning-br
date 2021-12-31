@@ -357,17 +357,17 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             const isFriday: boolean = (new Date()).getDay() === 5;
             const messageHasVideo: boolean = msg.attachments?.some(x => x.contentType.includes('video/')) || msg.embeds?.some(x => x.video);
             const triggerMonkeyFriday: boolean = isFriday && messageHasVideo;
-            // Separately award points and reply for monkey friday attachments (this lets users post videos after saying good morning)
-            if (triggerMonkeyFriday && !state.dailyStatus[msg.author.id].hasSentAttachment) {
-                state.dailyStatus[msg.author.id].hasSentAttachment = true;
-                const attachmentRank = Object.values(state.dailyStatus).filter(x => x.hasSentAttachment).length;
-                state.dailyStatus[msg.author.id].attachmentRank = attachmentRank;
+            // Separately award points and reply for monkey friday videos (this lets users post videos after saying good morning)
+            if (triggerMonkeyFriday && !state.dailyStatus[msg.author.id].hasSentVideo) {
+                state.dailyStatus[msg.author.id].hasSentVideo = true;
+                const videoRank = Object.values(state.dailyStatus).filter(x => x.hasSentVideo).length;
+                state.dailyStatus[msg.author.id].videoRank = videoRank;
                 const priorPoints: number = state.points[msg.author.id] || 0;
-                state.points[msg.author.id] = priorPoints + Math.max(5 - attachmentRank, 1);
+                state.points[msg.author.id] = priorPoints + Math.max(5 - videoRank, 1);
                 dumpState();
-                // Reply or react to the message depending on the attachment rank
-                if (attachmentRank === 1) {
-                    msg.reply(languageGenerator.generate('{goodMorningReply.attachment?} 🐒'));
+                // Reply or react to the message depending on the video rank
+                if (videoRank === 1) {
+                    msg.reply(languageGenerator.generate('{goodMorningReply.video?} 🐒'));
                 } else {
                     msg.react('🐒');
                 }

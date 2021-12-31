@@ -176,15 +176,15 @@
             "The {phrases.passing?}, the {phrases.passing?}, and combos are being broken! $breakee's $days-day combo, that is...",
             "For $days long mornings, $breakee has rushed to wish us a good morning. What you've done just now has {!shown|demonstrated} {!remarkable|incredible} {!bravery|courage|determination}!"
         ],
-        "attachment": [
+        "video": [
             "Thanks for sharing! What a perfect addition to an already {!blessed|splendid} morning",
             "Good morning! I hope everyone views this, for it may bring to life even the most snoozy sleepyheads",
-            "Wow! What an interesting thing to share on a morning like this!",
+            "Wow! What an interesting {!thing|video} to share on a morning like this!",
             "What does everyone else think of this? Upon viewing, I personally felt a deep sense of {!comfort|appreciation|awe}",
-            "Quite the humorous post, my friend. You always know how to make us feel better on mornings like this!",
+            "Quite the humorous {!video|post}, my friend. You always know how to make us feel better on mornings like this!",
             "Good morning! Your post has made it even better for all of us",
-            "Good morning! To be honest, I was feeling a little {!sleepy|snoozy|me-tired} until I saw your post, gave me a hearty laugh and a bright smile!",
-            "Good morning! This is a {adjectives.positive?} post! Who else agrees with me?"
+            "Good morning! To be honest, I was feeling a little {!sleepy|snoozy|me-tired} until I saw your video, gave me a hearty laugh and a bright smile!",
+            "Good morning! This is a {adjectives.positive?} video! Who else agrees with me?"
         ]
     }
 }

@@ -20,9 +20,9 @@ export interface GoodMorningConfig {
 
 export interface DailyStatus {
     rank?: number,
-    attachmentRank?: number,
+    videoRank?: number,
     hasSaidGoodMorning?: boolean,
-    hasSentAttachment?: boolean,
+    hasSentVideo?: boolean,
     penalized?: boolean
 }
 
