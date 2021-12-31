@@ -15,6 +15,7 @@ export interface GoodMorningConfig {
     seasonGoal: number,
     goodMorningMessageProbability: number,
     replyViaReactionProbability: number,
+    goodMorningReplyCount: number
 }
 
 export interface DailyStatus {
@@ -23,9 +24,16 @@ export interface DailyStatus {
     penalized?: boolean
 }
 
+export interface Combo {
+    user: Snowflake,
+    days: number
+}
+
 export interface GoodMorningState {
     season: number,
     isMorning: boolean,
+    currentLeader?: Snowflake,
+    combo?: Combo
     dailyStatus: Record<Snowflake, DailyStatus>,
     points: Record<Snowflake, number>
 }

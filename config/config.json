@@ -1,6 +1,7 @@
 {
     "goodMorningMessageProbability": 1.0,
-    "replyViaReactionProbability": 0.0,
+    "replyViaReactionProbability": 0.25,
+    "goodMorningReplyCount": 3,
     "seasonGoal": 100,
     "goodMorningChannelId": "565538626339995653"
 }

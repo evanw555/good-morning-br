@@ -11,14 +11,15 @@ import FileStorage from './file-storage.js';
 const storage = new FileStorage('./data/');
 
 import LanguageGenerator from './language-generator.js';
-import { randChoice, randInt, validateConfig } from './util.js';
+import { generateKMeansClusters, randChoice, randInt, validateConfig } from './util.js';
 const languageConfig = loadJson('config/language.json');
 const languageGenerator = new LanguageGenerator(languageConfig);
 
 const client = new Client({
     intents: [
         Intents.FLAGS.GUILDS,
-        Intents.FLAGS.GUILD_MESSAGES
+        Intents.FLAGS.GUILD_MESSAGES,
+        Intents.FLAGS.DIRECT_MESSAGES
     ]
 });
 
@@ -108,7 +109,7 @@ const setStatus = async (active: boolean): Promise<void> => {
 };
 
 const registerGoodMorningTimeout = async (): Promise<void> => {
-    const MIN_HOUR: number = 7;
+    const MIN_HOUR: number = 6;
     const MAX_HOUR_EXCLUSIVE: number = 11;
 
     const morningTomorrow: Date = new Date();
@@ -146,8 +147,21 @@ const TIMEOUT_CALLBACKS = {
         console.log('Said good morning!');
     },
     [TimeoutType.NextNoon]: async (): Promise<void> => {
-        // Update and dump state
+        // Update basic state properties
         state.isMorning = false;
+
+        // Update current leader property (and notify if anything has changed)
+        const newLeader = getTopPlayers(1)[0][0];
+        state.currentLeader = state.currentLeader || newLeader;
+        if (newLeader !== state.currentLeader) {
+            const previousLeader = state.currentLeader;
+            goodMorningChannel.send(languageGenerator.generate('{leaderShift?}')
+                .replace(/\$old/g, `<@${previousLeader}>`)
+                .replace(/\$new/g, `<@${newLeader}>`));
+            state.currentLeader = newLeader;
+        }
+
+        // Dump state
         await dumpState();
 
         // Update the bot's status
@@ -277,9 +291,22 @@ client.on('ready', async (): Promise<void> => {
 
 const processCommands = async (msg: Message): Promise<void> => {
     const sanitizedText: string = msg.content.trim().toLowerCase();
-    if (sanitizedText.includes('?') && msg.author.id === guildOwner.id) {
+    if (sanitizedText.includes('?')) {
+        if (sanitizedText.includes('clusters')) {
+            // msg.reply(JSON.stringify(generateKMeansClusters(state.points, 3)));
+            const k: number = parseInt(sanitizedText.split(' ')[0]);
+            msg.reply(JSON.stringify(generateKMeansClusters(state.points, k)));
+        }
+        if (sanitizedText.includes('order')) {
+            msg.reply(Object.keys(state.points).map((key) => {
+                return ` - <@${key}>: ${state.points[key]}`;
+            }).join('\n'));
+        }
+        if (sanitizedText.includes('state')) {
+            msg.reply(`\`\`\`${JSON.stringify(state, null, 2)}\`\`\``);
+        }
         // Asking about points
-        if (sanitizedText.includes('points')) {
+        else if (sanitizedText.includes('points')) {
             const points: number = state.points[msg.author.id] || 0;
             if (points < 0) {
                 msg.reply(`You have **${points}** points this season... bro...`);
@@ -314,39 +341,73 @@ const processCommands = async (msg: Message): Promise<void> => {
 };
 
 client.on('messageCreate', async (msg: Message): Promise<void> => {
-    if (goodMorningChannel && msg.channel.id === goodMorningChannel.id && !msg.author.bot) {
+    if (guildOwnerDmChannel && msg.channel.id === guildOwnerDmChannel.id && msg.author.id === guildOwner.id) {
+        // Handle "commands" by looking for keywords
+        await processCommands(msg);
+    } else if (goodMorningChannel && msg.channel.id === goodMorningChannel.id && !msg.author.bot) {
         // Initialize daily status for the user if it doesn't exist
         if (!(msg.author.id in state.dailyStatus)) {
             state.dailyStatus[msg.author.id] = {};
         }
 
         if (state.isMorning) {
-            // Handle "commands" by looking for keywords
-            await processCommands(msg);
-
             // In the morning, award the player accordingly if it's their first message...
             if (!state.dailyStatus[msg.author.id].hasSaidGoodMorning) {
                 const rank: number = Object.keys(state.dailyStatus).length;
                 state.dailyStatus[msg.author.id].rank = rank;
                 state.dailyStatus[msg.author.id].hasSaidGoodMorning = true;
 
+                let comboDaysBroken: number = 0;
+                let comboBreakee: Snowflake;
+                if (rank === 1) {
+                    if (state.combo) {
+                        if (state.combo.user === msg.author.id) {
+                            state.combo.days++;
+                        } else {
+                            comboDaysBroken = state.combo.days;
+                            comboBreakee = state.combo.user;
+                            state.combo = {
+                                user: msg.author.id,
+                                days: 1
+                            };
+                        }
+                    } else {
+                        state.combo = {
+                            user: msg.author.id,
+                            days: 1
+                        };
+                    }
+                }
+
                 const firstMessageThisSeason: boolean = !(msg.author.id in state.points);
                 const priorPoints: number = state.points[msg.author.id] || 0;
                 const isFriday: boolean = (new Date()).getDay() === 5;
                 const messagesHasAttachments: boolean = msg.attachments.size > 0;
                 const multiplier: number = (isFriday && messagesHasAttachments) ? 2 : 1;
-                state.points[msg.author.id] = priorPoints + (Math.max(5 - rank, 1) * multiplier);
+                state.points[msg.author.id] = priorPoints + (Math.max(5 - rank, 1) * multiplier) + comboDaysBroken;
                 dumpState();
                 // If it's Friday and the user sent attachments (images or videos), react with a monkey (else, reply as normal)
                 if (isFriday && messagesHasAttachments) {
-                    msg.react('🐒');
+                    if (rank === 1) {
+                        msg.react('{goodMorningReply.attachment?} 🐒');
+                    } else {
+                        msg.react('🐒');
+                    }
                 } else {
+                    // If it's a combo-breaker, reply with a special message
+                    if (comboDaysBroken > 1) {
+                        msg.reply(languageGenerator.generate('{goodMorningReply.comboBreaker?}')
+                            .replace(/\$breakee/g, `<@${comboBreakee}>`)
+                            .replace(/\$days/g, comboDaysBroken.toString()));
+                    }
+                    // If it's the user's first message this season, reply to them with a special message
+                    else if (firstMessageThisSeason) {
+                        msg.reply(languageGenerator.generate('{goodMorningReply.new?}'));
+                    }
                     // Reply (or react) to the user based on how many points they had
-                    if (rank <= 3) {
+                    else if (rank <= config.goodMorningReplyCount) {
                         if (Math.random() < config.replyViaReactionProbability) {
                             msg.react('🌞');
-                        } else if (firstMessageThisSeason) {
-                            msg.reply(languageGenerator.generate('{goodMorningReply.new?}'));
                         } else if (priorPoints < 0) {
                             msg.reply(languageGenerator.generate('{goodMorningReply.negative?}'));
                         } else {
@@ -359,20 +420,23 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             }
         } else {
             // It's not morning, so punish the player accordingly...
-            // If this is the user's first penalty since last morning, react to the message
-            if (!state.dailyStatus[msg.author.id].penalized) {
-                state.dailyStatus[msg.author.id].penalized = true ;
+            if (state.dailyStatus[msg.author.id].penalized) {
+                // Deduct a half point for repeat offenses
+                state.points[msg.author.id] = (state.points[msg.author.id] || 0) - 0.5;
+            } else {
+                // If this is the user's first penalty since last morning, react to the message and deduct one
+                state.dailyStatus[msg.author.id].penalized = true;
+                state.points[msg.author.id] = (state.points[msg.author.id] || 0) - 1;
                 if (new Date().getHours() < 12) {
                     msg.react('😴');
                 } else {
                     msg.react(randChoice('😡', '😬', '😒', '😐'));
                 }
             }
-            state.points[msg.author.id] = (state.points[msg.author.id] || 0) - 1;
             dumpState();
-            if (state.points[msg.author.id] == -5) {
+            if (state.points[msg.author.id] === -5) {
                 msg.reply('Why are you still talking?');
-            } else if (state.points[msg.author.id] == -10) {
+            } else if (state.points[msg.author.id] === -10) {
                 msg.reply('You have brought great dishonor to this server...');
             }
         }
