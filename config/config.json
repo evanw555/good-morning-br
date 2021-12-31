@@ -3,5 +3,15 @@
     "replyViaReactionProbability": 0.25,
     "goodMorningReplyCount": 3,
     "seasonGoal": 100,
-    "goodMorningChannelId": "565538626339995653"
+    "goodMorningChannelId": "565538626339995653",
+    "goodMorningMessageOverrides": {
+        "1/1": "Happy New Year! As we turn the page from last year to this year, recall your most cherished memories and take time to appreciate your friends and loved ones who made these moments possible.",
+        "2/14": "Happy Valentine's Day! This morning, please take a moment to appreciate your loved ones... {!❤️|🖤|🤍|💙|💜|🧡|💛}",
+        "3/17": "Happy St. Patrick's Day! {phrases.wellWish?} {!🍀|☘️}",
+        "5/5": "Happy Cinco de Mayo! {phrases.wellWish?}",
+        "7/4": "Good morning on this pleasant July 4th! {phrases.wellWish?} {!🎆|🎇|🇺🇸}",
+        "10/31": "Happy Halloween! I hope your morning is as spooky as it is delightful.",
+        "12/24": "Good morning, for today is Christmas Eve! Please refrain from rustling about, sneaking, and peeking tonight, for Santa is on his way... 🎅",
+        "12/25": "Merry Christmas! I hope Santa brought you all not only the finest toys, but also the brightest of smiles! {!🎄|🌟|🕯️}"
+    }
 }

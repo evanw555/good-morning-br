@@ -15,7 +15,8 @@ export interface GoodMorningConfig {
     seasonGoal: number,
     goodMorningMessageProbability: number,
     replyViaReactionProbability: number,
-    goodMorningReplyCount: number
+    goodMorningReplyCount: number,
+    goodMorningMessageOverrides: Record<string, string>
 }
 
 export interface DailyStatus {

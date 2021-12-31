@@ -68,6 +68,15 @@ const advanceSeason = async (winner: Snowflake): Promise<void> => {
 const sendGoodMorningMessage = async (): Promise<void> => {
     if (goodMorningChannel) {
         const now: Date = new Date();
+
+        // Handle dates with specific good morning message overrides specified in the config
+        const calendarDate: string = `${now.getMonth() + 1}/${now.getDate()}`; // e.g. "12/25" for xmas
+        if (calendarDate in config.goodMorningMessageOverrides) {
+            goodMorningChannel.send(languageGenerator.generate(config.goodMorningMessageOverrides[calendarDate]));
+            return;
+        }
+
+        // For all other days, handle based on the day of the week
         switch (now.getDay()) {
         case 0: // Sunday
             // TODO: This logic makes some assumptions... fix it!
@@ -391,6 +400,10 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                                 user: msg.author.id,
                                 days: 1
                             };
+                            // Penalize the combo breakee for losing his combo
+                            if (comboDaysBroken > 1) {
+                                state.points[comboBreakee]--;
+                            }
                         }
                     } else {
                         state.combo = {
