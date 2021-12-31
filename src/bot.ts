@@ -291,6 +291,9 @@ client.on('ready', async (): Promise<void> => {
 
 const processCommands = async (msg: Message): Promise<void> => {
     const sanitizedText: string = msg.content.trim().toLowerCase();
+    if (msg.attachments?.some(x => x.contentType.includes('video/')) || msg.embeds?.some(x => x.video)) {
+        msg.reply('This message has video!');
+    }
     if (sanitizedText.includes('?')) {
         if (sanitizedText.includes('clusters')) {
             // msg.reply(JSON.stringify(generateKMeansClusters(state.points, 3)));
@@ -352,8 +355,8 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
 
         if (state.isMorning) {
             const isFriday: boolean = (new Date()).getDay() === 5;
-            const messagesHasAttachments: boolean = msg.attachments.size > 0;
-            const triggerMonkeyFriday: boolean = isFriday && messagesHasAttachments;
+            const messageHasVideo: boolean = msg.attachments?.some(x => x.contentType.includes('video/')) || msg.embeds?.some(x => x.video);
+            const triggerMonkeyFriday: boolean = isFriday && messageHasVideo;
             // Separately award points and reply for monkey friday attachments (this lets users post videos after saying good morning)
             if (triggerMonkeyFriday && !state.dailyStatus[msg.author.id].hasSentAttachment) {
                 state.dailyStatus[msg.author.id].hasSentAttachment = true;
@@ -362,6 +365,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 const priorPoints: number = state.points[msg.author.id] || 0;
                 state.points[msg.author.id] = priorPoints + Math.max(5 - attachmentRank, 1);
                 dumpState();
+                // Reply or react to the message depending on the attachment rank
                 if (attachmentRank === 1) {
                     msg.reply(languageGenerator.generate('{goodMorningReply.attachment?} 🐒'));
                 } else {
