@@ -351,6 +351,23 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
         }
 
         if (state.isMorning) {
+            const isFriday: boolean = (new Date()).getDay() === 5;
+            const messagesHasAttachments: boolean = msg.attachments.size > 0;
+            const triggerMonkeyFriday: boolean = isFriday && messagesHasAttachments;
+            // Separately award points and reply for monkey friday attachments (this lets users post videos after saying good morning)
+            if (triggerMonkeyFriday && !state.dailyStatus[msg.author.id].hasSentAttachment) {
+                state.dailyStatus[msg.author.id].hasSentAttachment = true;
+                const attachmentRank = Object.values(state.dailyStatus).filter(x => x.hasSentAttachment).length;
+                state.dailyStatus[msg.author.id].attachmentRank = attachmentRank;
+                const priorPoints: number = state.points[msg.author.id] || 0;
+                state.points[msg.author.id] = priorPoints + Math.max(5 - attachmentRank, 1);
+                dumpState();
+                if (attachmentRank === 1) {
+                    msg.react('{goodMorningReply.attachment?} 🐒');
+                } else {
+                    msg.react('🐒');
+                }
+            }
             // In the morning, award the player accordingly if it's their first message...
             if (!state.dailyStatus[msg.author.id].hasSaidGoodMorning) {
                 const rank: number = Object.keys(state.dailyStatus).length;
@@ -381,27 +398,18 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
 
                 const firstMessageThisSeason: boolean = !(msg.author.id in state.points);
                 const priorPoints: number = state.points[msg.author.id] || 0;
-                const isFriday: boolean = (new Date()).getDay() === 5;
-                const messagesHasAttachments: boolean = msg.attachments.size > 0;
-                const multiplier: number = (isFriday && messagesHasAttachments) ? 2 : 1;
-                state.points[msg.author.id] = priorPoints + (Math.max(5 - rank, 1) * multiplier) + comboDaysBroken;
+                state.points[msg.author.id] = priorPoints + Math.max(5 - rank, 1) + comboDaysBroken;
                 dumpState();
-                // If it's Friday and the user sent attachments (images or videos), react with a monkey (else, reply as normal)
-                if (isFriday && messagesHasAttachments) {
-                    if (rank === 1) {
-                        msg.react('{goodMorningReply.attachment?} 🐒');
-                    } else {
-                        msg.react('🐒');
-                    }
-                } else {
-                    // If it's a combo-breaker, reply with a special message
-                    if (comboDaysBroken > 1) {
-                        msg.reply(languageGenerator.generate('{goodMorningReply.comboBreaker?}')
-                            .replace(/\$breakee/g, `<@${comboBreakee}>`)
-                            .replace(/\$days/g, comboDaysBroken.toString()));
-                    }
+                // If it's a combo-breaker, reply with a special message (may result in double replies on Monkey Friday)
+                if (comboDaysBroken > 1) {
+                    msg.reply(languageGenerator.generate('{goodMorningReply.comboBreaker?}')
+                        .replace(/\$breakee/g, `<@${comboBreakee}>`)
+                        .replace(/\$days/g, comboDaysBroken.toString()));
+                }
+                // If this post is NOT a Monkey Friday post, reply as normal (this is to avoid double replies on Monkey Friday)
+                else if (!triggerMonkeyFriday) {
                     // If it's the user's first message this season, reply to them with a special message
-                    else if (firstMessageThisSeason) {
+                    if (firstMessageThisSeason) {
                         msg.reply(languageGenerator.generate('{goodMorningReply.new?}'));
                     }
                     // Reply (or react) to the user based on how many points they had
