@@ -363,7 +363,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 state.points[msg.author.id] = priorPoints + Math.max(5 - attachmentRank, 1);
                 dumpState();
                 if (attachmentRank === 1) {
-                    msg.react('{goodMorningReply.attachment?} 🐒');
+                    msg.reply('{goodMorningReply.attachment?} 🐒');
                 } else {
                     msg.react('🐒');
                 }
