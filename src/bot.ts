@@ -1,4 +1,4 @@
-import { Client, DMChannel, Intents } from 'discord.js';
+import { Client, DMChannel, Intents, User } from 'discord.js';
 import TimeoutManager from './timeout-manager.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'discord.js';
 import { GoodMorningConfig, GoodMorningHistory, GoodMorningState, Season, TimeoutType } from './types.js';
@@ -134,9 +134,18 @@ const registerGoodMorningTimeout = async (): Promise<void> => {
 
 const TIMEOUT_CALLBACKS = {
     [TimeoutType.NextGoodMorning]: async (): Promise<void> => {
-        // Update and dump state
+        // Update state
         state.isMorning = true;
         state.dailyStatus = {};
+        // Increment "days since last good morning" counters for all participating users
+        Object.keys(state.points).forEach((userId) => {
+            if (userId in state.daysSinceLastGoodMorning) {
+                state.daysSinceLastGoodMorning[userId]++;
+            } else {
+                state.daysSinceLastGoodMorning[userId] = 0;
+            }
+        });
+        // Dump state
         await dumpState();
 
         // Set timeout for when morning ends
@@ -213,7 +222,8 @@ const loadState = async (): Promise<void> => {
                 season: 1,
                 isMorning: false,
                 dailyStatus: {},
-                points: {}
+                points: {},
+                daysSinceLastGoodMorning: {}
             };
             await dumpState();
         } else if (guildOwnerDmChannel) {
@@ -363,6 +373,9 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
         }
 
         if (state.isMorning) {
+            // Reset user's "days since last good morning" counter
+            state.daysSinceLastGoodMorning[msg.author.id] = 0;
+
             const isFriday: boolean = (new Date()).getDay() === 5;
             const messageHasVideo: boolean = msg.attachments?.some(x => x.contentType.includes('video/')) || msg.embeds?.some(x => x.video);
             const triggerMonkeyFriday: boolean = isFriday && messageHasVideo;
