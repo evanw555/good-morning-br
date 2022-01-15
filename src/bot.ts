@@ -1,7 +1,8 @@
-import { Client, DMChannel, Intents, User } from 'discord.js';
-import TimeoutManager from './timeout-manager.js';
+import { Client, DMChannel, Intents, MessageAttachment, User } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'discord.js';
 import { GoodMorningConfig, GoodMorningHistory, GoodMorningState, Season, TimeoutType } from './types.js';
+import TimeoutManager from './timeout-manager.js';
+import { createSeasonResultsImage } from './graphics.js';
 
 import { loadJson } from './load-json.js';
 const auth = loadJson('config/auth.json');
@@ -11,7 +12,7 @@ import FileStorage from './file-storage.js';
 const storage = new FileStorage('./data/');
 
 import LanguageGenerator from './language-generator.js';
-import { hasVideo, generateKMeansClusters, randChoice, randInt, validateConfig } from './util.js';
+import { hasVideo, generateKMeansClusters, randChoice, randInt, validateConfig, getTodayDateString, getOrderedPlayers } from './util.js';
 const languageConfig = loadJson('config/language.json');
 const languageGenerator = new LanguageGenerator(languageConfig);
 
@@ -26,12 +27,19 @@ const client = new Client({
     ]
 });
 
+let guild: Guild;
+
 let goodMorningChannel: TextBasedChannels;
 let guildOwner: GuildMember;
 let guildOwnerDmChannel: DMChannel;
 
 let state: GoodMorningState;
 let history: GoodMorningHistory;
+
+const getDisplayName = async (userId: Snowflake): Promise<string> => {
+    const member = await guild.members.fetch(userId);
+    return member.displayName;
+}
 
 // Tuples of (user ID, points)
 const getTopPlayers = (n: number): any[][] => {
@@ -44,22 +52,36 @@ const getTopScore = (): number => {
     return getTopPlayers(1)[0][1];
 };
 
-const advanceSeason = async (winner: Snowflake): Promise<void> => {
+const advanceSeason = async (): Promise<Season> => {
     // Add new entry for this season
     const newHistoryEntry: Season = {
         season: state.season,
-        finishedAt: new Date().toJSON(),
-        points: state.points
+        startedOn: state.startedOn,
+        finishedOn: getTodayDateString(),
+        points: state.points,
+        goal: config.seasonGoal
     };
     history.seasons.push(newHistoryEntry);
-    // Award the winner a chicken dinner
-    if (history.dinners === undefined) {
-        history.dinners = {};
+    // Compute medals
+    const orderedUserIds = getOrderedPlayers(state.points);
+    const winners = {
+        gold: orderedUserIds[0],
+        silver: orderedUserIds[1],
+        bronze: orderedUserIds[2],
+        skull: orderedUserIds[orderedUserIds.length - 1]
+    };
+    // Increment medals counts (initialize missing objects if needed)
+    if (history.medals === undefined) {
+        history.medals = {};
     }
-    if (history.dinners[winner] === undefined) {
-        history.dinners[winner] = 0;
-    }
-    history.dinners[winner]++;
+    Object.entries(winners).forEach(([medal, userId]) => {
+        if (userId) {
+            if (history.medals[userId] === undefined) {
+                history.medals[userId] = {};
+            }
+            history.medals[userId][medal] = (history.medals[userId][medal] ?? 0) + 1;
+        }
+    });
     // Send the final state to the guild owner one last time before wiping it
     if (guildOwnerDmChannel) {
         guildOwnerDmChannel.send(`The final state of season **${state.season}** before it's wiped:\n\`\`\`${JSON.stringify(state, null, 2)}\`\`\``);
@@ -68,6 +90,7 @@ const advanceSeason = async (winner: Snowflake): Promise<void> => {
     const nextSeason: number = state.season + 1;
     state = {
         season: nextSeason,
+        startedOn: getTodayDateString(),
         isMorning: false,
         dailyStatus: {},
         points: {},
@@ -76,6 +99,8 @@ const advanceSeason = async (winner: Snowflake): Promise<void> => {
     // Dump the state and history
     await dumpState();
     await dumpHistory();
+
+    return newHistoryEntry;
 };
 
 const sendGoodMorningMessage = async (): Promise<void> => {
@@ -201,24 +226,14 @@ const TIMEOUT_CALLBACKS = {
 
         // If anyone's score is above the season goal, then proceed to the next season
         if (getTopScore() >= config.seasonGoal) {
-            const prevSeason: number = state.season;
-            const winner: Snowflake = getTopPlayers(1)[0][0];
-            await advanceSeason(winner);
-            const numWins: number = history.dinners[winner];
-            // TODO: Better message
-            let messageText: string = `It's the end of season **${prevSeason}**, and <@${winner}> is `
-                + `the Good Morning king with **${numWins}** win${numWins > 1 ? 's' : ''}!`;
-            const top: any[][] = getTopPlayers(3);
-            if (top.length >= 1) {
-                messageText += `\n\n🥇 <@${top[0][0]}>`;
-            }
-            if (top.length >= 2) {
-                messageText += `\n🥈 <@${top[1][0]}>`;
-            }
-            if (top.length >= 3) {
-                messageText += `\n🥉 <@${top[2][0]}>`;
-            }
-            goodMorningChannel.send(messageText);
+            const previousSeason: Season = await advanceSeason();
+            // TODO: Send an interesting message, then wait - await new Promise(r => setTimeout(r, 2000));
+            // Send the "final results image"
+            const attachment = new MessageAttachment(await createSeasonResultsImage(previousSeason, history.medals, getDisplayName),
+            'results.png');
+            goodMorningChannel.send({ files: [attachment] });
+            // Wait, then send info about the next season
+            // TODO: Do this - await new Promise(r => setTimeout(r, 2000));
         }
     }
 };
@@ -234,6 +249,7 @@ const loadState = async (): Promise<void> => {
             console.log('Existing state file not found, creating a fresh state...');
             state = {
                 season: 1,
+                startedOn: getTodayDateString(),
                 isMorning: false,
                 dailyStatus: {},
                 points: {},
@@ -259,7 +275,7 @@ const loadHistory = async (): Promise<void> => {
             console.log('Existing history file not found, creating a fresh history...');
             history = {
                 seasons: [],
-                dinners: {}
+                medals: {}
             };
             await dumpHistory();
         } else if (guildOwnerDmChannel) {
@@ -297,7 +313,7 @@ client.on('ready', async (): Promise<void> => {
 
     // Then, fetch the guilds and guild channels
     await client.guilds.fetch();
-    const guild: Guild = client.guilds.cache.first();
+    guild = client.guilds.cache.first();
     await guild.channels.fetch();
 
     // Determine the guild owner and the guild owner's DM channel
@@ -365,8 +381,7 @@ const processCommands = async (msg: Message): Promise<void> => {
             msg.reply(JSON.stringify(generateKMeansClusters(state.points, k)));
         }
         if (sanitizedText.includes('order') || sanitizedText.includes('rank') || sanitizedText.includes('winning') || sanitizedText.includes('standings')) {
-            msg.reply(Object.keys(state.points)
-                .sort((x, y) => state.points[y] - state.points[x])
+            msg.reply(getOrderedPlayers(state.points)
                 .map((key) => {
                     return ` - <@${key}>: **${state.points[key]}** (${state.daysSinceLastGoodMorning[key]}d)`;
                 })
@@ -391,6 +406,18 @@ const processCommands = async (msg: Message): Promise<void> => {
         // Asking about the season
         else if (sanitizedText.includes('season')) {
             msg.reply(`It\'s season **${state.season}**!`);
+        }
+        // Canvas stuff
+        else if (sanitizedText.includes("canvas")) {
+            const attachment = new MessageAttachment(await createSeasonResultsImage({
+                    startedOn: state.startedOn,
+                    finishedOn: getTodayDateString(),
+                    goal: config.seasonGoal,
+                    points: state.points,
+                    season: state.season
+                }, history.medals, getDisplayName),
+                'results.png');
+            msg.reply({ files: [attachment] });
         }
     }
 };

@@ -1,5 +1,6 @@
-import { Message } from "discord.js";
+import { Message, Snowflake } from "discord.js";
 import { GoodMorningConfig } from "./types";
+import canvas from 'canvas';
 
 /**
  * @param lo Lower bound (inclusive)
@@ -160,4 +161,13 @@ export function hasVideo(msg: Message): boolean {
         // Next to manually check for YouTube links since apparently the embeds check doesn't always work...
         || msg.content.includes('https://youtu.be/')
         || msg.content.includes('https://youtube.com/');
+}
+
+
+export function getTodayDateString() {
+    return new Date().toLocaleDateString('en-US');
+}
+
+export function getOrderedPlayers(points: Record<Snowflake, number>): string[] {
+    return Object.keys(points).sort((x, y) => points[y] - points[x]);
 }

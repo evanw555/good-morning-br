@@ -34,6 +34,7 @@ export interface Combo {
 
 export interface GoodMorningState {
     season: number,
+    startedOn: string,
     isMorning: boolean,
     currentLeader?: Snowflake,
     combo?: Combo
@@ -44,11 +45,20 @@ export interface GoodMorningState {
 
 export interface Season {
     season: number,
-    finishedAt: string,
-    points: Record<Snowflake, number>
+    startedOn: string
+    finishedOn: string,
+    points: Record<Snowflake, number>,
+    goal: number
+}
+
+export interface Medals {
+    gold?: number,
+    silver?: number,
+    bronze?: number,
+    skull?: number
 }
 
 export interface GoodMorningHistory {
     seasons: Season[],
-    dinners: Record<Snowflake, number>
+    medals: Record<Snowflake, Medals>
 }
