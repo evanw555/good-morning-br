@@ -1,3 +1,4 @@
+import { Message } from "discord.js";
 import { GoodMorningConfig } from "./types";
 
 /**
@@ -148,4 +149,15 @@ export function generateKMeansClusters(input: Record<string, number>, k: number)
             return `<@${y.data}>`;
         });
     });
+}
+
+/**
+ * Returns true if the given message contains a video or (potentially animated) GIF.
+ */
+export function hasVideo(msg: Message): boolean {
+    return msg.attachments?.some(x => x.contentType.includes('video/') || x.contentType === 'image/gif')
+        || msg.embeds?.some(x => x.video)
+        // Next to manually check for YouTube links since apparently the embeds check doesn't always work...
+        || msg.content.includes('https://youtu.be/')
+        || msg.content.includes('https://youtube.com/');
 }

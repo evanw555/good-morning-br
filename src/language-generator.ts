@@ -24,12 +24,15 @@ class LanguageGenerator {
         // Check if there's a random modifier at the end
         let pickRandom: number = 0;
         if (stripped.endsWith('?')) {
+            // e.g. "{foo.bar?}"
             pickRandom = 1;
             stripped = stripped.substring(0, stripped.length - 1);
         } else if (stripped.match(/\?\d+$/)) {
+            // e.g. "{foo.bar?3}"
             pickRandom = parseInt(stripped.substring(stripped.lastIndexOf('?') + 1));
             stripped = stripped.substring(0, stripped.lastIndexOf('?'));
         }else if (stripped.match(/\?\d+\-\d+$/)) {
+            // e.g. "{foo.bar?2-3}"
             const execResult: string[] = /\?(\d+)\-(\d+)$/.exec(stripped);
             const lo: number = parseInt(execResult[1]);
             const hi: number = parseInt(execResult[2]);
@@ -37,12 +40,13 @@ class LanguageGenerator {
             stripped = stripped.substring(0, stripped.lastIndexOf('?'));
         }
 
+        // Resolve the language config node that this selector points to
         const segments: string[] = stripped.split('.');
         let node: any = this._config;
         while (segments.length > 0) {
             const segment = segments.shift();
             if (!node || !node.hasOwnProperty(segment)) {
-                return '';
+                throw new Error(`Token \`${token}\` has bad selector \`${stripped}\` which failed on segment \`${segment}\``);
             }
             node = node[segment];
         }
@@ -62,10 +66,21 @@ class LanguageGenerator {
                 } else if (i > 0) {
                     result += ', ';
                 }
+                // TODO: Pick nodes randomly without any duplicates
                 result += node[Math.floor(Math.random() * node.length)].toString();
             }
             return result;
         }
+    }
+
+    /**
+     * Report language generation failure by logging and sending a message to the emergency log channel.
+     * @param message error message to report
+     */
+    private _reportFailure(message: string): void {
+        const errorMessage: string = `LanguageGenerator encountered an error: ${message}`;
+        console.log(errorMessage);
+        this._emergencyLogChannel?.send(errorMessage);
     }
 
     /**
@@ -77,15 +92,19 @@ class LanguageGenerator {
         // This logic can be retried a number of times, in case a bad result is generated
         let attemptsRemaining: number = 15;
         while (attemptsRemaining-- > 0) {
+            // Iteratively resolve all existing tokens until none are left (handles recursive tokens)
             let result: string = input;
             while (result.search(p) !== -1) {
-                result = result.replace(p, this._resolve.bind(this));
+                try {
+                    result = result.replace(p, this._resolve.bind(this));
+                } catch (err) {
+                    this._reportFailure(err.message);
+                    continue;
+                }
             }
             // If the resulting output seems to be malformed, log it and try again!
             if (result.includes('{') || result.includes('}') || result.includes('|')) {
-                const errorMessage: string = `LanguageGenerator processed input \`${input}\` and produced a bad output: \`${result}\``;
-                console.log(errorMessage);
-                this._emergencyLogChannel?.send(errorMessage);
+                this._reportFailure(`Processed input \`${input}\` and produced a bad output \`${result}\``);
                 continue;
             }
             return result;

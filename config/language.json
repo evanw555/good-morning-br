@@ -2,19 +2,25 @@
     "nouns": {
         "positive": [
             "affection",
+            "bliss",
             "compassion",
             "creativity",
             "curiosity",
+            "delight",
             "determination",
             "enthusiasm",
+            "grace",
             "happiness",
             "hope",
+            "humor",
             "joy",
             "love",
+            "optimism",
             "peace",
             "perseverance",
             "serenity",
             "serendipity",
+            "strength",
             "tranquility"
         ],
         "treasure": [
@@ -22,17 +28,45 @@
             "fond memories",
             "bright smiles",
             "hearty laughter",
-            "golden rays of sunshine"
+            "golden rays of sunshine",
+            "deep feelings of {nouns.positive?}",
+            "special moments",
+            "pleasant surprises"
         ]
     },
     "adjectives": {
         "positive": [
-            "wonderful",
-            "delightful",
             "amazing",
+            "delightful",
             "good",
             "great",
-            "pleasant"
+            "joyous",
+            "magnificent",
+            "pleasant",
+            "unforgettable",
+            "wonderful"
+        ],
+        "novel": [
+            "original",
+            "creative",
+            "unique",
+            "though-provoking",
+            "novel",
+            "memorable",
+            "noteworthy"
+        ],
+        "beautiful": [
+            "amazing",
+            "beautiful",
+            "beautiful",
+            "elegant",
+            "exquisite",
+            "gorgeous",
+            "graceful",
+            "lovely",
+            "radiant",
+            "stunning",
+            "unforgettable"
         ]
     },
     "phrases": {
@@ -43,7 +77,8 @@
             "It's a new day",
             "Wishing you a {adjectives.positive?} morning today",
             "Good morning to you",
-            "Yet another good morning"
+            "Yet another good morning",
+            "Another blessed morning is upon us"
         ],
         "wellWish": [
             "May every step you take be filled with {nouns.positive?1-3}",
@@ -55,25 +90,26 @@
             "Cherish your {!friends|fellow Discord users|fellow MCMP dogs}, for they are a blessing",
             "Each day is an opportunity to grow. I hope you make the most of it",
             "Every morning brings you new hopes and new opportunities. Don’t miss any one of them while you’re sleeping",
-            "Wake up and make yourself a part of this beautiful morning. A {!beautiful|wide|whole} world is {!waiting|there} outside your door.",
-            "Welcome this beautiful morning with a smile on your face",
+            "Wake up and make yourself a part of this {adjectives.beautiful?} morning. A {!beautiful|wide|whole} world is {!waiting|there} outside your door.",
+            "Welcome this {adjectives.beautiful?} morning with a smile on your face",
             "I hope {!you'll|you|you all} have a great day today",
             "There is no way you can miss the {!beauty|radiance|brilliance} of today’s morning. Wake up, my {!dear|dogs|dearest dogs}. I wish this message be your {!alarm|motivation} for today.",
             "It’s time to wake up, take a deep breath, and enjoy the {!sweetness|wonder|beauty} of nature with all your heart",
-            "Mornings define our day. It’s all about how we start every morning. So, get up and make a good start of yet another beautiful day",
+            "Mornings define our day. It’s all about how we start every morning. So, get up and make a good start of yet another {adjectives.beautiful?} day",
             "Breathing in the fresh morning air makes you healthier and wiser. Don’t ignore the blessings that every morning offers to us",
-            "You have been blessed with yet another day. What a {adjectives.positive?} way of welcoming the blessing with such a beautiful morning",
-            "May you have a day full of sweet wonders ahead",
+            "You have been blessed with yet another day. What a {adjectives.positive?} way of welcoming the blessing with such a {adjectives.beautiful?} morning",
+            "May you have a day full of {!sweet|tasty|joyous} wonders ahead",
             "Sending you good vibes to start your morning with positive energy",
             "May your day {!shine|be} as bright as the sun is today",
-            "Nothing is more refreshing than a beautiful morning that calms your mind and gives you reasons to smile",
-            "Welcome the blessings of this beautiful {!morning|world}",
+            "Nothing is more refreshing than a {adjectives.beautiful?} morning that calms your mind and gives you reasons to smile",
+            "Welcome the blessings of this {adjectives.beautiful?} {!morning|world}",
             "Wake up like the sun every morning and light up the world with your awesomeness. You have so many great things to achieve today",
             "No matter how {!hard|difficult} yesterday was, today is a new beginning",
             "May the freshness of this morning keep your mind fresh and calm the whole day",
             "A new day has come with so many new opportunities for you. Grab them all and make the best out of your day",
             "The darkness of night has ended. {!A new|Today's} sun is up there to guide you towards life so bright and blissful",
-            "The {phrases.passing?} and the {phrases.passing?}, more reasons to stop and appreciate the beauty of this precious world we live in"
+            "The {phrases.passing?} and the {phrases.passing?}, more reasons to stop and appreciate the beauty of this precious world we live in",
+            "Count all your blessings, you {!may|surely} have {!more|many more|a lot more} than you {!realize|think}"
         ],
         "seasonUpdate": [
             "We are {!deep|well} into season **$season**, and <@$top> is in the lead with <@$second> {!not far behind|on his tail}!",
@@ -182,9 +218,23 @@
             "Wow! What an interesting {!thing|video} to share on a morning like this!",
             "What does everyone else think of this? Upon viewing, I personally felt a deep sense of {!comfort|appreciation|awe}",
             "Quite the humorous {!video|post}, my friend. You always know how to make us feel better on mornings like this!",
-            "Good morning! Your post has made it even better for all of us",
+            "Good morning! This {!video|post} will surely make it a good one for all of us",
             "Good morning! To be honest, I was feeling a little {!sleepy|snoozy|me-tired} until I saw your video, gave me a hearty laugh and a bright smile!",
             "Good morning! This is a {adjectives.positive?} video! Who else agrees with me?"
+        ],
+        "unoriginal": [
+            "Good morning! Not the most {adjectives.novel?} greeting, but thanks {!anyway|regardless}",
+            "Good morning! I feel like I've heard this before, {!though|however}",
+            "{!Happy|Glad} to hear from you this morning, but please try {!to|and} say something {!new|original}",
+            "Good morning! I appreciate your {!message|kind words|greeting}, but it's not the most {adjectives.novel?}",
+            "I hope that next time I hear from you, you'll be saying something more {adjectives.novel?}",
+            "I look forward to your next greeting, {!I hope|hopefully} {!it's|it'll be} a little more {adjectives.novel?} than this morning's",
+            "I'm having a {adjectives.positive?} morning, but {!truth be told|to be honest|honestly} I'm a little {!off put|bummed|disappointed} by your lack of {!originality|creativity}",
+            "My {!friend|dear friend}, we all {!love|appreciate|recognize|respect} you for your {!creative wit|creativity}, but what is this?",
+            "I hope {!today|this morning} brings you not only {nouns.positive?1-2} but also {!creativity|originality}... seems like you {!need|could use} it",
+            "It's never a complete morning without {!you chiming in|your radiant presence|your kind words}! Although I was hoping you'd say something a little more {adjectives.novel?}...",
+            "Good morning! Though something tells me I've heard this before...",
+            "Each morning I await your {adjectives.positive?} {!greeting|words} {!oh so eagerly|with bated breath|with such anticipation}, {!but|yet} this morning's greeting {!feels|seems|felt} a little forgettable"
         ]
     }
 }

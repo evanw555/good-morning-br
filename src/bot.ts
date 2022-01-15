@@ -11,9 +11,12 @@ import FileStorage from './file-storage.js';
 const storage = new FileStorage('./data/');
 
 import LanguageGenerator from './language-generator.js';
-import { generateKMeansClusters, randChoice, randInt, validateConfig } from './util.js';
+import { hasVideo, generateKMeansClusters, randChoice, randInt, validateConfig } from './util.js';
 const languageConfig = loadJson('config/language.json');
 const languageGenerator = new LanguageGenerator(languageConfig);
+
+import R9KTextBank from './r9k.js';
+const r9k = new R9KTextBank();
 
 const client = new Client({
     intents: [
@@ -57,9 +60,19 @@ const advanceSeason = async (winner: Snowflake): Promise<void> => {
         history.dinners[winner] = 0;
     }
     history.dinners[winner]++;
+    // Send the final state to the guild owner one last time before wiping it
+    if (guildOwnerDmChannel) {
+        guildOwnerDmChannel.send(`The final state of season **${state.season}** before it's wiped:\n\`\`\`${JSON.stringify(state, null, 2)}\`\`\``);
+    }
     // Reset the state
-    state.season++;
-    state.points = {};
+    const nextSeason: number = state.season + 1;
+    state = {
+        season: nextSeason,
+        isMorning: false,
+        dailyStatus: {},
+        points: {},
+        daysSinceLastGoodMorning: {}
+    };
     // Dump the state and history
     await dumpState();
     await dumpHistory();
@@ -179,8 +192,9 @@ const TIMEOUT_CALLBACKS = {
             state.currentLeader = newLeader;
         }
 
-        // Dump state
+        // Dump state and R9K hashes
         await dumpState();
+        await dumpR9KHashes();
 
         // Update the bot's status
         await setStatus(false);
@@ -234,7 +248,6 @@ const loadState = async (): Promise<void> => {
 
 const dumpState = async (): Promise<void> => {
     await storage.write('state', JSON.stringify(state, null, 2));
-    console.log(`Dumped state as ${JSON.stringify(state)}`);
 };
 
 const loadHistory = async (): Promise<void> => {
@@ -257,7 +270,25 @@ const loadHistory = async (): Promise<void> => {
 
 const dumpHistory = async (): Promise<void> => {
     await storage.write('history', JSON.stringify(history, null, 2));
-    console.log(`Dumped history as ${JSON.stringify(history)}`);
+};
+
+const loadR9KHashes = async (): Promise<void> => {
+    try {
+        const existingR9KHashes: string[] = await storage.readJson('r9k.json');
+        r9k.addRawHashes(existingR9KHashes);
+    } catch (err) {
+        // Specifically check for file-not-found errors to make sure we don't overwrite anything
+        if (err.code === 'ENOENT') {
+            console.log('Existing R9K hashes file not found, starting with a fresh text bank...');
+            await dumpR9KHashes();
+        } else if (guildOwnerDmChannel) {
+            guildOwnerDmChannel.send(`Unhandled exception while loading R9K hashes file:\n\`\`\`${err.message}\`\`\``);
+        }
+    }
+}
+
+const dumpR9KHashes = async (): Promise<void> => {
+    await storage.write('r9k.json', JSON.stringify(r9k.getAllEntries(), null, 2));
 };
 
 client.on('ready', async (): Promise<void> => {
@@ -292,6 +323,7 @@ client.on('ready', async (): Promise<void> => {
     // Load all necessary data from disk
     await loadState();
     await loadHistory();
+    await loadR9KHashes();
     await timeoutManager.loadTimeouts();
 
     // Register the next good morning callback if it doesn't exist
@@ -309,8 +341,21 @@ client.on('ready', async (): Promise<void> => {
 });
 
 const processCommands = async (msg: Message): Promise<void> => {
+    // Test out hashing of raw text input
+    if (msg.content.startsWith('#')) {
+        const exists = r9k.contains(msg.content);
+        r9k.add(msg.content);
+        msg.reply(`\`${msg.content}\` ${exists ? 'exists' : 'does *not* exist'} in the R9K text bank.`);
+        return;
+    }
+    // Test out language generation
+    if (msg.content.startsWith('$')) {
+        msg.reply(languageGenerator.generate(msg.content.substring(1)));
+        return;
+    }
+    // Handle sanitized commands
     const sanitizedText: string = msg.content.trim().toLowerCase();
-    if (msg.attachments?.some(x => x.contentType.includes('video/')) || msg.embeds?.some(x => x.video)) {
+    if (hasVideo(msg)) {
         msg.reply('This message has video!');
     }
     if (sanitizedText.includes('?')) {
@@ -319,10 +364,13 @@ const processCommands = async (msg: Message): Promise<void> => {
             const k: number = parseInt(sanitizedText.split(' ')[0]);
             msg.reply(JSON.stringify(generateKMeansClusters(state.points, k)));
         }
-        if (sanitizedText.includes('order')) {
-            msg.reply(Object.keys(state.points).map((key) => {
-                return ` - <@${key}>: ${state.points[key]}`;
-            }).join('\n'));
+        if (sanitizedText.includes('order') || sanitizedText.includes('rank') || sanitizedText.includes('winning') || sanitizedText.includes('standings')) {
+            msg.reply(Object.keys(state.points)
+                .sort((x, y) => state.points[y] - state.points[x])
+                .map((key) => {
+                    return ` - <@${key}>: **${state.points[key]}** (${state.daysSinceLastGoodMorning[key]}d)`;
+                })
+                .join('\n'));
         }
         if (sanitizedText.includes('state')) {
             msg.reply(`\`\`\`${JSON.stringify(state, null, 2)}\`\`\``);
@@ -339,21 +387,6 @@ const processCommands = async (msg: Message): Promise<void> => {
             } else {
                 msg.reply(`You have **${points}** points this season`);
             }
-        }
-        // Asking about rankings
-        else if (sanitizedText.includes('rank') || sanitizedText.includes('winning') || sanitizedText.includes('standings')) {
-            const top: any[][] = getTopPlayers(3);
-            let replyText: string = '';
-            if (top.length >= 1) {
-                replyText += `<@${top[0][0]}> is in first with **${top[0][1]}** points`;
-            }
-            if (top.length >= 2) {
-                replyText += `, then <@${top[1][0]}> with **${top[1][1]}** points`;
-            }
-            if (top.length >= 3) {
-                replyText += `, and finally <@${top[2][0]}> with **${top[2][1]}** points`;
-            }
-            msg.reply(replyText);
         }
         // Asking about the season
         else if (sanitizedText.includes('season')) {
@@ -376,8 +409,9 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             // Reset user's "days since last good morning" counter
             state.daysSinceLastGoodMorning[msg.author.id] = 0;
 
+            const isNovelMessage = r9k.contains(msg.content);
             const isFriday: boolean = (new Date()).getDay() === 5;
-            const messageHasVideo: boolean = msg.attachments?.some(x => x.contentType.includes('video/')) || msg.embeds?.some(x => x.video);
+            const messageHasVideo: boolean = hasVideo(msg);
             const triggerMonkeyFriday: boolean = isFriday && messageHasVideo;
             // Separately award points and reply for monkey friday videos (this lets users post videos after saying good morning)
             if (triggerMonkeyFriday && !state.dailyStatus[msg.author.id].hasSentVideo) {
@@ -425,11 +459,13 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                         };
                     }
                 }
-
-                const firstMessageThisSeason: boolean = !(msg.author.id in state.points);
+                // Update the user's points and dump the state
                 const priorPoints: number = state.points[msg.author.id] || 0;
-                state.points[msg.author.id] = priorPoints + Math.max(5 - rank, 1) + comboDaysBroken;
+                const awarded: number = isNovelMessage ? Math.max(5 - rank, 1) : 1;
+                state.points[msg.author.id] = priorPoints + awarded + comboDaysBroken;
                 dumpState();
+                // Add this user's message to the R9K text bank
+                r9k.add(msg.content);
                 // If it's a combo-breaker, reply with a special message (may result in double replies on Monkey Friday)
                 if (comboDaysBroken > 1) {
                     msg.reply(languageGenerator.generate('{goodMorningReply.comboBreaker?}')
@@ -439,8 +475,17 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 // If this post is NOT a Monkey Friday post, reply as normal (this is to avoid double replies on Monkey Friday)
                 else if (!triggerMonkeyFriday) {
                     // If it's the user's first message this season, reply to them with a special message
+                    const firstMessageThisSeason: boolean = !(msg.author.id in state.points);
                     if (firstMessageThisSeason) {
                         msg.reply(languageGenerator.generate('{goodMorningReply.new?}'));
+                    }
+                    // Message was unoriginal, so reply (or react) to indicate unoriginal
+                    else if (!isNovelMessage) {
+                        if (rank === 1) {
+                            msg.reply(languageGenerator.generate('{goodMorningReply.unoriginal?} 🌚'));
+                        } else {
+                            msg.react('🌚');
+                        }
                     }
                     // Reply (or react) to the user based on how many points they had
                     else if (rank <= config.goodMorningReplyCount) {
