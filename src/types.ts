@@ -19,7 +19,7 @@ export interface GoodMorningConfig {
     goodMorningMessageOverrides: Record<string, string>
 }
 
-export interface DailyStatus {
+export interface DailyPlayerState {
     rank?: number,
     videoRank?: number,
     hasSaidGoodMorning?: boolean,
@@ -32,15 +32,23 @@ export interface Combo {
     days: number
 }
 
+export interface PlayerState {
+    displayName: string,
+    points: number,
+    penalties: number,
+    daysSinceLastGoodMorning: number
+}
+
 export interface GoodMorningState {
     season: number,
     startedOn: string,
     isMorning: boolean,
     currentLeader?: Snowflake,
     combo?: Combo
-    dailyStatus: Record<Snowflake, DailyStatus>,
+    dailyStatus: Record<Snowflake, DailyPlayerState>,
     points: Record<Snowflake, number>,
-    daysSinceLastGoodMorning: Record<Snowflake, number>
+    daysSinceLastGoodMorning: Record<Snowflake, number>,
+    players: Record<Snowflake, PlayerState>
 }
 
 export interface Season {

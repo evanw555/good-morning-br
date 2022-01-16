@@ -37,8 +37,12 @@ let state: GoodMorningState;
 let history: GoodMorningHistory;
 
 const getDisplayName = async (userId: Snowflake): Promise<string> => {
-    const member = await guild.members.fetch(userId);
-    return member.displayName;
+    try {
+        const member = await guild.members.fetch(userId);
+        return member.displayName;
+    } catch (err) {
+        return `User ${userId}`;
+    }
 }
 
 // Tuples of (user ID, points)
@@ -67,8 +71,9 @@ const advanceSeason = async (): Promise<Season> => {
     const winners = {
         gold: orderedUserIds[0],
         silver: orderedUserIds[1],
-        bronze: orderedUserIds[2],
-        skull: orderedUserIds[orderedUserIds.length - 1]
+        bronze: orderedUserIds[2]
+        // TODO: Give out the skull award once penalties are counted
+        // skull: orderedUserIds[orderedUserIds.length - 1]
     };
     // Increment medals counts (initialize missing objects if needed)
     if (history.medals === undefined) {
@@ -94,7 +99,8 @@ const advanceSeason = async (): Promise<Season> => {
         isMorning: false,
         dailyStatus: {},
         points: {},
-        daysSinceLastGoodMorning: {}
+        daysSinceLastGoodMorning: {},
+        players: {}
     };
     // Dump the state and history
     await dumpState();
@@ -243,6 +249,10 @@ const timeoutManager = new TimeoutManager(storage, TIMEOUT_CALLBACKS);
 const loadState = async (): Promise<void> => {
     try {
         state = await storage.readJson('state');
+        // Temporary logic to initialize newly introduced properties
+        if (state.players === undefined) {
+            state.players = {};
+        }
     } catch (err) {
         // Specifically check for file-not-found errors to make sure we don't overwrite anything
         if (err.code === 'ENOENT') {
@@ -253,7 +263,8 @@ const loadState = async (): Promise<void> => {
                 isMorning: false,
                 dailyStatus: {},
                 points: {},
-                daysSinceLastGoodMorning: {}
+                daysSinceLastGoodMorning: {},
+                players: {}
             };
             await dumpState();
         } else if (guildOwnerDmChannel) {
@@ -380,14 +391,17 @@ const processCommands = async (msg: Message): Promise<void> => {
             const k: number = parseInt(sanitizedText.split(' ')[0]);
             msg.reply(JSON.stringify(generateKMeansClusters(state.points, k)));
         }
-        if (sanitizedText.includes('order') || sanitizedText.includes('rank') || sanitizedText.includes('winning') || sanitizedText.includes('standings')) {
+        else if (sanitizedText.includes('order') || sanitizedText.includes('rank') || sanitizedText.includes('winning') || sanitizedText.includes('standings')) {
             msg.reply(getOrderedPlayers(state.points)
                 .map((key) => {
                     return ` - <@${key}>: **${state.points[key]}** (${state.daysSinceLastGoodMorning[key]}d)`;
                 })
                 .join('\n'));
         }
-        if (sanitizedText.includes('state')) {
+        else if (sanitizedText.includes('dump state')) {
+            await dumpState();
+        }
+        else if (sanitizedText.includes('state')) {
             msg.reply(`\`\`\`${JSON.stringify(state, null, 2)}\`\`\``);
         }
         // Asking about points
@@ -427,26 +441,38 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
         // Handle "commands" by looking for keywords
         await processCommands(msg);
     } else if (goodMorningChannel && msg.channel.id === goodMorningChannel.id && !msg.author.bot) {
+        const userId: Snowflake = msg.author.id;
+
         // Initialize daily status for the user if it doesn't exist
-        if (!(msg.author.id in state.dailyStatus)) {
-            state.dailyStatus[msg.author.id] = {};
+        if (!(userId in state.dailyStatus)) {
+            state.dailyStatus[userId] = {};
+        }
+
+        // Initialize player data if it doesn't exist
+        if (state.players[userId] === undefined) {
+            state.players[userId] = {
+                displayName: await getDisplayName(userId),
+                points: 0,
+                penalties: 0,
+                daysSinceLastGoodMorning: 0
+            };
         }
 
         if (state.isMorning) {
             // Reset user's "days since last good morning" counter
-            state.daysSinceLastGoodMorning[msg.author.id] = 0;
+            state.daysSinceLastGoodMorning[userId] = 0;
 
             const isNovelMessage = r9k.contains(msg.content);
             const isFriday: boolean = (new Date()).getDay() === 5;
             const messageHasVideo: boolean = hasVideo(msg);
             const triggerMonkeyFriday: boolean = isFriday && messageHasVideo;
             // Separately award points and reply for monkey friday videos (this lets users post videos after saying good morning)
-            if (triggerMonkeyFriday && !state.dailyStatus[msg.author.id].hasSentVideo) {
-                state.dailyStatus[msg.author.id].hasSentVideo = true;
+            if (triggerMonkeyFriday && !state.dailyStatus[userId].hasSentVideo) {
+                state.dailyStatus[userId].hasSentVideo = true;
                 const videoRank = Object.values(state.dailyStatus).filter(x => x.hasSentVideo).length;
-                state.dailyStatus[msg.author.id].videoRank = videoRank;
-                const priorPoints: number = state.points[msg.author.id] || 0;
-                state.points[msg.author.id] = priorPoints + Math.max(5 - videoRank, 1);
+                state.dailyStatus[userId].videoRank = videoRank;
+                const priorPoints: number = state.points[userId] || 0;
+                state.points[userId] = priorPoints + Math.max(5 - videoRank, 1);
                 dumpState();
                 // Reply or react to the message depending on the video rank
                 if (videoRank === 1) {
@@ -456,22 +482,25 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 }
             }
             // In the morning, award the player accordingly if it's their first message...
-            if (!state.dailyStatus[msg.author.id].hasSaidGoodMorning) {
+            if (!state.dailyStatus[userId].hasSaidGoodMorning) {
+                // Very first thing to do is to update the player's displayName (only do this here since it's pretty expensive)
+                state.players[userId].displayName = await getDisplayName(userId);
+
                 const rank: number = Object.keys(state.dailyStatus).length;
-                state.dailyStatus[msg.author.id].rank = rank;
-                state.dailyStatus[msg.author.id].hasSaidGoodMorning = true;
+                state.dailyStatus[userId].rank = rank;
+                state.dailyStatus[userId].hasSaidGoodMorning = true;
 
                 let comboDaysBroken: number = 0;
                 let comboBreakee: Snowflake;
                 if (rank === 1) {
                     if (state.combo) {
-                        if (state.combo.user === msg.author.id) {
+                        if (state.combo.user === userId) {
                             state.combo.days++;
                         } else {
                             comboDaysBroken = state.combo.days;
                             comboBreakee = state.combo.user;
                             state.combo = {
-                                user: msg.author.id,
+                                user: userId,
                                 days: 1
                             };
                             // Penalize the combo breakee for losing his combo
@@ -481,15 +510,15 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                         }
                     } else {
                         state.combo = {
-                            user: msg.author.id,
+                            user: userId,
                             days: 1
                         };
                     }
                 }
                 // Update the user's points and dump the state
-                const priorPoints: number = state.points[msg.author.id] || 0;
+                const priorPoints: number = state.points[userId] || 0;
                 const awarded: number = isNovelMessage ? Math.max(5 - rank, 1) : 1;
-                state.points[msg.author.id] = priorPoints + awarded + comboDaysBroken;
+                state.points[userId] = priorPoints + awarded + comboDaysBroken;
                 dumpState();
                 // Add this user's message to the R9K text bank
                 r9k.add(msg.content);
@@ -502,7 +531,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 // If this post is NOT a Monkey Friday post, reply as normal (this is to avoid double replies on Monkey Friday)
                 else if (!triggerMonkeyFriday) {
                     // If it's the user's first message this season, reply to them with a special message
-                    const firstMessageThisSeason: boolean = !(msg.author.id in state.points);
+                    const firstMessageThisSeason: boolean = !(userId in state.points);
                     if (firstMessageThisSeason) {
                         msg.reply(languageGenerator.generate('{goodMorningReply.new?}'));
                     }
@@ -530,26 +559,34 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             }
         } else {
             // It's not morning, so punish the player accordingly...
-            if (state.dailyStatus[msg.author.id].penalized) {
+            if (state.dailyStatus[userId].penalized) {
                 // Deduct a half point for repeat offenses
-                state.points[msg.author.id] = (state.points[msg.author.id] || 0) - 0.5;
+                state.points[userId] = (state.points[userId] || 0) - 0.5;
             } else {
                 // If this is the user's first penalty since last morning, react to the message and deduct one
-                state.dailyStatus[msg.author.id].penalized = true;
-                state.points[msg.author.id] = (state.points[msg.author.id] || 0) - 1;
+                state.dailyStatus[userId].penalized = true;
+                state.points[userId] = (state.points[userId] || 0) - 1;
                 if (new Date().getHours() < 12) {
                     msg.react('😴');
                 } else {
                     msg.react(randChoice('😡', '😬', '😒', '😐'));
                 }
             }
+            // Increment user's penalty count then dump the state
+            state.players[userId].penalties++;
             dumpState();
-            if (state.points[msg.author.id] === -5) {
+            // Reply if the user has hit a certain threshold
+            if (state.points[userId] === -5) {
                 msg.reply('Why are you still talking?');
-            } else if (state.points[msg.author.id] === -10) {
+            } else if (state.points[userId] === -10) {
                 msg.reply('You have brought great dishonor to this server...');
             }
         }
+
+        // Keep the player data in sync with the legacy player data
+        // TODO: Completely remove the legacy player data and use this instead
+        state.players[userId].points = state.points[userId];
+        state.players[userId].daysSinceLastGoodMorning = state.daysSinceLastGoodMorning[userId];
     }
 });
 
