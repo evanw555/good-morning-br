@@ -462,7 +462,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             // Reset user's "days since last good morning" counter
             state.daysSinceLastGoodMorning[userId] = 0;
 
-            const isNovelMessage = r9k.contains(msg.content);
+            const isNovelMessage: boolean = !r9k.contains(msg.content);
             const isFriday: boolean = (new Date()).getDay() === 5;
             const messageHasVideo: boolean = hasVideo(msg);
             const triggerMonkeyFriday: boolean = isFriday && messageHasVideo;
