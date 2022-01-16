@@ -402,7 +402,21 @@ const processCommands = async (msg: Message): Promise<void> => {
             await dumpState();
         }
         else if (sanitizedText.includes('state')) {
-            msg.reply(`\`\`\`${JSON.stringify(state, null, 2)}\`\`\``);
+            const serializedState: string = JSON.stringify(state, null, 2);
+            const lines: string[] = serializedState.split('\n');
+            let buffer: string = '';
+            while (lines.length !== 0) {
+                const prefix: string = buffer ? '\n' : '';
+                buffer += prefix + lines.shift();
+                if (lines.length === 0 || buffer.length + lines[0].length > 2000) {
+                    try {
+                        msg.channel.send(`\`\`\`${buffer}\`\`\``);
+                    } catch (err) {
+                        msg.channel.send('Failed sending serialized state.');
+                    }
+                    buffer = '';
+                }
+            }
         }
         // Asking about points
         else if (sanitizedText.includes('points')) {
