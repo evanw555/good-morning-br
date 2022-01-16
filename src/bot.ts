@@ -608,6 +608,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
         // TODO: Completely remove the legacy player data and use this instead
         state.players[userId].points = state.points[userId];
         state.players[userId].daysSinceLastGoodMorning = state.daysSinceLastGoodMorning[userId];
+        dumpState();
     }
 });
 
