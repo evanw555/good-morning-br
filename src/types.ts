@@ -24,7 +24,8 @@ export interface DailyPlayerState {
     videoRank?: number,
     hasSaidGoodMorning?: boolean,
     hasSentVideo?: boolean,
-    penalized?: boolean
+    penalized?: boolean,
+    pointsEarned: number
 }
 
 export interface Combo {

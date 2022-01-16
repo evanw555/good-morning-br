@@ -459,7 +459,9 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
 
         // Initialize daily status for the user if it doesn't exist
         if (!(userId in state.dailyStatus)) {
-            state.dailyStatus[userId] = {};
+            state.dailyStatus[userId] = {
+                pointsEarned: 0
+            };
         }
 
         // Initialize player data if it doesn't exist
@@ -532,7 +534,9 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 // Update the user's points and dump the state
                 const priorPoints: number = state.points[userId] || 0;
                 const awarded: number = isNovelMessage ? Math.max(5 - rank, 1) : 1;
-                state.points[userId] = priorPoints + awarded + comboDaysBroken;
+                const pointsEarned: number = awarded + comboDaysBroken;
+                state.points[userId] = priorPoints + pointsEarned;
+                state.dailyStatus[userId].pointsEarned += pointsEarned;
                 dumpState();
                 // Add this user's message to the R9K text bank
                 r9k.add(msg.content);
@@ -572,20 +576,23 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 }
             }
         } else {
+            let pointsDeducted: number = 0;
             // It's not morning, so punish the player accordingly...
             if (state.dailyStatus[userId].penalized) {
                 // Deduct a half point for repeat offenses
-                state.points[userId] = (state.points[userId] || 0) - 0.5;
+                pointsDeducted = 0.5;
             } else {
                 // If this is the user's first penalty since last morning, react to the message and deduct one
+                pointsDeducted = 1;
                 state.dailyStatus[userId].penalized = true;
-                state.points[userId] = (state.points[userId] || 0) - 1;
                 if (new Date().getHours() < 12) {
                     msg.react('😴');
                 } else {
                     msg.react(randChoice('😡', '😬', '😒', '😐'));
                 }
             }
+            state.points[userId] = (state.points[userId] || 0) - pointsDeducted;
+            state.dailyStatus[userId].pointsEarned -= pointsDeducted;
             // Increment user's penalty count then dump the state
             state.players[userId].penalties++;
             dumpState();
