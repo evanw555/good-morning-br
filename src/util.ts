@@ -1,4 +1,4 @@
-import { Message, Snowflake } from "discord.js";
+import { Message, Snowflake, TextBasedChannels } from "discord.js";
 import { GoodMorningConfig } from "./types";
 import canvas from 'canvas';
 
@@ -170,4 +170,21 @@ export function getTodayDateString() {
 
 export function getOrderedPlayers(points: Record<Snowflake, number>): string[] {
     return Object.keys(points).sort((x, y) => points[y] - points[x]);
+}
+
+export async function replyToMessage(msg: Message, text: string): Promise<void> {
+    await msg.channel.sendTyping();
+    await new Promise(r => setTimeout(r, 40 * text.length));
+    await msg.reply(text);
+}
+
+export async function sendMessageInChannel(channel: TextBasedChannels, text: string): Promise<void> {
+    await channel.sendTyping();
+    await new Promise(r => setTimeout(r, 40 * text.length));
+    await channel.send(text);
+}
+
+export async function reactToMessage(msg: Message, emoji: string): Promise<void> {
+    await new Promise(r => setTimeout(r, randInt(0, 1500)));
+    await msg.react(emoji);;
 }

@@ -3,6 +3,7 @@ import { TextBasedChannels } from "discord.js";
 class LanguageGenerator {
     private readonly _config: Record<string, any>;
     private _emergencyLogChannel?: TextBasedChannels;
+    private _lastErrorMessage?: string;
 
     constructor(config: Record<string, any>) {
         this._config = config;
@@ -75,12 +76,16 @@ class LanguageGenerator {
 
     /**
      * Report language generation failure by logging and sending a message to the emergency log channel.
+     * Refuses to log the failure if it's the same as the previous error message (to avoid retry spamming).
      * @param message error message to report
      */
     private _reportFailure(message: string): void {
-        const errorMessage: string = `LanguageGenerator encountered an error: ${message}`;
-        console.log(errorMessage);
-        this._emergencyLogChannel?.send(errorMessage);
+        if (message !== this._lastErrorMessage) {
+            this._lastErrorMessage = message;
+            const errorMessage: string = `LanguageGenerator encountered an error: ${message}`;
+            console.log(errorMessage);
+            this._emergencyLogChannel?.send(errorMessage);
+        }
     }
 
     /**
@@ -90,17 +95,17 @@ class LanguageGenerator {
     generate(input: string): string {
         const p: RegExp = /{\!?([^{}]+)(\?\d*\-?\d*)?}/;
         // This logic can be retried a number of times, in case a bad result is generated
-        let attemptsRemaining: number = 15;
+        let attemptsRemaining: number = 10;
         while (attemptsRemaining-- > 0) {
             // Iteratively resolve all existing tokens until none are left (handles recursive tokens)
             let result: string = input;
-            while (result.search(p) !== -1) {
-                try {
+            try {
+                while (result.search(p) !== -1) {
                     result = result.replace(p, this._resolve.bind(this));
-                } catch (err) {
-                    this._reportFailure(err.message);
-                    continue;
                 }
+            } catch (err) {
+                this._reportFailure(err.message);
+                continue;
             }
             // If the resulting output seems to be malformed, log it and try again!
             if (result.includes('{') || result.includes('}') || result.includes('|')) {

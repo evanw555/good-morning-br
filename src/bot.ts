@@ -12,7 +12,7 @@ import FileStorage from './file-storage.js';
 const storage = new FileStorage('./data/');
 
 import LanguageGenerator from './language-generator.js';
-import { hasVideo, generateKMeansClusters, randChoice, randInt, validateConfig, getTodayDateString, getOrderedPlayers } from './util.js';
+import { hasVideo, generateKMeansClusters, randChoice, randInt, validateConfig, getTodayDateString, getOrderedPlayers, replyToMessage, sendMessageInChannel, reactToMessage } from './util.js';
 const languageConfig = loadJson('config/language.json');
 const languageGenerator = new LanguageGenerator(languageConfig);
 
@@ -116,7 +116,7 @@ const sendGoodMorningMessage = async (): Promise<void> => {
         // Handle dates with specific good morning message overrides specified in the config
         const calendarDate: string = `${now.getMonth() + 1}/${now.getDate()}`; // e.g. "12/25" for xmas
         if (calendarDate in config.goodMorningMessageOverrides) {
-            goodMorningChannel.send(languageGenerator.generate(config.goodMorningMessageOverrides[calendarDate]));
+            await sendMessageInChannel(goodMorningChannel, languageGenerator.generate(config.goodMorningMessageOverrides[calendarDate]));
             return;
         }
 
@@ -127,17 +127,17 @@ const sendGoodMorningMessage = async (): Promise<void> => {
             const top: any[] = getTopPlayers(1)[0];
             const second: any[] = getTopPlayers(2)[1];
             // TODO: We definitely should be doing this via parameters in the generation itself...
-            goodMorningChannel.send(languageGenerator.generate('{weeklyUpdate}')
+            await sendMessageInChannel(goodMorningChannel, languageGenerator.generate('{weeklyUpdate}')
                 .replace('$season', state.season.toString())
                 .replace('$top', top[0])
                 .replace('$second', second[0]));
             break;
         case 5: // Friday
-            goodMorningChannel.send(languageGenerator.generate('{happyFriday}'));
+            await sendMessageInChannel(goodMorningChannel, languageGenerator.generate('{happyFriday}'));
             break;
         default: // Other days
             if (Math.random() < config.goodMorningMessageProbability) {
-                goodMorningChannel.send(languageGenerator.generate('{goodMorning}'));
+                await sendMessageInChannel(goodMorningChannel, languageGenerator.generate('{goodMorning}'));
             }
             break;
         }
@@ -178,9 +178,6 @@ const registerGoodMorningTimeout = async (): Promise<void> => {
 
 const TIMEOUT_CALLBACKS = {
     [TimeoutType.NextGoodMorning]: async (): Promise<void> => {
-        // Update state
-        state.isMorning = true;
-        state.dailyStatus = {};
         // Increment "days since last good morning" counters for all participating users
         Object.keys(state.points).forEach((userId) => {
             if (userId in state.daysSinceLastGoodMorning) {
@@ -189,8 +186,6 @@ const TIMEOUT_CALLBACKS = {
                 state.daysSinceLastGoodMorning[userId] = 0;
             }
         });
-        // Dump state
-        await dumpState();
 
         // Set timeout for when morning ends
         const noonToday: Date = new Date();
@@ -206,6 +201,13 @@ const TIMEOUT_CALLBACKS = {
         // Send the good morning message
         await sendGoodMorningMessage();
 
+        // Reset the daily state
+        state.isMorning = true;
+        state.dailyStatus = {};
+
+        // Dump state
+        await dumpState();
+
         console.log('Said good morning!');
     },
     [TimeoutType.NextNoon]: async (): Promise<void> => {
@@ -217,7 +219,7 @@ const TIMEOUT_CALLBACKS = {
         state.currentLeader = state.currentLeader || newLeader;
         if (newLeader !== state.currentLeader) {
             const previousLeader = state.currentLeader;
-            goodMorningChannel.send(languageGenerator.generate('{leaderShift?}')
+            await sendMessageInChannel(goodMorningChannel, languageGenerator.generate('{leaderShift?}')
                 .replace(/\$old/g, `<@${previousLeader}>`)
                 .replace(/\$new/g, `<@${newLeader}>`));
             state.currentLeader = newLeader;
@@ -372,18 +374,18 @@ const processCommands = async (msg: Message): Promise<void> => {
     if (msg.content.startsWith('#')) {
         const exists = r9k.contains(msg.content);
         r9k.add(msg.content);
-        msg.reply(`\`${msg.content}\` ${exists ? 'exists' : 'does *not* exist'} in the R9K text bank.`);
+        replyToMessage(msg, `\`${msg.content}\` ${exists ? 'exists' : 'does *not* exist'} in the R9K text bank.`);
         return;
     }
     // Test out language generation
     if (msg.content.startsWith('$')) {
-        msg.reply(languageGenerator.generate(msg.content.substring(1)));
+        replyToMessage(msg, languageGenerator.generate(msg.content.substring(1)));
         return;
     }
     // Handle sanitized commands
     const sanitizedText: string = msg.content.trim().toLowerCase();
     if (hasVideo(msg)) {
-        msg.reply('This message has video!');
+        replyToMessage(msg, 'This message has video!');
     }
     if (sanitizedText.includes('?')) {
         if (sanitizedText.includes('clusters')) {
@@ -422,21 +424,22 @@ const processCommands = async (msg: Message): Promise<void> => {
         else if (sanitizedText.includes('points')) {
             const points: number = state.points[msg.author.id] || 0;
             if (points < 0) {
-                msg.reply(`You have **${points}** points this season... bro...`);
+                replyToMessage(msg, `You have **${points}** points this season... bro...`);
             } else if (points === 0) {
-                msg.reply(`You have no points this season`);
+                replyToMessage(msg, `You have no points this season`);
             } else if (points === 1) {
-                msg.reply(`You have **1** point this season`);
+                replyToMessage(msg, `You have **1** point this season`);
             } else {
-                msg.reply(`You have **${points}** points this season`);
+                replyToMessage(msg, `You have **${points}** points this season`);
             }
         }
         // Asking about the season
         else if (sanitizedText.includes('season')) {
-            msg.reply(`It\'s season **${state.season}**!`);
+            replyToMessage(msg, `It\'s season **${state.season}**!`);
         }
         // Canvas stuff
         else if (sanitizedText.includes("canvas")) {
+            await msg.channel.sendTyping();
             const attachment = new MessageAttachment(await createSeasonResultsImage({
                     startedOn: state.startedOn,
                     finishedOn: getTodayDateString(),
@@ -492,9 +495,9 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 dumpState();
                 // Reply or react to the message depending on the video rank
                 if (videoRank === 1) {
-                    msg.reply(languageGenerator.generate('{goodMorningReply.video?} 🐒'));
+                    replyToMessage(msg, languageGenerator.generate('{goodMorningReply.video?} 🐒'));
                 } else {
-                    msg.react('🐒');
+                    reactToMessage(msg, '🐒');
                 }
             }
             // In the morning, award the player accordingly if it's their first message...
@@ -542,7 +545,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 r9k.add(msg.content);
                 // If it's a combo-breaker, reply with a special message (may result in double replies on Monkey Friday)
                 if (comboDaysBroken > 1) {
-                    msg.reply(languageGenerator.generate('{goodMorningReply.comboBreaker?}')
+                    replyToMessage(msg, languageGenerator.generate('{goodMorningReply.comboBreaker?}')
                         .replace(/\$breakee/g, `<@${comboBreakee}>`)
                         .replace(/\$days/g, comboDaysBroken.toString()));
                 }
@@ -551,27 +554,27 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     // If it's the user's first message this season, reply to them with a special message
                     const firstMessageThisSeason: boolean = !(userId in state.points);
                     if (firstMessageThisSeason) {
-                        msg.reply(languageGenerator.generate('{goodMorningReply.new?}'));
+                        replyToMessage(msg, languageGenerator.generate('{goodMorningReply.new?}'));
                     }
                     // Message was unoriginal, so reply (or react) to indicate unoriginal
                     else if (!isNovelMessage) {
                         if (rank === 1) {
-                            msg.reply(languageGenerator.generate('{goodMorningReply.unoriginal?} 🌚'));
+                            replyToMessage(msg, languageGenerator.generate('{goodMorningReply.unoriginal?} 🌚'));
                         } else {
-                            msg.react('🌚');
+                            reactToMessage(msg, '🌚');
                         }
                     }
                     // Reply (or react) to the user based on how many points they had
                     else if (rank <= config.goodMorningReplyCount) {
                         if (Math.random() < config.replyViaReactionProbability) {
-                            msg.react('🌞');
+                            reactToMessage(msg, '🌞');
                         } else if (priorPoints < 0) {
-                            msg.reply(languageGenerator.generate('{goodMorningReply.negative?}'));
+                            replyToMessage(msg, languageGenerator.generate('{goodMorningReply.negative?}'));
                         } else {
-                            msg.reply(languageGenerator.generate('{goodMorningReply.standard?}'));
+                            replyToMessage(msg, languageGenerator.generate('{goodMorningReply.standard?}'));
                         }
                     } else {
-                        msg.react('🌞');
+                        reactToMessage(msg, '🌞');
                     }
                 }
             }
@@ -586,9 +589,9 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 pointsDeducted = 1;
                 state.dailyStatus[userId].penalized = true;
                 if (new Date().getHours() < 12) {
-                    msg.react('😴');
+                    reactToMessage(msg, '😴');
                 } else {
-                    msg.react(randChoice('😡', '😬', '😒', '😐'));
+                    reactToMessage(msg, randChoice('😡', '😬', '😒', '😐'));
                 }
             }
             state.points[userId] = (state.points[userId] || 0) - pointsDeducted;
@@ -598,9 +601,9 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             dumpState();
             // Reply if the user has hit a certain threshold
             if (state.points[userId] === -5) {
-                msg.reply('Why are you still talking?');
+                replyToMessage(msg, 'Why are you still talking?');
             } else if (state.points[userId] === -10) {
-                msg.reply('You have brought great dishonor to this server...');
+                replyToMessage(msg, 'You have brought great dishonor to this server...');
             }
         }
 
