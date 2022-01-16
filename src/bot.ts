@@ -408,11 +408,11 @@ const processCommands = async (msg: Message): Promise<void> => {
             while (lines.length !== 0) {
                 const prefix: string = buffer ? '\n' : '';
                 buffer += prefix + lines.shift();
-                if (lines.length === 0 || buffer.length + lines[0].length > 2000) {
+                if (lines.length === 0 || buffer.length + lines[0].length > 1990) {
                     try {
-                        msg.channel.send(`\`\`\`${buffer}\`\`\``);
+                        await msg.channel.send(`\`\`\`${buffer}\`\`\``);
                     } catch (err) {
-                        msg.channel.send('Failed sending serialized state.');
+                        await msg.channel.send('Failed sending serialized state.');
                     }
                     buffer = '';
                 }
