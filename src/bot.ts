@@ -113,8 +113,9 @@ const sendGoodMorningMessage = async (): Promise<void> => {
     if (goodMorningChannel) {
         const now: Date = new Date();
 
-        // Handle dates with specific good morning message overrides specified in the config
+        // Handle dates with specific good morning message/react overrides specified in the config
         const calendarDate: string = `${now.getMonth() + 1}/${now.getDate()}`; // e.g. "12/25" for xmas
+        state.goodMorningReact = config.goodMorningReactOverrides[calendarDate] ?? '🌞';
         if (calendarDate in config.goodMorningMessageOverrides) {
             await sendMessageInChannel(goodMorningChannel, languageGenerator.generate(config.goodMorningMessageOverrides[calendarDate]));
             return;
@@ -567,14 +568,14 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     // Reply (or react) to the user based on how many points they had
                     else if (rank <= config.goodMorningReplyCount) {
                         if (Math.random() < config.replyViaReactionProbability) {
-                            reactToMessage(msg, '🌞');
+                            reactToMessage(msg, state.goodMorningReact);
                         } else if (priorPoints < 0) {
                             replyToMessage(msg, languageGenerator.generate('{goodMorningReply.negative?}'));
                         } else {
                             replyToMessage(msg, languageGenerator.generate('{goodMorningReply.standard?}'));
                         }
                     } else {
-                        reactToMessage(msg, '🌞');
+                        reactToMessage(msg, state.goodMorningReact);
                     }
                 }
             }

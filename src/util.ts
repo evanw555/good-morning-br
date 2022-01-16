@@ -186,5 +186,5 @@ export async function sendMessageInChannel(channel: TextBasedChannels, text: str
 
 export async function reactToMessage(msg: Message, emoji: string): Promise<void> {
     await new Promise(r => setTimeout(r, randInt(0, 1500)));
-    await msg.react(emoji);;
+    await msg.react(emoji[randInt(0, emoji.length)]);;
 }
