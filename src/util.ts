@@ -15,7 +15,7 @@ export function randInt(lo: number, hi: number): number {
  * @param choices Array of objects to choose from
  * @returns A random element from the input array
  */
-export function randChoice(...choices: any[]): any {
+export function randChoice<T>(...choices: T[]): T {
     return choices[randInt(0, choices.length)];
 };
 
@@ -174,17 +174,29 @@ export function getOrderedPlayers(points: Record<Snowflake, number>): string[] {
 
 export async function replyToMessage(msg: Message, text: string): Promise<void> {
     await msg.channel.sendTyping();
-    await new Promise(r => setTimeout(r, 40 * text.length));
+    await new Promise(r => setTimeout(r, 45 * text.length));
     await msg.reply(text);
 }
 
 export async function sendMessageInChannel(channel: TextBasedChannels, text: string): Promise<void> {
     await channel.sendTyping();
-    await new Promise(r => setTimeout(r, 40 * text.length));
+    await new Promise(r => setTimeout(r, 45 * text.length));
     await channel.send(text);
 }
 
-export async function reactToMessage(msg: Message, emoji: string): Promise<void> {
-    await new Promise(r => setTimeout(r, randInt(0, 1500)));
-    await msg.react(emoji[randInt(0, emoji.length)]);;
+/**
+ * React to the given message with some emoji (or an emoji randomly selected from a list of emojis).
+ */
+export async function reactToMessage(msg: Message, emoji: string | string[]): Promise<void> {
+    if (emoji) {
+        await new Promise(r => setTimeout(r, randInt(0, 1750)));
+        if (Array.isArray(emoji) && emoji.length > 0) {
+            // If the input is a list of emojis, use a random emoji from that list
+            const singleEmoji: string = randChoice(...emoji);
+            await msg.react(singleEmoji);
+        } else if (typeof emoji === 'string') {
+            // If the input is a single string, react using just that emoji
+            await msg.react(emoji);
+        }
+    }
 }

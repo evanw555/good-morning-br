@@ -97,6 +97,7 @@ const advanceSeason = async (): Promise<Season> => {
         season: nextSeason,
         startedOn: getTodayDateString(),
         isMorning: false,
+        goodMorningEmoji: config.defaultGoodMorningEmoji,
         dailyStatus: {},
         points: {},
         daysSinceLastGoodMorning: {},
@@ -109,13 +110,11 @@ const advanceSeason = async (): Promise<Season> => {
     return newHistoryEntry;
 };
 
-const sendGoodMorningMessage = async (): Promise<void> => {
+const sendGoodMorningMessage = async (calendarDate: string): Promise<void> => {
     if (goodMorningChannel) {
         const now: Date = new Date();
 
-        // Handle dates with specific good morning message/react overrides specified in the config
-        const calendarDate: string = `${now.getMonth() + 1}/${now.getDate()}`; // e.g. "12/25" for xmas
-        state.goodMorningReact = config.goodMorningReactOverrides[calendarDate] ?? '🌞';
+        // Handle dates with specific good morning message overrides specified in the config
         if (calendarDate in config.goodMorningMessageOverrides) {
             await sendMessageInChannel(goodMorningChannel, languageGenerator.generate(config.goodMorningMessageOverrides[calendarDate]));
             return;
@@ -188,6 +187,11 @@ const TIMEOUT_CALLBACKS = {
             }
         });
 
+        // Set today's positive react emoji
+        const now: Date = new Date();
+        const calendarDate: string = `${now.getMonth() + 1}/${now.getDate()}`; // e.g. "12/25" for xmas
+        state.goodMorningEmoji = config.goodMorningEmojiOverrides[calendarDate] ?? config.defaultGoodMorningEmoji;
+
         // Set timeout for when morning ends
         const noonToday: Date = new Date();
         noonToday.setHours(12, 0, 0, 0);
@@ -200,7 +204,7 @@ const TIMEOUT_CALLBACKS = {
         await setStatus(true);
 
         // Send the good morning message
-        await sendGoodMorningMessage();
+        await sendGoodMorningMessage(calendarDate);
 
         // Reset the daily state
         state.isMorning = true;
@@ -256,6 +260,9 @@ const loadState = async (): Promise<void> => {
         if (state.players === undefined) {
             state.players = {};
         }
+        if (state.goodMorningEmoji === undefined) {
+            state.goodMorningEmoji = config.defaultGoodMorningEmoji;
+        }
     } catch (err) {
         // Specifically check for file-not-found errors to make sure we don't overwrite anything
         if (err.code === 'ENOENT') {
@@ -264,6 +271,7 @@ const loadState = async (): Promise<void> => {
                 season: 1,
                 startedOn: getTodayDateString(),
                 isMorning: false,
+                goodMorningEmoji: config.defaultGoodMorningEmoji,
                 dailyStatus: {},
                 points: {},
                 daysSinceLastGoodMorning: {},
@@ -451,6 +459,9 @@ const processCommands = async (msg: Message): Promise<void> => {
                 'results.png');
             msg.reply({ files: [attachment] });
         }
+        else if (sanitizedText.includes('react')) {
+            await reactToMessage(msg, ['🌚', '❤️', '☘️', '🌞']);
+        }
     }
 };
 
@@ -568,14 +579,14 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     // Reply (or react) to the user based on how many points they had
                     else if (rank <= config.goodMorningReplyCount) {
                         if (Math.random() < config.replyViaReactionProbability) {
-                            reactToMessage(msg, state.goodMorningReact);
+                            reactToMessage(msg, state.goodMorningEmoji);
                         } else if (priorPoints < 0) {
                             replyToMessage(msg, languageGenerator.generate('{goodMorningReply.negative?}'));
                         } else {
                             replyToMessage(msg, languageGenerator.generate('{goodMorningReply.standard?}'));
                         }
                     } else {
-                        reactToMessage(msg, state.goodMorningReact);
+                        reactToMessage(msg, state.goodMorningEmoji);
                     }
                 }
             }
@@ -592,7 +603,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 if (new Date().getHours() < 12) {
                     reactToMessage(msg, '😴');
                 } else {
-                    reactToMessage(msg, randChoice('😡', '😬', '😒', '😐'));
+                    reactToMessage(msg, ['😡', '😬', '😒', '😐']);
                 }
             }
             state.points[userId] = (state.points[userId] || 0) - pointsDeducted;

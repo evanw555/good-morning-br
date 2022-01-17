@@ -17,7 +17,8 @@ export interface GoodMorningConfig {
     replyViaReactionProbability: number,
     goodMorningReplyCount: number,
     goodMorningMessageOverrides: Record<string, string>,
-    goodMorningReactOverrides: Record<string, string>
+    defaultGoodMorningEmoji: string,
+    goodMorningEmojiOverrides: Record<string, string[]>
 }
 
 export interface DailyPlayerState {
@@ -45,7 +46,7 @@ export interface GoodMorningState {
     season: number,
     startedOn: string,
     isMorning: boolean,
-    goodMorningReact?: string,
+    goodMorningEmoji: string | string[],
     currentLeader?: Snowflake,
     combo?: Combo
     dailyStatus: Record<Snowflake, DailyPlayerState>,
