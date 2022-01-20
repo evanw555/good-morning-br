@@ -100,6 +100,7 @@ const advanceSeason = async (): Promise<Season> => {
         season: nextSeason,
         startedOn: getTodayDateString(),
         isMorning: false,
+        isGracePeriod: true,
         goodMorningEmoji: config.defaultGoodMorningEmoji,
         dailyStatus: {},
         points: {},
@@ -211,6 +212,7 @@ const TIMEOUT_CALLBACKS = {
 
         // Reset the daily state
         state.isMorning = true;
+        state.isGracePeriod = false;
         state.dailyStatus = {};
 
         // Dump state
@@ -237,20 +239,29 @@ const TIMEOUT_CALLBACKS = {
         await dumpState();
         await dumpR9KHashes();
 
-        // Update the bot's status
-        await setStatus(false);
-
         // If anyone's score is above the season goal, then proceed to the next season
         if (getTopScore() >= config.seasonGoal) {
             const previousSeason: Season = await advanceSeason();
-            // TODO: Send an interesting message, then wait - await new Promise(r => setTimeout(r, 2000));
+            await messenger.send(goodMorningChannel, `Well everyone, season **${previousSeason.season}** has finally come to an end!`);
+            await messenger.send(goodMorningChannel, 'Thanks to all those who have participated. You have made these mornings bright and joyous for not just me, but for everyone here 🌞');
+            await new Promise(r => setTimeout(r, 10000));
+            await messenger.send(goodMorningChannel, 'In a couple minutes, I\'ll reveal the winners and the final standings...');
+            await messenger.send(goodMorningChannel, 'In the meantime, please congratulate yourselves, take a deep breath, and appreciate the friends you\'ve made in this channel 🙂');
+            await messenger.send(goodMorningChannel, '(penalties are disabled until tomorrow morning)');
             // Send the "final results image"
-            const attachment = new MessageAttachment(await createSeasonResultsImage(previousSeason, history.medals, getDisplayName),
-            'results.png');
-            goodMorningChannel.send({ files: [attachment] });
+            await new Promise(r => setTimeout(r, 120000));
+            await messenger.send(goodMorningChannel, 'Alright, here are the final standings...');
+            await goodMorningChannel.sendTyping();
+            const attachment = new MessageAttachment(await createSeasonResultsImage(previousSeason, history.medals, getDisplayName), 'results.png');
+            await goodMorningChannel.send({ files: [attachment] });
+            await messenger.send(goodMorningChannel, `Congrats, <@${newLeader}>!`);
             // Wait, then send info about the next season
-            // TODO: Do this - await new Promise(r => setTimeout(r, 2000));
+            await new Promise(r => setTimeout(r, 30000));
+            await messenger.send(goodMorningChannel, `See you all in season **${state.season}** 😉`);
         }
+
+        // Update the bot's status
+        await setStatus(false);
     }
 };
 
@@ -274,6 +285,7 @@ const loadState = async (): Promise<void> => {
                 season: 1,
                 startedOn: getTodayDateString(),
                 isMorning: false,
+                isGracePeriod: true,
                 goodMorningEmoji: config.defaultGoodMorningEmoji,
                 dailyStatus: {},
                 points: {},
@@ -483,6 +495,11 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
         await processCommands(msg);
     } else if (goodMorningChannel && msg.channel.id === goodMorningChannel.id && !msg.author.bot) {
         const userId: Snowflake = msg.author.id;
+
+        // If the grace period is active, then completely ignore all messages
+        if (state.isGracePeriod) {
+            return;
+        }
 
         // Using this to test ordering logic. TODO: actually send out updates?
         const beforeOrderings: Snowflake[] = getOrderedPlayers(state.points);
