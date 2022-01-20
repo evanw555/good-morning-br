@@ -172,18 +172,6 @@ export function getOrderedPlayers(points: Record<Snowflake, number>): string[] {
     return Object.keys(points).sort((x, y) => points[y] - points[x]);
 }
 
-export async function replyToMessage(msg: Message, text: string): Promise<void> {
-    await msg.channel.sendTyping();
-    await new Promise(r => setTimeout(r, 45 * text.length));
-    await msg.reply(text);
-}
-
-export async function sendMessageInChannel(channel: TextBasedChannels, text: string): Promise<void> {
-    await channel.sendTyping();
-    await new Promise(r => setTimeout(r, 45 * text.length));
-    await channel.send(text);
-}
-
 /**
  * React to the given message with some emoji (or an emoji randomly selected from a list of emojis).
  */

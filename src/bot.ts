@@ -12,12 +12,15 @@ import FileStorage from './file-storage.js';
 const storage = new FileStorage('./data/');
 
 import LanguageGenerator from './language-generator.js';
-import { hasVideo, generateKMeansClusters, randChoice, randInt, validateConfig, getTodayDateString, getOrderedPlayers, replyToMessage, sendMessageInChannel, reactToMessage } from './util.js';
+import { hasVideo, generateKMeansClusters, randChoice, randInt, validateConfig, getTodayDateString, getOrderedPlayers, reactToMessage } from './util.js';
 const languageConfig = loadJson('config/language.json');
 const languageGenerator = new LanguageGenerator(languageConfig);
 
 import R9KTextBank from './r9k.js';
 const r9k = new R9KTextBank();
+
+import Messenger from './messenger.js';
+const messenger = new Messenger();
 
 const client = new Client({
     intents: [
@@ -116,7 +119,7 @@ const sendGoodMorningMessage = async (calendarDate: string): Promise<void> => {
 
         // Handle dates with specific good morning message overrides specified in the config
         if (calendarDate in config.goodMorningMessageOverrides) {
-            await sendMessageInChannel(goodMorningChannel, languageGenerator.generate(config.goodMorningMessageOverrides[calendarDate]));
+            await messenger.send(goodMorningChannel, languageGenerator.generate(config.goodMorningMessageOverrides[calendarDate]));
             return;
         }
 
@@ -127,17 +130,17 @@ const sendGoodMorningMessage = async (calendarDate: string): Promise<void> => {
             const top: any[] = getTopPlayers(1)[0];
             const second: any[] = getTopPlayers(2)[1];
             // TODO: We definitely should be doing this via parameters in the generation itself...
-            await sendMessageInChannel(goodMorningChannel, languageGenerator.generate('{weeklyUpdate}')
+            await messenger.send(goodMorningChannel, languageGenerator.generate('{weeklyUpdate}')
                 .replace('$season', state.season.toString())
                 .replace('$top', top[0])
                 .replace('$second', second[0]));
             break;
         case 5: // Friday
-            await sendMessageInChannel(goodMorningChannel, languageGenerator.generate('{happyFriday}'));
+            await messenger.send(goodMorningChannel, languageGenerator.generate('{happyFriday}'));
             break;
         default: // Other days
             if (Math.random() < config.goodMorningMessageProbability) {
-                await sendMessageInChannel(goodMorningChannel, languageGenerator.generate('{goodMorning}'));
+                await messenger.send(goodMorningChannel, languageGenerator.generate('{goodMorning}'));
             }
             break;
         }
@@ -224,7 +227,7 @@ const TIMEOUT_CALLBACKS = {
         state.currentLeader = state.currentLeader || newLeader;
         if (newLeader !== state.currentLeader) {
             const previousLeader = state.currentLeader;
-            await sendMessageInChannel(goodMorningChannel, languageGenerator.generate('{leaderShift?}')
+            await messenger.send(goodMorningChannel, languageGenerator.generate('{leaderShift?}')
                 .replace(/\$old/g, `<@${previousLeader}>`)
                 .replace(/\$new/g, `<@${newLeader}>`));
             state.currentLeader = newLeader;
@@ -383,18 +386,22 @@ const processCommands = async (msg: Message): Promise<void> => {
     if (msg.content.startsWith('#')) {
         const exists = r9k.contains(msg.content);
         r9k.add(msg.content);
-        replyToMessage(msg, `\`${msg.content}\` ${exists ? 'exists' : 'does *not* exist'} in the R9K text bank.`);
+        messenger.reply(msg, `\`${msg.content}\` ${exists ? 'exists' : 'does *not* exist'} in the R9K text bank.`);
         return;
     }
     // Test out language generation
-    if (msg.content.startsWith('$')) {
-        replyToMessage(msg, languageGenerator.generate(msg.content.substring(1)));
+    if (msg.content.startsWith('%')) {
+        if (Math.random() < .5) {
+            messenger.reply(msg, languageGenerator.generate(msg.content.substring(1)));
+        } else {
+            messenger.send(msg.channel, languageGenerator.generate(msg.content.substring(1)));
+        }
         return;
     }
     // Handle sanitized commands
     const sanitizedText: string = msg.content.trim().toLowerCase();
     if (hasVideo(msg)) {
-        replyToMessage(msg, 'This message has video!');
+        messenger.reply(msg, 'This message has video!');
     }
     if (sanitizedText.includes('?')) {
         if (sanitizedText.includes('clusters')) {
@@ -433,18 +440,18 @@ const processCommands = async (msg: Message): Promise<void> => {
         else if (sanitizedText.includes('points')) {
             const points: number = state.points[msg.author.id] || 0;
             if (points < 0) {
-                replyToMessage(msg, `You have **${points}** points this season... bro...`);
+                messenger.reply(msg, `You have **${points}** points this season... bro...`);
             } else if (points === 0) {
-                replyToMessage(msg, `You have no points this season`);
+                messenger.reply(msg, `You have no points this season`);
             } else if (points === 1) {
-                replyToMessage(msg, `You have **1** point this season`);
+                messenger.reply(msg, `You have **1** point this season`);
             } else {
-                replyToMessage(msg, `You have **${points}** points this season`);
+                messenger.reply(msg, `You have **${points}** points this season`);
             }
         }
         // Asking about the season
         else if (sanitizedText.includes('season')) {
-            replyToMessage(msg, `It\'s season **${state.season}**!`);
+            messenger.reply(msg, `It\'s season **${state.season}**!`);
         }
         // Canvas stuff
         else if (sanitizedText.includes("canvas")) {
@@ -507,7 +514,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 dumpState();
                 // Reply or react to the message depending on the video rank
                 if (videoRank === 1) {
-                    replyToMessage(msg, languageGenerator.generate('{goodMorningReply.video?} 🐒'));
+                    messenger.reply(msg, languageGenerator.generate('{goodMorningReply.video?} 🐒'));
                 } else {
                     reactToMessage(msg, '🐒');
                 }
@@ -557,7 +564,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 r9k.add(msg.content);
                 // If it's a combo-breaker, reply with a special message (may result in double replies on Monkey Friday)
                 if (comboDaysBroken > 1) {
-                    replyToMessage(msg, languageGenerator.generate('{goodMorningReply.comboBreaker?}')
+                    messenger.reply(msg, languageGenerator.generate('{goodMorningReply.comboBreaker?}')
                         .replace(/\$breakee/g, `<@${comboBreakee}>`)
                         .replace(/\$days/g, comboDaysBroken.toString()));
                 }
@@ -566,12 +573,12 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     // If it's the user's first message this season, reply to them with a special message
                     const firstMessageThisSeason: boolean = !(userId in state.points);
                     if (firstMessageThisSeason) {
-                        replyToMessage(msg, languageGenerator.generate('{goodMorningReply.new?}'));
+                        messenger.reply(msg, languageGenerator.generate('{goodMorningReply.new?}'));
                     }
                     // Message was unoriginal, so reply (or react) to indicate unoriginal
                     else if (!isNovelMessage) {
                         if (rank === 1) {
-                            replyToMessage(msg, languageGenerator.generate('{goodMorningReply.unoriginal?} 🌚'));
+                            messenger.reply(msg, languageGenerator.generate('{goodMorningReply.unoriginal?} 🌚'));
                         } else {
                             reactToMessage(msg, '🌚');
                         }
@@ -581,9 +588,9 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                         if (Math.random() < config.replyViaReactionProbability) {
                             reactToMessage(msg, state.goodMorningEmoji);
                         } else if (priorPoints < 0) {
-                            replyToMessage(msg, languageGenerator.generate('{goodMorningReply.negative?}'));
+                            messenger.reply(msg, languageGenerator.generate('{goodMorningReply.negative?}'));
                         } else {
-                            replyToMessage(msg, languageGenerator.generate('{goodMorningReply.standard?}'));
+                            messenger.reply(msg, languageGenerator.generate('{goodMorningReply.standard?}'));
                         }
                     } else {
                         reactToMessage(msg, state.goodMorningEmoji);
@@ -613,9 +620,9 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             dumpState();
             // Reply if the user has hit a certain threshold
             if (state.points[userId] === -5) {
-                replyToMessage(msg, 'Why are you still talking?');
+                messenger.reply(msg, 'Why are you still talking?');
             } else if (state.points[userId] === -10) {
-                replyToMessage(msg, 'You have brought great dishonor to this server...');
+                messenger.reply(msg, 'You have brought great dishonor to this server...');
             }
         }
 
