@@ -1,4 +1,4 @@
-import { Client, DMChannel, Intents, MessageAttachment, User } from 'discord.js';
+import { Client, DMChannel, Intents, MessageAttachment } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'discord.js';
 import { GoodMorningConfig, GoodMorningHistory, GoodMorningState, Season, TimeoutType } from './types.js';
 import TimeoutManager from './timeout-manager.js';
@@ -12,7 +12,7 @@ import FileStorage from './file-storage.js';
 const storage = new FileStorage('./data/');
 
 import LanguageGenerator from './language-generator.js';
-import { hasVideo, generateKMeansClusters, randChoice, randInt, validateConfig, getTodayDateString, getOrderedPlayers, reactToMessage } from './util.js';
+import { hasVideo, generateKMeansClusters, randChoice, randInt, validateConfig, getTodayDateString, getOrderedPlayers, reactToMessage, getOrderingUpset, getOrderingUpsets } from './util.js';
 const languageConfig = loadJson('config/language.json');
 const languageGenerator = new LanguageGenerator(languageConfig);
 
@@ -390,13 +390,18 @@ const processCommands = async (msg: Message): Promise<void> => {
         return;
     }
     // Test out language generation
-    if (msg.content.startsWith('%')) {
+    if (msg.content.startsWith('$')) {
         if (Math.random() < .5) {
             messenger.reply(msg, languageGenerator.generate(msg.content.substring(1)));
         } else {
             messenger.send(msg.channel, languageGenerator.generate(msg.content.substring(1)));
         }
         return;
+    }
+    if (msg.content.startsWith('^')) {
+        const sanitized = msg.content.substring(1).trim();
+        const [before, after] = sanitized.split(' ');
+        messenger.reply(msg, JSON.stringify(getOrderingUpsets(before.split(','), after.split(','))));
     }
     // Handle sanitized commands
     const sanitizedText: string = msg.content.trim().toLowerCase();
@@ -478,6 +483,9 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
         await processCommands(msg);
     } else if (goodMorningChannel && msg.channel.id === goodMorningChannel.id && !msg.author.bot) {
         const userId: Snowflake = msg.author.id;
+
+        // Using this to test ordering logic. TODO: actually send out updates?
+        const beforeOrderings: Snowflake[] = getOrderedPlayers(state.points);
 
         // Initialize daily status for the user if it doesn't exist
         if (!(userId in state.dailyStatus)) {
@@ -562,6 +570,19 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 dumpState();
                 // Add this user's message to the R9K text bank
                 r9k.add(msg.content);
+
+                // Get and compare the after orderings. TODO: actually send this out?
+                try {
+                    const afterOrderings: Snowflake[] = getOrderedPlayers(state.points);
+                    const orderingUpsets: string[] = getOrderingUpset(userId, beforeOrderings, afterOrderings);
+                    if (orderingUpsets.length > 0) {
+                        const joinedUpsettees = orderingUpsets.map(x => `<@${x}>`).join(', ');
+                        messenger.send(guildOwnerDmChannel, `<@${userId}> has overtaken ${joinedUpsettees}`);
+                    }
+                } catch (err) {
+                    messenger.send(guildOwnerDmChannel, 'Failed to compute ordering upsets: ' + err.message);
+                }
+
                 // If it's a combo-breaker, reply with a special message (may result in double replies on Monkey Friday)
                 if (comboDaysBroken > 1) {
                     messenger.reply(msg, languageGenerator.generate('{goodMorningReply.comboBreaker?}')

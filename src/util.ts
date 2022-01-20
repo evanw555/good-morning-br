@@ -1,6 +1,5 @@
 import { Message, Snowflake, TextBasedChannels } from "discord.js";
 import { GoodMorningConfig } from "./types";
-import canvas from 'canvas';
 
 /**
  * @param lo Lower bound (inclusive)
@@ -168,7 +167,7 @@ export function getTodayDateString() {
     return new Date().toLocaleDateString('en-US');
 }
 
-export function getOrderedPlayers(points: Record<Snowflake, number>): string[] {
+export function getOrderedPlayers(points: Record<Snowflake, number>): Snowflake[] {
     return Object.keys(points).sort((x, y) => points[y] - points[x]);
 }
 
@@ -187,4 +186,23 @@ export async function reactToMessage(msg: Message, emoji: string | string[]): Pr
             await msg.react(emoji);
         }
     }
+}
+
+export function getOrderingUpset(upsetter: string, before: string[], after: string[]): any[] {
+    const beforeIndex = before.indexOf(upsetter);
+    const afterIndex = after.indexOf(upsetter);
+    const beforeInferiors = new Set<string>(before.slice(beforeIndex + 1));
+    const afterInferiors = after.slice(afterIndex + 1);
+    return afterInferiors.filter(x => !beforeInferiors.has(x));
+}
+
+export function getOrderingUpsets(before: string[], after: string[]): Record<string, string[]> {
+    const results = {};
+    after.forEach(x => {
+        const upsettees = getOrderingUpset(x, before, after);
+        if (upsettees && upsettees.length > 0) {
+            results[x] = upsettees;
+        }
+    });
+    return results;
 }
