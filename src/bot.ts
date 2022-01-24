@@ -92,7 +92,8 @@ const advanceSeason = async (): Promise<Season> => {
     });
     // Send the final state to the guild owner one last time before wiping it
     if (guildOwnerDmChannel) {
-        guildOwnerDmChannel.send(`The final state of season **${state.season}** before it's wiped:\n\`\`\`${JSON.stringify(state, null, 2)}\`\`\``);
+        await guildOwnerDmChannel.send(`The final state of season **${state.season}** before it's wiped:`);
+        await messenger.sendLargeMonospaced(guildOwnerDmChannel, JSON.stringify(state, null, 2));
     }
     // Reset the state
     const nextSeason: number = state.season + 1;
@@ -146,7 +147,7 @@ const sendGoodMorningMessage = async (calendarDate: string): Promise<void> => {
             break;
         }
     }
-}
+};
 
 const setStatus = async (active: boolean): Promise<void> => {
     if (active) {
@@ -437,21 +438,7 @@ const processCommands = async (msg: Message): Promise<void> => {
             await dumpState();
         }
         else if (sanitizedText.includes('state')) {
-            const serializedState: string = JSON.stringify(state, null, 2);
-            const lines: string[] = serializedState.split('\n');
-            let buffer: string = '';
-            while (lines.length !== 0) {
-                const prefix: string = buffer ? '\n' : '';
-                buffer += prefix + lines.shift();
-                if (lines.length === 0 || buffer.length + lines[0].length > 1990) {
-                    try {
-                        await msg.channel.send(`\`\`\`${buffer}\`\`\``);
-                    } catch (err) {
-                        await msg.channel.send('Failed sending serialized state.');
-                    }
-                    buffer = '';
-                }
-            }
+            await messenger.sendLargeMonospaced(guildOwnerDmChannel, JSON.stringify(state, null, 2));
         }
         // Asking about points
         else if (sanitizedText.includes('points')) {

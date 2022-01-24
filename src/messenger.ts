@@ -49,4 +49,28 @@ export default class Messenger {
             this._backlog.push(entry);
         }
     }
+
+    /**
+     * Send the provided text as a series of boxed (monospaced) messages limited to no more than 2000 characters each.
+     * @param channel the target channel
+     * @param text the text to send
+     */
+    async sendLargeMonospaced(channel: TextBasedChannels, text: string): Promise<void> {
+        const lines: string[] = text.split('\n');
+        let buffer: string = '';
+        let segmentIndex: number = 0;
+        while (lines.length !== 0) {
+            const prefix: string = buffer ? '\n' : '';
+            buffer += prefix + lines.shift();
+            if (lines.length === 0 || buffer.length + lines[0].length > 1990) {
+                try {
+                    await channel.send(`\`\`\`${buffer}\`\`\``);
+                } catch (err) {
+                    await channel.send(`Failed sending segment **${segmentIndex}**`);
+                }
+                buffer = '';
+                segmentIndex++;
+            }
+        }
+    }
 }
