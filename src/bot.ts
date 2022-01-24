@@ -256,6 +256,12 @@ const TIMEOUT_CALLBACKS = {
             const attachment = new MessageAttachment(await createSeasonResultsImage(previousSeason, history.medals, getDisplayName), 'results.png');
             await goodMorningChannel.send({ files: [attachment] });
             await messenger.send(goodMorningChannel, `Congrats, <@${newLeader}>!`);
+            // Send information about the season rewards
+            await new Promise(r => setTimeout(r, 15000));
+            await messenger.send(goodMorningChannel, `As a reward, <@${newLeader}> will get the following perks throughout season **${state.season}**:`);
+            await messenger.send(goodMorningChannel, '1. Ability to set a special "good morning" emoji that everyone in the server can use');
+            await messenger.send(goodMorningChannel, '2. Honorary Robert status, with the ability to post in #robertism');
+            await messenger.send(goodMorningChannel, '3. More TBD perks that will be announced soon!');
             // Wait, then send info about the next season
             await new Promise(r => setTimeout(r, 30000));
             await messenger.send(goodMorningChannel, `See you all in season **${state.season}** 😉`);
