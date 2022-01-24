@@ -5,7 +5,6 @@ import { getOrderedPlayers } from './util.js';
 
 // TODO: This logic is horrible, please clean it up
 export async function createSeasonResultsImage(season: Season, medals: Record<Snowflake, Medals>, getDisplayName: (userId: Snowflake) => Promise<string>): Promise<Buffer> {
-    const BLACKISH = 'rgb(45,45,50)';
     const HEADER_HEIGHT = 150;
     const BAR_WIDTH = 735;
     const BAR_HEIGHT = 36;
@@ -20,9 +19,11 @@ export async function createSeasonResultsImage(season: Season, medals: Record<Sn
     const c = canvas.createCanvas(WIDTH, HEIGHT);
     const context = c.getContext('2d');
 
+    // Fill the blue sky background
     context.fillStyle = 'rgba(100,157,250,1)';
     context.fillRect(0, 0, WIDTH, HEIGHT);
 
+    // Fetch all user display names
     const orderedUserIds: string[] = getOrderedPlayers(season.points);
     const userDisplayNames = {};
     for (let i = 0; i < orderedUserIds.length; i++) {
@@ -36,16 +37,19 @@ export async function createSeasonResultsImage(season: Season, medals: Record<Sn
         userDisplayNames[userId] = displayName;
     }
 
+    // Load medal images
     const rank1Image = await canvas.loadImage('assets/rank1.png');
     const rank2Image = await canvas.loadImage('assets/rank2.png');
     const rank3Image = await canvas.loadImage('assets/rank3.png');
     const rankLastImage = await canvas.loadImage('assets/ranklast.png');
 
+    // Draw the smiling sun graphic
     const sunImage = await canvas.loadImage('assets/sun3.png');
     const sunHeight = HEADER_HEIGHT + BAR_HEIGHT;
     const sunWidth = sunHeight * sunImage.width / sunImage.height;
     context.drawImage(sunImage, 0, 0, sunWidth, sunHeight);
 
+    // Write the header text
     context.fillStyle = 'rgb(221,231,239)';
     const TITLE_FONT_SIZE = Math.floor(HEADER_HEIGHT / 4);
     context.font = `${TITLE_FONT_SIZE}px sans-serif`;
@@ -57,14 +61,16 @@ export async function createSeasonResultsImage(season: Season, medals: Record<Sn
     for (let i = 0; i < orderedUserIds.length; i++) {
         const userId = orderedUserIds[i];
         const displayName = userDisplayNames[userId];
-
         const baseY = HEADER_HEIGHT + i * (BAR_HEIGHT + BAR_SPACING);
 
-        const actualBarWidth = season.points[userId] * PIXELS_PER_POINT;
+        // Determine the bar's actual rendered width (may be negative, but clip to prevent it from being too large)
+        const actualBarWidth = Math.min(season.points[userId], season.goal) * PIXELS_PER_POINT;
 
+        // Draw the bar container
         context.fillStyle = 'rgb(221,231,239)';
         context.fillRect(MARGIN, baseY, BAR_WIDTH, BAR_HEIGHT);
-        // context.fillStyle = state.points[userId] > 0 ? 'rgba(214,209,73,1)' : 'red';
+
+        // Draw the actual bar using a hue corresponding to the user's rank
         const hue = 256 * (orderedUserIds.length - i) / orderedUserIds.length;
         context.fillStyle = `hsl(${hue},50%,50%)`;
         context.fillRect(MARGIN + BAR_PADDING,
@@ -75,9 +81,12 @@ export async function createSeasonResultsImage(season: Season, medals: Record<Sn
         const textHeight = BAR_HEIGHT - 4 * BAR_PADDING;
         const textWidth = context.measureText(displayName).width;
 
+        // If the text for this user no longer fits in the bar, place the text after the bar for all remaining entries
         if (textInsideBar) {
             textInsideBar = textWidth * 1.1 < actualBarWidth;
         }
+
+        // Write the user's display name (with a "shadow")
         const textX = MARGIN + BAR_PADDING * 2 + (textInsideBar ? 0 : Math.max(actualBarWidth, 0));
         context.font = `${textHeight}px sans-serif`;
         context.fillStyle = `rgba(0,0,0,.4)`;
@@ -85,6 +94,7 @@ export async function createSeasonResultsImage(season: Season, medals: Record<Sn
         context.fillStyle = textInsideBar ? 'white' : 'BLACKISH';
         context.fillText(displayName, textX + 1, baseY + 0.7 * BAR_HEIGHT + 1);
 
+        // Draw medals for this user
         if (medals && medals[userId]) {
             const numMedals = Object.values(medals[userId]).reduce((x, y) => x + y);
 
