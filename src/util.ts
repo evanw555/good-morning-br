@@ -206,3 +206,7 @@ export function getOrderingUpsets(before: string[], after: string[]): Record<str
     });
     return results;
 }
+
+export function sleep(milliseconds: number): Promise<void> {
+    return new Promise(r => setTimeout(r, milliseconds));
+}

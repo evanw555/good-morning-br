@@ -1,5 +1,5 @@
 import { Message, TextBasedChannels } from "discord.js";
-import { randInt } from "./util.js";
+import { randInt, sleep } from "./util.js";
 
 interface MessengerBacklogEntry {
     channel: TextBasedChannels,
@@ -32,10 +32,10 @@ export default class Messenger {
             while (this._backlog.length > 0) {
                 const { channel, message, text } = this._backlog.shift();
                 // Take a brief pause
-                await new Promise<void>(r => setTimeout(r, randInt(100, 1500)));
+                await sleep(randInt(100, 1500));
                 // Send the typing event and wait based on the length of the message
                 await channel.sendTyping();
-                await new Promise<void>(r => setTimeout(r, 45 * text.length));
+                await sleep(randInt(45, 55) * text.length);
                 // Now actually reply/send the message
                 if (message) {
                     await message.reply(text);

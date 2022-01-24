@@ -3,6 +3,7 @@ import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'disco
 import { GoodMorningConfig, GoodMorningHistory, GoodMorningState, Season, TimeoutType } from './types.js';
 import TimeoutManager from './timeout-manager.js';
 import { createSeasonResultsImage } from './graphics.js';
+import { hasVideo, generateKMeansClusters, randInt, validateConfig, getTodayDateString, getOrderedPlayers, reactToMessage, getOrderingUpset, getOrderingUpsets, sleep } from './util.js';
 
 import { loadJson } from './load-json.js';
 const auth = loadJson('config/auth.json');
@@ -12,7 +13,6 @@ import FileStorage from './file-storage.js';
 const storage = new FileStorage('./data/');
 
 import LanguageGenerator from './language-generator.js';
-import { hasVideo, generateKMeansClusters, randChoice, randInt, validateConfig, getTodayDateString, getOrderedPlayers, reactToMessage, getOrderingUpset, getOrderingUpsets } from './util.js';
 const languageConfig = loadJson('config/language.json');
 const languageGenerator = new LanguageGenerator(languageConfig);
 
@@ -149,6 +149,34 @@ const sendGoodMorningMessage = async (calendarDate: string): Promise<void> => {
     }
 };
 
+const sendSeasonEndMessages = async (channel: TextBasedChannels, previousSeason: Season, winner: Snowflake): Promise<void> => {
+    const newSeason: number = previousSeason.season + 1;
+    await messenger.send(channel, `Well everyone, season **${previousSeason.season}** has finally come to an end!`);
+    await messenger.send(channel, 'Thanks to all those who have participated. You have made these mornings bright and joyous for not just me, but for everyone here 🌞');
+    await sleep(10000);
+    await messenger.send(channel, 'In a couple minutes, I\'ll reveal the winners and the final standings...');
+    await messenger.send(channel, 'In the meantime, please congratulate yourselves, take a deep breath, and appreciate the friends you\'ve made in this channel 🙂');
+    await messenger.send(channel, '(penalties are disabled until tomorrow morning)');
+    // Send the "final results image"
+    await sleep(120000);
+    await messenger.send(channel, 'Alright, here are the final standings...');
+    await channel.sendTyping();
+    await sleep(5000);
+    const attachment = new MessageAttachment(await createSeasonResultsImage(previousSeason, history.medals, getDisplayName), 'results.png');
+    await channel.send({ files: [attachment] });
+    await sleep(5000);
+    await messenger.send(channel, `Congrats, <@${winner}>!`);
+    // Send information about the season rewards
+    await sleep(15000);
+    await messenger.send(channel, `As a reward, <@${winner}> will get the following perks throughout season **${newSeason}**:`);
+    await messenger.send(channel, ' ⭐ Ability to set a special "good morning" emoji that everyone in the server can use');
+    await messenger.send(channel, ' ⭐ Honorary Robert status, with the ability to post in **#robertism**');
+    await messenger.send(channel, ' ⭐ More TBD perks that will be announced soon!');
+    // Wait, then send info about the next season
+    await sleep(30000);
+    await messenger.send(channel, `See you all in season **${newSeason}** 😉`);
+};
+
 const setStatus = async (active: boolean): Promise<void> => {
     if (active) {
         client.user.setPresence({
@@ -243,28 +271,7 @@ const TIMEOUT_CALLBACKS = {
         // If anyone's score is above the season goal, then proceed to the next season
         if (getTopScore() >= config.seasonGoal) {
             const previousSeason: Season = await advanceSeason();
-            await messenger.send(goodMorningChannel, `Well everyone, season **${previousSeason.season}** has finally come to an end!`);
-            await messenger.send(goodMorningChannel, 'Thanks to all those who have participated. You have made these mornings bright and joyous for not just me, but for everyone here 🌞');
-            await new Promise(r => setTimeout(r, 10000));
-            await messenger.send(goodMorningChannel, 'In a couple minutes, I\'ll reveal the winners and the final standings...');
-            await messenger.send(goodMorningChannel, 'In the meantime, please congratulate yourselves, take a deep breath, and appreciate the friends you\'ve made in this channel 🙂');
-            await messenger.send(goodMorningChannel, '(penalties are disabled until tomorrow morning)');
-            // Send the "final results image"
-            await new Promise(r => setTimeout(r, 120000));
-            await messenger.send(goodMorningChannel, 'Alright, here are the final standings...');
-            await goodMorningChannel.sendTyping();
-            const attachment = new MessageAttachment(await createSeasonResultsImage(previousSeason, history.medals, getDisplayName), 'results.png');
-            await goodMorningChannel.send({ files: [attachment] });
-            await messenger.send(goodMorningChannel, `Congrats, <@${newLeader}>!`);
-            // Send information about the season rewards
-            await new Promise(r => setTimeout(r, 15000));
-            await messenger.send(goodMorningChannel, `As a reward, <@${newLeader}> will get the following perks throughout season **${state.season}**:`);
-            await messenger.send(goodMorningChannel, '1. Ability to set a special "good morning" emoji that everyone in the server can use');
-            await messenger.send(goodMorningChannel, '2. Honorary Robert status, with the ability to post in #robertism');
-            await messenger.send(goodMorningChannel, '3. More TBD perks that will be announced soon!');
-            // Wait, then send info about the next season
-            await new Promise(r => setTimeout(r, 30000));
-            await messenger.send(goodMorningChannel, `See you all in season **${state.season}** 😉`);
+            await sendSeasonEndMessages(goodMorningChannel, previousSeason, newLeader);
         }
 
         // Update the bot's status
@@ -458,6 +465,17 @@ const processCommands = async (msg: Message): Promise<void> => {
             } else {
                 messenger.reply(msg, `You have **${points}** points this season`);
             }
+        }
+        // Send mock season end messages
+        else if (sanitizedText.includes('season end')) {
+            const mockSeason: Season = {
+                season: state.season,
+                startedOn: state.startedOn,
+                finishedOn: getTodayDateString(),
+                points: state.points,
+                goal: config.seasonGoal
+            };
+            await sendSeasonEndMessages(guildOwnerDmChannel, mockSeason, guildOwner.id);
         }
         // Asking about the season
         else if (sanitizedText.includes('season')) {
