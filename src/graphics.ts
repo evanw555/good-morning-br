@@ -1,7 +1,7 @@
 import canvas from 'canvas';
 import { Snowflake } from 'discord.js';
 import { Medals, Season } from "./types.js";
-import { getOrderedPlayers } from './util.js';
+import { getOrderedPlayers_old } from './util.js';
 
 // TODO: This logic is horrible, please clean it up
 export async function createSeasonResultsImage(season: Season, medals: Record<Snowflake, Medals>, getDisplayName: (userId: Snowflake) => Promise<string>): Promise<Buffer> {
@@ -24,7 +24,7 @@ export async function createSeasonResultsImage(season: Season, medals: Record<Sn
     context.fillRect(0, 0, WIDTH, HEIGHT);
 
     // Fetch all user display names
-    const orderedUserIds: string[] = getOrderedPlayers(season.points);
+    const orderedUserIds: string[] = getOrderedPlayers_old(season.points);
     const userDisplayNames = {};
     for (let i = 0; i < orderedUserIds.length; i++) {
         const userId = orderedUserIds[i];

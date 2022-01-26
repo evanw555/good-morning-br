@@ -51,8 +51,6 @@ export interface GoodMorningState {
     currentLeader?: Snowflake,
     combo?: Combo
     dailyStatus: Record<Snowflake, DailyPlayerState>,
-    points: Record<Snowflake, number>,
-    daysSinceLastGoodMorning: Record<Snowflake, number>,
     players: Record<Snowflake, PlayerState>
 }
 

@@ -1,9 +1,9 @@
 import { Client, DMChannel, Intents, MessageAttachment } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'discord.js';
-import { GoodMorningConfig, GoodMorningHistory, GoodMorningState, Season, TimeoutType } from './types.js';
+import { GoodMorningConfig, GoodMorningHistory, GoodMorningState, PlayerState, Season, TimeoutType } from './types.js';
 import TimeoutManager from './timeout-manager.js';
 import { createSeasonResultsImage } from './graphics.js';
-import { hasVideo, generateKMeansClusters, randInt, validateConfig, getTodayDateString, getOrderedPlayers, reactToMessage, getOrderingUpset, getOrderingUpsets, sleep } from './util.js';
+import { hasVideo, generateKMeansClusters, randInt, validateConfig, getTodayDateString, getOrderedPlayers, reactToMessage, getOrderingUpset, getOrderingUpsets, sleep, toPointsMap } from './util.js';
 
 import { loadJson } from './load-json.js';
 const auth = loadJson('config/auth.json');
@@ -50,8 +50,8 @@ const getDisplayName = async (userId: Snowflake): Promise<string> => {
 
 // Tuples of (user ID, points)
 const getTopPlayers = (n: number): any[][] => {
-    return Object.entries(state.points)
-        .sort((x, y) => y[1] - x[1])
+    return Object.entries(state.players)
+        .sort((x, y) => y[1].points - x[1].points)
         .slice(0, n);
 };
 
@@ -65,12 +65,12 @@ const advanceSeason = async (): Promise<Season> => {
         season: state.season,
         startedOn: state.startedOn,
         finishedOn: getTodayDateString(),
-        points: state.points,
+        points: toPointsMap(state.players),
         goal: config.seasonGoal
     };
     history.seasons.push(newHistoryEntry);
     // Compute medals
-    const orderedUserIds = getOrderedPlayers(state.points);
+    const orderedUserIds = getOrderedPlayers(state.players);
     const winners = {
         gold: orderedUserIds[0],
         silver: orderedUserIds[1],
@@ -104,8 +104,6 @@ const advanceSeason = async (): Promise<Season> => {
         isGracePeriod: true,
         goodMorningEmoji: config.defaultGoodMorningEmoji,
         dailyStatus: {},
-        points: {},
-        daysSinceLastGoodMorning: {},
         players: {}
     };
     // Dump the state and history
@@ -212,12 +210,8 @@ const registerGoodMorningTimeout = async (): Promise<void> => {
 const TIMEOUT_CALLBACKS = {
     [TimeoutType.NextGoodMorning]: async (): Promise<void> => {
         // Increment "days since last good morning" counters for all participating users
-        Object.keys(state.points).forEach((userId) => {
-            if (userId in state.daysSinceLastGoodMorning) {
-                state.daysSinceLastGoodMorning[userId]++;
-            } else {
-                state.daysSinceLastGoodMorning[userId] = 0;
-            }
+        Object.keys(state.players).forEach((userId) => {
+            state.players[userId].daysSinceLastGoodMorning++;
         });
 
         // Set today's positive react emoji
@@ -291,6 +285,12 @@ const loadState = async (): Promise<void> => {
         if (state.goodMorningEmoji === undefined) {
             state.goodMorningEmoji = config.defaultGoodMorningEmoji;
         }
+        if (state['points']) {
+            delete state['points'];
+        }
+        if (state['daysSinceLastGoodMorning']) {
+            delete state['daysSinceLastGoodMorning'];
+        }
     } catch (err) {
         // Specifically check for file-not-found errors to make sure we don't overwrite anything
         if (err.code === 'ENOENT') {
@@ -302,8 +302,6 @@ const loadState = async (): Promise<void> => {
                 isGracePeriod: true,
                 goodMorningEmoji: config.defaultGoodMorningEmoji,
                 dailyStatus: {},
-                points: {},
-                daysSinceLastGoodMorning: {},
                 players: {}
             };
             await dumpState();
@@ -438,12 +436,12 @@ const processCommands = async (msg: Message): Promise<void> => {
         if (sanitizedText.includes('clusters')) {
             // msg.reply(JSON.stringify(generateKMeansClusters(state.points, 3)));
             const k: number = parseInt(sanitizedText.split(' ')[0]);
-            msg.reply(JSON.stringify(generateKMeansClusters(state.points, k)));
+            msg.reply(JSON.stringify(generateKMeansClusters(toPointsMap(state.players), k)));
         }
         else if (sanitizedText.includes('order') || sanitizedText.includes('rank') || sanitizedText.includes('winning') || sanitizedText.includes('standings')) {
-            msg.reply(getOrderedPlayers(state.points)
+            msg.reply(getOrderedPlayers(state.players)
                 .map((key) => {
-                    return ` - <@${key}>: **${state.points[key]}** (${state.daysSinceLastGoodMorning[key]}d)`;
+                    return ` - <@${key}>: **${state.players[key].points}** (${state.players[key].daysSinceLastGoodMorning}d)`;
                 })
                 .join('\n'));
         }
@@ -455,7 +453,7 @@ const processCommands = async (msg: Message): Promise<void> => {
         }
         // Asking about points
         else if (sanitizedText.includes('points')) {
-            const points: number = state.points[msg.author.id] || 0;
+            const points: number = state.players[msg.author.id]?.points ?? 0;
             if (points < 0) {
                 messenger.reply(msg, `You have **${points}** points this season... bro...`);
             } else if (points === 0) {
@@ -472,7 +470,7 @@ const processCommands = async (msg: Message): Promise<void> => {
                 season: state.season,
                 startedOn: state.startedOn,
                 finishedOn: getTodayDateString(),
-                points: state.points,
+                points: toPointsMap(state.players),
                 goal: config.seasonGoal
             };
             await sendSeasonEndMessages(guildOwnerDmChannel, mockSeason, guildOwner.id);
@@ -488,7 +486,7 @@ const processCommands = async (msg: Message): Promise<void> => {
                     startedOn: state.startedOn,
                     finishedOn: getTodayDateString(),
                     goal: config.seasonGoal,
-                    points: state.points,
+                    points: toPointsMap(state.players),
                     season: state.season
                 }, history.medals, getDisplayName),
                 'results.png');
@@ -513,7 +511,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
         }
 
         // Using this to test ordering logic. TODO: actually send out updates?
-        const beforeOrderings: Snowflake[] = getOrderedPlayers(state.points);
+        const beforeOrderings: Snowflake[] = getOrderedPlayers(state.players);
 
         // Initialize daily status for the user if it doesn't exist
         if (!(userId in state.dailyStatus)) {
@@ -531,10 +529,11 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 daysSinceLastGoodMorning: 0
             };
         }
+        const player: PlayerState = state.players[userId];
 
         if (state.isMorning) {
             // Reset user's "days since last good morning" counter
-            state.daysSinceLastGoodMorning[userId] = 0;
+            player.daysSinceLastGoodMorning = 0;
 
             const isNovelMessage: boolean = !r9k.contains(msg.content);
             const isFriday: boolean = (new Date()).getDay() === 5;
@@ -545,8 +544,8 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 state.dailyStatus[userId].hasSentVideo = true;
                 const videoRank = Object.values(state.dailyStatus).filter(x => x.hasSentVideo).length;
                 state.dailyStatus[userId].videoRank = videoRank;
-                const priorPoints: number = state.points[userId] || 0;
-                state.points[userId] = priorPoints + Math.max(5 - videoRank, 1);
+                const priorPoints: number = player.points || 0;
+                player.points = priorPoints + Math.max(5 - videoRank, 1);
                 dumpState();
                 // Reply or react to the message depending on the video rank
                 if (videoRank === 1) {
@@ -579,7 +578,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                             };
                             // Penalize the combo breakee for losing his combo
                             if (comboDaysBroken > 1) {
-                                state.points[comboBreakee]--;
+                                state.players[comboBreakee].points--;
                             }
                         }
                     } else {
@@ -590,10 +589,11 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     }
                 }
                 // Update the user's points and dump the state
-                const priorPoints: number = state.points[userId] || 0;
+                const priorPoints: number = player.points || 0;
                 const awarded: number = isNovelMessage ? Math.max(5 - rank, 1) : 1;
+                // TODO: This number doesn't take into account monkey friday points. Remove?
                 const pointsEarned: number = awarded + comboDaysBroken;
-                state.points[userId] = priorPoints + pointsEarned;
+                player.points = priorPoints + pointsEarned;
                 state.dailyStatus[userId].pointsEarned += pointsEarned;
                 dumpState();
                 // Add this user's message to the R9K text bank
@@ -601,7 +601,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
 
                 // Get and compare the after orderings. TODO: actually send this out?
                 try {
-                    const afterOrderings: Snowflake[] = getOrderedPlayers(state.points);
+                    const afterOrderings: Snowflake[] = getOrderedPlayers(state.players);
                     const orderingUpsets: string[] = getOrderingUpset(userId, beforeOrderings, afterOrderings);
                     if (orderingUpsets.length > 0) {
                         const joinedUpsettees = orderingUpsets.map(x => `<@${x}>`).join(', ');
@@ -620,7 +620,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 // If this post is NOT a Monkey Friday post, reply as normal (this is to avoid double replies on Monkey Friday)
                 else if (!triggerMonkeyFriday) {
                     // If it's the user's first message this season, reply to them with a special message
-                    const firstMessageThisSeason: boolean = !(userId in state.points);
+                    const firstMessageThisSeason: boolean = !(userId in state.players);
                     if (firstMessageThisSeason) {
                         messenger.reply(msg, languageGenerator.generate('{goodMorningReply.new?}'));
                     }
@@ -662,24 +662,18 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     reactToMessage(msg, ['😡', '😬', '😒', '😐']);
                 }
             }
-            state.points[userId] = (state.points[userId] || 0) - pointsDeducted;
+            player.points -= pointsDeducted;
             state.dailyStatus[userId].pointsEarned -= pointsDeducted;
             // Increment user's penalty count then dump the state
             state.players[userId].penalties++;
             dumpState();
             // Reply if the user has hit a certain threshold
-            if (state.points[userId] === -5) {
+            if (player.points === -5) {
                 messenger.reply(msg, 'Why are you still talking?');
-            } else if (state.points[userId] === -10) {
+            } else if (player.points === -10) {
                 messenger.reply(msg, 'You have brought great dishonor to this server...');
             }
         }
-
-        // Keep the player data in sync with the legacy player data
-        // TODO: Completely remove the legacy player data and use this instead
-        state.players[userId].points = state.points[userId];
-        state.players[userId].daysSinceLastGoodMorning = state.daysSinceLastGoodMorning[userId];
-        dumpState();
     }
 });
 

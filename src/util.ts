@@ -1,5 +1,5 @@
 import { Message, Snowflake, TextBasedChannels } from "discord.js";
-import { GoodMorningConfig } from "./types";
+import { GoodMorningConfig, PlayerState } from "./types";
 
 /**
  * @param lo Lower bound (inclusive)
@@ -167,8 +167,27 @@ export function getTodayDateString() {
     return new Date().toLocaleDateString('en-US');
 }
 
-export function getOrderedPlayers(points: Record<Snowflake, number>): Snowflake[] {
+export function getOrderedPlayers_old(points: Record<Snowflake, number>): Snowflake[] {
     return Object.keys(points).sort((x, y) => points[y] - points[x]);
+}
+
+/**
+ * Returns an ordered list of user IDs sorted by points, then days since last good morning, then penalties.
+ * @param players map of player state objects
+ * @returns sorted list of user IDs
+ */
+export function getOrderedPlayers(players: Record<Snowflake, PlayerState>): Snowflake[] {
+    return Object.keys(players).sort((x, y) => players[y].points - players[x].points
+        || players[x].daysSinceLastGoodMorning - players[y].daysSinceLastGoodMorning
+        || players[x].penalties - players[y].penalties);
+}
+
+export function toPointsMap(players: Record<Snowflake, PlayerState>): Record<Snowflake, number> {
+    const result: Record<Snowflake, number> = {};
+    Object.keys(players).forEach((userId) => {
+        result[userId] = players[userId].points;
+    });
+    return result;
 }
 
 /**
