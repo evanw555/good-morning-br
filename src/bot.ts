@@ -563,22 +563,27 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 state.dailyStatus[userId].rank = rank;
                 state.dailyStatus[userId].hasSaidGoodMorning = true;
 
-                let comboDaysBroken: number = 0;
+                // If user is first, update the combo state accordingly
+                let comboBreakingPoints: number = 0;
                 let comboBreakee: Snowflake;
                 if (rank === 1) {
                     if (state.combo) {
                         if (state.combo.user === userId) {
+                            // If it's the existing combo holder, then increment his combo counter
                             state.combo.days++;
                         } else {
-                            comboDaysBroken = state.combo.days;
+                            // Else, reset the combo
                             comboBreakee = state.combo.user;
                             state.combo = {
                                 user: userId,
                                 days: 1
                             };
-                            // Penalize the combo breakee for losing his combo
-                            if (comboDaysBroken > 1) {
+                            // If the broken combo is big enough, then penalize/reward the users involved
+                            if (state.combo.days >= config.minimumComboDays) {
+                                // Breakee loses at most 1 point
                                 state.players[comboBreakee].points--;
+                                // Breaker is awarded 1 point for each day of the broken combo
+                                comboBreakingPoints = state.combo.days;
                             }
                         }
                     } else {
@@ -592,7 +597,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 const priorPoints: number = player.points || 0;
                 const awarded: number = isNovelMessage ? (config.awardsByRank[rank] ?? config.defaultAward) : config.defaultAward;
                 // TODO: This number doesn't take into account monkey friday points. Remove?
-                const pointsEarned: number = awarded + comboDaysBroken;
+                const pointsEarned: number = awarded + comboBreakingPoints;
                 player.points = priorPoints + pointsEarned;
                 state.dailyStatus[userId].pointsEarned += pointsEarned;
                 dumpState();

@@ -13,11 +13,12 @@ export interface Timeout {
 export interface GoodMorningConfig {
     goodMorningChannelId: Snowflake,
     seasonGoal: number,
-    awardsByRank: Record<string, number>,
-    defaultAward: number,
     goodMorningMessageProbability: number,
     replyViaReactionProbability: number,
     goodMorningReplyCount: number,
+    awardsByRank: Record<string, number>,
+    defaultAward: number,
+    minimumComboDays: number,
     goodMorningMessageOverrides: Record<string, string>,
     defaultGoodMorningEmoji: string,
     goodMorningEmojiOverrides: Record<string, string[]>
