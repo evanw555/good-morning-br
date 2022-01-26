@@ -3,6 +3,12 @@
     "replyViaReactionProbability": 0.25,
     "goodMorningReplyCount": 3,
     "seasonGoal": 100,
+    "awardsByRank": {
+        "1": 2.5,
+        "2": 2,
+        "3": 1.5
+    },
+    "defaultAward": 1,
     "goodMorningChannelId": "565538626339995653",
     "goodMorningMessageOverrides": {
         "1/1": "Happy New Year! As we turn the page from last year to this year, recall your most cherished memories and take time to appreciate your friends and loved ones who made these moments possible.",

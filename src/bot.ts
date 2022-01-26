@@ -545,7 +545,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 const videoRank = Object.values(state.dailyStatus).filter(x => x.hasSentVideo).length;
                 state.dailyStatus[userId].videoRank = videoRank;
                 const priorPoints: number = player.points || 0;
-                player.points = priorPoints + Math.max(5 - videoRank, 1);
+                player.points = priorPoints + (config.awardsByRank[videoRank] ?? config.defaultAward);
                 dumpState();
                 // Reply or react to the message depending on the video rank
                 if (videoRank === 1) {
@@ -590,7 +590,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 }
                 // Update the user's points and dump the state
                 const priorPoints: number = player.points || 0;
-                const awarded: number = isNovelMessage ? Math.max(5 - rank, 1) : 1;
+                const awarded: number = isNovelMessage ? (config.awardsByRank[rank] ?? config.defaultAward) : config.defaultAward;
                 // TODO: This number doesn't take into account monkey friday points. Remove?
                 const pointsEarned: number = awarded + comboDaysBroken;
                 player.points = priorPoints + pointsEarned;
