@@ -564,6 +564,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 state.dailyStatus[userId].hasSaidGoodMorning = true;
 
                 // If user is first, update the combo state accordingly
+                let comboDaysBroken: number = 0;
                 let comboBreakingPoints: number = 0;
                 let comboBreakee: Snowflake;
                 if (rank === 1) {
@@ -574,16 +575,17 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                         } else {
                             // Else, reset the combo
                             comboBreakee = state.combo.user;
+                            comboDaysBroken = state.combo.days;
                             state.combo = {
                                 user: userId,
                                 days: 1
                             };
                             // If the broken combo is big enough, then penalize/reward the users involved
-                            if (state.combo.days >= config.minimumComboDays) {
+                            if (comboDaysBroken >= config.minimumComboDays) {
                                 // Breakee loses at most 1 point
                                 state.players[comboBreakee].points--;
                                 // Breaker is awarded 1 point for each day of the broken combo
-                                comboBreakingPoints = state.combo.days;
+                                comboBreakingPoints = comboDaysBroken;
                             }
                         }
                     } else {
@@ -617,7 +619,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 }
 
                 // If it's a combo-breaker, reply with a special message (may result in double replies on Monkey Friday)
-                if (comboDaysBroken > 1) {
+                if (comboBreakingPoints > 0) {
                     messenger.reply(msg, languageGenerator.generate('{goodMorningReply.comboBreaker?}')
                         .replace(/\$breakee/g, `<@${comboBreakee}>`)
                         .replace(/\$days/g, comboDaysBroken.toString()));
