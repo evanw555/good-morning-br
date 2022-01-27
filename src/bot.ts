@@ -2,7 +2,7 @@ import { Client, DMChannel, Intents, MessageAttachment } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'discord.js';
 import { GoodMorningConfig, GoodMorningHistory, GoodMorningState, PlayerState, Season, TimeoutType } from './types.js';
 import TimeoutManager from './timeout-manager.js';
-import { createSeasonResultsImage } from './graphics.js';
+import { createMidSeasonUpdateImage, createSeasonResultsImage } from './graphics.js';
 import { hasVideo, generateKMeansClusters, randInt, validateConfig, getTodayDateString, getOrderedPlayers, reactToMessage, getOrderingUpset, getOrderingUpsets, sleep, toPointsMap } from './util.js';
 
 import { loadJson } from './load-json.js';
@@ -66,7 +66,7 @@ const advanceSeason = async (): Promise<Season> => {
         startedOn: state.startedOn,
         finishedOn: getTodayDateString(),
         points: toPointsMap(state.players),
-        goal: config.seasonGoal
+        goal: state.goal
     };
     history.seasons.push(newHistoryEntry);
     // Compute medals
@@ -99,6 +99,7 @@ const advanceSeason = async (): Promise<Season> => {
     const nextSeason: number = state.season + 1;
     state = {
         season: nextSeason,
+        goal: config.seasonGoal,
         startedOn: getTodayDateString(),
         isMorning: false,
         isGracePeriod: true,
@@ -129,11 +130,15 @@ const sendGoodMorningMessage = async (calendarDate: string): Promise<void> => {
             // TODO: This logic makes some assumptions... fix it!
             const top: any[] = getTopPlayers(1)[0];
             const second: any[] = getTopPlayers(2)[1];
+
+            const attachment = new MessageAttachment(await createMidSeasonUpdateImage(state, history.medals), 'results.png');
+
             // TODO: We definitely should be doing this via parameters in the generation itself...
             await messenger.send(goodMorningChannel, languageGenerator.generate('{weeklyUpdate}')
                 .replace('$season', state.season.toString())
                 .replace('$top', top[0])
                 .replace('$second', second[0]));
+            await goodMorningChannel.send({ files: [attachment] });
             break;
         case 5: // Friday
             await messenger.send(goodMorningChannel, languageGenerator.generate('{happyFriday}'));
@@ -147,9 +152,10 @@ const sendGoodMorningMessage = async (calendarDate: string): Promise<void> => {
     }
 };
 
-const sendSeasonEndMessages = async (channel: TextBasedChannels, previousSeason: Season, winner: Snowflake): Promise<void> => {
-    const newSeason: number = previousSeason.season + 1;
-    await messenger.send(channel, `Well everyone, season **${previousSeason.season}** has finally come to an end!`);
+const sendSeasonEndMessages = async (channel: TextBasedChannels, previousState: GoodMorningState): Promise<void> => {
+    const winner: Snowflake = getOrderedPlayers(previousState.players)[0];
+    const newSeason: number = previousState.season + 1;
+    await messenger.send(channel, `Well everyone, season **${previousState.season}** has finally come to an end!`);
     await messenger.send(channel, 'Thanks to all those who have participated. You have made these mornings bright and joyous for not just me, but for everyone here 🌞');
     await sleep(10000);
     await messenger.send(channel, 'In a couple minutes, I\'ll reveal the winners and the final standings...');
@@ -160,7 +166,7 @@ const sendSeasonEndMessages = async (channel: TextBasedChannels, previousSeason:
     await messenger.send(channel, 'Alright, here are the final standings...');
     await channel.sendTyping();
     await sleep(5000);
-    const attachment = new MessageAttachment(await createSeasonResultsImage(previousSeason, history.medals, getDisplayName), 'results.png');
+    const attachment = new MessageAttachment(await createSeasonResultsImage(previousState, history.medals), 'results.png');
     await channel.send({ files: [attachment] });
     await sleep(5000);
     await messenger.send(channel, `Congrats, <@${winner}>!`);
@@ -263,9 +269,10 @@ const TIMEOUT_CALLBACKS = {
         await dumpR9KHashes();
 
         // If anyone's score is above the season goal, then proceed to the next season
-        if (getTopScore() >= config.seasonGoal) {
-            const previousSeason: Season = await advanceSeason();
-            await sendSeasonEndMessages(goodMorningChannel, previousSeason, newLeader);
+        if (getTopScore() >= state.goal) {
+            const previousState: GoodMorningState = state;
+            await advanceSeason();
+            await sendSeasonEndMessages(goodMorningChannel, previousState);
         }
 
         // Update the bot's status
@@ -279,11 +286,8 @@ const loadState = async (): Promise<void> => {
     try {
         state = await storage.readJson('state');
         // Temporary logic to initialize newly introduced properties
-        if (state.players === undefined) {
-            state.players = {};
-        }
-        if (state.goodMorningEmoji === undefined) {
-            state.goodMorningEmoji = config.defaultGoodMorningEmoji;
+        if (state.goal === undefined) {
+            state.goal = config.seasonGoal;
         }
         if (state['points']) {
             delete state['points'];
@@ -297,6 +301,7 @@ const loadState = async (): Promise<void> => {
             console.log('Existing state file not found, creating a fresh state...');
             state = {
                 season: 1,
+                goal: config.seasonGoal,
                 startedOn: getTodayDateString(),
                 isMorning: false,
                 isGracePeriod: true,
@@ -466,30 +471,16 @@ const processCommands = async (msg: Message): Promise<void> => {
         }
         // Send mock season end messages
         else if (sanitizedText.includes('season end')) {
-            const mockSeason: Season = {
-                season: state.season,
-                startedOn: state.startedOn,
-                finishedOn: getTodayDateString(),
-                points: toPointsMap(state.players),
-                goal: config.seasonGoal
-            };
-            await sendSeasonEndMessages(guildOwnerDmChannel, mockSeason, guildOwner.id);
+            await sendSeasonEndMessages(guildOwnerDmChannel, state);
         }
         // Asking about the season
         else if (sanitizedText.includes('season')) {
             messenger.reply(msg, `It\'s season **${state.season}**!`);
         }
         // Canvas stuff
-        else if (sanitizedText.includes("canvas")) {
+        else if (sanitizedText.includes('canvas')) {
             await msg.channel.sendTyping();
-            const attachment = new MessageAttachment(await createSeasonResultsImage({
-                    startedOn: state.startedOn,
-                    finishedOn: getTodayDateString(),
-                    goal: config.seasonGoal,
-                    points: toPointsMap(state.players),
-                    season: state.season
-                }, history.medals, getDisplayName),
-                'results.png');
+            const attachment = new MessageAttachment(await createMidSeasonUpdateImage(state, history.medals), 'results.png');
             msg.reply({ files: [attachment] });
         }
         else if (sanitizedText.includes('react')) {
@@ -504,6 +495,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
         await processCommands(msg);
     } else if (goodMorningChannel && msg.channel.id === goodMorningChannel.id && !msg.author.bot) {
         const userId: Snowflake = msg.author.id;
+        const firstMessageThisSeason: boolean = !(userId in state.players);
 
         // If the grace period is active, then completely ignore all messages
         if (state.isGracePeriod) {
@@ -627,7 +619,6 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 // If this post is NOT a Monkey Friday post, reply as normal (this is to avoid double replies on Monkey Friday)
                 else if (!triggerMonkeyFriday) {
                     // If it's the user's first message this season, reply to them with a special message
-                    const firstMessageThisSeason: boolean = !(userId in state.players);
                     if (firstMessageThisSeason) {
                         messenger.reply(msg, languageGenerator.generate('{goodMorningReply.new?}'));
                     }

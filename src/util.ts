@@ -167,8 +167,15 @@ export function getTodayDateString() {
     return new Date().toLocaleDateString('en-US');
 }
 
-export function getOrderedPlayers_old(points: Record<Snowflake, number>): Snowflake[] {
-    return Object.keys(points).sort((x, y) => points[y] - points[x]);
+/**
+ * Gets the number of days since the provided date string (e.g. 1/20/2022)
+ * @param start date string
+ * @returns number of days since that date
+ */
+export function getNumberOfDaysSince(start: string): number {
+    const startDate: Date = new Date(start);
+    const todayDate: Date = new Date(getTodayDateString());
+    return Math.round((todayDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
 }
 
 /**

@@ -47,6 +47,7 @@ export interface PlayerState {
 
 export interface GoodMorningState {
     season: number,
+    goal: number,
     startedOn: string,
     isMorning: boolean,
     isGracePeriod: boolean,

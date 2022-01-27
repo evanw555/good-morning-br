@@ -1,21 +1,30 @@
 import canvas from 'canvas';
 import { Snowflake } from 'discord.js';
-import { Medals, Season } from "./types.js";
-import { getOrderedPlayers_old } from './util.js';
+import { GoodMorningState, Medals, PlayerState, Season } from "./types.js";
+import { getNumberOfDaysSince, getOrderedPlayers, getTodayDateString } from './util.js';
+
+
+export async function createMidSeasonUpdateImage(state: GoodMorningState, medals: Record<Snowflake, Medals>): Promise<Buffer> {
+    return await _createImage(false, state, medals);
+}
+
+export async function createSeasonResultsImage(oldState: GoodMorningState, medals: Record<Snowflake, Medals>): Promise<Buffer> {
+    return await _createImage(true, oldState, medals);
+}
 
 // TODO: This logic is horrible, please clean it up
-export async function createSeasonResultsImage(season: Season, medals: Record<Snowflake, Medals>, getDisplayName: (userId: Snowflake) => Promise<string>): Promise<Buffer> {
+const _createImage = async (seasonEnd: boolean, state: GoodMorningState, medals: Record<Snowflake, Medals>): Promise<Buffer> => {
     const HEADER_HEIGHT = 150;
     const BAR_WIDTH = 735;
     const BAR_HEIGHT = 36;
     const BAR_PADDING = 3;
     const INNER_BAR_WIDTH = BAR_WIDTH - (BAR_PADDING * 2);
     const BAR_SPACING = BAR_PADDING * 1.5;
-    const PIXELS_PER_POINT = INNER_BAR_WIDTH / season.goal;
-    const LOWEST_SCORE = Math.min(...Object.values(season.points));
+    const PIXELS_PER_POINT = INNER_BAR_WIDTH / state.goal;
+    const LOWEST_SCORE = Math.min(...Object.values(state.players).map(player => player.points));
     const MARGIN = Math.max(BAR_HEIGHT / 2, BAR_PADDING + PIXELS_PER_POINT * Math.abs(Math.min(LOWEST_SCORE, 0)));
     const WIDTH = BAR_WIDTH + 2 * MARGIN;
-    const HEIGHT = HEADER_HEIGHT + Object.keys(season.points).length * (BAR_HEIGHT + BAR_SPACING) + MARGIN - BAR_SPACING;
+    const HEIGHT = HEADER_HEIGHT + Object.keys(state.players).length * (BAR_HEIGHT + BAR_SPACING) + MARGIN - BAR_SPACING;
     const c = canvas.createCanvas(WIDTH, HEIGHT);
     const context = c.getContext('2d');
 
@@ -24,18 +33,7 @@ export async function createSeasonResultsImage(season: Season, medals: Record<Sn
     context.fillRect(0, 0, WIDTH, HEIGHT);
 
     // Fetch all user display names
-    const orderedUserIds: string[] = getOrderedPlayers_old(season.points);
-    const userDisplayNames = {};
-    for (let i = 0; i < orderedUserIds.length; i++) {
-        const userId = orderedUserIds[i];
-        let displayName;
-        try {
-            displayName = await getDisplayName(userId);
-        } catch (err) {
-            displayName = `User ${userId}`;
-        }
-        userDisplayNames[userId] = displayName;
-    }
+    const orderedUserIds: string[] = getOrderedPlayers(state.players);
 
     // Load medal images
     const rank1Image = await canvas.loadImage('assets/rank1.png');
@@ -53,18 +51,25 @@ export async function createSeasonResultsImage(season: Season, medals: Record<Sn
     context.fillStyle = 'rgb(221,231,239)';
     const TITLE_FONT_SIZE = Math.floor(HEADER_HEIGHT / 4);
     context.font = `${TITLE_FONT_SIZE}px sans-serif`;
-    context.fillText(`Celebrating the end of season ${season.season}\n   ${season.startedOn} - ${season.finishedOn}\n      Congrats, ${userDisplayNames[orderedUserIds[0]]}!`,
-        sunWidth * .7,
-        HEADER_HEIGHT * 5 / 16);
+    if (seasonEnd) {
+        const winnerName: string = state.players[orderedUserIds[0]].displayName;
+        context.fillText(`Celebrating the end of season ${state.season}\n   ${state.startedOn} - ${getTodayDateString()}\n      Congrats, ${winnerName}!`,
+            sunWidth * .7,
+            HEADER_HEIGHT * 5 / 16);
+    } else {
+        context.fillText(`We're ${getNumberOfDaysSince(state.startedOn)} days into season ${state.season}\n  What a blessed experience!`,
+            sunWidth * .85,
+            HEADER_HEIGHT * 7 / 16);
+    }
 
     let textInsideBar = true;
     for (let i = 0; i < orderedUserIds.length; i++) {
         const userId = orderedUserIds[i];
-        const displayName = userDisplayNames[userId];
+        const displayName = state.players[userId].displayName;
         const baseY = HEADER_HEIGHT + i * (BAR_HEIGHT + BAR_SPACING);
 
         // Determine the bar's actual rendered width (may be negative, but clip to prevent it from being too large)
-        const actualBarWidth = Math.min(season.points[userId], season.goal) * PIXELS_PER_POINT;
+        const actualBarWidth = Math.min(state.players[userId].points, state.goal) * PIXELS_PER_POINT;
 
         // Draw the bar container
         context.fillStyle = 'rgb(221,231,239)';
@@ -122,4 +127,4 @@ export async function createSeasonResultsImage(season: Season, medals: Record<Sn
     }
 
     return c.toBuffer();
-}
+};

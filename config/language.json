@@ -183,7 +183,7 @@
             "Good morning to you as well!",
             "Good morning to you too!",
             "A very {adjectives.positive?} morning to you!",
-            "Glad to hear from you this morning!",
+            "{!Glad|Happy|Pleasure} to hear from you this morning!",
             "Hello there!",
             "{!🌞|😊|😌}"
         ],
