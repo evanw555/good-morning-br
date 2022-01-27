@@ -186,7 +186,7 @@ export function getNumberOfDaysSince(start: string): number {
 export function getOrderedPlayers(players: Record<Snowflake, PlayerState>): Snowflake[] {
     return Object.keys(players).sort((x, y) => players[y].points - players[x].points
         || players[x].daysSinceLastGoodMorning - players[y].daysSinceLastGoodMorning
-        || players[x].penalties - players[y].penalties);
+        || (players[x].penalties ?? 0) - (players[y].penalties ?? 0));
 }
 
 export function toPointsMap(players: Record<Snowflake, PlayerState>): Record<Snowflake, number> {

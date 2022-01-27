@@ -41,8 +41,9 @@ export interface Combo {
 export interface PlayerState {
     displayName: string,
     points: number,
-    penalties: number,
-    daysSinceLastGoodMorning: number
+    penalties?: number,
+    daysSinceLastGoodMorning?: number,
+    combosBroken?: number
 }
 
 export interface GoodMorningState {

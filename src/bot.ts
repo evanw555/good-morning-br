@@ -217,7 +217,7 @@ const TIMEOUT_CALLBACKS = {
     [TimeoutType.NextGoodMorning]: async (): Promise<void> => {
         // Increment "days since last good morning" counters for all participating users
         Object.keys(state.players).forEach((userId) => {
-            state.players[userId].daysSinceLastGoodMorning++;
+            state.players[userId].daysSinceLastGoodMorning = (state.players[userId].daysSinceLastGoodMorning ?? 0) + 1;
         });
 
         // Set today's positive react emoji
@@ -446,7 +446,7 @@ const processCommands = async (msg: Message): Promise<void> => {
         else if (sanitizedText.includes('order') || sanitizedText.includes('rank') || sanitizedText.includes('winning') || sanitizedText.includes('standings')) {
             msg.reply(getOrderedPlayers(state.players)
                 .map((key) => {
-                    return ` - <@${key}>: **${state.players[key].points}** (${state.players[key].daysSinceLastGoodMorning}d)`;
+                    return ` - <@${key}>: **${state.players[key].points}** (${state.players[key].daysSinceLastGoodMorning ?? 0}d)`;
                 })
                 .join('\n'));
         }
@@ -516,16 +516,14 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
         if (state.players[userId] === undefined) {
             state.players[userId] = {
                 displayName: await getDisplayName(userId),
-                points: 0,
-                penalties: 0,
-                daysSinceLastGoodMorning: 0
+                points: 0
             };
         }
         const player: PlayerState = state.players[userId];
 
         if (state.isMorning) {
             // Reset user's "days since last good morning" counter
-            player.daysSinceLastGoodMorning = 0;
+            delete player.daysSinceLastGoodMorning;
 
             const isNovelMessage: boolean = !r9k.contains(msg.content);
             const isFriday: boolean = (new Date()).getDay() === 5;
@@ -576,8 +574,9 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                             if (comboDaysBroken >= config.minimumComboDays) {
                                 // Breakee loses at most 1 point
                                 state.players[comboBreakee].points--;
-                                // Breaker is awarded 1 point for each day of the broken combo
+                                // Breaker is awarded 1 point for each day of the broken combo (and increment their combos broken count)
                                 comboBreakingPoints = comboDaysBroken;
+                                state.players[userId].combosBroken = (state.players[userId].combosBroken ?? 0) + 1;
                             }
                         }
                     } else {
@@ -663,7 +662,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             player.points -= pointsDeducted;
             state.dailyStatus[userId].pointsEarned -= pointsDeducted;
             // Increment user's penalty count then dump the state
-            state.players[userId].penalties++;
+            state.players[userId].penalties = (state.players[userId].penalties ?? 0) + 1;
             dumpState();
             // Reply if the user has hit a certain threshold
             if (player.points === -5) {
