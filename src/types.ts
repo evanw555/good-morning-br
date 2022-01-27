@@ -27,8 +27,6 @@ export interface GoodMorningConfig {
 export interface DailyPlayerState {
     rank?: number,
     videoRank?: number,
-    hasSaidGoodMorning?: boolean,
-    hasSentVideo?: boolean,
     penalized?: boolean,
     pointsEarned: number
 }

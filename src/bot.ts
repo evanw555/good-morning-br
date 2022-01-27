@@ -530,9 +530,8 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             const messageHasVideo: boolean = hasVideo(msg);
             const triggerMonkeyFriday: boolean = isFriday && messageHasVideo;
             // Separately award points and reply for monkey friday videos (this lets users post videos after saying good morning)
-            if (triggerMonkeyFriday && !state.dailyStatus[userId].hasSentVideo) {
-                state.dailyStatus[userId].hasSentVideo = true;
-                const videoRank = Object.values(state.dailyStatus).filter(x => x.hasSentVideo).length;
+            if (triggerMonkeyFriday && state.dailyStatus[userId].videoRank === undefined) {
+                const videoRank = Object.values(state.dailyStatus).filter(x => x.videoRank !== undefined).length + 1;
                 state.dailyStatus[userId].videoRank = videoRank;
                 const priorPoints: number = player.points || 0;
                 player.points = priorPoints + (config.awardsByRank[videoRank] ?? config.defaultAward);
@@ -545,13 +544,12 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 }
             }
             // In the morning, award the player accordingly if it's their first message...
-            if (!state.dailyStatus[userId].hasSaidGoodMorning) {
+            if (state.dailyStatus[userId].rank === undefined) {
                 // Very first thing to do is to update the player's displayName (only do this here since it's pretty expensive)
                 state.players[userId].displayName = await getDisplayName(userId);
 
                 const rank: number = Object.keys(state.dailyStatus).length;
                 state.dailyStatus[userId].rank = rank;
-                state.dailyStatus[userId].hasSaidGoodMorning = true;
 
                 // If user is first, update the combo state accordingly
                 let comboDaysBroken: number = 0;
