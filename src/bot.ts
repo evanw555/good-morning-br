@@ -48,15 +48,8 @@ const getDisplayName = async (userId: Snowflake): Promise<string> => {
     }
 }
 
-// Tuples of (user ID, points)
-const getTopPlayers = (n: number): any[][] => {
-    return Object.entries(state.players)
-        .sort((x, y) => y[1].points - x[1].points)
-        .slice(0, n);
-};
-
 const getTopScore = (): number => {
-    return getTopPlayers(1)[0][1];
+    return state.players[getOrderedPlayers(state.players)[0]].points;
 };
 
 const advanceSeason = async (): Promise<Season> => {
@@ -128,16 +121,17 @@ const sendGoodMorningMessage = async (calendarDate: string): Promise<void> => {
         switch (now.getDay()) {
         case 0: // Sunday
             // TODO: This logic makes some assumptions... fix it!
-            const top: any[] = getTopPlayers(1)[0];
-            const second: any[] = getTopPlayers(2)[1];
+            const orderedPlayers: Snowflake[] = getOrderedPlayers(state.players);
+            const top: Snowflake = orderedPlayers[0];
+            const second: Snowflake = orderedPlayers[1];
 
             const attachment = new MessageAttachment(await createMidSeasonUpdateImage(state, history.medals), 'results.png');
 
             // TODO: We definitely should be doing this via parameters in the generation itself...
             await messenger.send(goodMorningChannel, languageGenerator.generate('{weeklyUpdate}')
                 .replace('$season', state.season.toString())
-                .replace('$top', top[0])
-                .replace('$second', second[0]));
+                .replace('$top', top)
+                .replace('$second', second));
             await goodMorningChannel.send({ files: [attachment] });
             break;
         case 5: // Friday
@@ -250,17 +244,24 @@ const TIMEOUT_CALLBACKS = {
         console.log('Said good morning!');
     },
     [TimeoutType.NextNoon]: async (): Promise<void> => {
+        // First, determine if the end of the season has come
+        const seasonGoalReached: boolean = getTopScore() >= state.goal;
+
         // Update basic state properties
         state.isMorning = false;
 
-        // Update current leader property (and notify if anything has changed)
-        const newLeader = getTopPlayers(1)[0][0];
-        state.currentLeader = state.currentLeader || newLeader;
+        // Update current leader property
+        const newLeader: Snowflake = getOrderedPlayers(state.players)[0];
+        state.currentLeader = state.currentLeader ?? newLeader;
         if (newLeader !== state.currentLeader) {
             const previousLeader = state.currentLeader;
-            await messenger.send(goodMorningChannel, languageGenerator.generate('{leaderShift?}')
-                .replace(/\$old/g, `<@${previousLeader}>`)
-                .replace(/\$new/g, `<@${newLeader}>`));
+            // If it's not the end of the season, notify the channel of the leader shift
+            if (!seasonGoalReached) {
+                await messenger.send(goodMorningChannel, languageGenerator.generate('{leaderShift?}')
+                    .replace(/\$old/g, `<@${previousLeader}>`)
+                    .replace(/\$new/g, `<@${newLeader}>`));
+            }
+            // Update the state property so it can be compared tomorrow
             state.currentLeader = newLeader;
         }
 
@@ -269,7 +270,7 @@ const TIMEOUT_CALLBACKS = {
         await dumpR9KHashes();
 
         // If anyone's score is above the season goal, then proceed to the next season
-        if (getTopScore() >= state.goal) {
+        if (seasonGoalReached) {
             const previousState: GoodMorningState = state;
             await advanceSeason();
             await sendSeasonEndMessages(goodMorningChannel, previousState);
