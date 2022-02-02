@@ -197,6 +197,12 @@ export function toPointsMap(players: Record<Snowflake, PlayerState>): Record<Sno
     return result;
 }
 
+export function getLeastRecentPlayers(players: Record<Snowflake, PlayerState>, minDays: number = 0): Snowflake[] {
+    return Object.keys(players)
+        .filter((userId) => (players[userId].daysSinceLastGoodMorning ?? -1) >= minDays)
+        .sort((x, y) => players[y].daysSinceLastGoodMorning - players[x].daysSinceLastGoodMorning);
+}
+
 /**
  * React to the given message with some emoji (or an emoji randomly selected from a list of emojis).
  */

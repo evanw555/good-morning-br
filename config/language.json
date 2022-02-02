@@ -236,5 +236,27 @@
             "Good morning! Though something tells me I've heard this before...",
             "Each morning I await your {adjectives.positive?} {!greeting|words} {!oh so eagerly|with bated breath|with such anticipation}, {!but|yet} this morning's greeting {!feels|seems|felt} a little forgettable"
         ]
+    },
+    "beckoning": {
+        "goodMorning": [
+            "Good morning to all! Though honestly, this morning I'm thinking of $player in particular. Are you there? It's been a while since I've heard from you.",
+            "Good morning! I love hearing kind words and well wishes from you all each morning, though it's been a while since I've heard from $player. Are you there?",
+            "Good morning to all, but specifically to $player. It's been a while since I've heard from you. Are you there?"
+        ],
+        "reply": "{beckoning.replyPrefix?}! {beckoning.replySuffix?}. I hope to hear from you more often 🌞",
+        "replyPrefix": [
+            "Ah... there you are",
+            "Good morning",
+            "You replied",
+            "Wow, good morning"
+        ],
+        "replySuffix": [
+            "I {!knew|had a feeling} you'd {!reply|respond|get back to me}",
+            "So {!glad|relieved} to hear from you, my friend",
+            "I was getting a little worried, but I'm glad you're {!ok|okay}",
+            "My morning was just made that much {!better|happier}",
+            "It wouldn't be a good morning without you",
+            "My mornings are made so much more {adjectives.positive?} when you're here"
+        ]
     }
 }

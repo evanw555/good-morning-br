@@ -52,7 +52,8 @@ export interface GoodMorningState {
     isGracePeriod: boolean,
     goodMorningEmoji: string | string[],
     currentLeader?: Snowflake,
-    combo?: Combo
+    beckoning?: Snowflake,
+    combo?: Combo,
     dailyStatus: Record<Snowflake, DailyPlayerState>,
     players: Record<Snowflake, PlayerState>
 }

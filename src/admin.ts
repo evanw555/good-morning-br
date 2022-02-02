@@ -4,7 +4,7 @@ import LanguageGenerator from "./language-generator.js";
 import Messenger from "./messenger.js";
 import R9KTextBank from "./r9k.js";
 import { GoodMorningState } from "./types.js";
-import { generateKMeansClusters, getOrderedPlayers, getOrderingUpsets, hasVideo, reactToMessage, toPointsMap } from "./util.js";
+import { generateKMeansClusters, getLeastRecentPlayers, getOrderedPlayers, getOrderingUpsets, hasVideo, reactToMessage, toPointsMap } from "./util.js";
 
 export default async function processCommands(msg: Message, state: GoodMorningState, messenger: Messenger, languageGenerator: LanguageGenerator, r9k: R9KTextBank): Promise<void> {
     // Test out hashing of raw text input
@@ -74,6 +74,9 @@ export default async function processCommands(msg: Message, state: GoodMorningSt
         }
         else if (sanitizedText.includes('react')) {
             await reactToMessage(msg, ['🌚', '❤️', '☘️', '🌞']);
+        }
+        else if (sanitizedText.includes('test')) {
+            messenger.send(msg.channel, languageGenerator.generate('{beckoning.goodMorning?}').replace('$player', `<@${state.currentLeader}>`));
         }
     }
 };

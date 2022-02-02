@@ -3,7 +3,7 @@ import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'disco
 import { GoodMorningConfig, GoodMorningHistory, GoodMorningState, PlayerState, Season, TimeoutType } from './types.js';
 import TimeoutManager from './timeout-manager.js';
 import { createMidSeasonUpdateImage, createSeasonResultsImage } from './graphics.js';
-import { hasVideo, randInt, validateConfig, getTodayDateString, getOrderedPlayers, reactToMessage, getOrderingUpset, sleep, toPointsMap } from './util.js';
+import { hasVideo, randInt, validateConfig, getTodayDateString, getOrderedPlayers, reactToMessage, getOrderingUpset, sleep, toPointsMap, getLeastRecentPlayers, randChoice } from './util.js';
 import processCommands from './admin.js';
 
 import { loadJson } from './load-json.js';
@@ -139,7 +139,12 @@ const sendGoodMorningMessage = async (calendarDate: string): Promise<void> => {
             await messenger.send(goodMorningChannel, languageGenerator.generate('{happyFriday}'));
             break;
         default: // Other days
-            if (Math.random() < config.goodMorningMessageProbability) {
+            // If a "beckoned" player has been selected, send a message directed at them
+            if (state.beckoning) {
+                await messenger.send(goodMorningChannel, languageGenerator.generate('{beckoning.goodMorning?}').replace('$player', `<@${state.beckoning}>`));
+            }
+            // Otherwise, send a normal GM message
+            else if (Math.random() < config.goodMorningMessageProbability) {
                 await messenger.send(goodMorningChannel, languageGenerator.generate('{goodMorning}'));
             }
             break;
@@ -214,6 +219,14 @@ const TIMEOUT_CALLBACKS = {
         Object.keys(state.players).forEach((userId) => {
             state.players[userId].daysSinceLastGoodMorning = (state.players[userId].daysSinceLastGoodMorning ?? 0) + 1;
         });
+
+        // Determine which player (if any) should be beckoned today
+        const potentialBeckonees: Snowflake[] = getLeastRecentPlayers(state.players, 7);
+        if (potentialBeckonees.length > 0 && Math.random() < 0.2) {
+            state.beckoning = randChoice(...potentialBeckonees);
+        } else {
+            delete state.beckoning;
+        }
 
         // Set today's positive react emoji
         const now: Date = new Date();
@@ -507,11 +520,19 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                         };
                     }
                 }
+
+                // Compute beckoning bonus and reset the state beckoning property if needed
+                const wasBeckoned: boolean = state.beckoning && msg.author.id === state.beckoning;
+                if (wasBeckoned) {
+                    delete state.beckoning;
+                }
+                const beckonedBonus: number = wasBeckoned ? config.awardsByRank[1] : 0;
+
                 // Update the user's points and dump the state
                 const priorPoints: number = player.points || 0;
                 const awarded: number = isNovelMessage ? (config.awardsByRank[rank] ?? config.defaultAward) : config.defaultAward;
                 // TODO: This number doesn't take into account monkey friday points. Remove?
-                const pointsEarned: number = awarded + comboBreakingPoints;
+                const pointsEarned: number = awarded + comboBreakingPoints + beckonedBonus;
                 player.points = priorPoints + pointsEarned;
                 state.dailyStatus[userId].pointsEarned += pointsEarned;
                 dumpState();
@@ -541,6 +562,10 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     // If it's the user's first message this season, reply to them with a special message
                     if (firstMessageThisSeason) {
                         messenger.reply(msg, languageGenerator.generate('{goodMorningReply.new?}'));
+                    }
+                    // If the user was beckoned, reply to them specially
+                    else if (wasBeckoned) {
+                        messenger.reply(msg, languageGenerator.generate('{beckoning.reply}'));
                     }
                     // Message was unoriginal, so reply (or react) to indicate unoriginal
                     else if (!isNovelMessage) {
