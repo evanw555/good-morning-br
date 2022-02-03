@@ -162,9 +162,28 @@ export function hasVideo(msg: Message): boolean {
         || msg.content.includes('https://youtube.com/');
 }
 
-
-export function getTodayDateString() {
+/**
+ * @returns e.g. "12/25/2020"
+ */
+export function getTodayDateString(): string {
     return new Date().toLocaleDateString('en-US');
+}
+
+/**
+ * @param date input date
+ * @returns e.g. "12/25"
+ */
+export function getMonthDayString(date: Date): string {
+    return `${date.getMonth() + 1}/${date.getDate()}`;
+}
+
+/**
+ * @returns The current date-time plus 24 hours
+ */
+export function getTomorrow(): Date {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return tomorrow;
 }
 
 /**
@@ -199,7 +218,7 @@ export function toPointsMap(players: Record<Snowflake, PlayerState>): Record<Sno
 
 export function getLeastRecentPlayers(players: Record<Snowflake, PlayerState>, minDays: number = 0): Snowflake[] {
     return Object.keys(players)
-        .filter((userId) => (players[userId].daysSinceLastGoodMorning ?? -1) >= minDays)
+        .filter((userId) => players[userId].daysSinceLastGoodMorning >= minDays)
         .sort((x, y) => players[y].daysSinceLastGoodMorning - players[x].daysSinceLastGoodMorning);
 }
 

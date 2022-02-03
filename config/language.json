@@ -258,5 +258,17 @@
             "It wouldn't be a good morning without you",
             "My mornings are made so much more {adjectives.positive?} when you're here"
         ]
+    },
+    "reveille": {
+        "summon": "{reveille.summonPrefix?} {reveille.summonSuffix?} 🌞",
+        "summonPrefix": [
+            "As this morning comes to a close, I'd like to recognize $player's efforts in making our mornings {!shine bright|special}.",
+            "This morning was {!truly|quite} {adjectives.positive?}, but I'm exhausted... I don't think I'll {!be able to wake myself up tomorrow|set my alarm}.",
+            "Saying good morning to {!you all|my friends} is {!an honor that I truly cherish|a privilege that I enjoy deeply|the highlight of each day}, but I think I'll {!pass the torch for tomorrow|let someone else give it a shot}!"
+        ],
+        "summonSuffix": [
+            "$player, I'll let you start the Good Morning {!train|ritual} tomorrow. Go ahead and say good morning whenever you'd like, I'll wake up when I see your message",
+            "I'd like $player to take my place tomorrow morning. Please send a {!truly|wonderfully} {adjectives.novel?} good morning message to the server to kick off the day! Don't wait for me"
+        ]
     }
 }

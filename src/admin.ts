@@ -4,7 +4,7 @@ import LanguageGenerator from "./language-generator.js";
 import Messenger from "./messenger.js";
 import R9KTextBank from "./r9k.js";
 import { GoodMorningState } from "./types.js";
-import { generateKMeansClusters, getLeastRecentPlayers, getOrderedPlayers, getOrderingUpsets, hasVideo, reactToMessage, toPointsMap } from "./util.js";
+import { generateKMeansClusters, getOrderedPlayers, getOrderingUpsets, hasVideo, reactToMessage, toPointsMap } from "./util.js";
 
 export default async function processCommands(msg: Message, state: GoodMorningState, messenger: Messenger, languageGenerator: LanguageGenerator, r9k: R9KTextBank): Promise<void> {
     // Test out hashing of raw text input
@@ -17,9 +17,9 @@ export default async function processCommands(msg: Message, state: GoodMorningSt
     // Test out language generation
     if (msg.content.startsWith('$')) {
         if (Math.random() < .5) {
-            messenger.reply(msg, languageGenerator.generate(msg.content.substring(1)));
+            messenger.reply(msg, languageGenerator.generate(msg.content.substring(1)).replace(/\$player/g, `<@${msg.author.id}>`));
         } else {
-            messenger.send(msg.channel, languageGenerator.generate(msg.content.substring(1)));
+            messenger.send(msg.channel, languageGenerator.generate(msg.content.substring(1)).replace(/\$player/g, `<@${msg.author.id}>`));
         }
         return;
     }

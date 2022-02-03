@@ -44,6 +44,20 @@ export interface PlayerState {
     combosBroken?: number
 }
 
+export enum DailyEventType {
+    RecapSunday = 'RECAP_SUNDAY',
+    MonkeyFriday = 'MONKEY_FRIDAY',
+    OverriddenMessage = 'OVERRIDDEN_MESSAGE',
+    Beckoning = 'BECKONING',
+    GuestReveille = 'GUEST_REVEILLE'
+}
+
+export interface DailyEvent {
+    type: DailyEventType,
+    beckoning?: Snowflake,
+    reveiller?: Snowflake
+}
+
 export interface GoodMorningState {
     season: number,
     goal: number,
@@ -52,8 +66,8 @@ export interface GoodMorningState {
     isGracePeriod: boolean,
     goodMorningEmoji: string | string[],
     currentLeader?: Snowflake,
-    beckoning?: Snowflake,
     combo?: Combo,
+    event?: DailyEvent,
     dailyStatus: Record<Snowflake, DailyPlayerState>,
     players: Record<Snowflake, PlayerState>
 }

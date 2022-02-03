@@ -1,9 +1,9 @@
 import { Client, DMChannel, Intents, MessageAttachment } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'discord.js';
-import { GoodMorningConfig, GoodMorningHistory, GoodMorningState, PlayerState, Season, TimeoutType } from './types.js';
+import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, GoodMorningState, PlayerState, Season, TimeoutType } from './types.js';
 import TimeoutManager from './timeout-manager.js';
 import { createMidSeasonUpdateImage, createSeasonResultsImage } from './graphics.js';
-import { hasVideo, randInt, validateConfig, getTodayDateString, getOrderedPlayers, reactToMessage, getOrderingUpset, sleep, toPointsMap, getLeastRecentPlayers, randChoice } from './util.js';
+import { hasVideo, randInt, validateConfig, getTodayDateString, getOrderedPlayers, reactToMessage, getOrderingUpset, sleep, toPointsMap, getLeastRecentPlayers, randChoice, getMonthDayString, getTomorrow } from './util.js';
 import processCommands from './admin.js';
 
 import { loadJson } from './load-json.js';
@@ -108,19 +108,56 @@ const advanceSeason = async (): Promise<Season> => {
     return newHistoryEntry;
 };
 
-const sendGoodMorningMessage = async (calendarDate: string): Promise<void> => {
-    if (goodMorningChannel) {
-        const now: Date = new Date();
+const chooseEvent = (date: Date): DailyEvent => {
+    // Sunday standings recap
+    if (date.getDay() === 0) {
+        return {
+            type: DailyEventType.RecapSunday
+        };
+    }
+    // If this date has a calendar date message override, use that
+    const calendarDate: string = getMonthDayString(date); // e.g. "12/25" for xmas
+    if (calendarDate in config.goodMorningMessageOverrides) {
+        return {
+            type: DailyEventType.OverriddenMessage
+        };
+    }
+    // Monkey Friday
+    if (date.getDay() === 5) {
+        return {
+            type: DailyEventType.MonkeyFriday
+        };
+    }
+    // Determine which player (if any) should be beckoned on this date
+    const potentialBeckonees: Snowflake[] = getLeastRecentPlayers(state.players, 7);
+    if (potentialBeckonees.length > 0 && Math.random() < 0.2) {
+        return {
+            type: DailyEventType.Beckoning,
+            beckoning: randChoice(...potentialBeckonees)
+        };
+    }
+    // Assign a random guest reveiller
+    if (Math.random() < 0.1) {
+        const potentialReveillers: Snowflake[] = getOrderedPlayers(state.players)
+            // The first-place player cannot be the guest reveiller
+            .slice(1)
+            // Only players who said good morning today can be reveillers
+            .filter((userId) => state.players[userId].daysSinceLastGoodMorning === undefined);
 
-        // Handle dates with specific good morning message overrides specified in the config
-        if (calendarDate in config.goodMorningMessageOverrides) {
-            await messenger.send(goodMorningChannel, languageGenerator.generate(config.goodMorningMessageOverrides[calendarDate]));
-            return;
+        if (potentialReveillers.length > 0) {
+            const guestReveiller: Snowflake = randChoice(...potentialReveillers);
+            return {
+                type: DailyEventType.GuestReveille,
+                reveiller: guestReveiller
+            };
         }
+    }
+};
 
-        // For all other days, handle based on the day of the week
-        switch (now.getDay()) {
-        case 0: // Sunday
+const sendGoodMorningMessage = async (): Promise<void> => {
+    if (goodMorningChannel) {
+        switch (state.event?.type) {
+        case DailyEventType.RecapSunday:
             // TODO: This logic makes some assumptions... fix it!
             const orderedPlayers: Snowflake[] = getOrderedPlayers(state.players);
             const top: Snowflake = orderedPlayers[0];
@@ -130,21 +167,23 @@ const sendGoodMorningMessage = async (calendarDate: string): Promise<void> => {
 
             // TODO: We definitely should be doing this via parameters in the generation itself...
             await messenger.send(goodMorningChannel, languageGenerator.generate('{weeklyUpdate}')
-                .replace('$season', state.season.toString())
-                .replace('$top', top)
-                .replace('$second', second));
+                .replace(/\$season/g, state.season.toString())
+                .replace(/\$top/g, top)
+                .replace(/\$second/g, second));
             await goodMorningChannel.send({ files: [attachment] });
             break;
-        case 5: // Friday
+        case DailyEventType.MonkeyFriday:
             await messenger.send(goodMorningChannel, languageGenerator.generate('{happyFriday}'));
             break;
-        default: // Other days
-            // If a "beckoned" player has been selected, send a message directed at them
-            if (state.beckoning) {
-                await messenger.send(goodMorningChannel, languageGenerator.generate('{beckoning.goodMorning?}').replace('$player', `<@${state.beckoning}>`));
-            }
-            // Otherwise, send a normal GM message
-            else if (Math.random() < config.goodMorningMessageProbability) {
+        case DailyEventType.OverriddenMessage:
+            await messenger.send(goodMorningChannel, languageGenerator.generate(config.goodMorningMessageOverrides[getMonthDayString(new Date())] ?? '{goodMorning}'));
+            break;
+        case DailyEventType.Beckoning:
+            await messenger.send(goodMorningChannel, languageGenerator.generate('{beckoning.goodMorning?}').replace(/\$player/g, `<@${state.event.beckoning}>`));
+            break;
+        default:
+            // Otherwise, send the standard GM message as normal
+            if (Math.random() < config.goodMorningMessageProbability) {
                 await messenger.send(goodMorningChannel, languageGenerator.generate('{goodMorning}'));
             }
             break;
@@ -213,49 +252,41 @@ const registerGoodMorningTimeout = async (): Promise<void> => {
     await timeoutManager.registerTimeout(TimeoutType.NextGoodMorning, morningTomorrow);
 };
 
+const wakeUp = async (sendMessage: boolean): Promise<void> => {
+    // Increment "days since last good morning" counters for all participating users
+    Object.keys(state.players).forEach((userId) => {
+        state.players[userId].daysSinceLastGoodMorning = (state.players[userId].daysSinceLastGoodMorning ?? 0) + 1;
+    });
+
+    // Set today's positive react emoji
+    state.goodMorningEmoji = config.goodMorningEmojiOverrides[getMonthDayString(new Date())] ?? config.defaultGoodMorningEmoji;
+
+    // Set timeout for when morning ends
+    const noonToday: Date = new Date();
+    noonToday.setHours(12, 0, 0, 0);
+    await timeoutManager.registerTimeout(TimeoutType.NextNoon, noonToday);
+
+    // Update the bot's status to active
+    await setStatus(true);
+
+    // Send the good morning message
+    if (sendMessage) {
+        await sendGoodMorningMessage();
+        console.log('Said good morning!');
+    }
+
+    // Reset the daily state
+    state.isMorning = true;
+    state.isGracePeriod = false;
+    state.dailyStatus = {};
+
+    // Dump state
+    await dumpState();
+};
+
 const TIMEOUT_CALLBACKS = {
     [TimeoutType.NextGoodMorning]: async (): Promise<void> => {
-        // Increment "days since last good morning" counters for all participating users
-        Object.keys(state.players).forEach((userId) => {
-            state.players[userId].daysSinceLastGoodMorning = (state.players[userId].daysSinceLastGoodMorning ?? 0) + 1;
-        });
-
-        // Determine which player (if any) should be beckoned today
-        const potentialBeckonees: Snowflake[] = getLeastRecentPlayers(state.players, 7);
-        if (potentialBeckonees.length > 0 && Math.random() < 0.2) {
-            state.beckoning = randChoice(...potentialBeckonees);
-        } else {
-            delete state.beckoning;
-        }
-
-        // Set today's positive react emoji
-        const now: Date = new Date();
-        const calendarDate: string = `${now.getMonth() + 1}/${now.getDate()}`; // e.g. "12/25" for xmas
-        state.goodMorningEmoji = config.goodMorningEmojiOverrides[calendarDate] ?? config.defaultGoodMorningEmoji;
-
-        // Set timeout for when morning ends
-        const noonToday: Date = new Date();
-        noonToday.setHours(12, 0, 0, 0);
-        await timeoutManager.registerTimeout(TimeoutType.NextNoon, noonToday);
-
-        // Register timeout for tomorrow's good morning message
-        await registerGoodMorningTimeout();
-
-        // Update the bot's status to active
-        await setStatus(true);
-
-        // Send the good morning message
-        await sendGoodMorningMessage(calendarDate);
-
-        // Reset the daily state
-        state.isMorning = true;
-        state.isGracePeriod = false;
-        state.dailyStatus = {};
-
-        // Dump state
-        await dumpState();
-
-        console.log('Said good morning!');
+        await wakeUp(true);
     },
     [TimeoutType.NextNoon]: async (): Promise<void> => {
         // First, determine if the end of the season has come
@@ -277,6 +308,22 @@ const TIMEOUT_CALLBACKS = {
             }
             // Update the state property so it can be compared tomorrow
             state.currentLeader = newLeader;
+        }
+
+        // Determine event for tomorrow
+        state.event = chooseEvent(getTomorrow());
+        if (state.event) {
+            // TODO: temporary message to tell admin when a special event has been selected, remove this soon
+            await messenger.send(guildOwnerDmChannel, `Event for tomorrow has been selected: \`${JSON.stringify(state.event)}\``);
+            // Depending on the type of event chosen for tomorrow, send out a special message
+            if (state.event.type === DailyEventType.GuestReveille) {
+                await messenger.send(goodMorningChannel, languageGenerator.generate('{reveille.summon}').replace(/\$player/g, `<@${state.event.reveiller}>`));
+            }
+        }
+
+        // Register timeout for tomorrow's good morning message (depending on the event)
+        if (state.event?.type !== DailyEventType.GuestReveille) {
+            await registerGoodMorningTimeout();
         }
 
         // Dump state and R9K hashes
@@ -411,27 +458,36 @@ client.on('ready', async (): Promise<void> => {
     await loadR9KHashes();
     await timeoutManager.loadTimeouts();
 
-    // Register the next good morning callback if it doesn't exist
-    if (!timeoutManager.hasTimeout(TimeoutType.NextGoodMorning)) {
+    // Register the next good morning callback if it doesn't exist (and if not waiting on a guest reveille)
+    if (!timeoutManager.hasTimeout(TimeoutType.NextGoodMorning) && state.event?.type !== DailyEventType.GuestReveille) {
         console.log('Found no existing timeout for the next good morning, so registering a new one...');
         await registerGoodMorningTimeout();
     }
 
-    if (guildOwnerDmChannel) {
-        guildOwnerDmChannel.send(`Bot had to restart... next date is ${timeoutManager.getDate(TimeoutType.NextGoodMorning).toString()}`);
-    }
+    await guildOwnerDmChannel?.send(`Bot had to restart... next date is ${timeoutManager.getDate(TimeoutType.NextGoodMorning).toString()}`);
 
     // Update the bot's status
-    setStatus(state.isMorning);
+    await setStatus(state.isMorning);
 });
 
 client.on('messageCreate', async (msg: Message): Promise<void> => {
     if (guildOwnerDmChannel && msg.channel.id === guildOwnerDmChannel.id && msg.author.id === guildOwner.id) {
+        // TODO: move this to the admin file
+        if (msg.content === 'event?') {
+            let message: string = '';
+            const date: Date = getTomorrow();
+            for (let i = 0; i < 14; i++) {
+                message += `\`${getMonthDayString(date)}\`: \`${JSON.stringify(chooseEvent(date))}\`\n`;
+                date.setDate(date.getDate() + 1);
+            }
+            await msg.reply(message);
+        }
         // Handle "commands" by looking for keywords
         await processCommands(msg, state, messenger, languageGenerator, r9k);
     } else if (goodMorningChannel && msg.channel.id === goodMorningChannel.id && !msg.author.bot) {
         const userId: Snowflake = msg.author.id;
         const firstMessageThisSeason: boolean = !(userId in state.players);
+        const isAm: boolean = new Date().getHours() < 12;
 
         // If the grace period is active, then completely ignore all messages
         if (state.isGracePeriod) {
@@ -457,11 +513,17 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
         }
         const player: PlayerState = state.players[userId];
 
+        // If this user is the guest reveiller and the morning has not yet begun, wake the bot up
+        if (state.event?.reveiller === userId && !state.isMorning && isAm) {
+            await wakeUp(false);
+        }
+
         if (state.isMorning) {
             // Reset user's "days since last good morning" counter
             delete player.daysSinceLastGoodMorning;
 
             const isNovelMessage: boolean = !r9k.contains(msg.content);
+            // TODO: Use the state.event property instead of computing this here...
             const isFriday: boolean = (new Date()).getDay() === 5;
             const messageHasVideo: boolean = hasVideo(msg);
             const triggerMonkeyFriday: boolean = isFriday && messageHasVideo;
@@ -522,10 +584,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 }
 
                 // Compute beckoning bonus and reset the state beckoning property if needed
-                const wasBeckoned: boolean = state.beckoning && msg.author.id === state.beckoning;
-                if (wasBeckoned) {
-                    delete state.beckoning;
-                }
+                const wasBeckoned: boolean = msg.author.id === state.event?.beckoning;
                 const beckonedBonus: number = wasBeckoned ? config.awardsByRank[1] : 0;
 
                 // Update the user's points and dump the state
@@ -599,7 +658,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 // If this is the user's first penalty since last morning, react to the message and deduct one
                 pointsDeducted = 1;
                 state.dailyStatus[userId].penalized = true;
-                if (new Date().getHours() < 12) {
+                if (isAm) {
                     reactToMessage(msg, '😴');
                 } else {
                     reactToMessage(msg, ['😡', '😬', '😒', '😐']);
