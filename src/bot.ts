@@ -129,7 +129,7 @@ const chooseEvent = (date: Date): DailyEvent => {
         };
     }
     // Determine which player (if any) should be beckoned on this date
-    const potentialBeckonees: Snowflake[] = getLeastRecentPlayers(state.players, 7);
+    const potentialBeckonees: Snowflake[] = getLeastRecentPlayers(state.players, 5);
     if (potentialBeckonees.length > 0 && Math.random() < 0.2) {
         return {
             type: DailyEventType.Beckoning,
@@ -138,9 +138,10 @@ const chooseEvent = (date: Date): DailyEvent => {
     }
     // Assign a random guest reveiller
     if (Math.random() < 0.1) {
-        const potentialReveillers: Snowflake[] = getOrderedPlayers(state.players)
-            // The first-place player cannot be the guest reveiller
-            .slice(1)
+        const orderedPlayers: Snowflake[] = getOrderedPlayers(state.players);
+        const potentialReveillers = orderedPlayers
+            // The first-place player cannot be the guest reveiller (and neither can the bottom quarter of players)
+            .slice(1, Math.floor(orderedPlayers.length * 0.75))
             // Only players who said good morning today can be reveillers
             .filter((userId) => state.players[userId].daysSinceLastGoodMorning === undefined);
 
@@ -604,10 +605,10 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     const orderingUpsets: string[] = getOrderingUpset(userId, beforeOrderings, afterOrderings);
                     if (orderingUpsets.length > 0) {
                         const joinedUpsettees = orderingUpsets.map(x => `<@${x}>`).join(', ');
-                        messenger.send(guildOwnerDmChannel, `<@${userId}> has overtaken ${joinedUpsettees}`);
+                        guildOwnerDmChannel.send(`<@${userId}> has overtaken ${joinedUpsettees}`);
                     }
                 } catch (err) {
-                    messenger.send(guildOwnerDmChannel, 'Failed to compute ordering upsets: ' + err.message);
+                    guildOwnerDmChannel.send('Failed to compute ordering upsets: ' + err.message);
                 }
 
                 // If it's a combo-breaker, reply with a special message (may result in double replies on Monkey Friday)
