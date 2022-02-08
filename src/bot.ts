@@ -50,7 +50,7 @@ const getDisplayName = async (userId: Snowflake): Promise<string> => {
 }
 
 const getTopScore = (): number => {
-    return state.players[getOrderedPlayers(state.players)[0]].points;
+    return Math.max(...Object.values(state.players).map(player => player.points));
 };
 
 const advanceSeason = async (): Promise<Season> => {
@@ -262,10 +262,18 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     // Set today's positive react emoji
     state.goodMorningEmoji = config.goodMorningEmojiOverrides[getMonthDayString(new Date())] ?? config.defaultGoodMorningEmoji;
 
-    // Set timeout for when morning ends
+    // Set timeout for when morning ends (if they're in the future)
+    const now = new Date();
+    const preNoonToday: Date = new Date();
+    preNoonToday.setHours(11, randInt(50, 58), randInt(0, 60), 0);
+    if (preNoonToday > now) {
+        await timeoutManager.registerTimeout(TimeoutType.NextPreNoon, preNoonToday);
+    }
     const noonToday: Date = new Date();
     noonToday.setHours(12, 0, 0, 0);
-    await timeoutManager.registerTimeout(TimeoutType.NextNoon, noonToday);
+    if (noonToday > now) {
+        await timeoutManager.registerTimeout(TimeoutType.NextNoon, noonToday);
+    }
 
     // Update the bot's status to active
     await setStatus(true);
@@ -289,12 +297,9 @@ const TIMEOUT_CALLBACKS = {
     [TimeoutType.NextGoodMorning]: async (): Promise<void> => {
         await wakeUp(true);
     },
-    [TimeoutType.NextNoon]: async (): Promise<void> => {
+    [TimeoutType.NextPreNoon]: async (): Promise<void> => {
         // First, determine if the end of the season has come
         const seasonGoalReached: boolean = getTopScore() >= state.goal;
-
-        // Update basic state properties
-        state.isMorning = false;
 
         // Update current leader property
         const newLeader: Snowflake = getOrderedPlayers(state.players)[0];
@@ -311,7 +316,18 @@ const TIMEOUT_CALLBACKS = {
             state.currentLeader = newLeader;
         }
 
+        // Dump state
+        await dumpState();
+    },
+    [TimeoutType.NextNoon]: async (): Promise<void> => {
+        // First, determine if the end of the season has come
+        const seasonGoalReached: boolean = getTopScore() >= state.goal;
+
+        // Update basic state properties
+        state.isMorning = false;
+
         // Determine event for tomorrow
+        // TODO: Ideally we could send this at pre-noon, but we don't want the state messing up by having a new event at morning...
         state.event = chooseEvent(getTomorrow());
         if (state.event) {
             // TODO: temporary message to tell admin when a special event has been selected, remove this soon
@@ -482,6 +498,9 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 date.setDate(date.getDate() + 1);
             }
             await msg.reply(message);
+        }
+        else if (msg.content === 'max?') {
+            await msg.reply(`The top score is \`${getTopScore()}\``);
         }
         // Handle "commands" by looking for keywords
         await processCommands(msg, state, messenger, languageGenerator, r9k);

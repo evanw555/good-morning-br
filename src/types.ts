@@ -2,6 +2,7 @@ import { Snowflake } from "discord-api-types";
 
 export enum TimeoutType{
     NextGoodMorning = 'NEXT_GOOD_MORNING',
+    NextPreNoon = 'NEXT_PRE_NOON',
     NextNoon = 'NEXT_NOON'
 }
 
