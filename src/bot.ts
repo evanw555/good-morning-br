@@ -153,6 +153,13 @@ const chooseEvent = (date: Date): DailyEvent => {
             };
         }
     }
+    // Do a "reverse" good morning
+    if (Math.random() < 0.1) {
+        return {
+            type: DailyEventType.ReverseGoodMorning,
+            reverseGMRanks: {}
+        };
+    }
 };
 
 const sendGoodMorningMessage = async (): Promise<void> => {
@@ -289,6 +296,29 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     state.isGracePeriod = false;
     state.dailyStatus = {};
 
+    // Process "reverse" GM ranks
+    if (state.event?.type === DailyEventType.ReverseGoodMorning) {
+        const mostRecentUsers: Snowflake[] = Object.keys(state.event.reverseGMRanks);
+        mostRecentUsers.sort((x, y) => state.event.reverseGMRanks[y] - state.event.reverseGMRanks[x]);
+        // Process the users in order of most recent reverse GM message
+        for (let i = 0; i < mostRecentUsers.length; i++) {
+            const userId: Snowflake = mostRecentUsers[i];
+            const rank: number = i + 1;
+            const pointsEarned: number = config.awardsByRank[rank] ?? config.defaultAward;
+            // Dump the rank info into the daily status map and assign points accordingly
+            state.dailyStatus[userId] = {
+                rank,
+                pointsEarned
+            };
+            state.players[userId].points += pointsEarned;
+            delete state.players[userId].daysSinceLastGoodMorning;
+        }
+        // Send a message to the channel tagging the respective players
+        if (mostRecentUsers.length >= 3) {
+            await messenger.send(goodMorningChannel, `Thanks to <@${mostRecentUsers[2]}>, <@${mostRecentUsers[1]}>, and especially <@${mostRecentUsers[0]}> for paving the way!`);
+        }
+    }
+
     // Dump state
     await dumpState();
 };
@@ -335,6 +365,11 @@ const TIMEOUT_CALLBACKS = {
             // Depending on the type of event chosen for tomorrow, send out a special message
             if (state.event.type === DailyEventType.GuestReveille) {
                 await messenger.send(goodMorningChannel, languageGenerator.generate('{reveille.summon}').replace(/\$player/g, `<@${state.event.reveiller}>`));
+            } else if (state.event.type === DailyEventType.ReverseGoodMorning) {
+                const text = 'Tomorrow morning will be a _Reverse_ Good Morning! '
+                    + 'Instead of saying "good morning" after me, you should say "good morning" _before_ me. '
+                    + 'The last ones to say it before I wake up will be the most appreciated 🙂';
+                await messenger.send(goodMorningChannel, text);
             }
         }
 
@@ -566,7 +601,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 // Very first thing to do is to update the player's displayName (only do this here since it's pretty expensive)
                 state.players[userId].displayName = await getDisplayName(userId);
 
-                const rank: number = Object.keys(state.dailyStatus).length;
+                const rank: number = Object.values(state.dailyStatus).filter(status => status.rank !== undefined).length + 1;
                 state.dailyStatus[userId].rank = rank;
 
                 // If user is first, update the combo state accordingly
@@ -669,6 +704,17 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 }
             }
         } else {
+            // If the bot hasn't woken up yet and it's a reverse GM, react and track the rank of each player for now...
+            // TODO: Clean this up! Doesn't even take R9K into account
+            if (isAm && state.event?.type === DailyEventType.ReverseGoodMorning) {
+                if (state.event.reverseGMRanks[userId] === undefined) {
+                    state.event.reverseGMRanks[userId] = new Date().getTime();
+                    reactToMessage(msg, state.goodMorningEmoji);
+                    dumpState();
+                }
+                return;
+            }
+
             let pointsDeducted: number = 0;
             // It's not morning, so punish the player accordingly...
             if (state.dailyStatus[userId].penalized) {

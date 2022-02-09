@@ -50,13 +50,15 @@ export enum DailyEventType {
     MonkeyFriday = 'MONKEY_FRIDAY',
     OverriddenMessage = 'OVERRIDDEN_MESSAGE',
     Beckoning = 'BECKONING',
-    GuestReveille = 'GUEST_REVEILLE'
+    GuestReveille = 'GUEST_REVEILLE',
+    ReverseGoodMorning = 'REVERSE_GOOD_MORNING'
 }
 
 export interface DailyEvent {
     type: DailyEventType,
     beckoning?: Snowflake,
-    reveiller?: Snowflake
+    reveiller?: Snowflake,
+    reverseGMRanks?: Record<Snowflake, number>
 }
 
 export interface GoodMorningState {
