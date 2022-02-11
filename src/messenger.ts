@@ -51,6 +51,19 @@ export default class Messenger {
     }
 
     /**
+     * TODO: do this better. De-dup logic.
+     */
+    async sendAndGet(channel: TextBasedChannels, text: string): Promise<Message> {
+        // Take a brief pause
+        await sleep(randInt(100, 1500));
+        // Send the typing event and wait based on the length of the message
+        await channel.sendTyping();
+        await sleep(randInt(45, 55) * text.length);
+        // Now actually reply/send the message
+        return channel.send(text);
+    }
+
+    /**
      * Send the provided text as a series of boxed (monospaced) messages limited to no more than 2000 characters each.
      * @param channel the target channel
      * @param text the text to send

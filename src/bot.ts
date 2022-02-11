@@ -26,6 +26,7 @@ const client = new Client({
     intents: [
         Intents.FLAGS.GUILDS,
         Intents.FLAGS.GUILD_MESSAGES,
+        Intents.FLAGS.GUILD_MESSAGE_REACTIONS,
         Intents.FLAGS.DIRECT_MESSAGES
     ]
 });
@@ -50,6 +51,18 @@ const getDisplayName = async (userId: Snowflake): Promise<string> => {
 
 const getTopScore = (): number => {
     return Math.max(...Object.values(state.players).map(player => player.points));
+};
+
+/**
+ * Initialize the player state data for a given user, if it doesn't exist.
+ */
+const initializePlayer = async (userId: Snowflake): Promise<void> => {
+    if (state.players[userId] === undefined) {
+        state.players[userId] = {
+            displayName: await getDisplayName(userId),
+            points: 0
+        }
+    }
 };
 
 const advanceSeason = async (): Promise<Season> => {
@@ -165,6 +178,14 @@ const chooseEvent = (date: Date): DailyEvent => {
             type: DailyEventType.GrumpyMorning
         };
     }
+    // Do anonymous submissions
+    if (Math.random() < 0.1) {
+        return {
+            type: DailyEventType.AnonymousSubmissions,
+            submissionType: randChoice("haiku", "poem", "short story", "motivational message"),
+            submissions: {}
+        };
+    }
 };
 
 const sendGoodMorningMessage = async (): Promise<void> => {
@@ -196,6 +217,12 @@ const sendGoodMorningMessage = async (): Promise<void> => {
             break;
         case DailyEventType.GrumpyMorning:
             await messenger.send(goodMorningChannel, languageGenerator.generate('{grumpyMorning}'));
+            break;
+        case DailyEventType.AnonymousSubmissions:
+            const text = `Good morning! Today is a special one. Rather than sending your good morning messages here for all to see, `
+                + `I'd like you write a special Good Morning ${state.event.submissionType} and send it directly to me via DM! `
+                + `At 10:30, I'll post them here anonymously and you'll all be voting on your favorites 😉`;
+            await messenger.send(goodMorningChannel, text);
             break;
         default:
             // Otherwise, send the standard GM message as normal
@@ -255,7 +282,7 @@ const setStatus = async (active: boolean): Promise<void> => {
 
 const registerGoodMorningTimeout = async (): Promise<void> => {
     const MIN_HOUR: number = 6;
-    const MAX_HOUR_EXCLUSIVE: number = 11;
+    const MAX_HOUR_EXCLUSIVE: number = (state.event?.type === DailyEventType.AnonymousSubmissions) ? 8 : 11;
 
     const morningTomorrow: Date = new Date();
     // Set date as tomorrow if it's after the earliest possible morning time
@@ -294,6 +321,13 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     noonToday.setHours(12, 0, 0, 0);
     if (noonToday > now) {
         await timeoutManager.registerTimeout(TimeoutType.NextNoon, noonToday);
+    }
+
+    // Set timeout for anonymous submission reveal
+    if (state.event?.type === DailyEventType.AnonymousSubmissions) {
+        const submissionRevealTime = new Date();
+        submissionRevealTime.setHours(10, 30, 0, 0);
+        await timeoutManager.registerTimeout(TimeoutType.AnonymousSubmissionReveal, submissionRevealTime);
     }
 
     // Update the bot's status to active
@@ -344,6 +378,54 @@ const TIMEOUT_CALLBACKS = {
     [TimeoutType.NextPreNoon]: async (): Promise<void> => {
         // TODO: Can we do an "emergency bot wake-up" here? (in case of slacking reveiller)
 
+        // Before anything else, check the results of anonymous submissions
+        if (state.event?.type === DailyEventType.AnonymousSubmissions) {
+            const scores: Record<Snowflake, number> = {};
+
+            // First, count the reacts and compute the score
+            const userIds: Snowflake[] = Object.keys(state.event.anonymousMessagesByOwner);
+            for (let i = 0; i < userIds.length; i++) {
+                const userId: Snowflake = userIds[i];
+                const messageId: Snowflake = state.event.anonymousMessagesByOwner[userId];
+                const message: Message = await goodMorningChannel.messages.fetch(messageId);
+                const upvotes: number = message.reactions.resolve(config.defaultGoodMorningEmoji).count;
+                const downvotes: number = message.reactions.resolve(config.downvoteEmoji).count;
+                const score: number = upvotes - (downvotes / 2);
+                scores[userId] = score;
+            }
+
+            // Then, assign points based on rank in score
+            userIds.sort((x, y) => scores[y] - scores[x]);
+            for (let i = 0; i < userIds.length; i++) {
+                const userId: Snowflake = userIds[i];
+                const score: number = scores[userId];
+                const rank: number = i + 1;
+                // If the player received a negative score, award no points
+                const pointsEarned: number = score < 0 ? 0 : (config.largeAwardsByRank[rank] ?? config.defaultAward);
+                state.dailyStatus[userId] = {
+                    rank,
+                    pointsEarned
+                };
+                await initializePlayer(userId);
+                state.players[userId].points += pointsEarned;
+                delete state.players[userId].daysSinceLastGoodMorning;
+            }
+
+            // Finally, send congrats messages
+            if (userIds[0]) {
+                await messenger.send(goodMorningChannel, `Congrats to <@${userIds[0]}> for sending the best Good Morning ${state.event.submissionType}!`);
+            }
+            if (userIds[1] && userIds[2]) {
+                await messenger.send(goodMorningChannel, `Congrats as well to the runners-up <@${userIds[1]}> and <@${userIds[2]}>!`);
+            }
+            if (Math.min(...Object.values(scores)) < 0) {
+                await messenger.send(goodMorningChannel, `...and <@${userIds[userIds.length - 1]}>, hope you do better next time 😬`);
+            }
+
+            // Sleep to provide a buffer in case more messages need to be sent
+            await sleep(10000);
+        }
+
         // First, determine if the end of the season has come
         const seasonGoalReached: boolean = getTopScore() >= state.goal;
 
@@ -360,6 +442,9 @@ const TIMEOUT_CALLBACKS = {
             }
             // Update the state property so it can be compared tomorrow
             state.currentLeader = newLeader;
+
+            // Sleep to provide a buffer in case more messages need to be sent
+            await sleep(10000);
         }
 
         // Determine event for tomorrow
@@ -411,6 +496,34 @@ const TIMEOUT_CALLBACKS = {
 
         // Update the bot's status
         await setStatus(false);
+    },
+    [TimeoutType.AnonymousSubmissionReveal]: async (): Promise<void> => {
+        await messenger.send(goodMorningChannel, `Here are your anonymous submissions! Use ${config.defaultGoodMorningEmoji} to upvote and ${config.downvoteEmoji} to downvote...`);
+
+        // Get all the relevant user IDs and shuffle them
+        const userIds: Snowflake[] = Object.keys(state.event.submissions);
+        userIds.sort((x, y) => Math.random() - Math.random());
+
+        // For each submission (in shuffled order)...
+        state.event.anonymousMessagesByOwner = {};
+        for (let i = 0; i < userIds.length; i++) {
+            const userId: Snowflake = userIds[i];
+            const submission: string = state.event.submissions[userId];
+
+            // Send the message out and provide the expected emoji reacts
+            const message: Message = await messenger.sendAndGet(goodMorningChannel, submission);
+            await reactToMessage(message, config.defaultGoodMorningEmoji);
+            await reactToMessage(message, config.downvoteEmoji);
+
+            // Track the message ID keyed by user ID
+            state.event.anonymousMessagesByOwner[userId] = message.id;
+
+            // Take a long pause
+            await sleep(30000);
+        }
+
+        // Deleting the submissions map will prevent action taken on further DMs
+        delete state.event.submissions;
     }
 };
 
@@ -643,10 +756,7 @@ const processCommands = async (msg: Message): Promise<void> => {
 };
 
 client.on('messageCreate', async (msg: Message): Promise<void> => {
-    if (guildOwnerDmChannel && msg.channel.id === guildOwnerDmChannel.id && msg.author.id === guildOwner.id) {
-        // Process admin commands
-        await processCommands(msg);
-    } else if (goodMorningChannel && msg.channel.id === goodMorningChannel.id && !msg.author.bot) {
+    if (goodMorningChannel && msg.channel.id === goodMorningChannel.id && !msg.author.bot) {
         const userId: Snowflake = msg.author.id;
         const firstMessageThisSeason: boolean = !(userId in state.players);
         const isAm: boolean = new Date().getHours() < 12;
@@ -668,12 +778,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
         const daily: DailyPlayerState = state.dailyStatus[userId];
 
         // Initialize player data if it doesn't exist
-        if (state.players[userId] === undefined) {
-            state.players[userId] = {
-                displayName: await getDisplayName(userId),
-                points: 0
-            };
-        }
+        await initializePlayer(userId);
         const player: PlayerState = state.players[userId];
 
         // If this user is the guest reveiller and the morning has not yet begun, wake the bot up
@@ -682,6 +787,11 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
         }
 
         if (state.isMorning) {
+            // If the event is an anonymous submission day, then completely ignore the message
+            if (state.event?.type === DailyEventType.AnonymousSubmissions) {
+                return;
+            }
+
             // Reset user's "days since last good morning" counter
             delete player.daysSinceLastGoodMorning;
 
@@ -865,6 +975,22 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             } else if (player.points === -10) {
                 messenger.reply(msg, 'You have brought great dishonor to this server...');
             }
+        }
+    } else if (msg.channel instanceof DMChannel && !msg.author.bot) {
+        // Process DM submissions depending on the event
+        if (state.isMorning && state.event?.type === DailyEventType.AnonymousSubmissions && state.event.submissions) {
+            const userId: Snowflake = msg.author.id;
+            if (userId in state.event.submissions) {
+                await messenger.reply(msg, 'Thanks for the update, I\'ll use this submission instead of your previous one.');
+            } else {
+                await messenger.reply(msg, 'Thanks for your submission!');
+            }
+            state.event.submissions[userId] = msg.content;
+            dumpState();
+        }
+        // Process admin commands
+        else if (guildOwnerDmChannel && msg.channel.id === guildOwnerDmChannel.id && msg.author.id === guildOwner.id) {
+            await processCommands(msg);
         }
     }
 });

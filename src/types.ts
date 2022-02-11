@@ -3,7 +3,9 @@ import { Snowflake } from "discord-api-types";
 export enum TimeoutType{
     NextGoodMorning = 'NEXT_GOOD_MORNING',
     NextPreNoon = 'NEXT_PRE_NOON',
-    NextNoon = 'NEXT_NOON'
+    NextNoon = 'NEXT_NOON',
+    // Non-standard events
+    AnonymousSubmissionReveal = 'ANONYMOUS_SUBMISSION_REVEAL'
 }
 
 export interface Timeout {
@@ -18,11 +20,13 @@ export interface GoodMorningConfig {
     replyViaReactionProbability: number,
     goodMorningReplyCount: number,
     awardsByRank: Record<string, number>,
+    largeAwardsByRank: Record<string, number>,
     defaultAward: number,
     minimumComboDays: number,
     goodMorningMessageOverrides: Record<string, string>,
     defaultGoodMorningEmoji: string,
-    goodMorningEmojiOverrides: Record<string, string[]>
+    goodMorningEmojiOverrides: Record<string, string[]>,
+    downvoteEmoji: string
 }
 
 export interface DailyPlayerState {
@@ -52,7 +56,8 @@ export enum DailyEventType {
     Beckoning = 'BECKONING',
     GuestReveille = 'GUEST_REVEILLE',
     ReverseGoodMorning = 'REVERSE_GOOD_MORNING',
-    GrumpyMorning = 'GRUMPY_MORNING'
+    GrumpyMorning = 'GRUMPY_MORNING',
+    AnonymousSubmissions = 'ANONYMOUS_SUBMISSIONS'
 }
 
 export interface DailyEvent {
@@ -60,6 +65,10 @@ export interface DailyEvent {
     beckoning?: Snowflake,
     reveiller?: Snowflake,
     reverseGMRanks?: Record<Snowflake, number>,
+    // Used specifically for the "anonymous submissions" event
+    submissionType?: string,
+    submissions?: Record<Snowflake, string>,
+    anonymousMessagesByOwner?: Record<Snowflake, Snowflake>, // Map of UserId -> MessageId
     // Used specifically for the "grumpy morning" event
     disabled?: boolean
 }
