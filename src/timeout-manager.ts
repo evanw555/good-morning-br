@@ -81,6 +81,17 @@ class TimeoutManager {
     hasTimeout(type: TimeoutType): boolean {
         return Object.values(this._timeouts).some(t => t.type === type);
     }
+
+    /**
+     * @returns list of human-readable strings representing each timeout (in ascending date order)
+     */
+    toStrings(): string[] {
+        return Object.values(this._timeouts)
+            .sort((x, y) => new Date(x.date).getTime() - new Date(y.date).getTime())
+            .map(timeout => {
+            return `\`${timeout.type}\`: ${new Date(timeout.date).toLocaleString()}`
+        });
+    }
 }
 
 export default TimeoutManager;

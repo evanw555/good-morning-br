@@ -260,6 +260,12 @@ const registerGoodMorningTimeout = async (): Promise<void> => {
 };
 
 const wakeUp = async (sendMessage: boolean): Promise<void> => {
+    // If attempting to wake up while already awake, warn the admin and abort
+    if (state.isMorning) {
+        guildOwnerDmChannel.send('WARNING! Attempted to wake up while `state.isMorning` is already `true`');
+        return;
+    }
+
     // Increment "days since last good morning" counters for all participating users
     Object.keys(state.players).forEach((userId) => {
         state.players[userId].daysSinceLastGoodMorning = (state.players[userId].daysSinceLastGoodMorning ?? 0) + 1;
@@ -509,12 +515,6 @@ client.on('ready', async (): Promise<void> => {
     await loadR9KHashes();
     await timeoutManager.loadTimeouts();
 
-    // Register the next good morning callback if it doesn't exist (and if not waiting on a guest reveille)
-    if (!timeoutManager.hasTimeout(TimeoutType.NextGoodMorning) && state.event?.type !== DailyEventType.GuestReveille) {
-        console.log('Found no existing timeout for the next good morning, so registering a new one...');
-        await registerGoodMorningTimeout();
-    }
-
     await guildOwnerDmChannel?.send(`Bot had to restart... next date is ${timeoutManager.getDate(TimeoutType.NextGoodMorning).toString()}`);
 
     // Update the bot's status
@@ -537,11 +537,6 @@ const processCommands = async (msg: Message): Promise<void> => {
             messenger.send(msg.channel, languageGenerator.generate(msg.content.substring(1)).replace(/\$player/g, `<@${msg.author.id}>`));
         }
         return;
-    }
-    if (msg.content.startsWith('^')) {
-        const sanitized = msg.content.substring(1).trim();
-        const [before, after] = sanitized.split(' ');
-        messenger.reply(msg, JSON.stringify(getOrderingUpsets(before.split(','), after.split(','))));
     }
     // Handle sanitized commands
     const sanitizedText: string = msg.content.trim().toLowerCase();
@@ -566,6 +561,18 @@ const processCommands = async (msg: Message): Promise<void> => {
         // Return the state
         else if (sanitizedText.includes('state')) {
             await messenger.sendLargeMonospaced(msg.channel, JSON.stringify(state, null, 2));
+        }
+        // Return the timeout info
+        else if (sanitizedText.includes('timeouts')) {
+            guildOwnerDmChannel.send(timeoutManager.toStrings().map(entry => `- ${entry}`).join('\n'));
+        }
+        // Schedule the next good morning
+        else if (sanitizedText.includes('schedule')) {
+            if (timeoutManager.hasTimeout(TimeoutType.NextGoodMorning)) {
+                msg.reply('Good morning timeout has already been scheduled, no action taken.');
+            } else {
+                msg.reply('Scheduled good morning timeout!');
+            }
         }
         // Asking about points
         else if (sanitizedText.includes('points')) {
