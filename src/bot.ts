@@ -583,13 +583,14 @@ const processCommands = async (msg: Message): Promise<void> => {
         }
         // Return the timeout info
         else if (sanitizedText.includes('timeouts')) {
-            guildOwnerDmChannel.send(timeoutManager.toStrings().map(entry => `- ${entry}`).join('\n'));
+            guildOwnerDmChannel.send(timeoutManager.toStrings().map(entry => `- ${entry}`).join('\n') || '_No timeouts._');
         }
         // Schedule the next good morning
         else if (sanitizedText.includes('schedule')) {
             if (timeoutManager.hasTimeout(TimeoutType.NextGoodMorning)) {
                 msg.reply('Good morning timeout has already been scheduled, no action taken.');
             } else {
+                await registerGoodMorningTimeout();
                 msg.reply('Scheduled good morning timeout!');
             }
         }
