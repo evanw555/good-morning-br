@@ -3,8 +3,7 @@ import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'disco
 import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, GoodMorningState, PlayerState, Season, TimeoutType } from './types.js';
 import TimeoutManager from './timeout-manager.js';
 import { createMidSeasonUpdateImage, createSeasonResultsImage } from './graphics.js';
-import { hasVideo, randInt, validateConfig, getTodayDateString, getOrderedPlayers, reactToMessage, getOrderingUpset, sleep, toPointsMap, getLeastRecentPlayers, randChoice, getMonthDayString, getTomorrow } from './util.js';
-import processCommands from './admin.js';
+import { hasVideo, randInt, validateConfig, getTodayDateString, getOrderedPlayers, reactToMessage, getOrderingUpset, sleep, toPointsMap, getLeastRecentPlayers, randChoice, getMonthDayString, getTomorrow, getOrderingUpsets, generateKMeansClusters } from './util.js';
 
 import { loadJson } from './load-json.js';
 const auth = loadJson('config/auth.json');
@@ -373,7 +372,7 @@ const TIMEOUT_CALLBACKS = {
             }
         }
 
-        // Register timeout for tomorrow's good morning message (depending on the event)
+        // Register timeout for tomorrow's good morning message (if not waiting on a reveiller)
         if (state.event?.type !== DailyEventType.GuestReveille) {
             await registerGoodMorningTimeout();
         }
@@ -522,10 +521,85 @@ client.on('ready', async (): Promise<void> => {
     await setStatus(state.isMorning);
 });
 
-client.on('messageCreate', async (msg: Message): Promise<void> => {
-    if (guildOwnerDmChannel && msg.channel.id === guildOwnerDmChannel.id && msg.author.id === guildOwner.id) {
-        // TODO: move this to the admin file
-        if (msg.content === 'event?') {
+const processCommands = async (msg: Message): Promise<void> => {
+    // Test out hashing of raw text input
+    if (msg.content.startsWith('#')) {
+        const exists = r9k.contains(msg.content);
+        r9k.add(msg.content);
+        messenger.reply(msg, `\`${msg.content}\` ${exists ? 'exists' : 'does *not* exist'} in the R9K text bank.`);
+        return;
+    }
+    // Test out language generation
+    if (msg.content.startsWith('$')) {
+        if (Math.random() < .5) {
+            messenger.reply(msg, languageGenerator.generate(msg.content.substring(1)).replace(/\$player/g, `<@${msg.author.id}>`));
+        } else {
+            messenger.send(msg.channel, languageGenerator.generate(msg.content.substring(1)).replace(/\$player/g, `<@${msg.author.id}>`));
+        }
+        return;
+    }
+    if (msg.content.startsWith('^')) {
+        const sanitized = msg.content.substring(1).trim();
+        const [before, after] = sanitized.split(' ');
+        messenger.reply(msg, JSON.stringify(getOrderingUpsets(before.split(','), after.split(','))));
+    }
+    // Handle sanitized commands
+    const sanitizedText: string = msg.content.trim().toLowerCase();
+    if (hasVideo(msg)) {
+        messenger.reply(msg, 'This message has video!');
+    }
+    if (sanitizedText.includes('?')) {
+        // Test the experimental clusters logic
+        if (sanitizedText.includes('clusters')) {
+            // msg.reply(JSON.stringify(generateKMeansClusters(state.points, 3)));
+            const k: number = parseInt(sanitizedText.split(' ')[0]);
+            msg.reply(JSON.stringify(generateKMeansClusters(toPointsMap(state.players), k)));
+        }
+        // Return the order info
+        else if (sanitizedText.includes('order') || sanitizedText.includes('rank') || sanitizedText.includes('winning') || sanitizedText.includes('standings')) {
+            msg.reply(getOrderedPlayers(state.players)
+                .map((key) => {
+                    return ` - <@${key}>: **${state.players[key].points}** (${state.players[key].daysSinceLastGoodMorning ?? 0}d)`;
+                })
+                .join('\n'));
+        }
+        // Return the state
+        else if (sanitizedText.includes('state')) {
+            await messenger.sendLargeMonospaced(msg.channel, JSON.stringify(state, null, 2));
+        }
+        // Asking about points
+        else if (sanitizedText.includes('points')) {
+            const points: number = state.players[msg.author.id]?.points ?? 0;
+            if (points < 0) {
+                messenger.reply(msg, `You have **${points}** points this season... bro...`);
+            } else if (points === 0) {
+                messenger.reply(msg, `You have no points this season`);
+            } else if (points === 1) {
+                messenger.reply(msg, `You have **1** point this season`);
+            } else {
+                messenger.reply(msg, `You have **${points}** points this season`);
+            }
+        }
+        // Asking about the season
+        else if (sanitizedText.includes('season')) {
+            messenger.reply(msg, `It\'s season **${state.season}**!`);
+        }
+        // Canvas stuff
+        else if (sanitizedText.includes('canvas')) {
+            await msg.channel.sendTyping();
+            const attachment = new MessageAttachment(await createMidSeasonUpdateImage(state, {}), 'results.png');
+            msg.reply({ files: [attachment] });
+        }
+        // Test reaction
+        else if (sanitizedText.includes('react')) {
+            await reactToMessage(msg, ['🌚', '❤️', '☘️', '🌞']);
+        }
+        // Test the beckoning message
+        else if (sanitizedText.includes('beckon')) {
+            messenger.send(msg.channel, languageGenerator.generate('{beckoning.goodMorning?}').replace('$player', `<@${state.currentLeader}>`));
+        }
+        // Simulate events for the next 2 weeks
+        else if (sanitizedText.includes('event')) {
             let message: string = '';
             const date: Date = getTomorrow();
             for (let i = 0; i < 14; i++) {
@@ -534,11 +608,17 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             }
             await msg.reply(message);
         }
-        else if (msg.content === 'max?') {
+        // Return the max score
+        else if (sanitizedText.includes('max')) {
             await msg.reply(`The top score is \`${getTopScore()}\``);
         }
-        // Handle "commands" by looking for keywords
-        await processCommands(msg, state, messenger, languageGenerator, r9k);
+    }
+};
+
+client.on('messageCreate', async (msg: Message): Promise<void> => {
+    if (guildOwnerDmChannel && msg.channel.id === guildOwnerDmChannel.id && msg.author.id === guildOwner.id) {
+        // Process admin commands
+        await processCommands(msg);
     } else if (goodMorningChannel && msg.channel.id === goodMorningChannel.id && !msg.author.bot) {
         const userId: Snowflake = msg.author.id;
         const firstMessageThisSeason: boolean = !(userId in state.players);
