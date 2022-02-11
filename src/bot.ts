@@ -1,6 +1,6 @@
 import { Client, DMChannel, Intents, MessageAttachment } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'discord.js';
-import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, GoodMorningState, PlayerState, Season, TimeoutType } from './types.js';
+import { DailyEvent, DailyEventType, DailyPlayerState, GoodMorningConfig, GoodMorningHistory, GoodMorningState, PlayerState, Season, TimeoutType } from './types.js';
 import TimeoutManager from './timeout-manager.js';
 import { createMidSeasonUpdateImage, createSeasonResultsImage } from './graphics.js';
 import { hasVideo, randInt, validateConfig, getTodayDateString, getOrderedPlayers, reactToMessage, getOrderingUpset, sleep, toPointsMap, getLeastRecentPlayers, randChoice, getMonthDayString, getTomorrow, getOrderingUpsets, generateKMeansClusters } from './util.js';
@@ -129,7 +129,7 @@ const chooseEvent = (date: Date): DailyEvent => {
     }
     // Determine which player (if any) should be beckoned on this date
     const potentialBeckonees: Snowflake[] = getLeastRecentPlayers(state.players, 5);
-    if (potentialBeckonees.length > 0 && Math.random() < 0.2) {
+    if (potentialBeckonees.length > 0 && Math.random() < 0.25) {
         return {
             type: DailyEventType.Beckoning,
             beckoning: randChoice(...potentialBeckonees)
@@ -157,6 +157,12 @@ const chooseEvent = (date: Date): DailyEvent => {
         return {
             type: DailyEventType.ReverseGoodMorning,
             reverseGMRanks: {}
+        };
+    }
+    // Do a grumpy morning
+    if (Math.random() < 0.075) {
+        return {
+            type: DailyEventType.GrumpyMorning
         };
     }
 };
@@ -187,6 +193,9 @@ const sendGoodMorningMessage = async (): Promise<void> => {
             break;
         case DailyEventType.Beckoning:
             await messenger.send(goodMorningChannel, languageGenerator.generate('{beckoning.goodMorning?}').replace(/\$player/g, `<@${state.event.beckoning}>`));
+            break;
+        case DailyEventType.GrumpyMorning:
+            await messenger.send(goodMorningChannel, languageGenerator.generate('{grumpyMorning}'));
             break;
         default:
             // Otherwise, send the standard GM message as normal
@@ -645,6 +654,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 pointsEarned: 0
             };
         }
+        const daily: DailyPlayerState = state.dailyStatus[userId];
 
         // Initialize player data if it doesn't exist
         if (state.players[userId] === undefined) {
@@ -670,11 +680,13 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             const messageHasVideo: boolean = hasVideo(msg);
             const triggerMonkeyFriday: boolean = isFriday && messageHasVideo;
             // Separately award points and reply for monkey friday videos (this lets users post videos after saying good morning)
-            if (triggerMonkeyFriday && state.dailyStatus[userId].videoRank === undefined) {
+            if (triggerMonkeyFriday && daily.videoRank === undefined) {
                 const videoRank = Object.values(state.dailyStatus).filter(x => x.videoRank !== undefined).length + 1;
-                state.dailyStatus[userId].videoRank = videoRank;
-                const priorPoints: number = player.points || 0;
-                player.points = priorPoints + (config.awardsByRank[videoRank] ?? config.defaultAward);
+                daily.videoRank = videoRank;
+                // Award MF points and update point-related data
+                const pointsEarned: number = config.awardsByRank[videoRank] ?? config.defaultAward;
+                player.points += pointsEarned;
+                daily.pointsEarned += pointsEarned;
                 dumpState();
                 // Reply or react to the message depending on the video rank
                 if (videoRank === 1) {
@@ -684,12 +696,27 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 }
             }
             // In the morning, award the player accordingly if it's their first message...
-            if (state.dailyStatus[userId].rank === undefined) {
+            if (daily.rank === undefined) {
                 // Very first thing to do is to update the player's displayName (only do this here since it's pretty expensive)
                 state.players[userId].displayName = await getDisplayName(userId);
 
+                // If it's a "grumpy" morning and no one has said anything yet, punish the player (but don't assign a rank, so player may still say good morning)
+                if (state.event?.type === DailyEventType.GrumpyMorning && !state.event.disabled) {
+                    // Deduct points and update point-related data
+                    const penalty = 1;
+                    player.points -= penalty;
+                    daily.pointsLost = (daily.pointsLost ?? 0) + penalty;
+                    player.penalties = (player.penalties ?? 0) + 1;
+                    // Disable the grumpy event and dump the state
+                    state.event.disabled = true;
+                    dumpState();
+                    // React to the user grumpily
+                    reactToMessage(msg, '😡');
+                    return;
+                }
+
                 const rank: number = Object.values(state.dailyStatus).filter(status => status.rank !== undefined).length + 1;
-                state.dailyStatus[userId].rank = rank;
+                daily.rank = rank;
 
                 // If user is first, update the combo state accordingly
                 let comboDaysBroken: number = 0;
@@ -732,10 +759,9 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 // Update the user's points and dump the state
                 const priorPoints: number = player.points || 0;
                 const awarded: number = isNovelMessage ? (config.awardsByRank[rank] ?? config.defaultAward) : config.defaultAward;
-                // TODO: This number doesn't take into account monkey friday points. Remove?
                 const pointsEarned: number = awarded + comboBreakingPoints + beckonedBonus;
-                player.points = priorPoints + pointsEarned;
-                state.dailyStatus[userId].pointsEarned += pointsEarned;
+                player.points += pointsEarned;
+                daily.pointsEarned += pointsEarned;
                 dumpState();
                 // Add this user's message to the R9K text bank
                 r9k.add(msg.content);
@@ -745,8 +771,8 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     const afterOrderings: Snowflake[] = getOrderedPlayers(state.players);
                     const orderingUpsets: string[] = getOrderingUpset(userId, beforeOrderings, afterOrderings);
                     if (orderingUpsets.length > 0) {
-                        const joinedUpsettees = orderingUpsets.map(x => `<@${x}>`).join(', ');
-                        guildOwnerDmChannel.send(`<@${userId}> has overtaken ${joinedUpsettees}`);
+                        const joinedUpsettees = orderingUpsets.map(x => `**${state.players[x]?.displayName}**`).join(', ');
+                        guildOwnerDmChannel.send(`**${player.displayName}** has overtaken ${joinedUpsettees}`);
                     }
                 } catch (err) {
                     guildOwnerDmChannel.send('Failed to compute ordering upsets: ' + err.message);
@@ -804,23 +830,23 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
 
             let pointsDeducted: number = 0;
             // It's not morning, so punish the player accordingly...
-            if (state.dailyStatus[userId].penalized) {
+            if (daily.pointsLost) {
                 // Deduct a half point for repeat offenses
                 pointsDeducted = 0.5;
             } else {
                 // If this is the user's first penalty since last morning, react to the message and deduct one
                 pointsDeducted = 1;
-                state.dailyStatus[userId].penalized = true;
                 if (isAm) {
                     reactToMessage(msg, '😴');
                 } else {
                     reactToMessage(msg, ['😡', '😬', '😒', '😐']);
                 }
             }
+            // Deduct points from the player
             player.points -= pointsDeducted;
-            state.dailyStatus[userId].pointsEarned -= pointsDeducted;
+            daily.pointsLost = (daily.pointsLost ?? 0) + pointsDeducted;
             // Increment user's penalty count then dump the state
-            state.players[userId].penalties = (state.players[userId].penalties ?? 0) + 1;
+            player.penalties = (player.penalties ?? 0) + 1;
             dumpState();
             // Reply if the user has hit a certain threshold
             if (player.points === -5) {

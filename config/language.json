@@ -151,6 +151,7 @@
     },
     "goodMorning": "{phrases.morningIntro?}! {phrases.wellWish?}",
     "happyFriday": "Happy Friday! {phrases.wellWish?} 🐒",
+    "grumpyMorning": "{!Hello|Hey|Morning} everyone, honestly I'm not feeling too {!good|great} {!this morning|today}... I encourage you all to say good morning, but the first {!one|person} to say it is gonna {!piss me off|irritate me|really bug me}.",
     "weeklyUpdate": "{!Good morning|Happy Sunday}! {phrases.seasonUpdate?}",
     "leaderShift": [
         "$old is no longer the {!king|prince} of spreading Good Morning cheer, that title now belongs to $new!",

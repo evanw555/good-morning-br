@@ -28,7 +28,7 @@ export interface GoodMorningConfig {
 export interface DailyPlayerState {
     rank?: number,
     videoRank?: number,
-    penalized?: boolean,
+    pointsLost?: number,
     pointsEarned: number
 }
 
@@ -51,14 +51,16 @@ export enum DailyEventType {
     OverriddenMessage = 'OVERRIDDEN_MESSAGE',
     Beckoning = 'BECKONING',
     GuestReveille = 'GUEST_REVEILLE',
-    ReverseGoodMorning = 'REVERSE_GOOD_MORNING'
+    ReverseGoodMorning = 'REVERSE_GOOD_MORNING',
+    GrumpyMorning = 'GRUMPY_MORNING'
 }
 
 export interface DailyEvent {
     type: DailyEventType,
     beckoning?: Snowflake,
     reveiller?: Snowflake,
-    reverseGMRanks?: Record<Snowflake, number>
+    reverseGMRanks?: Record<Snowflake, number>,
+    disabled?: boolean
 }
 
 export interface GoodMorningState {
