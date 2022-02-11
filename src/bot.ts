@@ -342,6 +342,8 @@ const TIMEOUT_CALLBACKS = {
         await wakeUp(true);
     },
     [TimeoutType.NextPreNoon]: async (): Promise<void> => {
+        // TODO: Can we do an "emergency bot wake-up" here? (in case of slacking reveiller)
+
         // First, determine if the end of the season has come
         const seasonGoalReached: boolean = getTopScore() >= state.goal;
 
@@ -360,6 +362,23 @@ const TIMEOUT_CALLBACKS = {
             state.currentLeader = newLeader;
         }
 
+        // Determine event for tomorrow
+        const nextEvent: DailyEvent = chooseEvent(getTomorrow());
+        if (nextEvent && !seasonGoalReached) {
+            state.nextEvent = nextEvent;
+            // TODO: temporary message to tell admin when a special event has been selected, remove this soon
+            await messenger.send(guildOwnerDmChannel, `Event for tomorrow has been selected: \`${JSON.stringify(nextEvent)}\``);
+            // Depending on the type of event chosen for tomorrow, send out a special message
+            if (nextEvent.type === DailyEventType.GuestReveille) {
+                await messenger.send(goodMorningChannel, languageGenerator.generate('{reveille.summon}').replace(/\$player/g, `<@${nextEvent.reveiller}>`));
+            } else if (nextEvent.type === DailyEventType.ReverseGoodMorning) {
+                const text = 'Tomorrow morning will be a _Reverse_ Good Morning! '
+                    + 'Instead of saying good morning after me, you should say good morning _before_ me. '
+                    + 'The last ones to say it before I wake up will be the most appreciated 🙂';
+                await messenger.send(goodMorningChannel, text);
+            }
+        }
+
         // Dump state
         await dumpState();
     },
@@ -370,22 +389,9 @@ const TIMEOUT_CALLBACKS = {
         // Update basic state properties
         state.isMorning = false;
 
-        // Determine event for tomorrow
-        // TODO: Ideally we could send this at pre-noon, but we don't want the state messing up by having a new event at morning...
-        state.event = chooseEvent(getTomorrow());
-        if (state.event) {
-            // TODO: temporary message to tell admin when a special event has been selected, remove this soon
-            await messenger.send(guildOwnerDmChannel, `Event for tomorrow has been selected: \`${JSON.stringify(state.event)}\``);
-            // Depending on the type of event chosen for tomorrow, send out a special message
-            if (state.event.type === DailyEventType.GuestReveille) {
-                await messenger.send(goodMorningChannel, languageGenerator.generate('{reveille.summon}').replace(/\$player/g, `<@${state.event.reveiller}>`));
-            } else if (state.event.type === DailyEventType.ReverseGoodMorning) {
-                const text = 'Tomorrow morning will be a _Reverse_ Good Morning! '
-                    + 'Instead of saying "good morning" after me, you should say "good morning" _before_ me. '
-                    + 'The last ones to say it before I wake up will be the most appreciated 🙂';
-                await messenger.send(goodMorningChannel, text);
-            }
-        }
+        // Activate the queued up event
+        state.event = state.nextEvent;
+        delete state.nextEvent;
 
         // Register timeout for tomorrow's good morning message (if not waiting on a reveiller)
         if (state.event?.type !== DailyEventType.GuestReveille) {
@@ -753,7 +759,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 }
 
                 // Compute beckoning bonus and reset the state beckoning property if needed
-                const wasBeckoned: boolean = msg.author.id === state.event?.beckoning;
+                const wasBeckoned: boolean = state.event?.type === DailyEventType.Beckoning && msg.author.id === state.event.beckoning;
                 const beckonedBonus: number = wasBeckoned ? config.awardsByRank[1] : 0;
 
                 // Update the user's points and dump the state
@@ -819,7 +825,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
         } else {
             // If the bot hasn't woken up yet and it's a reverse GM, react and track the rank of each player for now...
             // TODO: Clean this up! Doesn't even take R9K into account
-            if (isAm && state.event?.type === DailyEventType.ReverseGoodMorning) {
+            if (state.event?.type === DailyEventType.ReverseGoodMorning && isAm) {
                 if (state.event.reverseGMRanks[userId] === undefined) {
                     state.event.reverseGMRanks[userId] = new Date().getTime();
                     reactToMessage(msg, state.goodMorningEmoji);

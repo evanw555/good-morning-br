@@ -60,6 +60,7 @@ export interface DailyEvent {
     beckoning?: Snowflake,
     reveiller?: Snowflake,
     reverseGMRanks?: Record<Snowflake, number>,
+    // Used specifically for the "grumpy morning" event
     disabled?: boolean
 }
 
@@ -73,6 +74,7 @@ export interface GoodMorningState {
     currentLeader?: Snowflake,
     combo?: Combo,
     event?: DailyEvent,
+    nextEvent?: DailyEvent,
     dailyStatus: Record<Snowflake, DailyPlayerState>,
     players: Record<Snowflake, PlayerState>
 }
