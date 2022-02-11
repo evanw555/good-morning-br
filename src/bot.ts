@@ -530,7 +530,11 @@ client.on('ready', async (): Promise<void> => {
     await loadR9KHashes();
     await timeoutManager.loadTimeouts();
 
-    await guildOwnerDmChannel?.send(`Bot had to restart... next date is ${timeoutManager.getDate(TimeoutType.NextGoodMorning).toString()}`);
+    if (timeoutManager.hasTimeout(TimeoutType.NextGoodMorning)) {
+        await guildOwnerDmChannel?.send(`Bot had to restart... next date is ${timeoutManager.getDate(TimeoutType.NextGoodMorning).toString()}`);
+    } else {
+        await guildOwnerDmChannel?.send('Bot had to restart... _no good morning timeout scheduled!_');
+    }
 
     // Update the bot's status
     await setStatus(state.isMorning);
