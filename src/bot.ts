@@ -142,14 +142,14 @@ const chooseEvent = (date: Date): DailyEvent => {
     }
     // Determine which player (if any) should be beckoned on this date
     const potentialBeckonees: Snowflake[] = getLeastRecentPlayers(state.players, 5);
-    if (potentialBeckonees.length > 0 && Math.random() < 0.25) {
+    if (potentialBeckonees.length > 0 && Math.random() < 0.4) {
         return {
             type: DailyEventType.Beckoning,
             beckoning: randChoice(...potentialBeckonees)
         };
     }
     // Assign a random guest reveiller
-    if (Math.random() < 0.1) {
+    if (Math.random() < 0.15) {
         const orderedPlayers: Snowflake[] = getOrderedPlayers(state.players);
         const potentialReveillers = orderedPlayers
             // The first-place player cannot be the guest reveiller (and neither can the bottom quarter of players)
@@ -166,24 +166,24 @@ const chooseEvent = (date: Date): DailyEvent => {
         }
     }
     // Do a "reverse" good morning
-    if (Math.random() < 0.1) {
+    if (Math.random() < 0.15) {
         return {
             type: DailyEventType.ReverseGoodMorning,
             reverseGMRanks: {}
         };
     }
-    // Do a grumpy morning
-    if (Math.random() < 0.075) {
-        return {
-            type: DailyEventType.GrumpyMorning
-        };
-    }
     // Do anonymous submissions
-    if (Math.random() < 0.1) {
+    if (Math.random() < 0.15) {
         return {
             type: DailyEventType.AnonymousSubmissions,
-            submissionType: randChoice("haiku", "poem", "short story", "motivational message"),
+            submissionType: randChoice("haiku", "poem"), // TODO: Add new ones such as "short story", "motivational message" once this has happened a couple times
             submissions: {}
+        };
+    }
+    // Do a grumpy morning
+    if (Math.random() < 0.1) {
+        return {
+            type: DailyEventType.GrumpyMorning
         };
     }
 };
