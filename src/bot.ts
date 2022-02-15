@@ -166,14 +166,14 @@ const chooseEvent = (date: Date): DailyEvent => {
         }
     }
     // Do a "reverse" good morning
-    if (Math.random() < 0.15) {
+    if (Math.random() < 0.1) {
         return {
             type: DailyEventType.ReverseGoodMorning,
             reverseGMRanks: {}
         };
     }
     // Do anonymous submissions
-    if (Math.random() < 0.15) {
+    if (Math.random() < 0.1) {
         return {
             type: DailyEventType.AnonymousSubmissions,
             submissionType: randChoice("haiku", "poem"), // TODO: Add new ones such as "short story", "motivational message" once this has happened a couple times
@@ -282,7 +282,7 @@ const setStatus = async (active: boolean): Promise<void> => {
 
 const registerGoodMorningTimeout = async (): Promise<void> => {
     const MIN_HOUR: number = 6;
-    const MAX_HOUR_EXCLUSIVE: number = (state.event?.type === DailyEventType.AnonymousSubmissions) ? 8 : 11;
+    const MAX_HOUR_EXCLUSIVE: number = (state.event?.type === DailyEventType.AnonymousSubmissions) ? 8 : 10;
 
     const morningTomorrow: Date = new Date();
     // Set date as tomorrow if it's after the earliest possible morning time
