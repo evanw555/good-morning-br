@@ -73,7 +73,7 @@ export interface DailyEvent {
     disabled?: boolean
 }
 
-export interface GoodMorningState {
+export interface RawGoodMorningState {
     season: number,
     goal: number,
     startedOn: string,

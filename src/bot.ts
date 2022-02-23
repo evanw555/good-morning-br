@@ -1,9 +1,10 @@
 import { Client, DMChannel, Intents, MessageAttachment } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'discord.js';
-import { DailyEvent, DailyEventType, DailyPlayerState, GoodMorningConfig, GoodMorningHistory, GoodMorningState, PlayerState, Season, TimeoutType } from './types.js';
+import { DailyEvent, DailyEventType, DailyPlayerState, GoodMorningConfig, GoodMorningHistory, PlayerState, Season, TimeoutType, Combo } from './types.js';
 import TimeoutManager from './timeout-manager.js';
 import { createMidSeasonUpdateImage, createSeasonResultsImage } from './graphics.js';
-import { hasVideo, randInt, validateConfig, getTodayDateString, getOrderedPlayers, reactToMessage, getOrderingUpset, sleep, toPointsMap, getLeastRecentPlayers, randChoice, getMonthDayString, getTomorrow, getOrderingUpsets, generateKMeansClusters } from './util.js';
+import { hasVideo, randInt, validateConfig, getTodayDateString, reactToMessage, getOrderingUpset, sleep, randChoice, getMonthDayString, getTomorrow, generateKMeansClusters } from './util.js';
+import GoodMorningState from './state.js';
 
 import { loadJson } from './load-json.js';
 const auth = loadJson('config/auth.json');
@@ -49,34 +50,12 @@ const getDisplayName = async (userId: Snowflake): Promise<string> => {
     }
 }
 
-const getTopScore = (): number => {
-    return Math.max(...Object.values(state.players).map(player => player.points));
-};
-
-/**
- * Initialize the player state data for a given user, if it doesn't exist.
- */
-const initializePlayer = async (userId: Snowflake): Promise<void> => {
-    if (state.players[userId] === undefined) {
-        state.players[userId] = {
-            displayName: await getDisplayName(userId),
-            points: 0
-        }
-    }
-};
-
 const advanceSeason = async (): Promise<Season> => {
     // Add new entry for this season
-    const newHistoryEntry: Season = {
-        season: state.season,
-        startedOn: state.startedOn,
-        finishedOn: getTodayDateString(),
-        points: toPointsMap(state.players),
-        goal: state.goal
-    };
+    const newHistoryEntry: Season = state.toHistorySeasonEntry();
     history.seasons.push(newHistoryEntry);
     // Compute medals
-    const orderedUserIds = getOrderedPlayers(state.players);
+    const orderedUserIds = state.getOrderedPlayers();
     const winners = {
         gold: orderedUserIds[0],
         silver: orderedUserIds[1],
@@ -98,12 +77,12 @@ const advanceSeason = async (): Promise<Season> => {
     });
     // Send the final state to the guild owner one last time before wiping it
     if (guildOwnerDmChannel) {
-        await guildOwnerDmChannel.send(`The final state of season **${state.season}** before it's wiped:`);
-        await messenger.sendLargeMonospaced(guildOwnerDmChannel, JSON.stringify(state, null, 2));
+        await guildOwnerDmChannel.send(`The final state of season **${state.getSeasonNumber()}** before it's wiped:`);
+        await messenger.sendLargeMonospaced(guildOwnerDmChannel, state.toJson());
     }
     // Reset the state
-    const nextSeason: number = state.season + 1;
-    state = {
+    const nextSeason: number = state.getSeasonNumber() + 1;
+    state = new GoodMorningState({
         season: nextSeason,
         goal: config.seasonGoal,
         startedOn: getTodayDateString(),
@@ -112,7 +91,7 @@ const advanceSeason = async (): Promise<Season> => {
         goodMorningEmoji: config.defaultGoodMorningEmoji,
         dailyStatus: {},
         players: {}
-    };
+    }, getDisplayName);
     // Dump the state and history
     await dumpState();
     await dumpHistory();
@@ -141,8 +120,8 @@ const chooseEvent = (date: Date): DailyEvent => {
         };
     }
     // Determine which player (if any) should be beckoned on this date
-    const potentialBeckonees: Snowflake[] = getLeastRecentPlayers(state.players, 5);
-    if (potentialBeckonees.length > 0 && Math.random() < 0.4) {
+    const potentialBeckonees: Snowflake[] = state.getLeastRecentPlayers(6);
+    if (potentialBeckonees.length > 0 && Math.random() < 0.25) {
         return {
             type: DailyEventType.Beckoning,
             beckoning: randChoice(...potentialBeckonees)
@@ -150,13 +129,7 @@ const chooseEvent = (date: Date): DailyEvent => {
     }
     // Assign a random guest reveiller
     if (Math.random() < 0.15) {
-        const orderedPlayers: Snowflake[] = getOrderedPlayers(state.players);
-        const potentialReveillers = orderedPlayers
-            // The first-place player cannot be the guest reveiller (and neither can the bottom quarter of players)
-            .slice(1, Math.floor(orderedPlayers.length * 0.75))
-            // Only players who said good morning today can be reveillers
-            .filter((userId) => state.players[userId].daysSinceLastGoodMorning === undefined);
-
+        const potentialReveillers: Snowflake[] = state.getPotentialReveillers();
         if (potentialReveillers.length > 0) {
             const guestReveiller: Snowflake = randChoice(...potentialReveillers);
             return {
@@ -190,10 +163,10 @@ const chooseEvent = (date: Date): DailyEvent => {
 
 const sendGoodMorningMessage = async (): Promise<void> => {
     if (goodMorningChannel) {
-        switch (state.event?.type) {
+        switch (state.getEventType()) {
         case DailyEventType.RecapSunday:
             // TODO: This logic makes some assumptions... fix it!
-            const orderedPlayers: Snowflake[] = getOrderedPlayers(state.players);
+            const orderedPlayers: Snowflake[] = state.getOrderedPlayers();
             const top: Snowflake = orderedPlayers[0];
             const second: Snowflake = orderedPlayers[1];
 
@@ -201,7 +174,7 @@ const sendGoodMorningMessage = async (): Promise<void> => {
 
             // TODO: We definitely should be doing this via parameters in the generation itself...
             await messenger.send(goodMorningChannel, languageGenerator.generate('{weeklyUpdate}')
-                .replace(/\$season/g, state.season.toString())
+                .replace(/\$season/g, state.getSeasonNumber().toString())
                 .replace(/\$top/g, top)
                 .replace(/\$second/g, second));
             await goodMorningChannel.send({ files: [attachment] });
@@ -213,14 +186,14 @@ const sendGoodMorningMessage = async (): Promise<void> => {
             await messenger.send(goodMorningChannel, languageGenerator.generate(config.goodMorningMessageOverrides[getMonthDayString(new Date())] ?? '{goodMorning}'));
             break;
         case DailyEventType.Beckoning:
-            await messenger.send(goodMorningChannel, languageGenerator.generate('{beckoning.goodMorning?}').replace(/\$player/g, `<@${state.event.beckoning}>`));
+            await messenger.send(goodMorningChannel, languageGenerator.generate('{beckoning.goodMorning?}').replace(/\$player/g, `<@${state.getEvent().beckoning}>`));
             break;
         case DailyEventType.GrumpyMorning:
             await messenger.send(goodMorningChannel, languageGenerator.generate('{grumpyMorning}'));
             break;
         case DailyEventType.AnonymousSubmissions:
             const text = `Good morning! Today is a special one. Rather than sending your good morning messages here for all to see, `
-                + `I'd like you write a special Good Morning ${state.event.submissionType} and send it directly to me via DM! `
+                + `I'd like you write a special Good Morning ${state.getEvent().submissionType} and send it directly to me via DM! `
                 + `At 10:30, I'll post them here anonymously and you'll all be voting on your favorites 😉`;
             await messenger.send(goodMorningChannel, text);
             break;
@@ -235,9 +208,9 @@ const sendGoodMorningMessage = async (): Promise<void> => {
 };
 
 const sendSeasonEndMessages = async (channel: TextBasedChannels, previousState: GoodMorningState): Promise<void> => {
-    const winner: Snowflake = getOrderedPlayers(previousState.players)[0];
-    const newSeason: number = previousState.season + 1;
-    await messenger.send(channel, `Well everyone, season **${previousState.season}** has finally come to an end!`);
+    const winner: Snowflake = previousState.getTopPlayer();
+    const newSeason: number = previousState.getSeasonNumber() + 1;
+    await messenger.send(channel, `Well everyone, season **${previousState.getSeasonNumber()}** has finally come to an end!`);
     await messenger.send(channel, 'Thanks to all those who have participated. You have made these mornings bright and joyous for not just me, but for everyone here 🌞');
     await sleep(10000);
     await messenger.send(channel, 'In a couple minutes, I\'ll reveal the winners and the final standings...');
@@ -282,7 +255,7 @@ const setStatus = async (active: boolean): Promise<void> => {
 
 const registerGoodMorningTimeout = async (): Promise<void> => {
     const MIN_HOUR: number = 6;
-    const MAX_HOUR_EXCLUSIVE: number = (state.event?.type === DailyEventType.AnonymousSubmissions) ? 8 : 10;
+    const MAX_HOUR_EXCLUSIVE: number = (state.getEventType() === DailyEventType.AnonymousSubmissions) ? 8 : 10;
 
     const morningTomorrow: Date = new Date();
     // Set date as tomorrow if it's after the earliest possible morning time
@@ -297,18 +270,16 @@ const registerGoodMorningTimeout = async (): Promise<void> => {
 
 const wakeUp = async (sendMessage: boolean): Promise<void> => {
     // If attempting to wake up while already awake, warn the admin and abort
-    if (state.isMorning) {
+    if (state.isMorning()) {
         guildOwnerDmChannel.send('WARNING! Attempted to wake up while `state.isMorning` is already `true`');
         return;
     }
 
     // Increment "days since last good morning" counters for all participating users
-    Object.keys(state.players).forEach((userId) => {
-        state.players[userId].daysSinceLastGoodMorning = (state.players[userId].daysSinceLastGoodMorning ?? 0) + 1;
-    });
+    state.incrementAllLGMs();
 
     // Set today's positive react emoji
-    state.goodMorningEmoji = config.goodMorningEmojiOverrides[getMonthDayString(new Date())] ?? config.defaultGoodMorningEmoji;
+    state.setGoodMorningEmoji(config.goodMorningEmojiOverrides[getMonthDayString(new Date())] ?? config.defaultGoodMorningEmoji);
 
     // Set timeout for when morning ends (if they're in the future)
     const now = new Date();
@@ -324,7 +295,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     }
 
     // Set timeout for anonymous submission reveal
-    if (state.event?.type === DailyEventType.AnonymousSubmissions) {
+    if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
         const submissionRevealTime = new Date();
         submissionRevealTime.setHours(10, 30, 0, 0);
         await timeoutManager.registerTimeout(TimeoutType.AnonymousSubmissionReveal, submissionRevealTime);
@@ -340,26 +311,23 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     }
 
     // Reset the daily state
-    state.isMorning = true;
-    state.isGracePeriod = false;
-    state.dailyStatus = {};
+    state.setMorning(true);
+    state.setGracePeriod(false);
+    state.resetDailyState();
 
     // Process "reverse" GM ranks
-    if (state.event?.type === DailyEventType.ReverseGoodMorning) {
-        const mostRecentUsers: Snowflake[] = Object.keys(state.event.reverseGMRanks);
-        mostRecentUsers.sort((x, y) => state.event.reverseGMRanks[y] - state.event.reverseGMRanks[x]);
+    if (state.getEventType() === DailyEventType.ReverseGoodMorning) {
+        const mostRecentUsers: Snowflake[] = Object.keys(state.getEvent().reverseGMRanks);
+        mostRecentUsers.sort((x, y) => state.getEvent().reverseGMRanks[y] - state.getEvent().reverseGMRanks[x]);
         // Process the users in order of most recent reverse GM message
         for (let i = 0; i < mostRecentUsers.length; i++) {
             const userId: Snowflake = mostRecentUsers[i];
             const rank: number = i + 1;
             const pointsEarned: number = config.awardsByRank[rank] ?? config.defaultAward;
             // Dump the rank info into the daily status map and assign points accordingly
-            state.dailyStatus[userId] = {
-                rank,
-                pointsEarned
-            };
-            state.players[userId].points += pointsEarned;
-            delete state.players[userId].daysSinceLastGoodMorning;
+            state.awardPoints(userId, pointsEarned);
+            state.setDailyRank(userId, rank);
+            state.resetDaysSinceLGM(userId);
         }
         // Send a message to the channel tagging the respective players
         if (mostRecentUsers.length >= 3) {
@@ -379,14 +347,14 @@ const TIMEOUT_CALLBACKS = {
         // TODO: Can we do an "emergency bot wake-up" here? (in case of slacking reveiller)
 
         // Before anything else, check the results of anonymous submissions
-        if (state.event?.type === DailyEventType.AnonymousSubmissions) {
+        if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
             const scores: Record<Snowflake, number> = {};
 
             // First, count the reacts and compute the score
-            const userIds: Snowflake[] = Object.keys(state.event.anonymousMessagesByOwner);
+            const userIds: Snowflake[] = Object.keys(state.getEvent().anonymousMessagesByOwner);
             for (let i = 0; i < userIds.length; i++) {
                 const userId: Snowflake = userIds[i];
-                const messageId: Snowflake = state.event.anonymousMessagesByOwner[userId];
+                const messageId: Snowflake = state.getEvent().anonymousMessagesByOwner[userId];
                 const message: Message = await goodMorningChannel.messages.fetch(messageId);
                 const upvotes: number = message.reactions.resolve(config.defaultGoodMorningEmoji).count;
                 const downvotes: number = message.reactions.resolve(config.downvoteEmoji).count;
@@ -402,18 +370,14 @@ const TIMEOUT_CALLBACKS = {
                 const rank: number = i + 1;
                 // If the player received a negative score, award no points
                 const pointsEarned: number = score < 0 ? 0 : (config.largeAwardsByRank[rank] ?? config.defaultAward);
-                state.dailyStatus[userId] = {
-                    rank,
-                    pointsEarned
-                };
-                await initializePlayer(userId);
-                state.players[userId].points += pointsEarned;
-                delete state.players[userId].daysSinceLastGoodMorning;
+                state.awardPoints(userId, pointsEarned);
+                state.setDailyRank(userId, rank);
+                state.resetDaysSinceLGM(userId);
             }
 
             // Finally, send congrats messages
             if (userIds[0]) {
-                await messenger.send(goodMorningChannel, `Congrats to <@${userIds[0]}> for sending the best Good Morning ${state.event.submissionType}!`);
+                await messenger.send(goodMorningChannel, `Congrats to <@${userIds[0]}> for sending the best Good Morning ${state.getEvent().submissionType}!`);
             }
             if (userIds[1] && userIds[2]) {
                 await messenger.send(goodMorningChannel, `Congrats as well to the runners-up <@${userIds[1]}> and <@${userIds[2]}>!`);
@@ -426,31 +390,25 @@ const TIMEOUT_CALLBACKS = {
             await sleep(10000);
         }
 
-        // First, determine if the end of the season has come
-        const seasonGoalReached: boolean = getTopScore() >= state.goal;
-
         // Update current leader property
-        const newLeader: Snowflake = getOrderedPlayers(state.players)[0];
-        state.currentLeader = state.currentLeader ?? newLeader;
-        if (newLeader !== state.currentLeader) {
-            const previousLeader = state.currentLeader;
+        const previousLeader: Snowflake = state.getCurrentLeader();
+        const leaderUpset: boolean = state.updateCurrentLeader();
+        if (leaderUpset) {
+            const newLeader: Snowflake = state.getCurrentLeader();
             // If it's not the end of the season, notify the channel of the leader shift
-            if (!seasonGoalReached) {
+            if (!state.isSeasonGoalReached()) {
                 await messenger.send(goodMorningChannel, languageGenerator.generate('{leaderShift?}')
                     .replace(/\$old/g, `<@${previousLeader}>`)
                     .replace(/\$new/g, `<@${newLeader}>`));
             }
-            // Update the state property so it can be compared tomorrow
-            state.currentLeader = newLeader;
-
             // Sleep to provide a buffer in case more messages need to be sent
             await sleep(10000);
         }
 
         // Determine event for tomorrow
         const nextEvent: DailyEvent = chooseEvent(getTomorrow());
-        if (nextEvent && !seasonGoalReached) {
-            state.nextEvent = nextEvent;
+        if (nextEvent && !state.isSeasonGoalReached()) {
+            state.setNextEvent(nextEvent);
             // TODO: temporary message to tell admin when a special event has been selected, remove this soon
             await messenger.send(guildOwnerDmChannel, `Event for tomorrow has been selected: \`${JSON.stringify(nextEvent)}\``);
             // Depending on the type of event chosen for tomorrow, send out a special message
@@ -468,18 +426,14 @@ const TIMEOUT_CALLBACKS = {
         await dumpState();
     },
     [TimeoutType.NextNoon]: async (): Promise<void> => {
-        // First, determine if the end of the season has come
-        const seasonGoalReached: boolean = getTopScore() >= state.goal;
-
         // Update basic state properties
-        state.isMorning = false;
+        state.setMorning(false);
 
         // Activate the queued up event
-        state.event = state.nextEvent;
-        delete state.nextEvent;
+        state.dequeueNextEvent();
 
         // Register timeout for tomorrow's good morning message (if not waiting on a reveiller)
-        if (state.event?.type !== DailyEventType.GuestReveille) {
+        if (state.getEventType() !== DailyEventType.GuestReveille) {
             await registerGoodMorningTimeout();
         }
 
@@ -488,7 +442,7 @@ const TIMEOUT_CALLBACKS = {
         await dumpR9KHashes();
 
         // If anyone's score is above the season goal, then proceed to the next season
-        if (seasonGoalReached) {
+        if (state.isSeasonGoalReached()) {
             const previousState: GoodMorningState = state;
             await advanceSeason();
             await sendSeasonEndMessages(goodMorningChannel, previousState);
@@ -501,14 +455,14 @@ const TIMEOUT_CALLBACKS = {
         await messenger.send(goodMorningChannel, `Here are your anonymous submissions! Use ${config.defaultGoodMorningEmoji} to upvote and ${config.downvoteEmoji} to downvote...`);
 
         // Get all the relevant user IDs and shuffle them
-        const userIds: Snowflake[] = Object.keys(state.event.submissions);
+        const userIds: Snowflake[] = Object.keys(state.getEvent().submissions);
         userIds.sort((x, y) => Math.random() - Math.random());
 
         // For each submission (in shuffled order)...
-        state.event.anonymousMessagesByOwner = {};
+        state.getEvent().anonymousMessagesByOwner = {};
         for (let i = 0; i < userIds.length; i++) {
             const userId: Snowflake = userIds[i];
-            const submission: string = state.event.submissions[userId];
+            const submission: string = state.getEvent().submissions[userId];
 
             // Send the message out and provide the expected emoji reacts
             const message: Message = await messenger.sendAndGet(goodMorningChannel, submission);
@@ -516,14 +470,14 @@ const TIMEOUT_CALLBACKS = {
             await reactToMessage(message, config.downvoteEmoji);
 
             // Track the message ID keyed by user ID
-            state.event.anonymousMessagesByOwner[userId] = message.id;
+            state.getEvent().anonymousMessagesByOwner[userId] = message.id;
 
             // Take a long pause
             await sleep(30000);
         }
 
         // Deleting the submissions map will prevent action taken on further DMs
-        delete state.event.submissions;
+        delete state.getEvent().submissions;
     }
 };
 
@@ -531,22 +485,14 @@ const timeoutManager = new TimeoutManager(storage, TIMEOUT_CALLBACKS);
 
 const loadState = async (): Promise<void> => {
     try {
-        state = await storage.readJson('state');
+        state = new GoodMorningState(await storage.readJson('state'), getDisplayName);
         // Temporary logic to initialize newly introduced properties
-        if (state.goal === undefined) {
-            state.goal = config.seasonGoal;
-        }
-        if (state['points']) {
-            delete state['points'];
-        }
-        if (state['daysSinceLastGoodMorning']) {
-            delete state['daysSinceLastGoodMorning'];
-        }
+        // ...
     } catch (err) {
         // Specifically check for file-not-found errors to make sure we don't overwrite anything
         if (err.code === 'ENOENT') {
             console.log('Existing state file not found, creating a fresh state...');
-            state = {
+            state = new GoodMorningState({
                 season: 1,
                 goal: config.seasonGoal,
                 startedOn: getTodayDateString(),
@@ -555,7 +501,7 @@ const loadState = async (): Promise<void> => {
                 goodMorningEmoji: config.defaultGoodMorningEmoji,
                 dailyStatus: {},
                 players: {}
-            };
+            }, getDisplayName);
             await dumpState();
         } else if (guildOwnerDmChannel) {
             guildOwnerDmChannel.send(`Unhandled exception while loading state file:\n\`\`\`${err.message}\`\`\``);
@@ -564,7 +510,7 @@ const loadState = async (): Promise<void> => {
 };
 
 const dumpState = async (): Promise<void> => {
-    await storage.write('state', JSON.stringify(state, null, 2));
+    await storage.write('state', state.toJson());
 };
 
 const loadHistory = async (): Promise<void> => {
@@ -650,7 +596,7 @@ client.on('ready', async (): Promise<void> => {
     }
 
     // Update the bot's status
-    await setStatus(state.isMorning);
+    await setStatus(state.isMorning());
 });
 
 const processCommands = async (msg: Message): Promise<void> => {
@@ -680,19 +626,19 @@ const processCommands = async (msg: Message): Promise<void> => {
         if (sanitizedText.includes('clusters')) {
             // msg.reply(JSON.stringify(generateKMeansClusters(state.points, 3)));
             const k: number = parseInt(sanitizedText.split(' ')[0]);
-            msg.reply(JSON.stringify(generateKMeansClusters(toPointsMap(state.players), k)));
+            msg.reply(JSON.stringify(generateKMeansClusters(state.toPointsMap(), k)));
         }
         // Return the order info
         else if (sanitizedText.includes('order') || sanitizedText.includes('rank') || sanitizedText.includes('winning') || sanitizedText.includes('standings')) {
-            msg.reply(getOrderedPlayers(state.players)
+            msg.reply(state.getOrderedPlayers()
                 .map((key) => {
-                    return ` - <@${key}>: **${state.players[key].points}** (${state.players[key].daysSinceLastGoodMorning ?? 0}d)`;
+                    return ` - <@${key}>: **${state.getPlayerPoints(key)}** (${state.getPlayerDaysSinceLGM(key)}d)` + (state.getPlayerPenalties(key) ? (' -' + state.getPlayerPenalties(key)) : '');
                 })
                 .join('\n'));
         }
         // Return the state
         else if (sanitizedText.includes('state')) {
-            await messenger.sendLargeMonospaced(msg.channel, JSON.stringify(state, null, 2));
+            await messenger.sendLargeMonospaced(msg.channel, state.toJson());
         }
         // Return the timeout info
         else if (sanitizedText.includes('timeouts')) {
@@ -709,7 +655,7 @@ const processCommands = async (msg: Message): Promise<void> => {
         }
         // Asking about points
         else if (sanitizedText.includes('points')) {
-            const points: number = state.players[msg.author.id]?.points ?? 0;
+            const points: number = state.getPlayerPoints(msg.author.id);
             if (points < 0) {
                 messenger.reply(msg, `You have **${points}** points this season... bro...`);
             } else if (points === 0) {
@@ -722,7 +668,7 @@ const processCommands = async (msg: Message): Promise<void> => {
         }
         // Asking about the season
         else if (sanitizedText.includes('season')) {
-            messenger.reply(msg, `It\'s season **${state.season}**!`);
+            messenger.reply(msg, `It\'s season **${state.getSeasonNumber()}**!`);
         }
         // Canvas stuff
         else if (sanitizedText.includes('canvas')) {
@@ -736,7 +682,7 @@ const processCommands = async (msg: Message): Promise<void> => {
         }
         // Test the beckoning message
         else if (sanitizedText.includes('beckon')) {
-            messenger.send(msg.channel, languageGenerator.generate('{beckoning.goodMorning?}').replace('$player', `<@${state.currentLeader}>`));
+            messenger.send(msg.channel, languageGenerator.generate('{beckoning.goodMorning?}').replace('$player', `<@${state.getCurrentLeader()}>`));
         }
         // Simulate events for the next 2 weeks
         else if (sanitizedText.includes('event')) {
@@ -750,7 +696,7 @@ const processCommands = async (msg: Message): Promise<void> => {
         }
         // Return the max score
         else if (sanitizedText.includes('max')) {
-            await msg.reply(`The top score is \`${getTopScore()}\``);
+            await msg.reply(`The top score is \`${state.getTopScore()}\``);
         }
     }
 };
@@ -758,42 +704,36 @@ const processCommands = async (msg: Message): Promise<void> => {
 client.on('messageCreate', async (msg: Message): Promise<void> => {
     if (goodMorningChannel && msg.channel.id === goodMorningChannel.id && !msg.author.bot) {
         const userId: Snowflake = msg.author.id;
-        const firstMessageThisSeason: boolean = !(userId in state.players);
+        const firstMessageThisSeason: boolean = !state.hasPlayer(userId);
         const isAm: boolean = new Date().getHours() < 12;
 
         // If the grace period is active, then completely ignore all messages
-        if (state.isGracePeriod) {
+        if (state.isGracePeriod()) {
             return;
         }
 
         // Using this to test ordering logic. TODO: actually send out updates?
-        const beforeOrderings: Snowflake[] = getOrderedPlayers(state.players);
+        const beforeOrderings: Snowflake[] = state.getOrderedPlayers();
 
         // Initialize daily status for the user if it doesn't exist
-        if (!(userId in state.dailyStatus)) {
-            state.dailyStatus[userId] = {
-                pointsEarned: 0
-            };
-        }
-        const daily: DailyPlayerState = state.dailyStatus[userId];
+        state.initializeDailyStatus(userId);
 
         // Initialize player data if it doesn't exist
-        await initializePlayer(userId);
-        const player: PlayerState = state.players[userId];
+        await state.initializePlayer(userId);
 
         // If this user is the guest reveiller and the morning has not yet begun, wake the bot up
-        if (state.event?.reveiller === userId && !state.isMorning && isAm) {
+        if (state.getEventType() === DailyEventType.GuestReveille && state.getEvent().reveiller === userId && !state.isMorning() && isAm) {
             await wakeUp(false);
         }
 
-        if (state.isMorning) {
+        if (state.isMorning()) {
             // If the event is an anonymous submission day, then completely ignore the message
-            if (state.event?.type === DailyEventType.AnonymousSubmissions) {
+            if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
                 return;
             }
 
             // Reset user's "days since last good morning" counter
-            delete player.daysSinceLastGoodMorning;
+            state.resetDaysSinceLGM(userId);
 
             const isNovelMessage: boolean = !r9k.contains(msg.content);
             // TODO: Use the state.event property instead of computing this here...
@@ -801,13 +741,12 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             const messageHasVideo: boolean = hasVideo(msg);
             const triggerMonkeyFriday: boolean = isFriday && messageHasVideo;
             // Separately award points and reply for monkey friday videos (this lets users post videos after saying good morning)
-            if (triggerMonkeyFriday && daily.videoRank === undefined) {
-                const videoRank = Object.values(state.dailyStatus).filter(x => x.videoRank !== undefined).length + 1;
-                daily.videoRank = videoRank;
+            if (triggerMonkeyFriday && !state.hasDailyVideoRank(userId)) {
+                const videoRank: number = state.getNextDailyVideoRank();
+                state.setDailyVideoRank(userId, videoRank);
                 // Award MF points and update point-related data
                 const pointsEarned: number = config.awardsByRank[videoRank] ?? config.defaultAward;
-                player.points += pointsEarned;
-                daily.pointsEarned += pointsEarned;
+                state.awardPoints(userId, pointsEarned);
                 dumpState();
                 // Reply or react to the message depending on the video rank
                 if (videoRank === 1) {
@@ -817,90 +756,91 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 }
             }
             // In the morning, award the player accordingly if it's their first message...
-            if (daily.rank === undefined) {
+            if (!state.hasDailyRank(userId)) {
                 // Very first thing to do is to update the player's displayName (only do this here since it's pretty expensive)
-                state.players[userId].displayName = await getDisplayName(userId);
+                state.getPlayer(userId).displayName = await getDisplayName(userId);
 
                 // If it's a "grumpy" morning and no one has said anything yet, punish the player (but don't assign a rank, so player may still say good morning)
-                if (state.event?.type === DailyEventType.GrumpyMorning && !state.event.disabled) {
+                if (state.getEventType() === DailyEventType.GrumpyMorning && !state.getEvent().disabled) {
                     // Deduct points and update point-related data
                     const penalty = 1;
-                    player.points -= penalty;
-                    daily.pointsLost = (daily.pointsLost ?? 0) + penalty;
-                    player.penalties = (player.penalties ?? 0) + 1;
+                    state.deductPoints(userId, penalty);
+                    state.incrementPlayerPenalties(userId);
                     // Disable the grumpy event and dump the state
-                    state.event.disabled = true;
+                    state.getEvent().disabled = true;
                     dumpState();
                     // React to the user grumpily
                     reactToMessage(msg, '😡');
                     return;
                 }
 
-                const rank: number = Object.values(state.dailyStatus).filter(status => status.rank !== undefined).length + 1;
-                daily.rank = rank;
+                const rank: number = state.getNextDailyRank();
+                state.setDailyRank(userId, rank);
 
                 // If user is first, update the combo state accordingly
                 let comboDaysBroken: number = 0;
-                let comboBreakingPoints: number = 0;
+                let sendComboBrokenMessage: boolean = false;
                 let comboBreakee: Snowflake;
                 if (rank === 1) {
-                    if (state.combo) {
-                        if (state.combo.user === userId) {
+                    if (state.hasCombo()) {
+                        const combo: Combo = state.getCombo();
+                        if (combo.user === userId) {
                             // If it's the existing combo holder, then increment his combo counter
-                            state.combo.days++;
+                            combo.days++;
                         } else {
                             // Else, reset the combo
-                            comboBreakee = state.combo.user;
-                            comboDaysBroken = state.combo.days;
-                            state.combo = {
+                            comboBreakee = combo.user;
+                            comboDaysBroken = combo.days;
+                            state.setCombo({
                                 user: userId,
                                 days: 1
-                            };
+                            });
                             // If the broken combo is big enough, then penalize/reward the users involved
                             if (comboDaysBroken >= config.minimumComboDays) {
+                                sendComboBrokenMessage = true;
                                 // Breakee loses at most 1 point
-                                state.players[comboBreakee].points--;
+                                state.deductPoints(comboBreakee, 1);
                                 // Breaker is awarded 1 point for each day of the broken combo (and increment their combos broken count)
-                                comboBreakingPoints = comboDaysBroken;
-                                state.players[userId].combosBroken = (state.players[userId].combosBroken ?? 0) + 1;
+                                state.awardPoints(userId, comboDaysBroken);
+                                state.incrementPlayerCombosBroken(userId);
                             }
                         }
                     } else {
-                        state.combo = {
+                        state.setCombo({
                             user: userId,
                             days: 1
-                        };
+                        });
                     }
                 }
 
                 // Compute beckoning bonus and reset the state beckoning property if needed
-                const wasBeckoned: boolean = state.event?.type === DailyEventType.Beckoning && msg.author.id === state.event.beckoning;
-                const beckonedBonus: number = wasBeckoned ? config.awardsByRank[1] : 0;
+                const wasBeckoned: boolean = state.getEventType() === DailyEventType.Beckoning && msg.author.id === state.getEvent().beckoning;
+                if (wasBeckoned) {
+                    state.awardPoints(userId, config.awardsByRank[1]);
+                }
 
                 // Update the user's points and dump the state
-                const priorPoints: number = player.points || 0;
+                const priorPoints: number = state.getPlayerPoints(userId);
                 const awarded: number = isNovelMessage ? (config.awardsByRank[rank] ?? config.defaultAward) : config.defaultAward;
-                const pointsEarned: number = awarded + comboBreakingPoints + beckonedBonus;
-                player.points += pointsEarned;
-                daily.pointsEarned += pointsEarned;
+                state.awardPoints(userId, awarded);
                 dumpState();
                 // Add this user's message to the R9K text bank
                 r9k.add(msg.content);
 
                 // Get and compare the after orderings. TODO: actually send this out?
                 try {
-                    const afterOrderings: Snowflake[] = getOrderedPlayers(state.players);
+                    const afterOrderings: Snowflake[] = state.getOrderedPlayers();
                     const orderingUpsets: string[] = getOrderingUpset(userId, beforeOrderings, afterOrderings);
                     if (orderingUpsets.length > 0) {
-                        const joinedUpsettees = orderingUpsets.map(x => `**${state.players[x]?.displayName}**`).join(', ');
-                        guildOwnerDmChannel.send(`**${player.displayName}** has overtaken ${joinedUpsettees}`);
+                        const joinedUpsettees = orderingUpsets.map(x => `**${state.getPlayerDisplayName(x)}**`).join(', ');
+                        guildOwnerDmChannel.send(`**${state.getPlayerDisplayName(userId)}** has overtaken ${joinedUpsettees}`);
                     }
                 } catch (err) {
                     guildOwnerDmChannel.send('Failed to compute ordering upsets: ' + err.message);
                 }
 
                 // If it's a combo-breaker, reply with a special message (may result in double replies on Monkey Friday)
-                if (comboBreakingPoints > 0) {
+                if (sendComboBrokenMessage) {
                     messenger.reply(msg, languageGenerator.generate('{goodMorningReply.comboBreaker?}')
                         .replace(/\$breakee/g, `<@${comboBreakee}>`)
                         .replace(/\$days/g, comboDaysBroken.toString()));
@@ -926,24 +866,24 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     // Reply (or react) to the user based on how many points they had
                     else if (rank <= config.goodMorningReplyCount) {
                         if (Math.random() < config.replyViaReactionProbability) {
-                            reactToMessage(msg, state.goodMorningEmoji);
+                            reactToMessage(msg, state.getGoodMorningEmoji());
                         } else if (priorPoints < 0) {
                             messenger.reply(msg, languageGenerator.generate('{goodMorningReply.negative?}'));
                         } else {
                             messenger.reply(msg, languageGenerator.generate('{goodMorningReply.standard?}'));
                         }
                     } else {
-                        reactToMessage(msg, state.goodMorningEmoji);
+                        reactToMessage(msg, state.getGoodMorningEmoji());
                     }
                 }
             }
         } else {
             // If the bot hasn't woken up yet and it's a reverse GM, react and track the rank of each player for now...
             // TODO: Clean this up! Doesn't even take R9K into account
-            if (state.event?.type === DailyEventType.ReverseGoodMorning && isAm) {
-                if (state.event.reverseGMRanks[userId] === undefined) {
-                    state.event.reverseGMRanks[userId] = new Date().getTime();
-                    reactToMessage(msg, state.goodMorningEmoji);
+            if (state.getEventType() === DailyEventType.ReverseGoodMorning && isAm) {
+                if (state.getEvent().reverseGMRanks[userId] === undefined) {
+                    state.getEvent().reverseGMRanks[userId] = new Date().getTime();
+                    reactToMessage(msg, state.getGoodMorningEmoji());
                     dumpState();
                 }
                 return;
@@ -951,41 +891,38 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
 
             let pointsDeducted: number = 0;
             // It's not morning, so punish the player accordingly...
-            if (daily.pointsLost) {
+            if (state.wasPlayerPenalizedToday(userId)) {
                 // Deduct a half point for repeat offenses
-                pointsDeducted = 0.5;
+                state.deductPoints(userId, 0.5);
             } else {
                 // If this is the user's first penalty since last morning, react to the message and deduct one
-                pointsDeducted = 1;
+                state.deductPoints(userId, 1);
                 if (isAm) {
                     reactToMessage(msg, '😴');
                 } else {
                     reactToMessage(msg, ['😡', '😬', '😒', '😐']);
                 }
             }
-            // Deduct points from the player
-            player.points -= pointsDeducted;
-            daily.pointsLost = (daily.pointsLost ?? 0) + pointsDeducted;
             // Increment user's penalty count then dump the state
-            player.penalties = (player.penalties ?? 0) + 1;
+            state.incrementPlayerPenalties(userId);
             dumpState();
             // Reply if the user has hit a certain threshold
-            if (player.points === -5) {
+            if (state.getPlayerPoints(userId) === -2) {
                 messenger.reply(msg, 'Why are you still talking?');
-            } else if (player.points === -10) {
+            } else if (state.getPlayerPoints(userId) === -5) {
                 messenger.reply(msg, 'You have brought great dishonor to this server...');
             }
         }
     } else if (msg.channel instanceof DMChannel && !msg.author.bot) {
         // Process DM submissions depending on the event
-        if (state.isMorning && state.event?.type === DailyEventType.AnonymousSubmissions && state.event.submissions) {
+        if (state.isMorning() && state.getEventType() === DailyEventType.AnonymousSubmissions && state.getEvent().submissions) {
             const userId: Snowflake = msg.author.id;
-            if (userId in state.event.submissions) {
+            if (userId in state.getEvent().submissions) {
                 await messenger.reply(msg, 'Thanks for the update, I\'ll use this submission instead of your previous one.');
             } else {
                 await messenger.reply(msg, 'Thanks for your submission!');
             }
-            state.event.submissions[userId] = msg.content;
+            state.getEvent().submissions[userId] = msg.content;
             dumpState();
         }
         // Process admin commands

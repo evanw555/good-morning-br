@@ -159,7 +159,8 @@ export function hasVideo(msg: Message): boolean {
         || msg.embeds?.some(x => x.video)
         // Next to manually check for YouTube links since apparently the embeds check doesn't always work...
         || msg.content.includes('https://youtu.be/')
-        || msg.content.includes('https://youtube.com/');
+        || msg.content.includes('https://youtube.com/')
+        || msg.content.includes('https://www.youtube.com/');
 }
 
 /**
@@ -195,31 +196,6 @@ export function getNumberOfDaysSince(start: string): number {
     const startDate: Date = new Date(start);
     const todayDate: Date = new Date(getTodayDateString());
     return Math.round((todayDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-}
-
-/**
- * Returns an ordered list of user IDs sorted by points, then days since last good morning, then penalties.
- * @param players map of player state objects
- * @returns sorted list of user IDs
- */
-export function getOrderedPlayers(players: Record<Snowflake, PlayerState>): Snowflake[] {
-    return Object.keys(players).sort((x, y) => players[y].points - players[x].points
-        || players[x].daysSinceLastGoodMorning - players[y].daysSinceLastGoodMorning
-        || (players[x].penalties ?? 0) - (players[y].penalties ?? 0));
-}
-
-export function toPointsMap(players: Record<Snowflake, PlayerState>): Record<Snowflake, number> {
-    const result: Record<Snowflake, number> = {};
-    Object.keys(players).forEach((userId) => {
-        result[userId] = players[userId].points;
-    });
-    return result;
-}
-
-export function getLeastRecentPlayers(players: Record<Snowflake, PlayerState>, minDays: number = 0): Snowflake[] {
-    return Object.keys(players)
-        .filter((userId) => players[userId].daysSinceLastGoodMorning >= minDays)
-        .sort((x, y) => players[y].daysSinceLastGoodMorning - players[x].daysSinceLastGoodMorning);
 }
 
 /**
