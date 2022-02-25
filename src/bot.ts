@@ -767,11 +767,13 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             // Reset user's "days since last good morning" counter
             state.resetDaysSinceLGM(userId);
 
-            const isNovelMessage: boolean = !r9k.contains(msg.content);
-            // TODO: Use the state.event property instead of computing this here...
-            const isFriday: boolean = (new Date()).getDay() === 5;
+            // Determine some MF-related conditions
             const messageHasVideo: boolean = hasVideo(msg);
-            const triggerMonkeyFriday: boolean = isFriday && messageHasVideo;
+            const triggerMonkeyFriday: boolean = (state.getEventType() === DailyEventType.MonkeyFriday) && messageHasVideo;
+
+            // Messages are "novel" if the text is unique or if the message contains a video (is there a better way to handle attachments?)
+            const isNovelMessage: boolean = !r9k.contains(msg.content) || messageHasVideo;
+
             // Separately award points and reply for monkey friday videos (this lets users post videos after saying good morning)
             if (triggerMonkeyFriday && !state.hasDailyVideoRank(userId)) {
                 const videoRank: number = state.getNextDailyVideoRank();
