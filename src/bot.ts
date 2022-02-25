@@ -1,6 +1,6 @@
 import { Client, DMChannel, Intents, MessageAttachment } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'discord.js';
-import { DailyEvent, DailyEventType, DailyPlayerState, GoodMorningConfig, GoodMorningHistory, PlayerState, Season, TimeoutType, Combo, CalendarDate } from './types.js';
+import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate } from './types.js';
 import TimeoutManager from './timeout-manager.js';
 import { createMidSeasonUpdateImage, createSeasonResultsImage } from './graphics.js';
 import { hasVideo, randInt, validateConfig, getTodayDateString, reactToMessage, getOrderingUpset, sleep, randChoice, toCalendarDate, getTomorrow, generateKMeansClusters } from './util.js';
@@ -48,6 +48,14 @@ const getDisplayName = async (userId: Snowflake): Promise<string> => {
         return member.displayName;
     } catch (err) {
         return `User ${userId}`;
+    }
+}
+
+const fetchMember = async (userId: Snowflake): Promise<GuildMember> => {
+    try {
+        return await guild.members.fetch(userId);
+    } catch (err) {
+        return undefined;
     }
 }
 
@@ -297,8 +305,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         if (potentialMagicWordRecipients.length > 0) {
             // If there are any potential recipients, choose one at random and send them the hint
             const magicWordRecipient: Snowflake = randChoice(...potentialMagicWordRecipients);
-            // TODO: Actually send this to the user once this appears to be working...
-            await messenger.dm(guildOwner.user, `Psssst.... the magic word of the day is _"${state.getMagicWord()}"_`);
+            await messenger.dm(await fetchMember(magicWordRecipient), `Psssst.... the magic word of the day is _"${state.getMagicWord()}"_`);
             await logger.log(`Magic word _"${state.getMagicWord()}"_ was sent to **${state.getPlayerDisplayName(magicWordRecipient)}**`);
         }
     }
@@ -844,7 +851,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 // If the player said the magic word, reward them and let them know privately
                 if (state.hasMagicWord() && msg.content.toLowerCase().includes(state.getMagicWord().toLowerCase())) {
                     state.awardPoints(userId, config.awardsByRank[1]);
-                    await messenger.dm(msg.author, `You said _${state.getMagicWord()}_, the magic word of the day! Nice 😉`);
+                    await messenger.dm(msg.member, `You said _"${state.getMagicWord()}"_, the magic word of the day! Nice 😉`);
                 }
 
                 // Compute beckoning bonus and reset the state beckoning property if needed
