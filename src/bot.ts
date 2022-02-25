@@ -5,6 +5,7 @@ import TimeoutManager from './timeout-manager.js';
 import { createMidSeasonUpdateImage, createSeasonResultsImage } from './graphics.js';
 import { hasVideo, randInt, validateConfig, getTodayDateString, reactToMessage, getOrderingUpset, sleep, randChoice, toCalendarDate, getTomorrow, generateKMeansClusters } from './util.js';
 import GoodMorningState from './state.js';
+import logger from './logger.js';
 
 import { loadJson } from './load-json.js';
 const auth = loadJson('config/auth.json');
@@ -166,7 +167,7 @@ const chooseMagicWord = async (): Promise<string> => {
         const words: string[] = await loadJson('config/words.json');
         return randChoice(...words);
     } catch (err) {
-        guildOwnerDmChannel?.send(`Failed to choose a word of the day: \`${err.toString()}\``);
+        logger.log(`Failed to choose a word of the day: \`${err.toString()}\``);
     }
 }
 
@@ -280,7 +281,7 @@ const registerGoodMorningTimeout = async (): Promise<void> => {
 const wakeUp = async (sendMessage: boolean): Promise<void> => {
     // If attempting to wake up while already awake, warn the admin and abort
     if (state.isMorning()) {
-        guildOwnerDmChannel.send('WARNING! Attempted to wake up while `state.isMorning` is already `true`');
+        logger.log('WARNING! Attempted to wake up while `state.isMorning` is already `true`');
         return;
     }
 
@@ -290,10 +291,10 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     // Set today's positive react emoji
     state.setGoodMorningEmoji(config.goodMorningEmojiOverrides[toCalendarDate(new Date())] ?? config.defaultGoodMorningEmoji);
 
-    // Set today's magic word
+    // Set today's magic word (if it's not an abnormal event)
     state.clearMagicWord();
     const magicWord: string = await chooseMagicWord();
-    if (magicWord) {
+    if (magicWord && !state.isEventAbnormal()) {
         state.setMagicWord(magicWord);
         // Get list of all suitable recipients of the magic word
         const potentialMagicWordRecipients: Snowflake[] = state.getPotentialMagicWordRecipients();
@@ -301,8 +302,8 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
             // If there are any potential recipients, choose one at random and send them the hint
             const magicWordRecipient: Snowflake = randChoice(...potentialMagicWordRecipients);
             // TODO: Actually send this to the user once this appears to be working...
-            await messenger.dm(guildOwner.user, `Psssst.... the magic word of the day is _${state.getMagicWord()}_`);
-            await guildOwnerDmChannel?.send(`(Magic word hint would've gone to **${state.getPlayerDisplayName(magicWordRecipient)}**)`);
+            await messenger.dm(guildOwner.user, `Psssst.... the magic word of the day is _"${state.getMagicWord()}"_`);
+            await logger.log(`Magic word _"${state.getMagicWord()}"_ was sent to **${state.getPlayerDisplayName(magicWordRecipient)}**`);
         }
     }
 
@@ -332,7 +333,6 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     // Send the good morning message
     if (sendMessage) {
         await sendGoodMorningMessage();
-        console.log('Said good morning!');
     }
 
     // Reset the daily state
@@ -435,7 +435,7 @@ const TIMEOUT_CALLBACKS = {
         if (nextEvent && !state.isSeasonGoalReached()) {
             state.setNextEvent(nextEvent);
             // TODO: temporary message to tell admin when a special event has been selected, remove this soon
-            await messenger.send(guildOwnerDmChannel, `Event for tomorrow has been selected: \`${JSON.stringify(nextEvent)}\``);
+            await logger.log(`Event for tomorrow has been selected: \`${JSON.stringify(nextEvent)}\``);
             // Depending on the type of event chosen for tomorrow, send out a special message
             if (nextEvent.type === DailyEventType.GuestReveille) {
                 await messenger.send(goodMorningChannel, languageGenerator.generate('{reveille.summon}').replace(/\$player/g, `<@${nextEvent.reveiller}>`));
@@ -516,7 +516,7 @@ const loadState = async (): Promise<void> => {
     } catch (err) {
         // Specifically check for file-not-found errors to make sure we don't overwrite anything
         if (err.code === 'ENOENT') {
-            console.log('Existing state file not found, creating a fresh state...');
+            await logger.log('Existing state file not found, creating a fresh state...');
             state = new GoodMorningState({
                 season: 1,
                 goal: config.seasonGoal,
@@ -528,8 +528,8 @@ const loadState = async (): Promise<void> => {
                 players: {}
             }, getDisplayName);
             await dumpState();
-        } else if (guildOwnerDmChannel) {
-            guildOwnerDmChannel.send(`Unhandled exception while loading state file:\n\`\`\`${err.message}\`\`\``);
+        } else {
+            logger.log(`Unhandled exception while loading state file:\n\`\`\`${err.message}\`\`\``);
         }
     }
 };
@@ -544,14 +544,14 @@ const loadHistory = async (): Promise<void> => {
     } catch (err) {
         // Specifically check for file-not-found errors to make sure we don't overwrite anything
         if (err.code === 'ENOENT') {
-            console.log('Existing history file not found, creating a fresh history...');
+            await logger.log('Existing history file not found, creating a fresh history...');
             history = {
                 seasons: [],
                 medals: {}
             };
             await dumpHistory();
-        } else if (guildOwnerDmChannel) {
-            guildOwnerDmChannel.send(`Unhandled exception while loading history file:\n\`\`\`${err.message}\`\`\``);
+        } else {
+            logger.log(`Unhandled exception while loading history file:\n\`\`\`${err.message}\`\`\``);
         }
     }
 };
@@ -567,10 +567,10 @@ const loadR9KHashes = async (): Promise<void> => {
     } catch (err) {
         // Specifically check for file-not-found errors to make sure we don't overwrite anything
         if (err.code === 'ENOENT') {
-            console.log('Existing R9K hashes file not found, starting with a fresh text bank...');
+            await logger.log('Existing R9K hashes file not found, starting with a fresh text bank...');
             await dumpR9KHashes();
-        } else if (guildOwnerDmChannel) {
-            guildOwnerDmChannel.send(`Unhandled exception while loading R9K hashes file:\n\`\`\`${err.message}\`\`\``);
+        } else {
+            logger.log(`Unhandled exception while loading R9K hashes file:\n\`\`\`${err.message}\`\`\``);
         }
     }
 }
@@ -592,10 +592,10 @@ client.on('ready', async (): Promise<void> => {
     guildOwner = await guild.fetchOwner();
     if (guildOwner) {
         guildOwnerDmChannel = await guildOwner.createDM();
-        languageGenerator.setEmergencyLogChannel(guildOwnerDmChannel);
-        console.log(`Determined guild owner: ${guildOwner.displayName}`);
+        logger.setChannel(guildOwnerDmChannel);
+        await logger.log(`Determined guild owner: **${guildOwner.displayName}**`);
     } else {
-        console.log('Could not determine the guild\'s owner!');
+        await logger.log('Could not determine the guild\'s owner!');
     }
 
     // Attempt to load the good morning channel (abort if not successful)
@@ -603,10 +603,10 @@ client.on('ready', async (): Promise<void> => {
         goodMorningChannel = (await client.channels.fetch(config.goodMorningChannelId)) as TextBasedChannels;
     } catch (err) {}
     if (!goodMorningChannel) {
-        console.log(`Couldn't load good morning channel with Id "${config.goodMorningChannelId}", aborting...`);
+        await logger.log(`Couldn't load good morning channel with Id "${config.goodMorningChannelId}", aborting...`);
         process.exit(1);
     }
-    console.log(`Found good morning channel as ${goodMorningChannel.id}`);
+    await logger.log(`Found good morning channel as \`${goodMorningChannel.id}\``);
 
     // Load all necessary data from disk
     await loadState();
@@ -615,9 +615,9 @@ client.on('ready', async (): Promise<void> => {
     await timeoutManager.loadTimeouts();
 
     if (timeoutManager.hasTimeout(TimeoutType.NextGoodMorning)) {
-        await guildOwnerDmChannel?.send(`Bot had to restart... next date is ${timeoutManager.getDate(TimeoutType.NextGoodMorning).toString()}`);
+        await logger.log(`Bot had to restart... next date is ${timeoutManager.getDate(TimeoutType.NextGoodMorning).toString()}`);
     } else {
-        await guildOwnerDmChannel?.send('Bot had to restart... _no good morning timeout scheduled!_');
+        await logger.log('Bot had to restart... _no good morning timeout scheduled!_');
     }
 
     // Update the bot's status
@@ -873,10 +873,10 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     const orderingUpsets: string[] = getOrderingUpset(userId, beforeOrderings, afterOrderings);
                     if (orderingUpsets.length > 0) {
                         const joinedUpsettees = orderingUpsets.map(x => `**${state.getPlayerDisplayName(x)}**`).join(', ');
-                        guildOwnerDmChannel.send(`**${state.getPlayerDisplayName(userId)}** has overtaken ${joinedUpsettees}`);
+                        logger.log(`**${state.getPlayerDisplayName(userId)}** has overtaken ${joinedUpsettees}`);
                     }
                 } catch (err) {
-                    guildOwnerDmChannel.send('Failed to compute ordering upsets: ' + err.message);
+                    logger.log('Failed to compute ordering upsets: ' + err.message);
                 }
 
                 // If it's a combo-breaker, reply with a special message (may result in double replies on Monkey Friday)

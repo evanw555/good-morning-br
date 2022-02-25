@@ -1,16 +1,12 @@
 import { TextBasedChannels } from "discord.js";
+import logger from './logger.js';
 
 class LanguageGenerator {
     private readonly _config: Record<string, any>;
-    private _emergencyLogChannel?: TextBasedChannels;
     private _lastErrorMessage?: string;
 
     constructor(config: Record<string, any>) {
         this._config = config;
-    }
-
-    setEmergencyLogChannel(emergencyLogChannel: TextBasedChannels): void {
-        this._emergencyLogChannel = emergencyLogChannel;
     }
 
     private _resolve(token: string): string {
@@ -83,8 +79,7 @@ class LanguageGenerator {
         if (message !== this._lastErrorMessage) {
             this._lastErrorMessage = message;
             const errorMessage: string = `LanguageGenerator encountered an error: ${message}`;
-            console.log(errorMessage);
-            this._emergencyLogChannel?.send(errorMessage);
+            logger.log(errorMessage);
         }
     }
 

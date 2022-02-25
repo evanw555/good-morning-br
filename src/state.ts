@@ -379,6 +379,16 @@ export default class GoodMorningState {
         delete this.data.nextEvent;
     }
 
+    /**
+     * Determine if today's event is "abnormal", meaning that it's not the typical "wait for GM then send message" type of event.
+     * @returns True if today's event is "abnormal"
+     */
+    isEventAbnormal(): boolean {
+        return this.getEventType() === DailyEventType.GuestReveille
+            || this.getEventType() === DailyEventType.ReverseGoodMorning
+            || this.getEventType() === DailyEventType.AnonymousSubmissions;
+    }
+
     toJson(): string {
         return JSON.stringify(this.data, null, 2);
     }

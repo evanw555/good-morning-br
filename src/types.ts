@@ -58,9 +58,10 @@ export enum DailyEventType {
     MonkeyFriday = 'MONKEY_FRIDAY',
     OverriddenMessage = 'OVERRIDDEN_MESSAGE',
     Beckoning = 'BECKONING',
+    GrumpyMorning = 'GRUMPY_MORNING',
+    // Abnormal events (i.e. not the typical "wait-for-GM-then-say-GM" event)
     GuestReveille = 'GUEST_REVEILLE',
     ReverseGoodMorning = 'REVERSE_GOOD_MORNING',
-    GrumpyMorning = 'GRUMPY_MORNING',
     AnonymousSubmissions = 'ANONYMOUS_SUBMISSIONS'
 }
 
