@@ -161,6 +161,15 @@ const chooseEvent = (date: Date): DailyEvent => {
     }
 };
 
+const chooseMagicWord = async (): Promise<string> => {
+    try {
+        const words: string[] = await loadJson('config/words.json');
+        return randChoice(...words);
+    } catch (err) {
+        guildOwnerDmChannel?.send(`Failed to choose a word of the day: \`${err.toString()}\``);
+    }
+}
+
 const sendGoodMorningMessage = async (): Promise<void> => {
     if (goodMorningChannel) {
         switch (state.getEventType()) {
@@ -280,6 +289,22 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
 
     // Set today's positive react emoji
     state.setGoodMorningEmoji(config.goodMorningEmojiOverrides[toCalendarDate(new Date())] ?? config.defaultGoodMorningEmoji);
+
+    // Set today's magic word
+    state.clearMagicWord();
+    const magicWord: string = await chooseMagicWord();
+    if (magicWord) {
+        state.setMagicWord(magicWord);
+        // Get list of all suitable recipients of the magic word
+        const potentialMagicWordRecipients: Snowflake[] = state.getPotentialMagicWordRecipients();
+        if (potentialMagicWordRecipients.length > 0) {
+            // If there are any potential recipients, choose one at random and send them the hint
+            const magicWordRecipient: Snowflake = randChoice(...potentialMagicWordRecipients);
+            // TODO: Actually send this to the user once this appears to be working...
+            await messenger.dm(guildOwner.user, `Psssst.... the magic word of the day is _${state.getMagicWord()}_`);
+            await guildOwnerDmChannel?.send(`(Magic word hint would've gone to **${state.getPlayerDisplayName(magicWordRecipient)}**)`);
+        }
+    }
 
     // Set timeout for when morning ends (if they're in the future)
     const now = new Date();
@@ -698,6 +723,13 @@ const processCommands = async (msg: Message): Promise<void> => {
         else if (sanitizedText.includes('max')) {
             await msg.reply(`The top score is \`${state.getTopScore()}\``);
         }
+        // Choose a magic word and show potential recipients
+        else if (sanitizedText.includes('magic word')) {
+            const magicWord: string = await chooseMagicWord();
+            const potentialRecipients: Snowflake[] = state.getPotentialMagicWordRecipients();
+            const recipient: string = potentialRecipients.length > 0 ? state.getPlayerDisplayName(randChoice(...potentialRecipients)) : 'N/A';
+            await msg.reply(`The test magic word is _${magicWord}_, and send the hint to **${recipient}** (Out of **${potentialRecipients.length}** choices)`);
+        }
     }
 };
 
@@ -811,6 +843,12 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                             days: 1
                         });
                     }
+                }
+
+                // If the player said the magic word, reward them and let them know privately
+                if (state.hasMagicWord() && msg.content.toLowerCase().includes(state.getMagicWord().toLowerCase())) {
+                    state.awardPoints(userId, config.awardsByRank[1]);
+                    await messenger.dm(msg.author, `You said _${state.getMagicWord()}_, the magic word of the day! Nice 😉`);
                 }
 
                 // Compute beckoning bonus and reset the state beckoning property if needed

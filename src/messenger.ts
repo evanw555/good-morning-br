@@ -1,4 +1,4 @@
-import { Message, TextBasedChannels } from "discord.js";
+import { DMChannel, Message, TextBasedChannels, User } from "discord.js";
 import { randInt, sleep } from "./util.js";
 
 interface MessengerBacklogEntry {
@@ -22,6 +22,15 @@ export default class Messenger {
 
     async reply(message: Message, text: string): Promise<void> {
         this._send({ channel: message.channel, message, text });
+    }
+
+    async dm(user: User, text: string): Promise<void> {
+        try {
+            const dmChannel: DMChannel = await user.createDM();
+            this._send({ channel: dmChannel, text });
+        } catch (err) {
+            console.log(`Unable to create DM channel for user \`${user.id}\`: \`${err.toString()}\``);
+        }
     }
 
     private async _send(entry: MessengerBacklogEntry): Promise<void> {

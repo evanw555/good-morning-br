@@ -82,6 +82,7 @@ export interface RawGoodMorningState {
     isMorning: boolean,
     isGracePeriod: boolean,
     goodMorningEmoji: string | string[],
+    magicWord?: string,
     currentLeader?: Snowflake,
     combo?: Combo,
     event?: DailyEvent,

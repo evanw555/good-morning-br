@@ -152,7 +152,7 @@ export default class GoodMorningState {
 
     /**
      * Returns an ordered list of player user IDs for high-middle ranked players who have said Good Morning recently.
-     * @returns List of user IDs for players who may server as a potential reveiller
+     * @returns List of user IDs for players who may serve as a potential reveiller
      */
     getPotentialReveillers(): Snowflake[] {
         const orderedPlayers: Snowflake[] = this.getOrderedPlayers();
@@ -161,6 +161,38 @@ export default class GoodMorningState {
             .slice(1, Math.floor(orderedPlayers.length * 0.75))
             // Only players who said good morning today can be reveillers
             .filter((userId) => this.getPlayerDaysSinceLGM(userId) === 0);
+    }
+    /**
+     * @returns List of user IDs for players who are suitable to receive the magic word hint
+     */
+    getPotentialMagicWordRecipients(): Snowflake[] {
+        return this.queryOrderedPlayers({ skipPlayers: 3, maxDays: 4 });
+    }
+
+    /**
+     * Query the ordered (by score) list of players, but with the following parameters:
+     * - skipPlayers: omit the top N players (e.g. 2 means omit the first-place and second-place players)
+     * - maxDays: only include players who've said GM in the last N days
+     * - minDays: only include players who haven't said GM in the last N-1 days
+     * @param options parameters map
+     * @returns ordered and filtered list of user IDs
+     */
+    queryOrderedPlayers(options: { skipPlayers?: number, maxDays?: number, minDays?: number }): Snowflake[] {
+        let result: Snowflake[] = this.getOrderedPlayers();
+
+        if (options.skipPlayers) {
+            result = result.slice(options.skipPlayers);
+        }
+
+        if (options.maxDays) {
+            result = result.filter((userId) => this.getPlayerDaysSinceLGM(userId) <= options.maxDays)
+        }
+
+        if (options.minDays) {
+            result = result.filter((userId) => this.getPlayerDaysSinceLGM(userId) >= options.minDays)
+        }
+
+        return result;
     }
 
     /**
@@ -282,6 +314,22 @@ export default class GoodMorningState {
 
     setGoodMorningEmoji(emoji: string | string[]): void {
         this.data.goodMorningEmoji = emoji;
+    }
+
+    getMagicWord(): string {
+        return this.data.magicWord;
+    }
+
+    hasMagicWord(): boolean {
+        return this.data.magicWord !== undefined;
+    }
+
+    setMagicWord(word: string): void {
+        this.data.magicWord = word;
+    }
+
+    clearMagicWord(): void {
+        delete this.data.magicWord;
     }
 
     getCombo(): Combo {
