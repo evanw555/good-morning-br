@@ -112,17 +112,17 @@
             "Count all your blessings, you {!may|surely} have {!more|many more|a lot more} than you {!realize|think}"
         ],
         "seasonUpdate": [
-            "We are {!deep|well} into season **$season**, and <@$top> is in the lead with <@$second> {!not far behind|on his tail}!",
-            "Let's all {!acknowledge|thank|recognize} <@$top> for spreading the most Good Morning {!cheer|spirit} in season **$season**",
-            "It's season **$season** and so far, <@$top> has been showing the {!most|strongest} Good Morning spirit",
-            "It's season **$season** and so far, <@$top> and <@$second> are poised to {!grab|snag|earn} gold and silver medals. Will you let this happen?",
-            "Thanks to <@$top> for blessing our mornings throughout season **$season**",
-            "If saying Good Morning were a {!game|contest|tournament}, <@$top> would be winning season **$season**!",
-            "Saying Good Morning is a {!game|contest|tournament}, and <@$top> is currently the king of season **$season**!",
-            "<@$top> is currently the {!top dog|king|big dog} of Good Morning season **$season**! There's still time to steal the {!title|crown}...",
-            "<@$top> is currently the {!top dog|king|big dog} of Good Morning season **$season**! Though <@$second> isn't far behind...",
-            "<@$top> is leading the pack in Good Morning season **$season**! ...but for how long?",
-            "<@$top> is leading the pack in Good Morning season **$season**! ...but how long until <@$second> snags first place?"
+            "We are {!deep|well} into season **{$season}**, and {$top} is in the lead with {$second} {!not far behind|on his tail}!",
+            "Let's all {!acknowledge|thank|recognize} {$top} for spreading the most Good Morning {!cheer|spirit} in season **{$season}**",
+            "It's season **{$season}** and so far, {$top} has been showing the {!most|strongest} Good Morning spirit",
+            "It's season **{$season}** and so far, {$top} and {$second} are poised to {!grab|snag|earn} gold and silver medals. Will you let this happen?",
+            "Thanks to {$top} for blessing our mornings throughout season **{$season}**",
+            "If saying Good Morning were a {!game|contest|tournament}, {$top} would be winning season **{$season}**!",
+            "Saying Good Morning is a {!game|contest|tournament}, and {$top} is currently the king of season **{$season}**!",
+            "{$top} is currently the {!top dog|king|big dog} of Good Morning season **{$season}**! There's still time to steal the {!title|crown}...",
+            "{$top} is currently the {!top dog|king|big dog} of Good Morning season **{$season}**! Though {$second} isn't far behind...",
+            "{$top} is leading the pack in Good Morning season **{$season}**! ...but for how long?",
+            "{$top} is leading the pack in Good Morning season **{$season}**! ...but how long until {$second} snags first place?"
         ],
         "passing": [
             "sun is shining",
@@ -154,28 +154,28 @@
     "grumpyMorning": "{!Hello|Hey|Morning} everyone, honestly I'm not feeling too {!good|great} {!this morning|today}... I encourage you all to say good morning, but the first {!one|person} to say it is gonna {!piss me off|irritate me|really bug me}.",
     "weeklyUpdate": "{!Good morning|Happy Sunday}! {phrases.seasonUpdate?}",
     "leaderShift": [
-        "$old is no longer the {!king|prince} of spreading Good Morning cheer, that title now belongs to $new!",
-        "$new has stolen the crown from $old! But how long until it's taken by someone else...?",
-        "Well well well... it looks like $old is no longer the Good Morning king. $new is now in the lead!",
-        "$old was once the {!expert|master} of saying Good Morning, but not anymore... $new is now the top dog.",
-        "$old has let us down... $new is now picking up the slack to make our mornings {adjectives.positive?}",
-        "We once looked up to {!dear old|good old|sweet|ol'} $old as the one to brighten our mornings... but now we will look up to $new!",
-        "Oh how the mighty have fallen... $old is no longer the bringer of good mornings, for that title now belongs to $new!",
-        "Nice job $new, you're stealing the $old thunder!",
-        "Congrats $new, you're making $old look like a Good Morning {!slob|loser|deadbeat}",
-        "The {!rankings|leaderboards} have shifted, and $new has {!stolen|taken} the lead from $old!",
-        "$new is now in first place, stealing the position from $old",
-        "$old was once in first place, but that position has been {!stolen|taken|snagged} by $new!",
-        "$old is no longer in first place! $new is now the Good Morning {!top dog|leader|MVP|swaglord}... but for how long?",
-        "$new has taken the title of {!1st|first} from $old... but how long will it be held?",
-        "Oh how the tables have turned! $new has replaced $old as the leader of the pack.",
-        "$new has been radiating {nouns.positive?} more so than $old",
-        "$new is exemplifying {nouns.positive?} and {nouns.positive?} more so than $old, putting $new in the lead!",
-        "Throughout this Good Morning journey, $old has shown much {!bravery|courage}. However, $new has more recently shown us the true meaning of {nouns.positive?}!",
-        "If your mornings have felt more {adjectives.positive?} recently, you can thank $new! $old has surrendered the title of {!first|1st} to this dear friend.",
-        "This Good Morning adventure of ours has brought us {nouns.treasure?}, and for that we could thank $old. However, $new has recently been making our mornings even brighter!",
-        "I want to thank $old for doing so much to make our mornings {adjectives.positive?}, but now it looks like $new is the one we should be thanking!",
-        "$old has passed the torch of bright mornings to $new, I await even brighter mornings ahead..."
+        "{$old} is no longer the {!king|prince} of spreading Good Morning cheer, that title now belongs to {$new}!",
+        "{$new} has stolen the crown from {$old}! But how long until it's taken by someone else...?",
+        "Well well well... it looks like {$old} is no longer the Good Morning king. {$new} is now in the lead!",
+        "{$old} was once the {!expert|master} of saying Good Morning, but not anymore... {$new} is now the top dog.",
+        "{$old} has let us down... {$new} is now picking up the slack to make our mornings {adjectives.positive?}",
+        "We once looked up to {!dear old|good old|sweet|ol'} {$old} as the one to brighten our mornings... but now we will look up to {$new}!",
+        "Oh how the mighty have fallen... {$old} is no longer the bringer of good mornings, for that title now belongs to {$new}!",
+        "Nice job {$new}, you're stealing the {$old} thunder!",
+        "Congrats {$new}, you're making {$old} look like a Good Morning {!slob|loser|deadbeat}",
+        "The {!rankings|leaderboards} have shifted, and {$new} has {!stolen|taken} the lead from {$old}!",
+        "{$new} is now in first place, stealing the position from {$old}",
+        "{$old} was once in first place, but that position has been {!stolen|taken|snagged} by {$new}!",
+        "{$old} is no longer in first place! {$new} is now the Good Morning {!top dog|leader|MVP|swaglord}... but for how long?",
+        "{$new} has taken the title of {!1st|first} from {$old}... but how long will it be held?",
+        "Oh how the tables have turned! {$new} has replaced {$old} as the leader of the pack.",
+        "{$new} has been radiating {nouns.positive?} more so than {$old}",
+        "{$new} is exemplifying {nouns.positive?} and {nouns.positive?} more so than {$old}, putting {$new} in the lead!",
+        "Throughout this Good Morning journey, {$old} has shown much {!bravery|courage}. However, {$new} has more recently shown us the true meaning of {nouns.positive?}!",
+        "If your mornings have felt more {adjectives.positive?} recently, you can thank {$new}! {$old} has surrendered the title of {!first|1st} to this dear friend.",
+        "This Good Morning adventure of ours has brought us {nouns.treasure?}, and for that we could thank {$old}. However, {$new} has recently been making our mornings even brighter!",
+        "I want to thank {$old} for doing so much to make our mornings {adjectives.positive?}, but now it looks like {$new} is the one we should be thanking!",
+        "{$old} has passed the torch of bright mornings to {$new}, I await even brighter mornings ahead..."
     ],
     "goodMorningReply": {
         "standard": [
@@ -205,13 +205,13 @@
             "Uhhhhhhh hey."
         ],
         "comboBreaker": [
-            "Good morning! A $days-day Good Morning {!combo|streak} has been broken, what a sight to see!",
-            "Good morning and thank you! You {!have|just} ended the $days-day $breakee reign of terror.",
-            "On this peaceful morning, you have broken $breakee's $days-day Good Morning {!combo|streak}!",
-            "Good morning! $breakee will be sorry to see his $days-day {!combo|streak} {!broken|ended|turned to dust|in pieces}",
-            "A very {adjectives.positive?} morning to you! For today marks the end of $breakee's $days-day Good Morning {!combo|streak}",
-            "The {phrases.passing?}, the {phrases.passing?}, and combos are being broken! $breakee's $days-day combo, that is...",
-            "For $days long mornings, $breakee has rushed to wish us a good morning. What you've done just now has {!shown|demonstrated} {!remarkable|incredible} {!bravery|courage|determination}!"
+            "Good morning! A {$days}-day Good Morning {!combo|streak} has been broken, what a sight to see!",
+            "Good morning and thank you! You {!have|just} ended the {$days}-day {$breakee} reign of terror.",
+            "On this peaceful morning, you have broken {$breakee}'s {$days}-day Good Morning {!combo|streak}!",
+            "Good morning! {$breakee} will be sorry to see his {$days}-day {!combo|streak} {!broken|ended|turned to dust|in pieces}",
+            "A very {adjectives.positive?} morning to you! For today marks the end of {$breakee}'s {$days}-day Good Morning {!combo|streak}",
+            "The {phrases.passing?}, the {phrases.passing?}, and combos are being broken! {$breakee}'s {$days}-day combo, that is...",
+            "For {$days} long mornings, {$breakee} has rushed to wish us a good morning. What you've done just now has {!shown|demonstrated} {!remarkable|incredible} {!bravery|courage|determination}!"
         ],
         "video": [
             "Thanks for sharing! What a perfect addition to an already {!blessed|splendid} morning",
@@ -240,9 +240,10 @@
     },
     "beckoning": {
         "goodMorning": [
-            "Good morning to all! Though honestly, this morning I'm thinking of $player in particular. Are you there? It's been a while since I've heard from you.",
-            "Good morning! I love hearing kind words and well wishes from you all each morning, though it's been a while since I've heard from $player. Are you there?",
-            "Good morning to all, but specifically to $player. It's been a while since I've heard from you. Are you there?"
+            "Good morning to all! Though honestly, this morning I'm thinking of {$player} in particular. Are you there? It's been a while since I've heard from you.",
+            "Good morning! I love hearing kind words and well wishes from you all each morning, though it's been a while since I've heard from {$player}. Are you there?",
+            "Good morning to all, but specifically to {$player}. It's been a while since I've heard from you. Are you there?",
+            "{!Hey|Hello} {$player}, hope you're having {!quite the|a very} {adjectives.positive?} morning! {!I hope|Hopefully} you're still {!alive|breathing|with us}..."
         ],
         "reply": "{beckoning.replyPrefix?}! {beckoning.replySuffix?}. I hope to hear from you more often 🌞",
         "replyPrefix": [
@@ -263,13 +264,13 @@
     "reveille": {
         "summon": "{reveille.summonPrefix?} {reveille.summonSuffix?} 🌞",
         "summonPrefix": [
-            "As this morning comes to a close, I'd like to recognize $player's efforts in making our mornings {!shine bright|special}.",
+            "As this morning comes to a close, I'd like to recognize {$player}'s efforts in making our mornings {!shine bright|special}.",
             "This morning was {!truly|quite} {adjectives.positive?}, but I'm exhausted... I don't think I'll {!be able to wake myself up tomorrow|set my alarm}.",
             "Saying good morning to {!you all|my friends} is {!an honor that I truly cherish|a privilege that I enjoy deeply|the highlight of each day}, but I think I'll {!pass the torch for tomorrow|let someone else give it a shot}!"
         ],
         "summonSuffix": [
-            "$player, I'll let you start the Good Morning {!train|ritual} tomorrow. Go ahead and say good morning whenever you'd like, I'll wake up when I see your message",
-            "I'd like $player to take my place tomorrow morning. Please send a {!truly|wonderfully} {adjectives.novel?} good morning message to the server to kick off the day! Don't wait for me"
+            "{$player}, I'll let you start the Good Morning {!train|ritual} tomorrow. Go ahead and say good morning whenever you'd like, I'll wake up when I see your message",
+            "I'd like {$player} to take my place tomorrow morning. Please send a {!truly|wonderfully} {adjectives.novel?} good morning message to the server to kick off the day! Don't wait for me"
         ]
     }
 }

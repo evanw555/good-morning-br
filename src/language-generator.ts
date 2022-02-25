@@ -9,13 +9,22 @@ class LanguageGenerator {
         this._config = config;
     }
 
-    private _resolve(token: string): string {
+    private _resolve(token: string, variables: Record<string, string>): string {
         let stripped: string = token.substring(1, token.length - 1);
 
         // In the simple case (list of literals), handle this upfront
         if (stripped.startsWith('!')) {
             const options: string[] = stripped.substring(1).split('|');
             return options[Math.floor(Math.random() * options.length)];
+        }
+
+        // If dealing with variable injection return that variable if it exists, else return the token
+        if (stripped.startsWith('$')) {
+            const identifier: string = stripped.substring(1);
+            if (variables[identifier] === undefined) {
+                throw new Error(`Token \`${token}\` references nonexistent variable, available variables are \`${JSON.stringify(Object.keys(variables))}\``);
+            }
+            return variables[identifier];
         }
 
         // Check if there's a random modifier at the end
@@ -85,9 +94,10 @@ class LanguageGenerator {
 
     /**
      * @param input Unresolved input text (may contain tokens)
+     * @param variables Variables that may be referenced and injected via variable tokens
      * @returns Processed text with all tokens recursively resolved
      */
-    generate(input: string): string {
+    generate(input: string, variables: Record<string, string> = {}): string {
         const p: RegExp = /{\!?([^{}]+)(\?\d*\-?\d*)?}/;
         // This logic can be retried a number of times, in case a bad result is generated
         let attemptsRemaining: number = 10;
@@ -96,7 +106,7 @@ class LanguageGenerator {
             let result: string = input;
             try {
                 while (result.search(p) !== -1) {
-                    result = result.replace(p, this._resolve.bind(this));
+                    result = result.replace(p, (x) => this._resolve(x, variables));
                 }
             } catch (err) {
                 this._reportFailure(err.message);

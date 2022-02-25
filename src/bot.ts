@@ -182,11 +182,7 @@ const sendGoodMorningMessage = async (): Promise<void> => {
 
             const attachment = new MessageAttachment(await createMidSeasonUpdateImage(state, history.medals), 'results.png');
 
-            // TODO: We definitely should be doing this via parameters in the generation itself...
-            await messenger.send(goodMorningChannel, languageGenerator.generate('{weeklyUpdate}')
-                .replace(/\$season/g, state.getSeasonNumber().toString())
-                .replace(/\$top/g, top)
-                .replace(/\$second/g, second));
+            await messenger.send(goodMorningChannel, languageGenerator.generate('{weeklyUpdate}', { season: state.getSeasonNumber().toString(), top: `<@${top}>`, second: `<@${second}>` }));
             await goodMorningChannel.send({ files: [attachment] });
             break;
         case DailyEventType.MonkeyFriday:
@@ -196,7 +192,7 @@ const sendGoodMorningMessage = async (): Promise<void> => {
             await messenger.send(goodMorningChannel, languageGenerator.generate(config.goodMorningMessageOverrides[toCalendarDate(new Date())] ?? '{goodMorning}'));
             break;
         case DailyEventType.Beckoning:
-            await messenger.send(goodMorningChannel, languageGenerator.generate('{beckoning.goodMorning?}').replace(/\$player/g, `<@${state.getEvent().beckoning}>`));
+            await messenger.send(goodMorningChannel, languageGenerator.generate('{beckoning.goodMorning?}', { player: `<@${state.getEvent().beckoning}>` }));
             break;
         case DailyEventType.GrumpyMorning:
             await messenger.send(goodMorningChannel, languageGenerator.generate('{grumpyMorning}'));
@@ -422,9 +418,7 @@ const TIMEOUT_CALLBACKS = {
             const newLeader: Snowflake = state.getCurrentLeader();
             // If it's not the end of the season, notify the channel of the leader shift
             if (!state.isSeasonGoalReached()) {
-                await messenger.send(goodMorningChannel, languageGenerator.generate('{leaderShift?}')
-                    .replace(/\$old/g, `<@${previousLeader}>`)
-                    .replace(/\$new/g, `<@${newLeader}>`));
+                await messenger.send(goodMorningChannel, languageGenerator.generate('{leaderShift?}', { old: `<@${previousLeader}>`, new: `<@${newLeader}>` }));
             }
             // Sleep to provide a buffer in case more messages need to be sent
             await sleep(10000);
@@ -438,7 +432,7 @@ const TIMEOUT_CALLBACKS = {
             await logger.log(`Event for tomorrow has been selected: \`${JSON.stringify(nextEvent)}\``);
             // Depending on the type of event chosen for tomorrow, send out a special message
             if (nextEvent.type === DailyEventType.GuestReveille) {
-                await messenger.send(goodMorningChannel, languageGenerator.generate('{reveille.summon}').replace(/\$player/g, `<@${nextEvent.reveiller}>`));
+                await messenger.send(goodMorningChannel, languageGenerator.generate('{reveille.summon}', { player: `<@${nextEvent.reveiller}>` }));
             } else if (nextEvent.type === DailyEventType.ReverseGoodMorning) {
                 const text = 'Tomorrow morning will be a _Reverse_ Good Morning! '
                     + 'Instead of saying good morning after me, you should say good morning _before_ me. '
@@ -635,9 +629,9 @@ const processCommands = async (msg: Message): Promise<void> => {
     // Test out language generation
     if (msg.content.startsWith('$')) {
         if (Math.random() < .5) {
-            messenger.reply(msg, languageGenerator.generate(msg.content.substring(1)).replace(/\$player/g, `<@${msg.author.id}>`));
+            messenger.reply(msg, languageGenerator.generate(msg.content.substring(1), { player: `<@${msg.author.id}>` }));
         } else {
-            messenger.send(msg.channel, languageGenerator.generate(msg.content.substring(1)).replace(/\$player/g, `<@${msg.author.id}>`));
+            messenger.send(msg.channel, languageGenerator.generate(msg.content.substring(1), { player: `<@${msg.author.id}>` }));
         }
         return;
     }
@@ -707,7 +701,7 @@ const processCommands = async (msg: Message): Promise<void> => {
         }
         // Test the beckoning message
         else if (sanitizedText.includes('beckon')) {
-            messenger.send(msg.channel, languageGenerator.generate('{beckoning.goodMorning?}').replace('$player', `<@${state.getCurrentLeader()}>`));
+            messenger.send(msg.channel, languageGenerator.generate('{beckoning.goodMorning?}', { player: `<@${state.getCurrentLeader()}>` }));
         }
         // Simulate events for the next 2 weeks
         else if (sanitizedText.includes('event')) {
@@ -881,9 +875,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
 
                 // If it's a combo-breaker, reply with a special message (may result in double replies on Monkey Friday)
                 if (sendComboBrokenMessage) {
-                    messenger.reply(msg, languageGenerator.generate('{goodMorningReply.comboBreaker?}')
-                        .replace(/\$breakee/g, `<@${comboBreakee}>`)
-                        .replace(/\$days/g, comboDaysBroken.toString()));
+                    messenger.reply(msg, languageGenerator.generate('{goodMorningReply.comboBreaker?}', { breakee: `<@${comboBreakee}>`, days: comboDaysBroken.toString() }));
                 }
                 // If this post is NOT a Monkey Friday post, reply as normal (this is to avoid double replies on Monkey Friday)
                 else if (!triggerMonkeyFriday) {
