@@ -1,9 +1,9 @@
 import { Client, DMChannel, Intents, MessageAttachment } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'discord.js';
-import { DailyEvent, DailyEventType, DailyPlayerState, GoodMorningConfig, GoodMorningHistory, PlayerState, Season, TimeoutType, Combo } from './types.js';
+import { DailyEvent, DailyEventType, DailyPlayerState, GoodMorningConfig, GoodMorningHistory, PlayerState, Season, TimeoutType, Combo, CalendarDate } from './types.js';
 import TimeoutManager from './timeout-manager.js';
 import { createMidSeasonUpdateImage, createSeasonResultsImage } from './graphics.js';
-import { hasVideo, randInt, validateConfig, getTodayDateString, reactToMessage, getOrderingUpset, sleep, randChoice, getMonthDayString, getTomorrow, generateKMeansClusters } from './util.js';
+import { hasVideo, randInt, validateConfig, getTodayDateString, reactToMessage, getOrderingUpset, sleep, randChoice, toCalendarDate, getTomorrow, generateKMeansClusters } from './util.js';
 import GoodMorningState from './state.js';
 
 import { loadJson } from './load-json.js';
@@ -107,7 +107,7 @@ const chooseEvent = (date: Date): DailyEvent => {
         };
     }
     // If this date has a calendar date message override, use that
-    const calendarDate: string = getMonthDayString(date); // e.g. "12/25" for xmas
+    const calendarDate: CalendarDate = toCalendarDate(date); // e.g. "12/25" for xmas
     if (calendarDate in config.goodMorningMessageOverrides) {
         return {
             type: DailyEventType.OverriddenMessage
@@ -183,7 +183,7 @@ const sendGoodMorningMessage = async (): Promise<void> => {
             await messenger.send(goodMorningChannel, languageGenerator.generate('{happyFriday}'));
             break;
         case DailyEventType.OverriddenMessage:
-            await messenger.send(goodMorningChannel, languageGenerator.generate(config.goodMorningMessageOverrides[getMonthDayString(new Date())] ?? '{goodMorning}'));
+            await messenger.send(goodMorningChannel, languageGenerator.generate(config.goodMorningMessageOverrides[toCalendarDate(new Date())] ?? '{goodMorning}'));
             break;
         case DailyEventType.Beckoning:
             await messenger.send(goodMorningChannel, languageGenerator.generate('{beckoning.goodMorning?}').replace(/\$player/g, `<@${state.getEvent().beckoning}>`));
@@ -279,7 +279,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     state.incrementAllLGMs();
 
     // Set today's positive react emoji
-    state.setGoodMorningEmoji(config.goodMorningEmojiOverrides[getMonthDayString(new Date())] ?? config.defaultGoodMorningEmoji);
+    state.setGoodMorningEmoji(config.goodMorningEmojiOverrides[toCalendarDate(new Date())] ?? config.defaultGoodMorningEmoji);
 
     // Set timeout for when morning ends (if they're in the future)
     const now = new Date();
@@ -689,7 +689,7 @@ const processCommands = async (msg: Message): Promise<void> => {
             let message: string = '';
             const date: Date = getTomorrow();
             for (let i = 0; i < 14; i++) {
-                message += `\`${getMonthDayString(date)}\`: \`${JSON.stringify(chooseEvent(date))}\`\n`;
+                message += `\`${toCalendarDate(date)}\`: \`${JSON.stringify(chooseEvent(date))}\`\n`;
                 date.setDate(date.getDate() + 1);
             }
             await msg.reply(message);

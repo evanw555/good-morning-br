@@ -1,5 +1,5 @@
 import { Message, Snowflake, TextBasedChannels } from "discord.js";
-import { GoodMorningConfig, PlayerState } from "./types";
+import { CalendarDate, GoodMorningConfig, PlayerState } from "./types";
 
 /**
  * @param lo Lower bound (inclusive)
@@ -174,7 +174,7 @@ export function getTodayDateString(): string {
  * @param date input date
  * @returns e.g. "12/25"
  */
-export function getMonthDayString(date: Date): string {
+export function toCalendarDate(date: Date): CalendarDate {
     return `${date.getMonth() + 1}/${date.getDate()}`;
 }
 

@@ -13,6 +13,8 @@ export interface Timeout {
     date: string
 }
 
+export type CalendarDate = string
+
 export interface GoodMorningConfig {
     goodMorningChannelId: Snowflake,
     seasonGoal: number,
@@ -23,9 +25,9 @@ export interface GoodMorningConfig {
     largeAwardsByRank: Record<string, number>,
     defaultAward: number,
     minimumComboDays: number,
-    goodMorningMessageOverrides: Record<string, string>,
+    goodMorningMessageOverrides: Record<CalendarDate, string>,
     defaultGoodMorningEmoji: string,
-    goodMorningEmojiOverrides: Record<string, string[]>,
+    goodMorningEmojiOverrides: Record<CalendarDate, string[]>,
     downvoteEmoji: string
 }
 
@@ -76,7 +78,7 @@ export interface DailyEvent {
 export interface RawGoodMorningState {
     season: number,
     goal: number,
-    startedOn: string,
+    startedOn: CalendarDate,
     isMorning: boolean,
     isGracePeriod: boolean,
     goodMorningEmoji: string | string[],
@@ -90,8 +92,8 @@ export interface RawGoodMorningState {
 
 export interface Season {
     season: number,
-    startedOn: string
-    finishedOn: string,
+    startedOn: CalendarDate
+    finishedOn: CalendarDate,
     points: Record<Snowflake, number>,
     goal: number
 }
