@@ -657,7 +657,7 @@ const processCommands = async (msg: Message): Promise<void> => {
         else if (sanitizedText.includes('order') || sanitizedText.includes('rank') || sanitizedText.includes('winning') || sanitizedText.includes('standings')) {
             msg.reply(state.getOrderedPlayers()
                 .map((key) => {
-                    return ` - <@${key}>: **${state.getPlayerPoints(key)}** (${state.getPlayerDaysSinceLGM(key)}d)` + (state.getPlayerPenalties(key) ? (' -' + state.getPlayerPenalties(key)) : '');
+                    return ` - <@${key}>: **${state.getPlayerPoints(key)}** (${state.getPlayerDaysSinceLGM(key)}d)` + (state.getPlayerDeductions(key) ? (' -' + state.getPlayerDeductions(key)) : '');
                 })
                 .join('\n'));
         }

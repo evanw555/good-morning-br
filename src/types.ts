@@ -46,7 +46,9 @@ export interface Combo {
 export interface PlayerState {
     displayName: string,
     points: number,
+    // TODO: remove this after season 2
     penalties?: number,
+    deductions?: number,
     daysSinceLastGoodMorning?: number,
     combosBroken?: number
 }

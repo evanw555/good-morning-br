@@ -72,6 +72,10 @@ export default class GoodMorningState {
         return this.getPlayer(userId)?.points ?? 0;
     }
 
+    getPlayerDeductions(userId: Snowflake): number {
+        return this.getPlayer(userId)?.deductions ?? 0;
+    }
+
     /**
      * @param userId User ID of the player
      * @returns Days since player's last Good Morning
@@ -237,10 +241,14 @@ export default class GoodMorningState {
         if (points < 0) {
             throw new Error('Can only deduct a non-negative number of points!');
         }
+        // Update the daily "points lost" value
         this.initializeDailyStatus(userId);
         this.data.dailyStatus[userId].pointsLost = (this.data.dailyStatus[userId].pointsLost ?? 0) + points;
+        // Deduct points from the player
         this.initializePlayer(userId);
         this.getPlayer(userId).points -= points;
+        // Update the season total deductions count
+        this.getPlayer(userId).deductions = this.getPlayerDeductions(userId) + points;
     }
 
     wasPlayerPenalizedToday(userId: Snowflake): boolean {

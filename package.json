@@ -1,6 +1,6 @@
 {
     "name": "good-morning-br",
-    "version": "1.2.2",
+    "version": "1.2.3",
     "description": "Saying \"good morning\" is now a feature-rich Battle Royale experience!",
     "main": "bot.js",
     "author": "Evan Williams",
