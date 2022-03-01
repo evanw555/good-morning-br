@@ -30,6 +30,9 @@ const client = new Client({
         Intents.FLAGS.GUILD_MESSAGES,
         Intents.FLAGS.GUILD_MESSAGE_REACTIONS,
         Intents.FLAGS.DIRECT_MESSAGES
+    ],
+    partials: [
+        'CHANNEL' // Required to receive DMs
     ]
 });
 
@@ -979,6 +982,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             }
             state.getEvent().submissions[userId] = msg.content;
             dumpState();
+            logger.log(`Received submission from player **${state.getPlayerDisplayName(userId)}**, now at **${Object.keys(state.getEvent().submissions).length}** submissions`);
         }
         // Process admin commands
         else if (guildOwnerDmChannel && msg.channel.id === guildOwnerDmChannel.id && msg.author.id === guildOwner.id) {
