@@ -377,18 +377,27 @@ const TIMEOUT_CALLBACKS = {
         // Before anything else, check the results of anonymous submissions
         if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
             const scores: Record<Snowflake, number> = {};
+            const messages: Record<Snowflake, Message> = {};
 
             // First, count the reacts and compute the score
             const userIds: Snowflake[] = Object.keys(state.getEvent().anonymousMessagesByOwner);
+            let scoresLogMessage: string = 'Submission Scores:'
             for (let i = 0; i < userIds.length; i++) {
                 const userId: Snowflake = userIds[i];
-                const messageId: Snowflake = state.getEvent().anonymousMessagesByOwner[userId];
-                const message: Message = await goodMorningChannel.messages.fetch(messageId);
-                const upvotes: number = message.reactions.resolve(config.defaultGoodMorningEmoji).count;
-                const downvotes: number = message.reactions.resolve(config.downvoteEmoji).count;
-                const score: number = upvotes - (downvotes / 2);
-                scores[userId] = score;
+                try {
+                    const messageId: Snowflake = state.getEvent().anonymousMessagesByOwner[userId];
+                    const message: Message = await goodMorningChannel.messages.fetch(messageId);
+                    const upvotes: number = message.reactions.resolve(config.defaultGoodMorningEmoji).count;
+                    const downvotes: number = message.reactions.resolve(config.downvoteEmoji).count;
+                    const score: number = upvotes - (downvotes / 2);
+                    scores[userId] = score;
+                    messages[userId] = message;
+                    scoresLogMessage += `\n**${state.getPlayerDisplayName(userId)}**: \`${upvotes}u - ${downvotes}d = ${score}\``;
+                } catch (err) {
+                    logger.log(`Failed to compute score for <@${userId}>'s message: \`${err.toString()}\``);
+                }
             }
+            logger.log(scoresLogMessage);
 
             // Then, assign points based on rank in score
             userIds.sort((x, y) => scores[y] - scores[x]);
@@ -405,13 +414,14 @@ const TIMEOUT_CALLBACKS = {
 
             // Finally, send congrats messages
             if (userIds[0]) {
-                await messenger.send(goodMorningChannel, `Congrats to <@${userIds[0]}> for sending the best Good Morning ${state.getEvent().submissionType}!`);
+                await messenger.reply(messages[userIds[0]], `Congrats to <@${userIds[0]}> for sending the best Good Morning ${state.getEvent().submissionType}!`);
             }
             if (userIds[1] && userIds[2]) {
                 await messenger.send(goodMorningChannel, `Congrats as well to the runners-up <@${userIds[1]}> and <@${userIds[2]}>!`);
             }
             if (Math.min(...Object.values(scores)) < 0) {
-                await messenger.send(goodMorningChannel, `...and <@${userIds[userIds.length - 1]}>, hope you do better next time 😬`);
+                const userId: Snowflake = userIds[userIds.length - 1];
+                await messenger.reply(messages[userId], `...and <@${userId}>, hope you do better next time 😬`);
             }
 
             // Sleep to provide a buffer in case more messages need to be sent
@@ -490,16 +500,20 @@ const TIMEOUT_CALLBACKS = {
             const userId: Snowflake = userIds[i];
             const submission: string = state.getEvent().submissions[userId];
 
-            // Send the message out and provide the expected emoji reacts
-            const message: Message = await messenger.sendAndGet(goodMorningChannel, submission);
-            await reactToMessage(message, config.defaultGoodMorningEmoji);
-            await reactToMessage(message, config.downvoteEmoji);
+            try {
+                // Send the message out and provide the expected emoji reacts
+                const message: Message = await messenger.sendAndGet(goodMorningChannel, submission);
+                await reactToMessage(message, config.defaultGoodMorningEmoji);
+                await reactToMessage(message, config.downvoteEmoji);
 
-            // Track the message ID keyed by user ID
-            state.getEvent().anonymousMessagesByOwner[userId] = message.id;
+                // Track the message ID keyed by user ID
+                state.getEvent().anonymousMessagesByOwner[userId] = message.id;
 
-            // Take a long pause
-            await sleep(30000);
+                // Take a long pause
+                await sleep(30000);
+            } catch (err) {
+                logger.log(`Failed to send out <@${userId}>'s submission: \`${err.toString()}\``);
+            }
         }
 
         // Deleting the submissions map will prevent action taken on further DMs

@@ -11,6 +11,9 @@ class Logger {
     }
 
     async log(text: string): Promise<void> {
+        if (text.length > 1990) {
+            text = text.substring(0, 1990) + '...';
+        }
         console.log(text);
         if (this.channel) {
             await this.channel.send(text);
