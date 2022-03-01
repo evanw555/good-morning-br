@@ -189,17 +189,14 @@
             "{!🌞|😊|😌}"
         ],
         "new": [
-            "Good morning, {!glad|happy} to hear from you!",
-            "Good morning, {!glad|happy} to see you around here",
+            "Good morning, {!glad|happy} to {!hear from you|see you around here}!",
             "{!Hello|Hi there|Greetings}! May this {adjectives.positive?} morning be the first of many...",
             "It's always {!wonderful|a blessing|serendipitous} to see a {!fresh|new} face here... Good morning!",
             "Welcome! {!Pleasure|Pleased} to meet you on this {!nice|fine} morning, my friend",
             "Good morning! To meet a new friend is truly a miracle, {!treasure this moment|may today treat you well}"
         ],
         "negative": [
-            "Good morning!",
-            "Good morning, didn't expect to hear from you",
-            "Good morning, wasn't expecting to hear from you",
+            "Good morning, {!didn't expect|wasn't expecting} to hear from you",
             "You may be a {!naughty|bad} {!boy|dog|man}, but good morning to you!",
             "Well, well, well... look who's up!",
             "Uhhhhhhh hey."

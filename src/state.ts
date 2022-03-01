@@ -203,10 +203,16 @@ export default class GoodMorningState {
      * @returns The max total point score of all players currently in play
      */
     getTopScore(): number {
+        if (this.getNumPlayers() === 0) {
+            return 0;
+        }
         return Math.max(...Object.values(this.data.players).map(player => player.points));
     }
 
     getLowestScore(): number {
+        if (this.getNumPlayers() === 0) {
+            return 0;
+        }
         return Math.min(...Object.values(this.data.players).map(player => player.points));
     }
 
@@ -216,6 +222,13 @@ export default class GoodMorningState {
 
     isSeasonGoalReached(): boolean {
         return this.getTopScore() >= this.data.goal;
+    }
+
+    /**
+     * @returns A number in the range [0, 1] representing the percentage completion of the current season (e.g. 0.5 means 50% complete)
+     */
+    getSeasonCompletion(): number {
+        return this.getTopScore() / this.getSeasonGoal();
     }
 
     initializeDailyStatus(userId: Snowflake): DailyPlayerState {

@@ -694,7 +694,7 @@ const processCommands = async (msg: Message): Promise<void> => {
         }
         // Asking about the season
         else if (sanitizedText.includes('season')) {
-            messenger.reply(msg, `It\'s season **${state.getSeasonNumber()}**!`);
+            messenger.reply(msg, `It\'s season **${state.getSeasonNumber()}**, and we're **${Math.floor(100 * state.getSeasonCompletion())}%** complete!`);
         }
         // Canvas stuff
         else if (sanitizedText.includes('canvas')) {
@@ -886,8 +886,8 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 }
                 // If this post is NOT a Monkey Friday post, reply as normal (this is to avoid double replies on Monkey Friday)
                 else if (!triggerMonkeyFriday) {
-                    // If it's the user's first message this season, reply to them with a special message
-                    if (firstMessageThisSeason) {
+                    // If it's the user's first message this season (and we're at least 10% in), reply to them with a special message
+                    if (firstMessageThisSeason && state.getSeasonCompletion() > 0.1) {
                         messenger.reply(msg, languageGenerator.generate('{goodMorningReply.new?}'));
                     }
                     // If the user was beckoned, reply to them specially
@@ -902,12 +902,14 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                             reactToMessage(msg, '🌚');
                         }
                     }
-                    // Reply (or react) to the user based on how many points they had
+                    // Always reply with a negative reply if the player had negative points
+                    else if (priorPoints < 0) {
+                        messenger.reply(msg, languageGenerator.generate('{goodMorningReply.negative?}'));
+                    }
+                    // Reply (or react) to the user based on their rank (and chance)
                     else if (rank <= config.goodMorningReplyCount) {
                         if (Math.random() < config.replyViaReactionProbability) {
                             reactToMessage(msg, state.getGoodMorningEmoji());
-                        } else if (priorPoints < 0) {
-                            messenger.reply(msg, languageGenerator.generate('{goodMorningReply.negative?}'));
                         } else {
                             messenger.reply(msg, languageGenerator.generate('{goodMorningReply.standard?}'));
                         }
