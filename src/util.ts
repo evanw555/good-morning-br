@@ -237,3 +237,17 @@ export function getOrderingUpsets(before: string[], after: string[]): Record<str
 export function sleep(milliseconds: number): Promise<void> {
     return new Promise(r => setTimeout(r, milliseconds));
 }
+
+/**
+ * @returns The given rank expressed as a string (e.g. 1st, 2nd, 3rd, 11th, 21st)
+ */
+export function getRankString(rank: number): string {
+    if (rank % 10 === 1 && rank !== 11) {
+        return `${rank}st`;
+    } else if (rank % 10 === 2 && rank !== 12) {
+        return `${rank}nd`;
+    } else if (rank % 10 === 3 && rank !== 13) {
+        return `${rank}rd`;
+    }
+    return `${rank}th`;
+}
