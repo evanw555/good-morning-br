@@ -1,5 +1,5 @@
-import { Message, Snowflake, TextBasedChannels } from "discord.js";
-import { CalendarDate, GoodMorningConfig, PlayerState } from "./types";
+import { Message } from "discord.js";
+import { CalendarDate, FullDate, GoodMorningConfig } from "./types";
 
 /**
  * @param lo Lower bound (inclusive)
@@ -166,7 +166,7 @@ export function hasVideo(msg: Message): boolean {
 /**
  * @returns e.g. "12/25/2020"
  */
-export function getTodayDateString(): string {
+export function getTodayDateString(): FullDate {
     return new Date().toLocaleDateString('en-US');
 }
 
@@ -192,7 +192,7 @@ export function getTomorrow(): Date {
  * @param start date string
  * @returns number of days since that date
  */
-export function getNumberOfDaysSince(start: string): number {
+export function getNumberOfDaysSince(start: FullDate): number {
     const startDate: Date = new Date(start);
     const todayDate: Date = new Date(getTodayDateString());
     return Math.round((todayDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));

@@ -161,7 +161,8 @@ const chooseEvent = (date: Date): DailyEvent => {
     if (Math.random() < 0.1) {
         return {
             type: DailyEventType.AnonymousSubmissions,
-            submissionType: randChoice("haiku", "poem"), // TODO: Add new ones such as "short story", "motivational message" once this has happened a couple times
+            // TODO: Add new ones such as "short story", "motivational message" once this has happened a couple times
+            submissionType: randChoice("haiku", "limerick", "poem"),
             submissions: {}
         };
     }

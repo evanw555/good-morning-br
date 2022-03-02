@@ -13,7 +13,15 @@ export interface Timeout {
     date: string
 }
 
+/**
+ * A calendar date expressed as "{month}/{day}".
+ */
 export type CalendarDate = string
+
+/**
+ * A date expressed as "{month}/{day}/{year}".
+ */
+export type FullDate = string
 
 export interface GoodMorningConfig {
     goodMorningChannelId: Snowflake,
@@ -81,7 +89,7 @@ export interface DailyEvent {
 export interface RawGoodMorningState {
     season: number,
     goal: number,
-    startedOn: CalendarDate,
+    startedOn: FullDate,
     isMorning: boolean,
     isGracePeriod: boolean,
     goodMorningEmoji: string | string[],
@@ -96,8 +104,8 @@ export interface RawGoodMorningState {
 
 export interface Season {
     season: number,
-    startedOn: CalendarDate
-    finishedOn: CalendarDate,
+    startedOn: FullDate
+    finishedOn: FullDate,
     points: Record<Snowflake, number>,
     goal: number
 }
