@@ -371,6 +371,69 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     await dumpState();
 };
 
+const finalizeAnonymousSubmissions = async () => {
+    const scores: Record<Snowflake, number> = {};
+    const messages: Record<Snowflake, Message> = {};
+
+    // First, count the reacts and compute the score
+    const userIds: Snowflake[] = Object.keys(state.getEvent().anonymousMessagesByOwner);
+    let scoresLogMessage: string = 'Submission Scores:'
+    for (let i = 0; i < userIds.length; i++) {
+        const userId: Snowflake = userIds[i];
+        try {
+            const messageId: Snowflake = state.getEvent().anonymousMessagesByOwner[userId];
+            const message: Message = await goodMorningChannel.messages.fetch(messageId);
+            const upvotes: number = message.reactions.resolve(config.defaultGoodMorningEmoji).count;
+            const downvotes: number = message.reactions.resolve(config.downvoteEmoji).count;
+            const score: number = upvotes - (downvotes / 2);
+            scores[userId] = score;
+            messages[userId] = message;
+            scoresLogMessage += `\n**${state.getPlayerDisplayName(userId)}**: \`${upvotes}u - ${downvotes}d = ${score}\``;
+        } catch (err) {
+            logger.log(`Failed to compute score for <@${userId}>'s message: \`${err.toString()}\``);
+        }
+    }
+    logger.log(scoresLogMessage);
+
+    // Then, assign points based on rank in score
+    userIds.sort((x, y) => scores[y] - scores[x]);
+    for (let i = 0; i < userIds.length; i++) {
+        const userId: Snowflake = userIds[i];
+        const score: number = scores[userId];
+        const rank: number = i + 1;
+        // If the player received a negative score, award no points
+        const pointsEarned: number = score < 0 ? 0 : (config.largeAwardsByRank[rank] ?? config.defaultAward);
+        state.awardPoints(userId, pointsEarned);
+        state.setDailyRank(userId, rank);
+        state.resetDaysSinceLGM(userId);
+    }
+
+    // Reveal the winners (and loser) to the channel
+    await messenger.send(goodMorningChannel, 'Now, time to reveal the results...');
+    if (userIds[0]) {
+        await sleep(5000);
+        await messenger.reply(messages[userIds[0]], `Congrats to <@${userIds[0]}> for sending the best Good Morning ${state.getEvent().submissionType}!`);
+    }
+    if (userIds[1] && userIds[2]) {
+        await sleep(5000);
+        await messenger.send(goodMorningChannel, `Congrats as well to the runners-up <@${userIds[1]}> and <@${userIds[2]}>!`);
+    }
+    if (Math.min(...Object.values(scores)) < 0) {
+        await sleep(5000);
+        const userId: Snowflake = userIds[userIds.length - 1];
+        await messenger.reply(messages[userId], `...and <@${userId}>, hope you do better next time 😬`);
+    }
+
+    // Finally, send DMs to let each user know their ranking
+    const totalSubmissions: number = userIds.length;
+    for (let i = 0; i < userIds.length; i++) {
+        const userId: Snowflake = userIds[i];
+        const rank: number = i + 1;
+        await sleep(2000)
+        await messenger.dm(await fetchMember(userId), `Your ${state.getEvent().submissionType} placed **${getRankString(rank)}** of **${totalSubmissions}**. Thanks for participating ${config.defaultGoodMorningEmoji}`);
+    }
+};
+
 const TIMEOUT_CALLBACKS = {
     [TimeoutType.NextGoodMorning]: async (): Promise<void> => {
         await wakeUp(true);
@@ -380,66 +443,7 @@ const TIMEOUT_CALLBACKS = {
 
         // Before anything else, check the results of anonymous submissions
         if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
-            const scores: Record<Snowflake, number> = {};
-            const messages: Record<Snowflake, Message> = {};
-
-            // First, count the reacts and compute the score
-            const userIds: Snowflake[] = Object.keys(state.getEvent().anonymousMessagesByOwner);
-            let scoresLogMessage: string = 'Submission Scores:'
-            for (let i = 0; i < userIds.length; i++) {
-                const userId: Snowflake = userIds[i];
-                try {
-                    const messageId: Snowflake = state.getEvent().anonymousMessagesByOwner[userId];
-                    const message: Message = await goodMorningChannel.messages.fetch(messageId);
-                    const upvotes: number = message.reactions.resolve(config.defaultGoodMorningEmoji).count;
-                    const downvotes: number = message.reactions.resolve(config.downvoteEmoji).count;
-                    const score: number = upvotes - (downvotes / 2);
-                    scores[userId] = score;
-                    messages[userId] = message;
-                    scoresLogMessage += `\n**${state.getPlayerDisplayName(userId)}**: \`${upvotes}u - ${downvotes}d = ${score}\``;
-                } catch (err) {
-                    logger.log(`Failed to compute score for <@${userId}>'s message: \`${err.toString()}\``);
-                }
-            }
-            logger.log(scoresLogMessage);
-
-            // Then, assign points based on rank in score
-            userIds.sort((x, y) => scores[y] - scores[x]);
-            for (let i = 0; i < userIds.length; i++) {
-                const userId: Snowflake = userIds[i];
-                const score: number = scores[userId];
-                const rank: number = i + 1;
-                // If the player received a negative score, award no points
-                const pointsEarned: number = score < 0 ? 0 : (config.largeAwardsByRank[rank] ?? config.defaultAward);
-                state.awardPoints(userId, pointsEarned);
-                state.setDailyRank(userId, rank);
-                state.resetDaysSinceLGM(userId);
-            }
-
-            // Reveal the winners (and loser) to the channel
-            await messenger.send(goodMorningChannel, 'Now, time to reveal the results...');
-            if (userIds[0]) {
-                await sleep(5000);
-                await messenger.reply(messages[userIds[0]], `Congrats to <@${userIds[0]}> for sending the best Good Morning ${state.getEvent().submissionType}!`);
-            }
-            if (userIds[1] && userIds[2]) {
-                await sleep(5000);
-                await messenger.send(goodMorningChannel, `Congrats as well to the runners-up <@${userIds[1]}> and <@${userIds[2]}>!`);
-            }
-            if (Math.min(...Object.values(scores)) < 0) {
-                await sleep(5000);
-                const userId: Snowflake = userIds[userIds.length - 1];
-                await messenger.reply(messages[userId], `...and <@${userId}>, hope you do better next time 😬`);
-            }
-
-            // Finally, send DMs to let each user know their ranking
-            const totalSubmissions: number = userIds.length;
-            for (let i = 0; i < userIds.length; i++) {
-                const userId: Snowflake = userIds[i];
-                const rank: number = i + 1;
-                await sleep(2000)
-                await messenger.dm(await fetchMember(userId), `Your ${state.getEvent().submissionType} placed **${getRankString(rank)}** of **${totalSubmissions}**. Thanks for participating ${config.defaultGoodMorningEmoji}`);
-            }
+            await finalizeAnonymousSubmissions();
 
             // Sleep to provide a buffer in case more messages need to be sent
             await sleep(10000);
@@ -505,7 +509,10 @@ const TIMEOUT_CALLBACKS = {
         await setStatus(false);
     },
     [TimeoutType.AnonymousSubmissionReveal]: async (): Promise<void> => {
-        await messenger.send(goodMorningChannel, `Here are your anonymous submissions! Use ${config.defaultGoodMorningEmoji} to upvote and ${config.downvoteEmoji} to downvote...`);
+        // Send the initial message
+        const votingMessage: Message = await messenger.sendAndGet(goodMorningChannel,
+            `Here are your anonymous submissions! Use ${config.defaultGoodMorningEmoji} to upvote and ${config.downvoteEmoji} to downvote...`);
+        state.getEvent().votingMessage = votingMessage.id;
 
         // Get all the relevant user IDs and shuffle them
         const userIds: Snowflake[] = Object.keys(state.getEvent().submissions);
@@ -513,6 +520,7 @@ const TIMEOUT_CALLBACKS = {
 
         // For each submission (in shuffled order)...
         state.getEvent().anonymousMessagesByOwner = {};
+        await dumpState();
         for (let i = 0; i < userIds.length; i++) {
             const userId: Snowflake = userIds[i];
             const submission: string = state.getEvent().submissions[userId];
@@ -525,6 +533,7 @@ const TIMEOUT_CALLBACKS = {
 
                 // Track the message ID keyed by user ID
                 state.getEvent().anonymousMessagesByOwner[userId] = message.id;
+                await dumpState();
 
                 // Take a long pause
                 await sleep(30000);
@@ -535,6 +544,22 @@ const TIMEOUT_CALLBACKS = {
 
         // Deleting the submissions map will prevent action taken on further DMs
         delete state.getEvent().submissions;
+        await dumpState();
+
+        // Schedule voting reminders
+        [[11, 0], [11, 15], [11, 30]].forEach(([hour, minute]) =>{
+            const reminderTime: Date = new Date();
+            reminderTime.setHours(hour, minute);
+            timeoutManager.registerTimeout(TimeoutType.AnonymousSubmissionVotingReminder, reminderTime);
+        });
+    },
+    [TimeoutType.AnonymousSubmissionVotingReminder]: async (): Promise<void> => {
+        try {
+            const votingMessage: Message = await goodMorningChannel.messages.fetch(state.getEvent().votingMessage);
+            await messenger.reply(votingMessage, `If you haven't already, please vote on these anonymous ${state.getEvent().submissionType}s!`);
+        } catch (err) {
+            logger.log(`Failed to fetch voting message and send reminder: \`${err.toString()}\``);
+        }
     }
 };
 

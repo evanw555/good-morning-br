@@ -5,7 +5,8 @@ export enum TimeoutType{
     NextPreNoon = 'NEXT_PRE_NOON',
     NextNoon = 'NEXT_NOON',
     // Non-standard events
-    AnonymousSubmissionReveal = 'ANONYMOUS_SUBMISSION_REVEAL'
+    AnonymousSubmissionReveal = 'ANONYMOUS_SUBMISSION_REVEAL',
+    AnonymousSubmissionVotingReminder = 'ANONYMOUS_SUBMISSION_VOTING_REMINDER'
 }
 
 export interface Timeout {
@@ -82,6 +83,7 @@ export interface DailyEvent {
     submissionType?: string,
     submissions?: Record<Snowflake, string>,
     anonymousMessagesByOwner?: Record<Snowflake, Snowflake>, // Map of UserId -> MessageId
+    votingMessage?: Snowflake,
     // Used specifically for the "grumpy morning" event
     disabled?: boolean
 }
