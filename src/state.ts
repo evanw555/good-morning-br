@@ -31,6 +31,21 @@ export default class GoodMorningState {
         return this.data.startedOn;
     }
 
+    /**
+     * @returns Ordered list of player user IDs sorted by daily rank, then by daily points earned/lost.
+     */
+    getOrderedDailyPlayers(): Snowflake[] {
+        return Object.keys(this.data.dailyStatus)
+            .sort((x, y) => {
+                // Sort by rank ascending (rankless last)
+                return (this.getDailyRank(x) ?? Number.MAX_VALUE) - (this.getDailyRank(y) ?? Number.MAX_VALUE)
+                    // Sort by points earned descending
+                    || this.getPointsEarnedToday(y) - this.getPointsEarnedToday(x)
+                    // Sort by points lost ascending
+                    || this.getPointsLostToday(x) - this.getPointsLostToday(y);
+            });
+    }
+
     resetDailyState(): void {
         this.data.dailyStatus = {};
     }
@@ -264,6 +279,14 @@ export default class GoodMorningState {
         this.getPlayer(userId).deductions = this.getPlayerDeductions(userId) + points;
     }
 
+    getPointsEarnedToday(userId: Snowflake): number {
+        return this.data.dailyStatus[userId]?.pointsEarned ?? 0;
+    }
+
+    getPointsLostToday(userId: Snowflake): number {
+        return this.data.dailyStatus[userId]?.pointsLost ?? 0;
+    }
+
     wasPlayerPenalizedToday(userId: Snowflake): boolean {
         return (this.data.dailyStatus[userId]?.pointsLost ?? 0) > 0;
     }
@@ -281,6 +304,10 @@ export default class GoodMorningState {
 
     getNextDailyRank(): number {
         return Math.max(...Object.values(this.data.dailyStatus).map(status => status.rank ?? 0)) + 1;
+    }
+
+    getDailyRank(userId: Snowflake): number | undefined {
+        return this.data.dailyStatus[userId]?.rank;
     }
 
     hasDailyRank(userId: Snowflake): boolean {

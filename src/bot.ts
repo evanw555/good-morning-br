@@ -676,7 +676,15 @@ const processCommands = async (msg: Message): Promise<void> => {
         else if (sanitizedText.includes('order') || sanitizedText.includes('rank') || sanitizedText.includes('winning') || sanitizedText.includes('standings')) {
             msg.reply(state.getOrderedPlayers()
                 .map((key) => {
-                    return ` - <@${key}>: **${state.getPlayerPoints(key)}** (${state.getPlayerDaysSinceLGM(key)}d)` + (state.getPlayerDeductions(key) ? (' -' + state.getPlayerDeductions(key)) : '');
+                    return `- <@${key}>: **${state.getPlayerPoints(key)}** (${state.getPlayerDaysSinceLGM(key)}d)` + (state.getPlayerDeductions(key) ? (' -' + state.getPlayerDeductions(key)) : '');
+                })
+                .join('\n'));
+        }
+        // Return the daily status info
+        else if (sanitizedText.includes('daily')) {
+            msg.reply(state.getOrderedDailyPlayers()
+                .map((key) => {
+                    return `- **#${state.getDailyRank(key) ?? '?'}** <@${key}>: **${state.getPointsEarnedToday(key)}** earned` + (state.getPointsLostToday(key) ? `, **${state.getPointsLostToday(key)}** lost` : '');
                 })
                 .join('\n'));
         }
