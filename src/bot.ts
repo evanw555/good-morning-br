@@ -131,34 +131,8 @@ const chooseEvent = (date: Date): DailyEvent => {
             type: DailyEventType.MonkeyFriday
         };
     }
-    // Determine which player (if any) should be beckoned on this date
-    const potentialBeckonees: Snowflake[] = state.getLeastRecentPlayers(6);
-    if (potentialBeckonees.length > 0 && Math.random() < 0.25) {
-        return {
-            type: DailyEventType.Beckoning,
-            beckoning: randChoice(...potentialBeckonees)
-        };
-    }
-    // Assign a random guest reveiller
-    if (Math.random() < 0.15) {
-        const potentialReveillers: Snowflake[] = state.getPotentialReveillers();
-        if (potentialReveillers.length > 0) {
-            const guestReveiller: Snowflake = randChoice(...potentialReveillers);
-            return {
-                type: DailyEventType.GuestReveille,
-                reveiller: guestReveiller
-            };
-        }
-    }
-    // Do a "reverse" good morning
-    if (Math.random() < 0.1) {
-        return {
-            type: DailyEventType.ReverseGoodMorning,
-            reverseGMRanks: {}
-        };
-    }
-    // Do anonymous submissions
-    if (Math.random() < 0.1) {
+    // If it's an even-numbered day on Tuesday or Wednesday, then do submissions
+    if (date.getDate() % 2 === 0 && (date.getDay() === 2 || date.getDay() === 3)) {
         return {
             type: DailyEventType.AnonymousSubmissions,
             // TODO: Add new ones such as "short story", "motivational message" once this has happened a couple times
@@ -166,11 +140,40 @@ const chooseEvent = (date: Date): DailyEvent => {
             submissions: {}
         };
     }
-    // Do a grumpy morning
-    if (Math.random() < 0.1) {
-        return {
+    // Every 2/3 days, take a chance to do some other event
+    if (date.getDate() % 3 !== 0) {
+        // Compile a list of potential events
+        const potentialEvents: DailyEvent[] = [];
+        // If someone should be beckoned, add beckoning as a potential event
+        const potentialBeckonees: Snowflake[] = state.getLeastRecentPlayers(6);
+        if (potentialBeckonees.length > 0) {
+            potentialEvents.push({
+                type: DailyEventType.Beckoning,
+                beckoning: randChoice(...potentialBeckonees)
+            });
+        }
+        // If anyone is qualified to be a guest reveiller, add guest reveille as a potential event
+        const potentialReveillers: Snowflake[] = state.getPotentialReveillers();
+        if (potentialReveillers.length > 0) {
+            const guestReveiller: Snowflake = randChoice(...potentialReveillers);
+            potentialEvents.push({
+                type: DailyEventType.GuestReveille,
+                reveiller: guestReveiller
+            });
+        }
+        // Add "reverse" good morning as a potential event
+        potentialEvents.push({
+            type: DailyEventType.ReverseGoodMorning,
+            reverseGMRanks: {}
+        });
+        // Add grumpy morning as a potential event
+        potentialEvents.push({
             type: DailyEventType.GrumpyMorning
-        };
+        });
+        // Now maybe return one of those events
+        if (Math.random() < 0.75) {
+            return randChoice(...potentialEvents);
+        }
     }
 };
 
@@ -778,7 +781,7 @@ const processCommands = async (msg: Message): Promise<void> => {
         else if (sanitizedText.includes('event')) {
             let message: string = '';
             const date: Date = getTomorrow();
-            for (let i = 0; i < 14; i++) {
+            for (let i = 0; i < 21; i++) {
                 message += `\`${toCalendarDate(date)}\`: \`${JSON.stringify(chooseEvent(date))}\`\n`;
                 date.setDate(date.getDate() + 1);
             }

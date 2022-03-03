@@ -185,7 +185,7 @@ export default class GoodMorningState {
      * @returns List of user IDs for players who are suitable to receive the magic word hint
      */
     getPotentialMagicWordRecipients(): Snowflake[] {
-        return this.queryOrderedPlayers({ skipPlayers: 3, maxDays: 4 });
+        return this.queryOrderedPlayers({ skipPlayers: 3, maxDays: 3 });
     }
 
     /**
