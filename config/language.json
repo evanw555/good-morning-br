@@ -80,6 +80,15 @@
             "Yet another good morning",
             "Another blessed morning is upon us"
         ],
+        "sleepyMorningIntro": [
+            "{!Yawnnnnnn|Yawn}......",
+            "Me {!tired|sleepy}.",
+            "{!Sorry|My bad} everyone, I forgot to set my alarm!",
+            "Late for work... what should I tell my boss?",
+            "{!Ughhh|Oh man}, {!shouldn't have had all that carrot juice last night|I'm gonna yiik}...",
+            "My eyelids feel heavy as concrete today.",
+            "The {phrases.passing?}, the {phrases.passing?}, and GMBR is {!sleeping in|late for work|running late|being a lazy bum}."
+        ],
         "wellWish": [
             "May every step you take be filled with {nouns.positive?1-3}",
             "I {!hope|wish that|pray} you find {nouns.positive?1-2} today",
@@ -152,6 +161,7 @@
     "goodMorning": "{phrases.morningIntro?}! {phrases.wellWish?}",
     "happyFriday": "Happy Friday! {phrases.wellWish?} 🐒",
     "grumpyMorning": "{!Hello|Hey|Morning} everyone, honestly I'm not feeling too {!good|great} {!this morning|today}... I encourage you all to say good morning, but the first {!one|person} to say it is gonna {!piss me off|irritate me|really bug me}.",
+    "sleepyMorning": "{phrases.sleepyMorningIntro?} Good morning 😴",
     "weeklyUpdate": "{!Good morning|Happy Sunday}! {phrases.seasonUpdate?}",
     "leaderShift": [
         "{$old} is no longer the {!king|prince} of spreading Good Morning cheer, that title now belongs to {$new}!",

@@ -142,8 +142,19 @@ const chooseEvent = (date: Date): DailyEvent => {
     }
     // Every 2/3 days, take a chance to do some other event
     if (date.getDate() % 3 !== 0) {
-        // Compile a list of potential events
-        const potentialEvents: DailyEvent[] = [];
+        // Compile a list of potential events (include default events)
+        const potentialEvents: DailyEvent[] = [
+            {
+                type: DailyEventType.ReverseGoodMorning,
+                reverseGMRanks: {}
+            },
+            {
+                type: DailyEventType.GrumpyMorning
+            },
+            {
+                type: DailyEventType.SleepyMorning
+            }
+        ];
         // If someone should be beckoned, add beckoning as a potential event
         const potentialBeckonees: Snowflake[] = state.getLeastRecentPlayers(6);
         if (potentialBeckonees.length > 0) {
@@ -161,15 +172,6 @@ const chooseEvent = (date: Date): DailyEvent => {
                 reveiller: guestReveiller
             });
         }
-        // Add "reverse" good morning as a potential event
-        potentialEvents.push({
-            type: DailyEventType.ReverseGoodMorning,
-            reverseGMRanks: {}
-        });
-        // Add grumpy morning as a potential event
-        potentialEvents.push({
-            type: DailyEventType.GrumpyMorning
-        });
         // Now maybe return one of those events
         if (Math.random() < 0.75) {
             return randChoice(...potentialEvents);
@@ -211,6 +213,9 @@ const sendGoodMorningMessage = async (): Promise<void> => {
             break;
         case DailyEventType.GrumpyMorning:
             await messenger.send(goodMorningChannel, languageGenerator.generate('{grumpyMorning}'));
+            break;
+        case DailyEventType.SleepyMorning:
+            await messenger.send(goodMorningChannel, languageGenerator.generate('{sleepyMorning}'));
             break;
         case DailyEventType.AnonymousSubmissions:
             const text = `Good morning! Today is a special one. Rather than sending your good morning messages here for all to see, `
@@ -275,8 +280,15 @@ const setStatus = async (active: boolean): Promise<void> => {
 };
 
 const registerGoodMorningTimeout = async (): Promise<void> => {
-    const MIN_HOUR: number = 6;
-    const MAX_HOUR_EXCLUSIVE: number = (state.getEventType() === DailyEventType.AnonymousSubmissions) ? 8 : 10;
+    const MIN_HOURS: Record<string, number> = {
+        [DailyEventType.SleepyMorning]: 10
+    };
+    const MAX_HOURS: Record<string, number> = {
+        [DailyEventType.SleepyMorning]: 11,
+        [DailyEventType.AnonymousSubmissions]: 8
+    };
+    const MIN_HOUR: number = MIN_HOURS[state.getEventType()] ?? 6;
+    const MAX_HOUR_EXCLUSIVE: number = MAX_HOURS[state.getEventType()] ?? 10;
 
     const morningTomorrow: Date = new Date();
     // Set date as tomorrow if it's after the earliest possible morning time
