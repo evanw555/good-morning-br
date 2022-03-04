@@ -301,6 +301,13 @@ const registerGoodMorningTimeout = async (): Promise<void> => {
     await timeoutManager.registerTimeout(TimeoutType.NextGoodMorning, morningTomorrow);
 };
 
+const registerGuestReveilleFallbackTimeout = async (): Promise<void> => {
+    // Schedule tomrrow sometime between 11:30 and 11:45
+    const date: Date = getTomorrow();
+    date.setHours(11, randInt(30, 45), randInt(0, 60));
+    await timeoutManager.registerTimeout(TimeoutType.GuestReveilleFallback, date);
+};
+
 const wakeUp = async (sendMessage: boolean): Promise<void> => {
     // If attempting to wake up while already awake, warn the admin and abort
     if (state.isMorning()) {
@@ -486,6 +493,8 @@ const TIMEOUT_CALLBACKS = {
             // Depending on the type of event chosen for tomorrow, send out a special message
             if (nextEvent.type === DailyEventType.GuestReveille) {
                 await messenger.send(goodMorningChannel, languageGenerator.generate('{reveille.summon}', { player: `<@${nextEvent.reveiller}>` }));
+                // Also schedule a guest reveille fallback timeout
+                await registerGuestReveilleFallbackTimeout();
             } else if (nextEvent.type === DailyEventType.ReverseGoodMorning) {
                 const text = 'Tomorrow morning will be a _Reverse_ Good Morning! '
                     + 'Instead of saying good morning after me, you should say good morning _before_ me. '
@@ -522,6 +531,18 @@ const TIMEOUT_CALLBACKS = {
 
         // Update the bot's status
         await setStatus(false);
+    },
+    [TimeoutType.GuestReveilleFallback]: async (): Promise<void> => {
+        // Take action if the guest reveiller hasn't said GM
+        if (!state.isMorning()) {
+            // Penalize the reveiller
+            const userId: Snowflake = state.getEvent().reveiller;
+            state.deductPoints(userId, 2);
+            state.incrementPlayerPenalties(userId);
+            // Wake up, then send a message calling out the reveiller (don't tag them, we don't want to give them an advantage...)
+            await wakeUp(false);
+            await messenger.send(goodMorningChannel, `Good morning! I had to step in because I guess ${state.getPlayerDisplayName(userId)} isn't cut out for the job 😒`);
+        }
     },
     [TimeoutType.AnonymousSubmissionReveal]: async (): Promise<void> => {
         // Send the initial message
