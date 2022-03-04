@@ -3,7 +3,7 @@ import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'disco
 import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate } from './types.js';
 import TimeoutManager from './timeout-manager.js';
 import { createMidSeasonUpdateImage, createSeasonResultsImage } from './graphics.js';
-import { hasVideo, randInt, validateConfig, getTodayDateString, reactToMessage, getOrderingUpset, sleep, randChoice, toCalendarDate, getTomorrow, generateKMeansClusters, getRankString } from './util.js';
+import { hasVideo, randInt, validateConfig, getTodayDateString, reactToMessage, getOrderingUpset, sleep, randChoice, toCalendarDate, getTomorrow, generateKMeansClusters, getRankString, pluralize } from './util.js';
 import GoodMorningState from './state.js';
 import logger from './logger.js';
 
@@ -136,7 +136,7 @@ const chooseEvent = (date: Date): DailyEvent => {
         return {
             type: DailyEventType.AnonymousSubmissions,
             // TODO: Add new ones such as "short story", "motivational message" once this has happened a couple times
-            submissionType: randChoice("haiku", "limerick", "poem"),
+            submissionType: randChoice("haiku", "limerick", "poem (ABAB)", "2-sentence horror story"),
             submissions: {}
         };
     }
@@ -559,7 +559,7 @@ const TIMEOUT_CALLBACKS = {
     [TimeoutType.AnonymousSubmissionVotingReminder]: async (): Promise<void> => {
         try {
             const votingMessage: Message = await goodMorningChannel.messages.fetch(state.getEvent().votingMessage);
-            await messenger.reply(votingMessage, `If you haven't already, please vote on these anonymous ${state.getEvent().submissionType}s!`);
+            await messenger.reply(votingMessage, `If you haven't already, please vote on these anonymous ${pluralize(state.getEvent().submissionType)}!`);
         } catch (err) {
             logger.log(`Failed to fetch voting message and send reminder: \`${err.toString()}\``);
         }
@@ -1037,7 +1037,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 await messenger.reply(msg, 'Thanks for your submission!');
                 // If we now have a multiple of some number of submissions, notify the server
                 if (numSubmissions % 3 === 0) {
-                    await messenger.send(goodMorningChannel, `We now have **${numSubmissions}** submissions! Please continue sending your ${state.getEvent().submissionType}s to me via DM`);
+                    await messenger.send(goodMorningChannel, `We now have **${numSubmissions}** submissions! Please continue sending your ${pluralize(state.getEvent().submissionType)} to me via DM`);
                 }
             }
             logger.log(`Received submission from player **${state.getPlayerDisplayName(userId)}**, now at **${numSubmissions}** submissions`);

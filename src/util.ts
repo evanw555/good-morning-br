@@ -251,3 +251,21 @@ export function getRankString(rank: number): string {
     }
     return `${rank}th`;
 }
+
+/**
+ * TODO: Make this work on upper-case words
+ *
+ * @param input Text to pluralize
+ * @returns The pluralized input text
+ */
+export function pluralize(input: string): string {
+    if (input.endsWith('y')) {
+        return input.substring(0, input.length - 1) + 'ies';
+    }
+    if (input.endsWith(')')) {
+        const openParenIndex: number = input.lastIndexOf('(');
+        const preParenText: string = input.substring(0, openParenIndex).trim();
+        return pluralize(preParenText) + ' ' + input.substring(openParenIndex);
+    }
+    return input + 's';
+}
