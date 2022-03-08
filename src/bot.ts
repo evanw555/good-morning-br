@@ -947,6 +947,15 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                             days: 1
                         });
                     }
+                    // Update the max combo record if it's been broken
+                    const newCombo: Combo = state.getCombo();
+                    if (newCombo.days > state.getMaxComboDays()) {
+                        state.setMaxCombo({
+                            user: newCombo.user,
+                            days: newCombo.days
+                        });
+                        logger.log(`**${state.getPlayerDisplayName(newCombo.user)}** has set the max combo record with **${newCombo.days}** days!`);
+                    }
                 }
 
                 // If the player said the magic word, reward them and let them know privately

@@ -392,6 +392,14 @@ export default class GoodMorningState {
         this.data.combo = combo;
     }
 
+    getMaxComboDays(): number {
+        return this.data.maxCombo?.days ?? 0;
+    }
+
+    setMaxCombo(combo: Combo): void {
+        this.data.maxCombo = combo;
+    }
+
     toHistorySeasonEntry(): Season {
         return {
             season: this.data.season,

@@ -100,6 +100,7 @@ export interface RawGoodMorningState {
     magicWord?: string,
     currentLeader?: Snowflake,
     combo?: Combo,
+    maxCombo?: Combo,
     event?: DailyEvent,
     nextEvent?: DailyEvent,
     dailyStatus: Record<Snowflake, DailyPlayerState>,
