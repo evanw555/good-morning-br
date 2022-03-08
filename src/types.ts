@@ -83,6 +83,7 @@ export interface DailyEvent {
     reverseGMRanks?: Record<Snowflake, number>,
     // Used specifically for the "anonymous submissions" event
     submissionType?: string,
+    isAttachmentSubmission?: boolean,
     submissions?: Record<Snowflake, string>,
     anonymousMessagesByOwner?: Record<Snowflake, Snowflake>, // Map of UserId -> MessageId
     votingMessage?: Snowflake,
