@@ -3,7 +3,7 @@ import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'disco
 import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate } from './types.js';
 import TimeoutManager from './timeout-manager.js';
 import { createMidSeasonUpdateImage, createSeasonResultsImage } from './graphics.js';
-import { hasVideo, randInt, validateConfig, getTodayDateString, reactToMessage, getOrderingUpset, sleep, randChoice, toCalendarDate, getTomorrow, generateKMeansClusters, getRankString, pluralize } from './util.js';
+import { hasVideo, randInt, validateConfig, getTodayDateString, reactToMessage, getOrderingUpset, sleep, randChoice, toCalendarDate, getTomorrow, generateKMeansClusters, getRankString, pluralize, naturalJoin } from './util.js';
 import GoodMorningState from './state.js';
 import logger from './logger.js';
 
@@ -983,7 +983,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     const afterOrderings: Snowflake[] = state.getOrderedPlayers();
                     const orderingUpsets: string[] = getOrderingUpset(userId, beforeOrderings, afterOrderings);
                     if (orderingUpsets.length > 0) {
-                        const joinedUpsettees = orderingUpsets.map(x => `**${state.getPlayerDisplayName(x)}**`).join(', ');
+                        const joinedUpsettees: string = naturalJoin(orderingUpsets.map(x => `**${state.getPlayerDisplayName(x)}**`));
                         logger.log(`**${state.getPlayerDisplayName(userId)}** has overtaken ${joinedUpsettees}`);
                     }
                 } catch (err) {
