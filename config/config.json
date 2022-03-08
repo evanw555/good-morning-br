@@ -18,7 +18,7 @@
         "6": 1.5
     },
     "defaultAward": 1,
-    "minimumComboDays": 2,
+    "minimumComboDays": 3,
     "goodMorningMessageOverrides": {
         "1/1": "Happy New Year! As we turn the page from last year to this year, recall your most cherished memories and take time to appreciate your friends and loved ones who made these moments possible.",
         "2/14": "Happy Valentine's Day! This morning, please take a moment to appreciate your loved ones... {!❤️|🖤|🤍|💙|💜|🧡|💛}",
