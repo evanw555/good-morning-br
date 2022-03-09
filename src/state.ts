@@ -4,11 +4,9 @@ import { getTodayDateString } from "./util.js";
 
 export default class GoodMorningState {
     private data: RawGoodMorningState;
-    private displayNameFetchFunction: (userId: Snowflake) => Promise<string>;
 
-    constructor(rawState: RawGoodMorningState, displayNameFetchFunction: (userId: Snowflake) => Promise<string>) {
+    constructor(rawState: RawGoodMorningState) {
         this.data = rawState;
-        this.displayNameFetchFunction = displayNameFetchFunction;
     }
 
     isMorning(): boolean {
@@ -58,29 +56,32 @@ export default class GoodMorningState {
         return this.getPlayers().length;
     }
 
-    getPlayer(userId: Snowflake): PlayerState {
+    getPlayer(userId: Snowflake): PlayerState | undefined {
         return this.data.players[userId];
     }
 
-    hasPlayer(userId: Snowflake): boolean {
-        return this.data.players[userId] !== undefined;
-    }
-
-    /**
-     * Initialize the player state data for a given user, if it doesn't exist.
-     */
-    async initializePlayer(userId: Snowflake): Promise<PlayerState> {
+    getOrCreatePlayer(userId: Snowflake): PlayerState {
+        // Ensures that this method NEVER returns undefined
         if (this.data.players[userId] === undefined) {
             this.data.players[userId] = {
-                displayName: await this.displayNameFetchFunction(userId),
+                displayName: `User ${userId}`,
                 points: 0
             }
         }
-        return this.data.players[userId];
-    };
+
+        return this.getPlayer(userId);
+    }
+
+    hasPlayer(userId: Snowflake): boolean {
+        return this.getPlayer(userId) !== undefined;
+    }
 
     getPlayerDisplayName(userId: Snowflake): string {
         return this.getPlayer(userId)?.displayName ?? 'Unknown';
+    }
+
+    setPlayerDisplayName(userId: Snowflake, displayName: string): void {
+        this.getOrCreatePlayer(userId).displayName = displayName;
     }
 
     getPlayerPoints(userId: Snowflake): number {
@@ -104,7 +105,7 @@ export default class GoodMorningState {
     }
 
     incrementPlayerPenalties(userId: Snowflake): void {
-        this.getPlayer(userId).penalties = this.getPlayerPenalties(userId) + 1;
+        this.getOrCreatePlayer(userId).penalties = this.getPlayerPenalties(userId) + 1;
     }
 
     getPlayerCombosBroken(userId: Snowflake): number {
@@ -112,7 +113,7 @@ export default class GoodMorningState {
     }
 
     incrementPlayerCombosBroken(userId: Snowflake): void {
-        this.getPlayer(userId).combosBroken = this.getPlayerCombosBroken(userId) + 1;
+        this.getOrCreatePlayer(userId).combosBroken = this.getPlayerCombosBroken(userId) + 1;
     }
 
     /**
@@ -246,23 +247,27 @@ export default class GoodMorningState {
         return this.getTopScore() / this.getSeasonGoal();
     }
 
-    initializeDailyStatus(userId: Snowflake): DailyPlayerState {
+    getDailyStatus(userId: Snowflake): DailyPlayerState | undefined {
+        return this.data.dailyStatus[userId];
+    }
+
+    getOrCreateDailyStatus(userId: Snowflake): DailyPlayerState {
+        // Ensures that this method will NEVER return undefined
         if (this.data.dailyStatus[userId] === undefined) {
             this.data.dailyStatus[userId] = {
                 pointsEarned: 0
             };
         }
-        return this.data.dailyStatus[userId];
+
+        return this.getDailyStatus(userId);
     }
 
     awardPoints(userId: Snowflake, points: number): void {
         if (points < 0) {
             throw new Error('Can only award a non-negative number of points!');
         }
-        this.initializeDailyStatus(userId);
-        this.data.dailyStatus[userId].pointsEarned += points;
-        this.initializePlayer(userId);
-        this.getPlayer(userId).points += points;
+        this.getOrCreateDailyStatus(userId).pointsEarned += points;
+        this.getOrCreatePlayer(userId).points += points;
     }
 
     deductPoints(userId: Snowflake, points: number): void {
@@ -270,25 +275,23 @@ export default class GoodMorningState {
             throw new Error('Can only deduct a non-negative number of points!');
         }
         // Update the daily "points lost" value
-        this.initializeDailyStatus(userId);
-        this.data.dailyStatus[userId].pointsLost = (this.data.dailyStatus[userId].pointsLost ?? 0) + points;
+        this.getOrCreateDailyStatus(userId).pointsLost = this.getPointsLostToday(userId) + points;
         // Deduct points from the player
-        this.initializePlayer(userId);
-        this.getPlayer(userId).points -= points;
+        this.getOrCreatePlayer(userId).points -= points;
         // Update the season total deductions count
-        this.getPlayer(userId).deductions = this.getPlayerDeductions(userId) + points;
+        this.getOrCreatePlayer(userId).deductions = this.getPlayerDeductions(userId) + points;
     }
 
     getPointsEarnedToday(userId: Snowflake): number {
-        return this.data.dailyStatus[userId]?.pointsEarned ?? 0;
+        return this.getDailyStatus(userId)?.pointsEarned ?? 0;
     }
 
     getPointsLostToday(userId: Snowflake): number {
-        return this.data.dailyStatus[userId]?.pointsLost ?? 0;
+        return this.getDailyStatus(userId)?.pointsLost ?? 0;
     }
 
     wasPlayerPenalizedToday(userId: Snowflake): boolean {
-        return (this.data.dailyStatus[userId]?.pointsLost ?? 0) > 0;
+        return (this.getDailyStatus(userId)?.pointsLost ?? 0) > 0;
     }
 
     incrementAllLGMs(): void {
@@ -298,8 +301,7 @@ export default class GoodMorningState {
     }
 
     resetDaysSinceLGM(userId: Snowflake): void {
-        this.initializePlayer(userId);
-        delete this.getPlayer(userId).daysSinceLastGoodMorning;
+        delete this.getOrCreatePlayer(userId).daysSinceLastGoodMorning;
     }
 
     getNextDailyRank(): number {
@@ -307,16 +309,15 @@ export default class GoodMorningState {
     }
 
     getDailyRank(userId: Snowflake): number | undefined {
-        return this.data.dailyStatus[userId]?.rank;
+        return this.getDailyStatus(userId)?.rank;
     }
 
     hasDailyRank(userId: Snowflake): boolean {
-        return this.data.dailyStatus[userId]?.rank !== undefined;
+        return this.getDailyStatus(userId)?.rank !== undefined;
     }
 
     setDailyRank(userId: Snowflake, rank: number): void {
-        this.initializeDailyStatus(userId);
-        this.data.dailyStatus[userId].rank = rank;
+        this.getOrCreateDailyStatus(userId).rank = rank;
     }
 
     getNextDailyVideoRank(): number {
@@ -324,12 +325,11 @@ export default class GoodMorningState {
     }
 
     hasDailyVideoRank(userId: Snowflake): boolean {
-        return this.data.dailyStatus[userId]?.videoRank !== undefined;
+        return this.getDailyStatus(userId)?.videoRank !== undefined;
     }
 
     setDailyVideoRank(userId: Snowflake, videoRank: number): void {
-        this.initializeDailyStatus(userId);
-        this.data.dailyStatus[userId].videoRank = videoRank;
+        this.getOrCreateDailyStatus(userId).videoRank = videoRank;
     }
 
     getCurrentLeader(): Snowflake {

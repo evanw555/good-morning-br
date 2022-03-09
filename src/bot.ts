@@ -103,7 +103,7 @@ const advanceSeason = async (): Promise<Season> => {
         goodMorningEmoji: config.defaultGoodMorningEmoji,
         dailyStatus: {},
         players: {}
-    }, getDisplayName);
+    });
     // Dump the state and history
     await dumpState();
     await dumpHistory();
@@ -614,7 +614,7 @@ const timeoutManager = new TimeoutManager(storage, TIMEOUT_CALLBACKS);
 
 const loadState = async (): Promise<void> => {
     try {
-        state = new GoodMorningState(await storage.readJson('state'), getDisplayName);
+        state = new GoodMorningState(await storage.readJson('state'));
         // Temporary logic to initialize newly introduced properties
         // ...
     } catch (err) {
@@ -630,7 +630,7 @@ const loadState = async (): Promise<void> => {
                 goodMorningEmoji: config.defaultGoodMorningEmoji,
                 dailyStatus: {},
                 players: {}
-            }, getDisplayName);
+            });
             await dumpState();
         } else {
             logger.log(`Unhandled exception while loading state file:\n\`\`\`${err.message}\`\`\``);
@@ -866,12 +866,6 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
         // Using this to test ordering logic. TODO: actually send out updates?
         const beforeOrderings: Snowflake[] = state.getOrderedPlayers();
 
-        // Initialize daily status for the user if it doesn't exist
-        state.initializeDailyStatus(userId);
-
-        // Initialize player data if it doesn't exist
-        await state.initializePlayer(userId);
-
         // If this user is the guest reveiller and the morning has not yet begun, wake the bot up
         if (state.getEventType() === DailyEventType.GuestReveille && state.getEvent().reveiller === userId && !state.isMorning() && isAm) {
             await wakeUp(false);
@@ -910,9 +904,6 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             }
             // In the morning, award the player accordingly if it's their first message...
             if (!state.hasDailyRank(userId)) {
-                // Very first thing to do is to update the player's displayName (only do this here since it's pretty expensive)
-                state.getPlayer(userId).displayName = await getDisplayName(userId);
-
                 // If it's a "grumpy" morning and no one has said anything yet, punish the player (but don't assign a rank, so player may still say good morning)
                 if (state.getEventType() === DailyEventType.GrumpyMorning && !state.getEvent().disabled) {
                     // Deduct points and update point-related data
@@ -1045,6 +1036,9 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                         reactToMessage(msg, state.getGoodMorningEmoji());
                     }
                 }
+
+                // Very last thing to do is to update the player's displayName (only do this here since it may be expensive)
+                state.setPlayerDisplayName(userId, await getDisplayName(userId));
             }
         } else {
             // If the bot hasn't woken up yet and it's a reverse GM, react and track the rank of each player for now...
