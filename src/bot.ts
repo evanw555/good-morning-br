@@ -1,6 +1,6 @@
 import { Client, DMChannel, Intents, MessageAttachment } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'discord.js';
-import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate } from './types.js';
+import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PastTimeoutStrategy } from './types.js';
 import TimeoutManager from './timeout-manager.js';
 import { createMidSeasonUpdateImage, createSeasonResultsImage } from './graphics.js';
 import { hasVideo, randInt, validateConfig, getTodayDateString, reactToMessage, getOrderingUpset, sleep, randChoice, toCalendarDate, getTomorrow, generateKMeansClusters, getRankString, pluralize, naturalJoin, getClockTime } from './util.js';
@@ -311,14 +311,17 @@ const registerGoodMorningTimeout = async (): Promise<void> => {
     // Set time as sometime between 7am and 10am
     morningTomorrow.setHours(randInt(MIN_HOUR, MAX_HOUR_EXCLUSIVE), randInt(0, 60), randInt(0, 60));
 
-    await timeoutManager.registerTimeout(TimeoutType.NextGoodMorning, morningTomorrow);
+    // We register this with the "Increment Day" strategy since it happens at a particular time and it's not competing with any other triggers.
+    await timeoutManager.registerTimeout(TimeoutType.NextGoodMorning, morningTomorrow, PastTimeoutStrategy.IncrementDay);
 };
 
 const registerGuestReveilleFallbackTimeout = async (): Promise<void> => {
     // Schedule tomrrow sometime between 11:30 and 11:45
     const date: Date = getTomorrow();
     date.setHours(11, randInt(30, 45), randInt(0, 60));
-    await timeoutManager.registerTimeout(TimeoutType.GuestReveilleFallback, date);
+    // We register this with the "Invoke" strategy since this way of "waking up" is competing with a user-driven trigger.
+    // We want to invoke this ASAP in order to avoid this event when it's no longer needed.
+    await timeoutManager.registerTimeout(TimeoutType.GuestReveilleFallback, date, PastTimeoutStrategy.Invoke);
 };
 
 const wakeUp = async (sendMessage: boolean): Promise<void> => {
@@ -349,25 +352,19 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         }
     }
 
-    // Set timeout for when morning ends (if they're in the future)
-    const now = new Date();
-    const preNoonToday: Date = new Date();
-    preNoonToday.setHours(11, randInt(50, 58), randInt(0, 60), 0);
-    if (preNoonToday > now) {
-        await timeoutManager.registerTimeout(TimeoutType.NextPreNoon, preNoonToday);
-    }
-    const noonToday: Date = new Date();
-    noonToday.setHours(12, 0, 0, 0);
-    if (noonToday > now) {
-        await timeoutManager.registerTimeout(TimeoutType.NextNoon, noonToday);
-    }
-
     // Set timeout for anonymous submission reveal
     if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
         const submissionRevealTime = new Date();
         submissionRevealTime.setHours(10, 30, 0, 0);
-        await timeoutManager.registerTimeout(TimeoutType.AnonymousSubmissionReveal, submissionRevealTime);
+        // We register this with the "Invoke" strategy since we want it to happen before Pre-Noon (with which it's registered in parallel)
+        await timeoutManager.registerTimeout(TimeoutType.AnonymousSubmissionReveal, submissionRevealTime, PastTimeoutStrategy.Invoke);
     }
+
+    // Set timeout for when morning almost ends
+    const preNoonToday: Date = new Date();
+    preNoonToday.setHours(11, randInt(50, 57), randInt(0, 60), 0);
+    // We register this with the "Increment Hour" strategy since its subsequent timeout (Noon) is registered in series
+    await timeoutManager.registerTimeout(TimeoutType.NextPreNoon, preNoonToday, PastTimeoutStrategy.IncrementHour);
 
     // Update the bot's status to active
     await setStatus(true);
@@ -474,9 +471,13 @@ const TIMEOUT_CALLBACKS = {
         await wakeUp(true);
     },
     [TimeoutType.NextPreNoon]: async (): Promise<void> => {
-        // TODO: Can we do an "emergency bot wake-up" here? (in case of slacking reveiller)
+        // Set timeout for when morning ends
+        const noonToday: Date = new Date();
+        noonToday.setHours(12, 0, 0, 0);
+        // We register this with the "Increment Hour" strategy since its subsequent timeout (GoodMorning) is registered in series
+        await timeoutManager.registerTimeout(TimeoutType.NextNoon, noonToday, PastTimeoutStrategy.IncrementHour);
 
-        // Before anything else, check the results of anonymous submissions
+        // Check the results of anonymous submissions
         if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
             await finalizeAnonymousSubmissions();
 
@@ -506,8 +507,6 @@ const TIMEOUT_CALLBACKS = {
             // Depending on the type of event chosen for tomorrow, send out a special message
             if (nextEvent.type === DailyEventType.GuestReveille) {
                 await messenger.send(goodMorningChannel, languageGenerator.generate('{reveille.summon}', { player: `<@${nextEvent.reveiller}>` }));
-                // Also schedule a guest reveille fallback timeout
-                await registerGuestReveilleFallbackTimeout();
             } else if (nextEvent.type === DailyEventType.ReverseGoodMorning) {
                 const text = 'Tomorrow morning will be a _Reverse_ Good Morning! '
                     + 'Instead of saying good morning after me, you should say good morning _before_ me. '
@@ -526,8 +525,12 @@ const TIMEOUT_CALLBACKS = {
         // Activate the queued up event
         state.dequeueNextEvent();
 
-        // Register timeout for tomorrow's good morning message (if not waiting on a reveiller)
-        if (state.getEventType() !== DailyEventType.GuestReveille) {
+        // Register a timeout that will allow the bot to "wake up" tomorrow
+        if (state.getEventType() === DailyEventType.GuestReveille) {
+            // Register "fallback" timeout to wake up in case the guest reveille doesn't say anything
+            await registerGuestReveilleFallbackTimeout();
+        } else {
+            // Register the normal GM timeout
             await registerGoodMorningTimeout();
         }
 
@@ -606,7 +609,8 @@ const TIMEOUT_CALLBACKS = {
         [[11, 0], [11, 15], [11, 30]].forEach(([hour, minute]) => {
             const reminderTime: Date = new Date();
             reminderTime.setHours(hour, minute);
-            timeoutManager.registerTimeout(TimeoutType.AnonymousSubmissionVotingReminder, reminderTime);
+            // We register these with the "Delete" strategy since they are terminal and aren't needed if in the past
+            timeoutManager.registerTimeout(TimeoutType.AnonymousSubmissionVotingReminder, reminderTime, PastTimeoutStrategy.Delete);
         });
     },
     [TimeoutType.AnonymousSubmissionVotingReminder]: async (): Promise<void> => {
@@ -692,6 +696,10 @@ const dumpR9KHashes = async (): Promise<void> => {
     await storage.write('r9k.json', JSON.stringify(r9k.getAllEntries(), null, 2));
 };
 
+const logTimeouts = async (): Promise<void> => {
+    await guildOwnerDmChannel.send(timeoutManager.toStrings().map(entry => `- ${entry}`).join('\n') || '_No timeouts._');
+};
+
 client.on('ready', async (): Promise<void> => {
     // First, validate the config file to ensure it conforms to the schema
     validateConfig(config);
@@ -706,7 +714,6 @@ client.on('ready', async (): Promise<void> => {
     if (guildOwner) {
         guildOwnerDmChannel = await guildOwner.createDM();
         logger.setChannel(guildOwnerDmChannel);
-        await logger.log(`Determined guild owner: **${guildOwner.displayName}**`);
     } else {
         await logger.log('Could not determine the guild\'s owner!');
     }
@@ -719,7 +726,6 @@ client.on('ready', async (): Promise<void> => {
         await logger.log(`Couldn't load good morning channel with Id "${config.goodMorningChannelId}", aborting...`);
         process.exit(1);
     }
-    await logger.log(`Found good morning channel as \`${goodMorningChannel.id}\``);
 
     // Load all necessary data from disk
     await loadState();
@@ -727,11 +733,10 @@ client.on('ready', async (): Promise<void> => {
     await loadR9KHashes();
     await timeoutManager.loadTimeouts();
 
-    if (timeoutManager.hasTimeout(TimeoutType.NextGoodMorning)) {
-        await logger.log(`Bot had to restart... next date is ${timeoutManager.getDate(TimeoutType.NextGoodMorning).toString()}`);
-    } else {
-        await logger.log('Bot had to restart... _no good morning timeout scheduled!_');
+    if (guildOwner && goodMorningChannel) {
+        await logger.log(`Bot rebooted with guild owner **${guildOwner.displayName}** and GM channel ${goodMorningChannel.toString()}`);
     }
+    await logTimeouts();
 
     // Update the bot's status
     await setStatus(state.isMorning());
@@ -788,7 +793,7 @@ const processCommands = async (msg: Message): Promise<void> => {
         }
         // Return the timeout info
         else if (sanitizedText.includes('timeouts')) {
-            guildOwnerDmChannel.send(timeoutManager.toStrings().map(entry => `- ${entry}`).join('\n') || '_No timeouts._');
+            await logTimeouts();
         }
         // Schedule the next good morning
         else if (sanitizedText.includes('schedule')) {

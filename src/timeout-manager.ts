@@ -1,7 +1,9 @@
 import FileStorage from "./file-storage";
-import { Timeout, TimeoutType } from "./types";
+import { PastTimeoutStrategy, Timeout, TimeoutType } from "./types.js";
 
 class TimeoutManager {
+    private static readonly DEFAULT_PAST_STRATEGY: PastTimeoutStrategy = PastTimeoutStrategy.Delete;
+
     private readonly _storage: FileStorage;
     private readonly _callbacks: Record<string, () => Promise<void>>;
     private readonly _timeouts: Record<string, Timeout>;
@@ -31,13 +33,7 @@ class TimeoutManager {
         for (const id of Object.keys(timeouts)) {
             const timeout: Timeout = timeouts[id];
             const date: Date = new Date(timeout.date.trim());
-            // Repeatedly advance the date until it's in the future
-            // TODO: set policies for different timeout types
-            while (date.getTime() < (new Date()).getTime()) {
-                date.setDate(date.getDate() + 1);
-                console.log(`Date for ${timeout.type} is in the past, advancing to ${date.toJSON()}`);
-            }
-            await this._addTimeoutForId(id, timeout.type, date);
+            await this._addTimeoutForId(id, timeout.type, date, timeout.pastStrategy ?? TimeoutManager.DEFAULT_PAST_STRATEGY);
         };
         await this._dumpTimeouts();
     }
@@ -47,26 +43,48 @@ class TimeoutManager {
         console.log(`Dumped timeouts as ${JSON.stringify(this._timeouts)}`);
     }
 
-    async _addTimeoutForId(id: string, type: TimeoutType, date: Date): Promise<void> {
+    async _addTimeoutForId(id: string, type: TimeoutType, date: Date, pastStrategy: PastTimeoutStrategy): Promise<void> {
         const millisUntilMessage: number = date.getTime() - new Date().getTime();
-        this._timeouts[id] = {
-            type,
-            date: date.toJSON()
-        };
-        setTimeout(async () => {
-            // Perform the actual callback
+        if (millisUntilMessage > 0) {
+            // If timeout is in the future, then set a timeout for it as per usual
+            this._timeouts[id] = {
+                type,
+                date: date.toJSON(),
+                pastStrategy
+            };
+            setTimeout(async () => {
+                // Perform the actual callback
+                await this._callbacks[type]();
+                // Clear the timeout info
+                delete this._timeouts[id];
+                // Dump the timeouts
+                await this._dumpTimeouts();
+            }, millisUntilMessage);
+            console.log(`Added timeout for \`${type}\` at ${date.toLocaleString()}`);
+        } else if (pastStrategy === PastTimeoutStrategy.Invoke) {
+            // Timeout is in the past, so just invoke the callback now
             await this._callbacks[type]();
-            // Clear the timeout info
-            delete this._timeouts[id];
-            // Dump the timeouts
-            await this._dumpTimeouts();
-        }, millisUntilMessage);
-        console.log(`Added timeout for ${type} at ${date.toString()}`);
+        } else if (pastStrategy === PastTimeoutStrategy.IncrementDay) {
+            // Timeout is in the past, so try again with the day incremented
+            const tomorrow: Date = new Date(date);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            console.log(`Incrementing timeout for \`${type}\` at ${date.toLocaleString()} by 1 day`);
+            await this._addTimeoutForId(id, type, tomorrow, pastStrategy);
+        } else if (pastStrategy === PastTimeoutStrategy.IncrementHour) {
+            // Timeout is in the past, so try again with the hour incremented
+            const nextHour: Date = new Date(date);
+            nextHour.setHours(nextHour.getHours() + 1);
+            console.log(`Incrementing timeout for \`${type}\` at ${date.toLocaleString()} by 1 hour`);
+            await this._addTimeoutForId(id, type, nextHour, pastStrategy);
+        } else if (pastStrategy === PastTimeoutStrategy.Delete) {
+            // Timeout is in the past, so just delete the timeout altogether
+            console.log(`Deleted timeout for \`${type}\` at ${date.toLocaleString()}`);
+        }
     }
 
-    async registerTimeout(type: TimeoutType, date: Date): Promise<void> {
+    async registerTimeout(type: TimeoutType, date: Date, pastStrategy: PastTimeoutStrategy): Promise<void> {
         const id = this._getNextTimeoutId();
-        await this._addTimeoutForId(id, type, date);
+        await this._addTimeoutForId(id, type, date, pastStrategy);
         await this._dumpTimeouts();
     }
 
@@ -89,7 +107,7 @@ class TimeoutManager {
         return Object.values(this._timeouts)
             .sort((x, y) => new Date(x.date).getTime() - new Date(y.date).getTime())
             .map(timeout => {
-            return `\`${timeout.type}\`: ${new Date(timeout.date).toLocaleString()}`
+            return `\`${timeout.type}\`: ${new Date(timeout.date).toLocaleString()} (\`${timeout.pastStrategy ?? 'N/A'}\`)`
         });
     }
 }

@@ -10,9 +10,20 @@ export enum TimeoutType{
     AnonymousSubmissionVotingReminder = 'ANONYMOUS_SUBMISSION_VOTING_REMINDER'
 }
 
+/**
+ * How to handle a timeout which is registered for sometime in the past.
+ */
+export enum PastTimeoutStrategy {
+    Delete = 'DELETE',
+    Invoke = 'INVOKE',
+    IncrementHour = 'INCREMENT_HOUR',
+    IncrementDay = 'INCREMENT_DAY'
+}
+
 export interface Timeout {
     type: TimeoutType,
-    date: string
+    date: string,
+    pastStrategy: PastTimeoutStrategy
 }
 
 /**
