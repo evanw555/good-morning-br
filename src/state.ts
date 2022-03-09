@@ -305,7 +305,7 @@ export default class GoodMorningState {
     }
 
     getNextDailyRank(): number {
-        return Math.max(...Object.values(this.data.dailyStatus).map(status => status.rank ?? 0)) + 1;
+        return Math.max(0, ...Object.values(this.data.dailyStatus).map(status => status.rank ?? 0)) + 1;
     }
 
     getDailyRank(userId: Snowflake): number | undefined {
@@ -321,7 +321,7 @@ export default class GoodMorningState {
     }
 
     getNextDailyVideoRank(): number {
-        return Math.max(...Object.values(this.data.dailyStatus).map(status => status.videoRank ?? 0)) + 1;
+        return Math.max(0, ...Object.values(this.data.dailyStatus).map(status => status.videoRank ?? 0)) + 1;
     }
 
     hasDailyVideoRank(userId: Snowflake): boolean {
