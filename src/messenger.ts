@@ -44,8 +44,12 @@ export default class Messenger {
                 // Take a brief pause
                 await sleep(randInt(100, 1500));
                 // Send the typing event and wait based on the length of the message
-                await channel.sendTyping();
-                await sleep(randInt(45, 55) * text.length);
+                try {
+                    await channel.sendTyping();
+                    await sleep(randInt(45, 55) * text.length);
+                } catch (err) {
+                    // Typing events are non-critical, so allow them to fail silently...
+                }
                 // Now actually reply/send the message
                 if (message) {
                     await message.reply(text);
@@ -67,8 +71,12 @@ export default class Messenger {
         // Take a brief pause
         await sleep(randInt(100, 1500));
         // Send the typing event and wait based on the length of the message
-        await channel.sendTyping();
-        await sleep(randInt(45, 55) * text.length);
+        try {
+            await channel.sendTyping();
+            await sleep(randInt(45, 55) * text.length);
+        } catch (err) {
+            // Typing events are non-critical, so allow them to fail silently...
+        }
         // Now actually reply/send the message
         return channel.send(text);
     }

@@ -256,7 +256,9 @@ const sendSeasonEndMessages = async (channel: TextBasedChannels, previousState: 
     // Send the "final results image"
     await sleep(120000);
     await messenger.send(channel, 'Alright, here are the final standings...');
-    await channel.sendTyping();
+    try { // TODO: refactor image sending into the messenger class?
+        await channel.sendTyping();
+    } catch (err) {}
     await sleep(5000);
     const attachment = new MessageAttachment(await createSeasonResultsImage(previousState, history.medals), 'results.png');
     await channel.send({ files: [attachment] });
@@ -816,7 +818,9 @@ const processCommands = async (msg: Message): Promise<void> => {
         }
         // Canvas stuff
         else if (sanitizedText.includes('canvas')) {
-            await msg.channel.sendTyping();
+            try { // TODO: refactor image sending into the messenger class?
+                await msg.channel.sendTyping();
+            } catch (err) {}
             const attachment = new MessageAttachment(await createMidSeasonUpdateImage(state, {}), 'results.png');
             msg.reply({ files: [attachment] });
         }
