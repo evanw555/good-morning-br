@@ -1,5 +1,6 @@
 import { TextBasedChannels } from "discord.js";
 import logger from './logger.js';
+import { naturalJoin } from "./util.js";
 
 class LanguageGenerator {
     private readonly _config: Record<string, any>;
@@ -59,23 +60,25 @@ class LanguageGenerator {
 
         // Resolve list using the pick-random logic
         if (pickRandom === 0) {
-            return node.toString();
-        } else if (pickRandom === 1) {
-            return node[Math.floor(Math.random() * node.length)].toString();
-        } else if (pickRandom > 1) {
-            let result: string = ''
-            for (let i = 0; i < pickRandom; i++) {
-                if (pickRandom === 2 && i === 1) {
-                    result += ' and ';
-                } else if (i === pickRandom - 1) {
-                    result += ', and ';
-                } else if (i > 0) {
-                    result += ', ';
-                }
-                // TODO: Pick nodes randomly without any duplicates
-                result += node[Math.floor(Math.random() * node.length)].toString();
+            // If no amount specified, then assert the current node is a string
+            if (node?.constructor !== String) {
+                throw new Error(`Token \`${token}\` expected a string but found type \`${node?.constructor?.name}\``);
             }
-            return result;
+            return node.toString();
+        } else {
+            // If an amount is specified, then assert the current node is an array
+            if (!Array.isArray(node)) {
+                throw new Error(`Token \`${token}\` expected an array but found type \`${node?.constructor?.name}\``);
+            }
+            // Copy the array and shuffle it (TODO: Each element of the array may not be a string, but that would be a huge error)
+            const choices: string[] = node.map(x => x.toString()).sort((x, y) => Math.random() - Math.random());
+            // Assert that we're not taking more than is possible, then take a slice of the desired size
+            if (pickRandom > choices.length) {
+                throw new Error(`Token \`${token}\` is attempting to select ${pickRandom} elements from only ${choices.length} available choices`);
+            }
+            const selections: string[] = choices.slice(0, pickRandom);
+            // Return the resulting elements joined in proper English
+            return naturalJoin(selections);
         }
     }
 
