@@ -734,7 +734,7 @@ client.on('ready', async (): Promise<void> => {
     await timeoutManager.loadTimeouts();
 
     if (guildOwner && goodMorningChannel) {
-        await logger.log(`Bot rebooted with guild owner **${guildOwner.displayName}** and GM channel ${goodMorningChannel.toString()}`);
+        await logger.log(`Bot rebooting at **${getClockTime()}** with guild owner **${guildOwner.displayName}** and GM channel ${goodMorningChannel.toString()}`);
     }
     await logTimeouts();
 

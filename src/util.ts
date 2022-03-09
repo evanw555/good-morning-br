@@ -199,11 +199,11 @@ export function getNumberOfDaysSince(start: FullDate): number {
 }
 
 /**
- * @returns The current 24-hour time in the "Hour:Minute" format (e.g. "6:30", "17:14")
+ * @returns The current 24-hour time in the "HH:MM" format (e.g. "06:30", "17:14")
  */
 export function getClockTime(): string {
     const now: Date = new Date();
-    return `${now.getHours()}:${now.getMinutes()}`;
+    return now.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
 }
 
 /**
