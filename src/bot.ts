@@ -3,7 +3,7 @@ import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'disco
 import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate } from './types.js';
 import TimeoutManager from './timeout-manager.js';
 import { createMidSeasonUpdateImage, createSeasonResultsImage } from './graphics.js';
-import { hasVideo, randInt, validateConfig, getTodayDateString, reactToMessage, getOrderingUpset, sleep, randChoice, toCalendarDate, getTomorrow, generateKMeansClusters, getRankString, pluralize, naturalJoin } from './util.js';
+import { hasVideo, randInt, validateConfig, getTodayDateString, reactToMessage, getOrderingUpset, sleep, randChoice, toCalendarDate, getTomorrow, generateKMeansClusters, getRankString, pluralize, naturalJoin, getClockTime } from './util.js';
 import GoodMorningState from './state.js';
 import logger from './logger.js';
 
@@ -532,6 +532,13 @@ const TIMEOUT_CALLBACKS = {
         // Dump state and R9K hashes
         await dumpState();
         await dumpR9KHashes();
+
+        // If this is happening at a non-standard time, explicitly warn players (add some tolerance in case of timeout variance)
+        const clockTime: string = getClockTime();
+        const standardClockTimes: Set<string> = new Set(['11:59', '12:00', '12:01']);
+        if (!standardClockTimes.has(clockTime)) {
+            await messenger.send(goodMorningChannel, 'The "morning" technically ends now, so SHUT UP 🤫');
+        }
 
         // If anyone's score is above the season goal, then proceed to the next season
         if (state.isSeasonGoalReached()) {

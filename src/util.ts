@@ -199,6 +199,14 @@ export function getNumberOfDaysSince(start: FullDate): number {
 }
 
 /**
+ * @returns The current 24-hour time in the "Hour:Minute" format (e.g. "6:30", "17:14")
+ */
+export function getClockTime(): string {
+    const now: Date = new Date();
+    return `${now.getHours()}:${now.getMinutes()}`;
+}
+
+/**
  * React to the given message with some emoji (or an emoji randomly selected from a list of emojis).
  */
 export async function reactToMessage(msg: Message, emoji: string | string[]): Promise<void> {
