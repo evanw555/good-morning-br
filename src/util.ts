@@ -282,7 +282,7 @@ export function pluralize(input: string): string {
  * @param input List of strings
  * @returns The given list of strings joined in a way that is grammatically correct in English
  */
-export function naturalJoin(input: string[]): string {
+export function naturalJoin(input: string[], conjunction: string = 'and'): string {
     if (!input || input.length === 0) {
         return '';
     }
@@ -290,7 +290,7 @@ export function naturalJoin(input: string[]): string {
         return input[0];
     }
     if (input.length === 2) {
-        return `${input[0]} and ${input[1]}`;
+        return `${input[0]} ${conjunction} ${input[1]}`;
     }
     let result = '';
     for (let i = 0; i < input.length; i++) {
@@ -298,9 +298,13 @@ export function naturalJoin(input: string[]): string {
             result += ', ';
         }
         if (i === input.length - 1) {
-            result += 'and ';
+            result += `${conjunction} `;
         }
         result += input[i];
     }
     return result;
+}
+
+export function capitalize(input: string): string {
+    return input.substring(0, 1).toUpperCase() + input.substring(1);
 }

@@ -3,7 +3,7 @@ import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'disco
 import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PastTimeoutStrategy } from './types.js';
 import TimeoutManager from './timeout-manager.js';
 import { createMidSeasonUpdateImage, createSeasonResultsImage } from './graphics.js';
-import { hasVideo, randInt, validateConfig, getTodayDateString, reactToMessage, getOrderingUpset, sleep, randChoice, toCalendarDate, getTomorrow, generateKMeansClusters, getRankString, pluralize, naturalJoin, getClockTime } from './util.js';
+import { hasVideo, randInt, validateConfig, getTodayDateString, reactToMessage, getOrderingUpset, sleep, randChoice, toCalendarDate, getTomorrow, generateKMeansClusters, getRankString, naturalJoin, getClockTime } from './util.js';
 import GoodMorningState from './state.js';
 import logger from './logger.js';
 
@@ -404,37 +404,45 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
 };
 
 const finalizeAnonymousSubmissions = async () => {
-    const scores: Record<Snowflake, number> = {};
-    const messages: Record<Snowflake, Message> = {};
+    // First, tally the votes and compute the scores
+    const scores: Record<string, number> = {}; // Map (submission number : points)
+    const breakdown: Record<string, number[]> = {};
+    Object.values(state.getEvent().votes).forEach(submissionNumbers => {
+        submissionNumbers.forEach((submissionNumber, i) => {
+            scores[submissionNumber] = (scores[submissionNumber] ?? 0) + 3 - i;
+            // Take note of the breakdown
+            if (breakdown[submissionNumber] === undefined) {
+                breakdown[submissionNumber] = [0, 0, 0];
+            }
+            breakdown[submissionNumber][i]++;
+        });
+    });
 
-    // First, count the reacts and compute the score
-    const userIds: Snowflake[] = Object.keys(state.getEvent().anonymousMessagesByOwner);
-    let scoresLogMessage: string = 'Submission Scores:'
-    for (let i = 0; i < userIds.length; i++) {
-        const userId: Snowflake = userIds[i];
-        try {
-            const messageId: Snowflake = state.getEvent().anonymousMessagesByOwner[userId];
-            const message: Message = await goodMorningChannel.messages.fetch(messageId);
-            const upvotes: number = message.reactions.resolve(config.defaultGoodMorningEmoji).count;
-            const downvotes: number = message.reactions.resolve(config.downvoteEmoji).count;
-            const score: number = upvotes - (downvotes / 2);
-            scores[userId] = score;
-            messages[userId] = message;
-            scoresLogMessage += `\n**${state.getPlayerDisplayName(userId)}**: \`${upvotes}u - ${downvotes}d = ${score}\``;
-        } catch (err) {
-            logger.log(`Failed to compute score for <@${userId}>'s message: \`${err.toString()}\``);
+    // Compile the set of those who didn't vote
+    const deadbeats: Set<Snowflake> = new Set();
+    Object.keys(state.getEvent().submissions).forEach(userId => {
+        if (state.getEvent().votes[userId] === undefined) {
+            // Add the player to the set
+            deadbeats.add(userId);
+            // Penalize the player
+            state.deductPoints(userId, config.defaultAward);
+            state.incrementPlayerPenalties(userId);
         }
-    }
-    logger.log(scoresLogMessage);
+    })
 
-    // Then, assign points based on rank in score
-    userIds.sort((x, y) => scores[y] - scores[x]);
-    for (let i = 0; i < userIds.length; i++) {
-        const userId: Snowflake = userIds[i];
-        const score: number = scores[userId];
+    // Deleting certain event data will prevent action taken on further DMs
+    delete state.getEvent().submissions;
+    delete state.getEvent().votes;
+    await dumpState();
+
+    // Then, assign points based on rank in score (excluding those who didn't vote)
+    const submissionNumbers: Snowflake[] = Object.keys(scores).filter(n => !deadbeats.has(state.getEvent().submissionOwnersByNumber[n]));
+    submissionNumbers.sort((x, y) => scores[y] - scores[x]);
+    for (let i = 0; i < submissionNumbers.length; i++) {
+        const submissionNumber: string = submissionNumbers[i];
         const rank: number = i + 1;
-        // If the player received a negative score, award no points
-        const pointsEarned: number = score < 0 ? 0 : (config.largeAwardsByRank[rank] ?? config.defaultAward);
+        const pointsEarned: number = config.largeAwardsByRank[rank] ?? config.defaultAward;
+        const userId: Snowflake = state.getEvent().submissionOwnersByNumber[submissionNumber];
         state.awardPoints(userId, pointsEarned);
         state.setDailyRank(userId, rank);
         state.resetDaysSinceLGM(userId);
@@ -442,28 +450,50 @@ const finalizeAnonymousSubmissions = async () => {
 
     // Reveal the winners (and loser) to the channel
     await messenger.send(goodMorningChannel, 'Now, time to reveal the results...');
-    if (userIds[0]) {
+    if (deadbeats.size > 0) {
         await sleep(5000);
-        await messenger.reply(messages[userIds[0]], `Congrats to <@${userIds[0]}> for sending the best Good Morning ${state.getEvent().submissionType}!`);
+        const deadbeatsText: string = naturalJoin([...deadbeats].map(userId => `<@${userId}>`));
+        await messenger.send(goodMorningChannel, `Before anything else, say hello to the deadbeats who were disqualified for not voting! ${deadbeatsText} 👋`);
     }
-    if (userIds[1] && userIds[2]) {
-        await sleep(5000);
-        await messenger.send(goodMorningChannel, `Congrats as well to the runners-up <@${userIds[1]}> and <@${userIds[2]}>!`);
-    }
-    if (Math.min(...Object.values(scores)) < 0) {
-        await sleep(5000);
-        const userId: Snowflake = userIds[userIds.length - 1];
-        await messenger.reply(messages[userId], `...and <@${userId}>, hope you do better next time 😬`);
+    for (let i = submissionNumbers.length - 1; i >= 0; i--) {
+        const submissionNumber: string = submissionNumbers[i];
+        const userId: Snowflake = state.getEvent().submissionOwnersByNumber[submissionNumber];
+        const rank: number = i + 1;
+        if (i === submissionNumbers.length - 1) {
+            await sleep(5000);
+            await messenger.send(goodMorningChannel, `In dead last, we have the poor old <@${userId}> with submission **#${submissionNumber}**... better luck next time 😬`);
+        } else if (i === 0) {
+            await sleep(5000);
+            await messenger.send(goodMorningChannel, `And in first place, with submission **#${submissionNumber}**...`);
+            await sleep(3000);
+            await messenger.send(goodMorningChannel, `Receiving **${breakdown[submissionNumber][0]}** gold votes, **${breakdown[submissionNumber][1]}** silver votes, and **${breakdown[submissionNumber][2]}** bronze votes...`);
+            await sleep(6000);
+            await messenger.send(goodMorningChannel, `We have our winner, <@${userId}>! Congrats!`);
+        } else if (i < 3) {
+            await sleep(5000);
+            await messenger.send(goodMorningChannel, `In ${getRankString(rank)} place, we have <@${userId}> with submission **#${submissionNumber}**!`);
+        }
     }
 
     // Finally, send DMs to let each user know their ranking
-    const totalSubmissions: number = userIds.length;
-    for (let i = 0; i < userIds.length; i++) {
-        const userId: Snowflake = userIds[i];
+    const totalSubmissions: number = submissionNumbers.length;
+    for (let i = 0; i < submissionNumbers.length; i++) {
+        const submissionNumber: string = submissionNumbers[i];
+        const userId: Snowflake = state.getEvent().submissionOwnersByNumber[submissionNumber];
         const rank: number = i + 1;
-        await sleep(2000)
-        await messenger.dm(await fetchMember(userId), `Your ${state.getEvent().submissionType} placed **${getRankString(rank)}** of **${totalSubmissions}**. Thanks for participating ${config.defaultGoodMorningEmoji}`);
+        try {
+            await messenger.dm(await fetchMember(userId), `Your ${state.getEvent().submissionType} placed **${getRankString(rank)}** of **${totalSubmissions}**, `
+                + `receiving **${breakdown[submissionNumber][0]}** gold votes, **${breakdown[submissionNumber][1]}** silver votes, and **${breakdown[submissionNumber][2]}** bronze votes. `
+                + `Thanks for participating ${config.defaultGoodMorningEmoji}`);
+        } catch (err) {
+            await logger.log(`Unable to send results DM to **${state.getPlayerDisplayName(userId)}**: \`${err.toString()}\``);
+        }
     }
+
+    // Delete remaining event data
+    delete state.getEvent().submissionOwnersByNumber;
+    delete state.getEvent().votingMessage;
+    await dumpState();
 };
 
 const TIMEOUT_CALLBACKS = {
@@ -570,40 +600,41 @@ const TIMEOUT_CALLBACKS = {
     [TimeoutType.AnonymousSubmissionReveal]: async (): Promise<void> => {
         // Send the initial message
         const votingMessage: Message = await messenger.sendAndGet(goodMorningChannel,
-            `Here are your anonymous submissions! Use ${config.defaultGoodMorningEmoji} to upvote and ${config.downvoteEmoji} to downvote...`);
+            `Here are your anonymous submissions! Vote by sending me a DM with your top 3 picks (e.g. _"Hello magnificent GMBR, I vote for 3, 6, and 9"_). `
+            + `If you submitted a ${state.getEvent().submissionType}, you _must_ vote otherwise you will be disqualified and penalized.`);
         state.getEvent().votingMessage = votingMessage.id;
+        state.getEvent().votes = {};
+        state.getEvent().submissionOwnersByNumber = {};
+        await dumpState();
 
         // Get all the relevant user IDs and shuffle them
         const userIds: Snowflake[] = Object.keys(state.getEvent().submissions);
         userIds.sort((x, y) => Math.random() - Math.random());
 
         // For each submission (in shuffled order)...
-        state.getEvent().anonymousMessagesByOwner = {};
-        await dumpState();
         for (let i = 0; i < userIds.length; i++) {
             const userId: Snowflake = userIds[i];
             const submission: string = state.getEvent().submissions[userId];
+            const submissionNumber: string = (i + 1).toString();
+            
+            // Keep track of which user this submission's "number" maps to
+            state.getEvent().submissionOwnersByNumber[submissionNumber] = userId;
+            await dumpState();
 
             try {
-                // Send the message out and provide the expected emoji reacts
-                const message: Message = await messenger.sendAndGet(goodMorningChannel, submission);
-                await reactToMessage(message, config.defaultGoodMorningEmoji);
-                await reactToMessage(message, config.downvoteEmoji);
-
-                // Track the message ID keyed by user ID
-                state.getEvent().anonymousMessagesByOwner[userId] = message.id;
-                await dumpState();
-
+                // Send the message out
+                const messageHeader: string = `**Submission #${submissionNumber}:**`;
+                if (state.getEvent().isAttachmentSubmission) {
+                    await goodMorningChannel.send({ content: messageHeader, files: [new MessageAttachment(submission)] });
+                } else {
+                    await messenger.send(goodMorningChannel, `${messageHeader}\n${submission}`);
+                }
                 // Take a long pause
                 await sleep(30000);
             } catch (err) {
                 logger.log(`Failed to send out <@${userId}>'s submission: \`${err.toString()}\``);
             }
         }
-
-        // Deleting the submissions map will prevent action taken on further DMs
-        delete state.getEvent().submissions;
-        await dumpState();
 
         // Schedule voting reminders
         [[11, 0], [11, 15], [11, 30]].forEach(([hour, minute]) => {
@@ -614,12 +645,25 @@ const TIMEOUT_CALLBACKS = {
         });
     },
     [TimeoutType.AnonymousSubmissionVotingReminder]: async (): Promise<void> => {
+        // Send notification for the public in the channel
         try {
             const votingMessage: Message = await goodMorningChannel.messages.fetch(state.getEvent().votingMessage);
             await messenger.reply(votingMessage, `If you haven't already, please vote on your favorite ${state.getEvent().submissionType}!`);
         } catch (err) {
             logger.log(`Failed to fetch voting message and send reminder: \`${err.toString()}\``);
         }
+        // DM players who still haven't voted
+        Object.keys(state.getEvent().submissions).forEach(async (userId) => {
+            if (state.getEvent().votes[userId] === undefined) {
+                try {
+                    await messenger.dm(await fetchMember(userId),
+                        `You still haven\'t voted! You and your ${state.getEvent().submissionType} will be disqualified if you don't vote. `
+                            + 'You can vote by telling me which submissions you liked (e.g. _"I liked 2, 4, and 8"_)');
+                } catch (err) {
+                    await logger.log(`Unable to send voting reminder DM to **${state.getPlayerDisplayName(userId)}**: \`${err.toString()}\``);
+                }
+            }
+        });
     }
 };
 
@@ -858,13 +902,6 @@ const processCommands = async (msg: Message): Promise<void> => {
             const recipient: string = potentialRecipients.length > 0 ? state.getPlayerDisplayName(randChoice(...potentialRecipients)) : 'N/A';
             await msg.reply(`The test magic word is _${magicWord}_, and send the hint to **${recipient}** (Out of **${potentialRecipients.length}** choices)`);
         }
-        else if (sanitizedText.includes('attachment')) {
-            if (msg.attachments.size === 1) {
-                await msg.reply(msg.attachments.first().url);
-            } else {
-                await msg.reply('expected one attachment');
-            }
-        }
     }
 };
 
@@ -1079,7 +1116,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 if (isAm) {
                     reactToMessage(msg, '😴');
                 } else {
-                    reactToMessage(msg, ['😡', '😬', '😒', '😐']);
+                    reactToMessage(msg, ['😡', '😬', '😒', '😐', '🤫']);
                 }
             }
             // Increment user's penalty count then dump the state
@@ -1094,33 +1131,71 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
         }
     } else if (msg.channel instanceof DMChannel && !msg.author.bot) {
         // Process DM submissions depending on the event
-        if (state.isMorning() && state.getEventType() === DailyEventType.AnonymousSubmissions && state.getEvent().submissions) {
+        if (state.isMorning() && state.getEventType() === DailyEventType.AnonymousSubmissions) {
             const userId: Snowflake = msg.author.id;
-            const redoSubmission: boolean = userId in state.getEvent().submissions;
-            // Add the submission
-            if (state.getEvent().isAttachmentSubmission) {
-                const url: string = msg.attachments.first()?.url;
-                if (!url) {
-                    await messenger.reply(msg, 'Didn\'t you mean to send me an attachment?');
-                    return;
+            // Handle voting or submitting depending on what phase of the process we're in
+            if (state.getEvent().votes && state.getEvent().submissionOwnersByNumber) {
+                const pattern: RegExp = /\d+/g;
+                // TODO: Should we validate the exact number of votes? There's no evidence of players griefing without this limitation just yet...
+                const submissionNumbers: string[] = [...msg.content.matchAll(pattern)].map(x => x[0]).slice(0, 3);
+                const submissionNumberSet: Set<string> = new Set(submissionNumbers);
+                const validSubmissionNumbers: Set<string> = new Set(Object.keys(state.getEvent().submissionOwnersByNumber));
+                // Do some validation on the vote before processing it further
+                if (submissionNumbers.length === 0) {
+                    await messenger.reply(msg, `I don\'t understand, please tell me which submissions you\'re voting for. Choose from ${naturalJoin([...validSubmissionNumbers])}.`);
+                } else if (submissionNumberSet.size !== submissionNumbers.length) {
+                    await messenger.reply(msg, 'You can\'t vote for the same submission twice!');
+                } else {
+                    // Ensure that all votes are for valid submissions
+                    for (let i = 0; i < submissionNumbers.length; i++) {
+                        const submissionNumber: string = submissionNumbers[i];
+                        if (!validSubmissionNumbers.has(submissionNumber)) {
+                            await messenger.reply(msg, `${submissionNumber} is not a valid submission number! Choose from ${naturalJoin([...validSubmissionNumbers])}.`);
+                            return;
+                        }
+                        if (state.getEvent().submissionOwnersByNumber[submissionNumber] === msg.author.id) {
+                            await messenger.reply(msg, 'You can\'t vote for your own submission!');
+                            return;
+                        }
+                    }
+                    // Cast the vote
+                    state.getEvent().votes[msg.author.id] = submissionNumbers;
+                    await dumpState();
+                    // Notify the user of their vote
+                    if (submissionNumbers.length === 1) {
+                        await messenger.reply(msg, `Your vote has been cast! You've voted for submission **#${submissionNumbers[0]}**. You can make a correction by sending me another message.`)
+                    } else {
+                        await messenger.reply(msg, `Your vote has been cast! Your picks (in order) are ${naturalJoin(submissionNumbers.map(n => `**#${n}**`), 'then')}. You can make a correction by sending me another message.`)
+                    }
+
                 }
-                state.getEvent().submissions[userId] = url;
-            } else {
-                state.getEvent().submissions[userId] = msg.content;
-            }
-            await dumpState();
-            // Reply to the player via DM to let them know their submission was received
-            const numSubmissions: number = Object.keys(state.getEvent().submissions).length;
-            if (redoSubmission) {
-                await messenger.reply(msg, 'Thanks for the update, I\'ll use this submission instead of your previous one.');
-            } else {
-                await messenger.reply(msg, 'Thanks for your submission!');
-                // If we now have a multiple of some number of submissions, notify the server
-                if (numSubmissions % 3 === 0) {
-                    await messenger.send(goodMorningChannel, languageGenerator.generate(`{!We now have|I've received} **${numSubmissions}** submissions! {!DM me|Send me a DM with} a _${state.getEvent().submissionType}_ to {!participate|be included|join the fun}`));
+            } else if (state.getEvent().submissions) {
+                const redoSubmission: boolean = userId in state.getEvent().submissions;
+                // Add the submission
+                if (state.getEvent().isAttachmentSubmission) {
+                    const url: string = msg.attachments.first()?.url;
+                    if (!url) {
+                        await messenger.reply(msg, 'Didn\'t you mean to send me an attachment?');
+                        return;4
+                    }
+                    state.getEvent().submissions[userId] = url;
+                } else {
+                    state.getEvent().submissions[userId] = msg.content;
+                }
+                await dumpState();
+                // Reply to the player via DM to let them know their submission was received
+                const numSubmissions: number = Object.keys(state.getEvent().submissions).length;
+                if (redoSubmission) {
+                    await messenger.reply(msg, 'Thanks for the update, I\'ll use this submission instead of your previous one.');
+                } else {
+                    await messenger.reply(msg, 'Thanks for your submission!');
+                    // If we now have a multiple of some number of submissions, notify the server
+                    if (numSubmissions % 3 === 0) {
+                        await messenger.send(goodMorningChannel, languageGenerator.generate(`{!We now have|I've received} **${numSubmissions}** submissions! {!DM me|Send me a DM with} a _${state.getEvent().submissionType}_ to {!participate|be included|join the fun}`));
+                    }
+                    logger.log(`Received submission from player **${state.getPlayerDisplayName(userId)}**, now at **${numSubmissions}** submissions`);
                 }
             }
-            logger.log(`Received submission from player **${state.getPlayerDisplayName(userId)}**, now at **${numSubmissions}** submissions`);
         }
         // Process admin commands
         else if (guildOwnerDmChannel && msg.channel.id === guildOwnerDmChannel.id && msg.author.id === guildOwner.id) {
