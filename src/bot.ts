@@ -933,14 +933,16 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             // Reset user's "days since last good morning" counter
             state.resetDaysSinceLGM(userId);
 
-            // Determine some MF-related conditions
+            // Determine some properties related to the contents of the message
             const messageHasVideo: boolean = hasVideo(msg);
+            const messageHasText: boolean = msg.content && msg.content.trim().length !== 0;
+
+            // The conditions for triggering MF and GM are separate so that players can post videos-then-messages, vice-versa, or both together
             const triggerMonkeyFriday: boolean = (state.getEventType() === DailyEventType.MonkeyFriday) && messageHasVideo;
+            // Only trigger GM if it contains text, since players often post images/video without text
+            const triggerStandardGM: boolean = messageHasText;
 
-            // Messages are "novel" if the text is unique or if the message contains a video (is there a better way to handle attachments?)
-            const isNovelMessage: boolean = !r9k.contains(msg.content) || messageHasVideo;
-
-            // Separately award points and reply for monkey friday videos (this lets users post videos after saying good morning)
+            // Handle MF messages if the conditions are met and its the user's first MF of the day
             if (triggerMonkeyFriday && !state.hasDailyVideoRank(userId)) {
                 const videoRank: number = state.getNextDailyVideoRank();
                 state.setDailyVideoRank(userId, videoRank);
@@ -955,8 +957,9 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     reactToMessage(msg, '🐒');
                 }
             }
-            // In the morning, award the player accordingly if it's their first message...
-            if (!state.hasDailyRank(userId)) {
+
+            // Handle standard GM messages if the conditions are met and its the user's first GM of the day
+            if (triggerStandardGM && !state.hasDailyRank(userId)) {
                 // If it's a "grumpy" morning and no one has said anything yet, punish the player (but don't assign a rank, so player may still say good morning)
                 if (state.getEventType() === DailyEventType.GrumpyMorning && !state.getEvent().disabled) {
                     // Deduct points and update point-related data
@@ -971,6 +974,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     return;
                 }
 
+                // Compute and set this player's daily rank
                 const rank: number = state.getNextDailyRank();
                 state.setDailyRank(userId, rank);
 
@@ -1031,6 +1035,9 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 if (wasBeckoned) {
                     state.awardPoints(userId, config.awardsByRank[1]);
                 }
+
+                // Messages are "novel" if the text is unique
+                const isNovelMessage: boolean = !r9k.contains(msg.content);
 
                 // Update the user's points and dump the state
                 const priorPoints: number = state.getPlayerPoints(userId);

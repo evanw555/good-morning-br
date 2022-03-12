@@ -160,7 +160,8 @@ export function hasVideo(msg: Message): boolean {
         // Next to manually check for YouTube links since apparently the embeds check doesn't always work...
         || msg.content.includes('https://youtu.be/')
         || msg.content.includes('https://youtube.com/')
-        || msg.content.includes('https://www.youtube.com/');
+        || msg.content.includes('https://www.youtube.com/')
+        || msg.content.includes('https://m.youtube.com/');
 }
 
 /**
