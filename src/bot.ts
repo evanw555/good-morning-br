@@ -1,6 +1,6 @@
 import { Client, DMChannel, Intents, MessageAttachment } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'discord.js';
-import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PastTimeoutStrategy } from './types.js';
+import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PastTimeoutStrategy, WeeklySnapshot } from './types.js';
 import TimeoutManager from './timeout-manager.js';
 import { createMidSeasonUpdateImage, createSeasonResultsImage } from './graphics.js';
 import { hasVideo, randInt, validateConfig, getTodayDateString, reactToMessage, getOrderingUpset, sleep, randChoice, toCalendarDate, getTomorrow, generateKMeansClusters, getRankString, naturalJoin, getClockTime } from './util.js';
@@ -379,6 +379,32 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     state.setGracePeriod(false);
     state.resetDailyState();
 
+    // If it's a Recap Sunday, then process weekly changes
+    if (state.getEventType() === DailyEventType.RecapSunday) {
+        const weeklySnapshot: WeeklySnapshot = await loadWeeklySnapshot();
+        // If a snapshot from last week exists (and is from this season), compute and broadcast some weekly stats
+        if (weeklySnapshot && weeklySnapshot.season === state.getSeasonNumber()) {
+            let maxPointGains: number = -1;
+            let maxGainedPlayer: Snowflake;
+            state.getPlayers().forEach(userId => {
+                const pointDiff: number = state.getPlayerPoints(userId) - (weeklySnapshot.players[userId]?.points ?? 0);
+                if (pointDiff > maxPointGains) {
+                    maxPointGains = pointDiff;
+                    maxGainedPlayer = userId;
+                }
+            });
+            await logger.log(`Player **${state.getPlayerDisplayName(maxGainedPlayer)}** gained the most points (\`${maxPointGains}\`) in the last week.`);
+            if (maxPointGains > 0) {
+                await messenger.send(goodMorningChannel, `Nice work to <@${maxGainedPlayer}> for earning the most points in the last week!`);
+            }
+        }
+        // Write the new snapshot
+        await dumpWeeklySnapshot({
+            season: state.getSeasonNumber(),
+            players: state.getPlayerStates()
+        });
+    }
+
     // Process "reverse" GM ranks
     if (state.getEventType() === DailyEventType.ReverseGoodMorning) {
         const mostRecentUsers: Snowflake[] = Object.keys(state.getEvent().reverseGMRanks);
@@ -699,6 +725,25 @@ const dumpState = async (): Promise<void> => {
     await storage.write('state', state.toJson());
 };
 
+const loadWeeklySnapshot = async (): Promise<WeeklySnapshot> => {
+    try {
+        return await storage.readJson('weekly-snapshot.json');
+    } catch (err) {
+        // Specifically check for file-not-found errors to make sure we don't overwrite anything
+        if (err.code === 'ENOENT') {
+            await logger.log('Existing weekly snapshot file not found!');
+            return undefined;
+        } else {
+            logger.log(`Unhandled exception while loading weekly snapshot file:\n\`\`\`${err.message}\`\`\``);
+        }
+    }
+    return undefined;
+};
+
+const dumpWeeklySnapshot = async (weeklySnapshot: WeeklySnapshot): Promise<void> => {
+    await storage.write('weekly-snapshot.json', JSON.stringify(weeklySnapshot, null, 2));
+};
+
 const loadHistory = async (): Promise<void> => {
     try {
         history = await storage.readJson('history');
@@ -776,6 +821,14 @@ client.on('ready', async (): Promise<void> => {
     await loadHistory();
     await loadR9KHashes();
     await timeoutManager.loadTimeouts();
+
+    // TODO: Temporary logic for adding the first weekly snapshot. REMOVE ME!
+    if (!await loadWeeklySnapshot()) {
+        await dumpWeeklySnapshot({
+            season: state.getSeasonNumber(),
+            players: state.getPlayerStates()
+        });
+    }
 
     if (guildOwner && goodMorningChannel) {
         await logger.log(`Bot rebooting at **${getClockTime()}** with guild owner **${guildOwner.displayName}** and GM channel ${goodMorningChannel.toString()}`);

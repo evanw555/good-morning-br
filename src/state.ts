@@ -52,6 +52,10 @@ export default class GoodMorningState {
         return Object.keys(this.data.players);
     }
 
+    getPlayerStates(): Record<Snowflake, PlayerState> {
+        return this.data.players;
+    }
+
     getNumPlayers(): number {
         return this.getPlayers().length;
     }
