@@ -231,7 +231,7 @@ const sendGoodMorningMessage = async (): Promise<void> => {
             const phrase: string = state.getEvent().isAttachmentSubmission ? 'find a' : 'write a special Good Morning';
             const text = `Good morning! Today is a special one. Rather than sending your good morning messages here for all to see, `
                 + `I'd like you to ${phrase} _${state.getEvent().submissionType}_ and send it directly to me via DM! `
-                + `At 10:30, I'll post them here anonymously and you'll all be voting on your favorites 😉`;
+                + `At 11:00, I'll post them here anonymously and you'll all be voting on your favorites 😉`;
             await messenger.send(goodMorningChannel, text);
             break;
         default:
@@ -355,7 +355,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     // Set timeout for anonymous submission reveal
     if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
         const submissionRevealTime = new Date();
-        submissionRevealTime.setHours(10, 30, 0, 0);
+        submissionRevealTime.setHours(11, 0, 0, 0);
         // We register this with the "Invoke" strategy since we want it to happen before Pre-Noon (with which it's registered in parallel)
         await timeoutManager.registerTimeout(TimeoutType.AnonymousSubmissionReveal, submissionRevealTime, PastTimeoutStrategy.Invoke);
     }
@@ -477,7 +477,7 @@ const finalizeAnonymousSubmissions = async () => {
     // Reveal the winners (and loser) to the channel
     await messenger.send(goodMorningChannel, 'Now, time to reveal the results...');
     if (deadbeats.size > 0) {
-        await sleep(5000);
+        await sleep(10000);
         const deadbeatsText: string = naturalJoin([...deadbeats].map(userId => `<@${userId}>`));
         await messenger.send(goodMorningChannel, `Before anything else, say hello to the deadbeats who were disqualified for not voting! ${deadbeatsText} 👋`);
     }
@@ -486,17 +486,17 @@ const finalizeAnonymousSubmissions = async () => {
         const userId: Snowflake = state.getEvent().submissionOwnersByNumber[submissionNumber];
         const rank: number = i + 1;
         if (i === submissionNumbers.length - 1) {
-            await sleep(5000);
+            await sleep(10000);
             await messenger.send(goodMorningChannel, `In dead last, we have the poor old <@${userId}> with submission **#${submissionNumber}**... better luck next time 😬`);
         } else if (i === 0) {
-            await sleep(5000);
+            await sleep(10000);
             await messenger.send(goodMorningChannel, `And in first place, with submission **#${submissionNumber}**...`);
-            await sleep(3000);
-            await messenger.send(goodMorningChannel, `Receiving **${breakdown[submissionNumber][0]}** gold votes, **${breakdown[submissionNumber][1]}** silver votes, and **${breakdown[submissionNumber][2]}** bronze votes...`);
             await sleep(6000);
+            await messenger.send(goodMorningChannel, `Receiving **${breakdown[submissionNumber][0]}** gold votes, **${breakdown[submissionNumber][1]}** silver votes, and **${breakdown[submissionNumber][2]}** bronze votes...`);
+            await sleep(12000);
             await messenger.send(goodMorningChannel, `We have our winner, <@${userId}>! Congrats!`);
         } else if (i < 3) {
-            await sleep(5000);
+            await sleep(10000);
             await messenger.send(goodMorningChannel, `In ${getRankString(rank)} place, we have <@${userId}> with submission **#${submissionNumber}**!`);
         }
     }
@@ -663,7 +663,7 @@ const TIMEOUT_CALLBACKS = {
         }
 
         // Schedule voting reminders
-        [[11, 0], [11, 15], [11, 30]].forEach(([hour, minute]) => {
+        [[11, 20], [11, 40]].forEach(([hour, minute]) => {
             const reminderTime: Date = new Date();
             reminderTime.setHours(hour, minute);
             // We register these with the "Delete" strategy since they are terminal and aren't needed if in the past
@@ -821,14 +821,6 @@ client.on('ready', async (): Promise<void> => {
     await loadHistory();
     await loadR9KHashes();
     await timeoutManager.loadTimeouts();
-
-    // TODO: Temporary logic for adding the first weekly snapshot. REMOVE ME!
-    if (!await loadWeeklySnapshot()) {
-        await dumpWeeklySnapshot({
-            season: state.getSeasonNumber(),
-            players: state.getPlayerStates()
-        });
-    }
 
     if (guildOwner && goodMorningChannel) {
         await logger.log(`Bot rebooting at **${getClockTime()}** with guild owner **${guildOwner.displayName}** and GM channel ${goodMorningChannel.toString()}`);
