@@ -120,11 +120,6 @@ export interface RawGoodMorningState {
     players: Record<Snowflake, PlayerState>
 }
 
-export interface WeeklySnapshot {
-    season: number,
-    players: Record<Snowflake, PlayerState>
-}
-
 export interface Season {
     season: number,
     startedOn: FullDate

@@ -1,9 +1,9 @@
 import { Client, DMChannel, Intents, MessageAttachment } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'discord.js';
-import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PastTimeoutStrategy, WeeklySnapshot } from './types.js';
+import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PastTimeoutStrategy } from './types.js';
 import TimeoutManager from './timeout-manager.js';
 import { createMidSeasonUpdateImage, createSeasonResultsImage } from './graphics.js';
-import { hasVideo, randInt, validateConfig, getTodayDateString, reactToMessage, getOrderingUpset, sleep, randChoice, toCalendarDate, getTomorrow, generateKMeansClusters, getRankString, naturalJoin, getClockTime } from './util.js';
+import { hasVideo, randInt, validateConfig, getTodayDateString, reactToMessage, getOrderingUpset, sleep, randChoice, toCalendarDate, getTomorrow, generateKMeansClusters, getRankString, naturalJoin, getClockTime, getOrderingUpsets } from './util.js';
 import GoodMorningState from './state.js';
 import logger from './logger.js';
 
@@ -381,13 +381,14 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
 
     // If it's a Recap Sunday, then process weekly changes
     if (state.getEventType() === DailyEventType.RecapSunday) {
-        const weeklySnapshot: WeeklySnapshot = await loadWeeklySnapshot();
+        const weeklySnapshot: GoodMorningState = await loadWeeklySnapshot();
         // If a snapshot from last week exists (and is from this season), compute and broadcast some weekly stats
-        if (weeklySnapshot && weeklySnapshot.season === state.getSeasonNumber()) {
+        if (weeklySnapshot && weeklySnapshot.getSeasonNumber() === state.getSeasonNumber()) {
+            // Broadcast the biggest weekly gainer of points
             let maxPointGains: number = -1;
             let maxGainedPlayer: Snowflake;
             state.getPlayers().forEach(userId => {
-                const pointDiff: number = state.getPlayerPoints(userId) - (weeklySnapshot.players[userId]?.points ?? 0);
+                const pointDiff: number = state.getPlayerPoints(userId) - weeklySnapshot.getPlayerPoints(userId);
                 if (pointDiff > maxPointGains) {
                     maxPointGains = pointDiff;
                     maxGainedPlayer = userId;
@@ -397,12 +398,23 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
             if (maxPointGains > 0) {
                 await messenger.send(goodMorningChannel, `Nice work to <@${maxGainedPlayer}> for earning the most points in the last week!`);
             }
+            // Get and compare the after orderings. TODO: actually send this out?
+            try {
+                const beforeOrderings: Snowflake[] = weeklySnapshot.getOrderedPlayers();
+                const afterOrderings: Snowflake[] = state.getOrderedPlayers();
+                const upsets: Record<Snowflake, Snowflake[]> = getOrderingUpsets(beforeOrderings, afterOrderings);
+                await logger.log(naturalJoin(
+                    Object.entries(upsets)
+                        .map(([userId, upsettees]) => {
+                            return `**${state.getPlayerDisplayName(userId)}** has overtaken ${naturalJoin(upsettees.map(x => `**${state.getPlayerDisplayName(x)}**`))}`;
+                        })
+                ));
+            } catch (err) {
+                logger.log('Failed to compute ordering upsets: ' + err.toString());
+            }
         }
         // Write the new snapshot
-        await dumpWeeklySnapshot({
-            season: state.getSeasonNumber(),
-            players: state.getPlayerStates()
-        });
+        await dumpWeeklySnapshot(state);
     }
 
     // Process "reverse" GM ranks
@@ -725,9 +737,9 @@ const dumpState = async (): Promise<void> => {
     await storage.write('state', state.toJson());
 };
 
-const loadWeeklySnapshot = async (): Promise<WeeklySnapshot> => {
+const loadWeeklySnapshot = async (): Promise<GoodMorningState> => {
     try {
-        return await storage.readJson('weekly-snapshot.json');
+        return new GoodMorningState(await storage.readJson('weekly-snapshot.json'));
     } catch (err) {
         // Specifically check for file-not-found errors to make sure we don't overwrite anything
         if (err.code === 'ENOENT') {
@@ -740,8 +752,8 @@ const loadWeeklySnapshot = async (): Promise<WeeklySnapshot> => {
     return undefined;
 };
 
-const dumpWeeklySnapshot = async (weeklySnapshot: WeeklySnapshot): Promise<void> => {
-    await storage.write('weekly-snapshot.json', JSON.stringify(weeklySnapshot, null, 2));
+const dumpWeeklySnapshot = async (weeklySnapshot: GoodMorningState): Promise<void> => {
+    await storage.write('weekly-snapshot.json', weeklySnapshot.toJson());
 };
 
 const loadHistory = async (): Promise<void> => {
@@ -821,6 +833,11 @@ client.on('ready', async (): Promise<void> => {
     await loadHistory();
     await loadR9KHashes();
     await timeoutManager.loadTimeouts();
+
+    // TODO: If there is no weekly snapshot, dump one now (REMOVE ME!)
+    if (!await loadWeeklySnapshot()) {
+        await dumpWeeklySnapshot(state);
+    }
 
     if (guildOwner && goodMorningChannel) {
         await logger.log(`Bot rebooting at **${getClockTime()}** with guild owner **${guildOwner.displayName}** and GM channel ${goodMorningChannel.toString()}`);
@@ -961,9 +978,6 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             return;
         }
 
-        // Using this to test ordering logic. TODO: actually send out updates?
-        const beforeOrderings: Snowflake[] = state.getOrderedPlayers();
-
         // If this user is the guest reveiller and the morning has not yet begun, wake the bot up
         if (state.getEventType() === DailyEventType.GuestReveille && state.getEvent().reveiller === userId && !state.isMorning() && isAm) {
             await wakeUp(false);
@@ -1091,18 +1105,6 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 dumpState();
                 // Add this user's message to the R9K text bank
                 r9k.add(msg.content);
-
-                // Get and compare the after orderings. TODO: actually send this out?
-                try {
-                    const afterOrderings: Snowflake[] = state.getOrderedPlayers();
-                    const orderingUpsets: string[] = getOrderingUpset(userId, beforeOrderings, afterOrderings);
-                    if (orderingUpsets.length > 0) {
-                        const joinedUpsettees: string = naturalJoin(orderingUpsets.map(x => `**${state.getPlayerDisplayName(x)}**`));
-                        logger.log(`**${state.getPlayerDisplayName(userId)}** has overtaken ${joinedUpsettees}`);
-                    }
-                } catch (err) {
-                    logger.log('Failed to compute ordering upsets: ' + err.message);
-                }
 
                 // If it's a combo-breaker, reply with a special message (may result in double replies on Monkey Friday)
                 if (sendComboBrokenMessage) {

@@ -1,4 +1,4 @@
-import { Message } from "discord.js";
+import { Message, Snowflake } from "discord.js";
 import { CalendarDate, FullDate, GoodMorningConfig } from "./types";
 
 /**
@@ -224,18 +224,18 @@ export async function reactToMessage(msg: Message, emoji: string | string[]): Pr
     }
 }
 
-export function getOrderingUpset(upsetter: string, before: string[], after: string[]): any[] {
-    const beforeIndex = before.indexOf(upsetter);
-    const afterIndex = after.indexOf(upsetter);
-    const beforeInferiors = new Set<string>(before.slice(beforeIndex + 1));
-    const afterInferiors = after.slice(afterIndex + 1);
+export function getOrderingUpset(upsetter: Snowflake, before: Snowflake[], after: Snowflake[]): Snowflake[] {
+    const beforeIndex: number = before.indexOf(upsetter);
+    const afterIndex: number = after.indexOf(upsetter);
+    const beforeInferiors: Set<Snowflake> = new Set<string>(before.slice(beforeIndex + 1));
+    const afterInferiors: Snowflake[] = after.slice(afterIndex + 1);
     return afterInferiors.filter(x => !beforeInferiors.has(x));
 }
 
-export function getOrderingUpsets(before: string[], after: string[]): Record<string, string[]> {
-    const results = {};
+export function getOrderingUpsets(before: Snowflake[], after: Snowflake[]): Record<Snowflake, Snowflake[]> {
+    const results: Record<Snowflake, Snowflake[]> = {};
     after.forEach(x => {
-        const upsettees = getOrderingUpset(x, before, after);
+        const upsettees: Snowflake[] = getOrderingUpset(x, before, after);
         if (upsettees && upsettees.length > 0) {
             results[x] = upsettees;
         }
