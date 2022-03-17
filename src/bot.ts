@@ -387,18 +387,19 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
             // Broadcast the biggest weekly gainer of points
             let maxPointGains: number = -1;
             let maxGainedPlayer: Snowflake;
+            const pointDiffs: Record<Snowflake, number> = {};
             state.getPlayers().forEach(userId => {
                 const pointDiff: number = state.getPlayerPoints(userId) - weeklySnapshot.getPlayerPoints(userId);
+                pointDiffs[userId] = pointDiff;
                 if (pointDiff > maxPointGains) {
                     maxPointGains = pointDiff;
                     maxGainedPlayer = userId;
                 }
             });
-            await logger.log(`Player **${state.getPlayerDisplayName(maxGainedPlayer)}** gained the most points (\`${maxPointGains}\`) in the last week.`);
             if (maxPointGains > 0) {
                 await messenger.send(goodMorningChannel, `Nice work to <@${maxGainedPlayer}> for earning the most points in the last week!`);
             }
-            // Get and compare the after orderings. TODO: actually send this out?
+            // Log any weekly rank upsets. TODO: Actually send this out???
             try {
                 const beforeOrderings: Snowflake[] = weeklySnapshot.getOrderedPlayers();
                 const afterOrderings: Snowflake[] = state.getOrderedPlayers();
@@ -412,6 +413,12 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
             } catch (err) {
                 logger.log('Failed to compute ordering upsets: ' + err.toString());
             }
+            // Log all the nonzero point changes
+            await logger.log(Object.keys(pointDiffs)
+                .filter(userId => pointDiffs[userId] !== 0)
+                .sort((x, y) => pointDiffs[y] - pointDiffs[x])
+                .map(userId => `\`${pointDiffs[userId]}\` **${state.getPlayerDisplayName(userId)}**`)
+                .join('\n') || 'No point changes this week.');
         }
         // Write the new snapshot
         await dumpWeeklySnapshot(state);
@@ -833,11 +840,6 @@ client.on('ready', async (): Promise<void> => {
     await loadHistory();
     await loadR9KHashes();
     await timeoutManager.loadTimeouts();
-
-    // TODO: If there is no weekly snapshot, dump one now (REMOVE ME!)
-    if (!await loadWeeklySnapshot()) {
-        await dumpWeeklySnapshot(state);
-    }
 
     if (guildOwner && goodMorningChannel) {
         await logger.log(`Bot rebooting at **${getClockTime()}** with guild owner **${guildOwner.displayName}** and GM channel ${goodMorningChannel.toString()}`);
