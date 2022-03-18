@@ -1186,6 +1186,15 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             }
         }
     } else if (msg.channel instanceof DMChannel && !msg.author.bot) {
+        // Process admin commands (if during a special event, must use "ADMIN?" suffix to override)
+        if (guildOwnerDmChannel
+            && msg.channel.id === guildOwnerDmChannel.id
+            && msg.author.id === guildOwner.id
+            && (state.getEventType() !== DailyEventType.AnonymousSubmissions || msg.content.endsWith('ADMIN?')))
+        {
+            await processCommands(msg);
+            return;
+        }
         // Process DM submissions depending on the event
         if (state.isMorning() && state.getEventType() === DailyEventType.AnonymousSubmissions) {
             const userId: Snowflake = msg.author.id;
@@ -1252,10 +1261,6 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     logger.log(`Received submission from player **${state.getPlayerDisplayName(userId)}**, now at **${numSubmissions}** submissions`);
                 }
             }
-        }
-        // Process admin commands
-        else if (guildOwnerDmChannel && msg.channel.id === guildOwnerDmChannel.id && msg.author.id === guildOwner.id) {
-            await processCommands(msg);
         }
     }
 });
