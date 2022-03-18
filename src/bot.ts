@@ -182,6 +182,15 @@ const chooseEvent = (date: Date): DailyEvent => {
                 user: guestReveiller
             });
         }
+        // If anyone is qualified to provide the GM message, add writer's block as a potential event
+        const potentialWriters: Snowflake[] = state.queryOrderedPlayers({ maxDays: 1, n: 7 });
+        if (potentialWriters.length > 0) {
+            const guestWriter: Snowflake = randChoice(...potentialWriters);
+            potentialEvents.push({
+                type: DailyEventType.WritersBlock,
+                user: guestWriter
+            });
+        }
         // Now maybe return one of those events
         if (Math.random() < 0.75) {
             return randChoice(...potentialEvents);
@@ -226,6 +235,14 @@ const sendGoodMorningMessage = async (): Promise<void> => {
             break;
         case DailyEventType.SleepyMorning:
             await messenger.send(goodMorningChannel, languageGenerator.generate('{sleepyMorning}'));
+            break;
+        case DailyEventType.WritersBlock:
+            // If the guest writer submitted something, use that; otherwise, send the standard GM message
+            if (state.getEvent().customMessage) {
+                await messenger.send(goodMorningChannel, state.getEvent().customMessage);
+            } else {
+                await messenger.send(goodMorningChannel, languageGenerator.generate('{goodMorning}'));
+            }
             break;
         case DailyEventType.AnonymousSubmissions:
             const phrase: string = state.getEvent().isAttachmentSubmission ? 'find a' : 'write a special Good Morning';
@@ -618,6 +635,18 @@ const TIMEOUT_CALLBACKS = {
         const standardClockTimes: Set<string> = new Set(['11:59', '12:00', '12:01']);
         if (!standardClockTimes.has(clockTime)) {
             await messenger.send(goodMorningChannel, 'The "morning" technically ends now, so SHUT UP 🤫');
+        }
+
+        // If the event for tomorrow is writer's block, then send a message to the guest writer asking them to submit a GM message
+        if (!state.isSeasonGoalReached() && state.getEventType() === DailyEventType.WritersBlock) {
+            try {
+                await messenger.dm(await fetchMember(state.getEvent().user),
+                    "Hey, I've been experiencing a little writer's block lately and can't think of a solid greeting for tomorrow. "
+                    + "What do you think I should say? Send me something and I'll use it as my Good Morning greeting tomorrow as-is 🤔");
+                await logger.log(`Sent writer's block invite to **${state.getPlayerDisplayName(state.getEvent().user)}**`);
+            } catch (err) {
+                await logger.log(`Unable to send writer's block invite to **${state.getPlayerDisplayName(state.getEvent().user)}**: \`${err.toString()}\``);
+            }
         }
 
         // If anyone's score is above the season goal, then proceed to the next season
@@ -1186,11 +1215,11 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             }
         }
     } else if (msg.channel instanceof DMChannel && !msg.author.bot) {
-        // Process admin commands (if during a special event, must use "ADMIN?" suffix to override)
+        // Always process admin commands if using the "ADMIN?" suffix (only needed to override DM-based events)
         if (guildOwnerDmChannel
             && msg.channel.id === guildOwnerDmChannel.id
             && msg.author.id === guildOwner.id
-            && (state.getEventType() !== DailyEventType.AnonymousSubmissions || msg.content.endsWith('ADMIN?')))
+            && msg.content.endsWith('ADMIN?'))
         {
             await processCommands(msg);
             return;
@@ -1261,6 +1290,29 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     logger.log(`Received submission from player **${state.getPlayerDisplayName(userId)}**, now at **${numSubmissions}** submissions`);
                 }
             }
+        }
+        // Handle writer's block submissions
+        else if (!state.isMorning() && state.getEventType() === DailyEventType.WritersBlock && state.getEvent().user === msg.author.id) {
+            const content: string = msg.content;
+            if (content && content.trim()) {
+                const resubmitting: boolean = state.getEvent().customMessage !== undefined;
+                // Save the greeting and dump the state
+                state.getEvent().customMessage = content;
+                await dumpState();
+                // Give the user confirmation
+                if (resubmitting) {
+                    await messenger.reply(msg, 'I\'ll use this message instead of your previous one');
+                } else {
+                    await messenger.reply(msg, languageGenerator.generate('{!Thanks|Cool|Nice}! This {!will make for|is} a {adjectives.positive?} {!message|greeting}'));
+                }
+                logger.log(`**${state.getPlayerDisplayName(msg.author.id)}** submitted their writer's block greeting`);
+            } else {
+                await messenger.reply(msg, 'I can\'t send that...');
+            }
+        }
+        // Process admin commands without the override suffix
+        else if (guildOwnerDmChannel && msg.channel.id === guildOwnerDmChannel.id && msg.author.id === guildOwner.id) {
+            await processCommands(msg);
         }
     }
 });

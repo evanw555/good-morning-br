@@ -198,10 +198,11 @@ export default class GoodMorningState {
      * - skipPlayers: omit the top N players (e.g. 2 means omit the first-place and second-place players)
      * - maxDays: only include players who've said GM in the last N days
      * - minDays: only include players who haven't said GM in the last N-1 days
+     * - n: only return the first N players (after the previous filters have been applied)
      * @param options parameters map
      * @returns ordered and filtered list of user IDs
      */
-    queryOrderedPlayers(options: { skipPlayers?: number, maxDays?: number, minDays?: number }): Snowflake[] {
+    queryOrderedPlayers(options: { skipPlayers?: number, maxDays?: number, minDays?: number, n?: number }): Snowflake[] {
         let result: Snowflake[] = this.getOrderedPlayers();
 
         if (options.skipPlayers) {
@@ -214,6 +215,10 @@ export default class GoodMorningState {
 
         if (options.minDays) {
             result = result.filter((userId) => this.getPlayerDaysSinceLGM(userId) >= options.minDays)
+        }
+
+        if (options.n) {
+            result = result.slice(0, options.n);
         }
 
         return result;

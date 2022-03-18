@@ -81,6 +81,7 @@ export enum DailyEventType {
     Beckoning = 'BECKONING',
     GrumpyMorning = 'GRUMPY_MORNING',
     SleepyMorning = 'SLEEPY_MORNING',
+    WritersBlock = 'WRITERS_BLOCK',
     // Abnormal events (i.e. not the typical "wait-for-GM-then-say-GM" event)
     GuestReveille = 'GUEST_REVEILLE',
     ReverseGoodMorning = 'REVERSE_GOOD_MORNING',
@@ -100,7 +101,9 @@ export interface DailyEvent {
     votes?: Record<Snowflake, string[]>, // Map of UserId -> list of submission IDs
     votingMessage?: Snowflake, // MessageId
     // Used specifically for the "grumpy morning" event
-    disabled?: boolean
+    disabled?: boolean,
+    // Used specifically for the "writer's block" event
+    customMessage?: string
 }
 
 export interface RawGoodMorningState {
