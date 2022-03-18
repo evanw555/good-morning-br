@@ -170,7 +170,7 @@ const chooseEvent = (date: Date): DailyEvent => {
         if (potentialBeckonees.length > 0) {
             potentialEvents.push({
                 type: DailyEventType.Beckoning,
-                beckoning: randChoice(...potentialBeckonees)
+                user: randChoice(...potentialBeckonees)
             });
         }
         // If anyone is qualified to be a guest reveiller, add guest reveille as a potential event
@@ -179,7 +179,7 @@ const chooseEvent = (date: Date): DailyEvent => {
             const guestReveiller: Snowflake = randChoice(...potentialReveillers);
             potentialEvents.push({
                 type: DailyEventType.GuestReveille,
-                reveiller: guestReveiller
+                user: guestReveiller
             });
         }
         // Now maybe return one of those events
@@ -219,7 +219,7 @@ const sendGoodMorningMessage = async (): Promise<void> => {
             await messenger.send(goodMorningChannel, languageGenerator.generate(config.goodMorningMessageOverrides[toCalendarDate(new Date())] ?? '{goodMorning}'));
             break;
         case DailyEventType.Beckoning:
-            await messenger.send(goodMorningChannel, languageGenerator.generate('{beckoning.goodMorning?}', { player: `<@${state.getEvent().beckoning}>` }));
+            await messenger.send(goodMorningChannel, languageGenerator.generate('{beckoning.goodMorning?}', { player: `<@${state.getEvent().user}>` }));
             break;
         case DailyEventType.GrumpyMorning:
             await messenger.send(goodMorningChannel, languageGenerator.generate('{grumpyMorning}'));
@@ -581,7 +581,7 @@ const TIMEOUT_CALLBACKS = {
             await logger.log(`Event for tomorrow has been selected: \`${JSON.stringify(nextEvent)}\``);
             // Depending on the type of event chosen for tomorrow, send out a special message
             if (nextEvent.type === DailyEventType.GuestReveille) {
-                await messenger.send(goodMorningChannel, languageGenerator.generate('{reveille.summon}', { player: `<@${nextEvent.reveiller}>` }));
+                await messenger.send(goodMorningChannel, languageGenerator.generate('{reveille.summon}', { player: `<@${nextEvent.user}>` }));
             } else if (nextEvent.type === DailyEventType.ReverseGoodMorning) {
                 const text = 'Tomorrow morning will be a _Reverse_ Good Morning! '
                     + 'Instead of saying good morning after me, you should say good morning _before_ me. '
@@ -634,7 +634,7 @@ const TIMEOUT_CALLBACKS = {
         // Take action if the guest reveiller hasn't said GM
         if (!state.isMorning()) {
             // Penalize the reveiller
-            const userId: Snowflake = state.getEvent().reveiller;
+            const userId: Snowflake = state.getEvent().user;
             state.deductPoints(userId, 2);
             state.incrementPlayerPenalties(userId);
             // Wake up, then send a message calling out the reveiller (don't tag them, we don't want to give them an advantage...)
@@ -981,7 +981,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
         }
 
         // If this user is the guest reveiller and the morning has not yet begun, wake the bot up
-        if (state.getEventType() === DailyEventType.GuestReveille && state.getEvent().reveiller === userId && !state.isMorning() && isAm) {
+        if (state.getEventType() === DailyEventType.GuestReveille && state.getEvent().user === userId && !state.isMorning() && isAm) {
             await wakeUp(false);
         }
 
@@ -1092,7 +1092,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 }
 
                 // Compute beckoning bonus and reset the state beckoning property if needed
-                const wasBeckoned: boolean = state.getEventType() === DailyEventType.Beckoning && msg.author.id === state.getEvent().beckoning;
+                const wasBeckoned: boolean = state.getEventType() === DailyEventType.Beckoning && msg.author.id === state.getEvent().user;
                 if (wasBeckoned) {
                     state.awardPoints(userId, config.awardsByRank[1]);
                 }

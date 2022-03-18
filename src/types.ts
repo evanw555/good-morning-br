@@ -89,8 +89,8 @@ export enum DailyEventType {
 
 export interface DailyEvent {
     type: DailyEventType,
-    beckoning?: Snowflake,
-    reveiller?: Snowflake,
+    user?: Snowflake,
+    // Used specifically for the "reverse GM" event
     reverseGMRanks?: Record<Snowflake, number>,
     // Used specifically for the "anonymous submissions" event
     submissionType?: string,
