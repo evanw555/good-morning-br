@@ -7,7 +7,8 @@ export enum TimeoutType{
     // Non-standard events
     GuestReveilleFallback = 'GUEST_REVEILLE_FALLBACK',
     AnonymousSubmissionReveal = 'ANONYMOUS_SUBMISSION_REVEAL',
-    AnonymousSubmissionVotingReminder = 'ANONYMOUS_SUBMISSION_VOTING_REMINDER'
+    AnonymousSubmissionVotingReminder = 'ANONYMOUS_SUBMISSION_VOTING_REMINDER',
+    HomeStretchSurprise = 'HOME_STRETCH_SURPRISE'
 }
 
 /**
@@ -67,6 +68,7 @@ export interface Combo {
 export interface PlayerState {
     displayName: string,
     points: number,
+    multiplier?: number,
     // TODO: remove this after season 2
     penalties?: number,
     deductions?: number,
@@ -77,6 +79,7 @@ export interface PlayerState {
 export enum DailyEventType {
     RecapSunday = 'RECAP_SUNDAY',
     MonkeyFriday = 'MONKEY_FRIDAY',
+    BeginHomeStretch = 'BEGIN_HOME_STRETCH',
     OverriddenMessage = 'OVERRIDDEN_MESSAGE',
     Beckoning = 'BECKONING',
     GrumpyMorning = 'GRUMPY_MORNING',
@@ -86,6 +89,12 @@ export enum DailyEventType {
     GuestReveille = 'GUEST_REVEILLE',
     ReverseGoodMorning = 'REVERSE_GOOD_MORNING',
     AnonymousSubmissions = 'ANONYMOUS_SUBMISSIONS'
+}
+
+export enum HomeStretchSurprise {
+    Multipliers,
+    LongestComboBonus,
+    ComboBreakerBonus
 }
 
 export interface DailyEvent {
@@ -103,7 +112,9 @@ export interface DailyEvent {
     // Used specifically for the "grumpy morning" event
     disabled?: boolean,
     // Used specifically for the "writer's block" event
-    customMessage?: string
+    customMessage?: string,
+    // Used specifically for the "begin home stretch" event
+    homeStretchSurprises?: HomeStretchSurprise[]
 }
 
 export interface RawGoodMorningState {
@@ -111,7 +122,8 @@ export interface RawGoodMorningState {
     goal: number,
     startedOn: FullDate,
     isMorning: boolean,
-    isGracePeriod: boolean,
+    isGracePeriod?: boolean,
+    isHomeStretch?: boolean,
     goodMorningEmoji: string | string[],
     magicWord?: string,
     currentLeader?: Snowflake,

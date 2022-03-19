@@ -1,8 +1,8 @@
 import { Client, DMChannel, Intents, MessageAttachment } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'discord.js';
-import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PastTimeoutStrategy } from './types.js';
+import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PastTimeoutStrategy, HomeStretchSurprise } from './types.js';
 import TimeoutManager from './timeout-manager.js';
-import { createMidSeasonUpdateImage, createSeasonResultsImage } from './graphics.js';
+import { createHomeStretchImage, createMidSeasonUpdateImage, createSeasonResultsImage } from './graphics.js';
 import { hasVideo, randInt, validateConfig, getTodayDateString, reactToMessage, getOrderingUpset, sleep, randChoice, toCalendarDate, getTomorrow, generateKMeansClusters, getRankString, naturalJoin, getClockTime, getOrderingUpsets } from './util.js';
 import GoodMorningState from './state.js';
 import logger from './logger.js';
@@ -62,6 +62,10 @@ const fetchMember = async (userId: Snowflake): Promise<GuildMember> => {
     }
 }
 
+const getBoldNames = (userIds: Snowflake[]): string => {
+    return naturalJoin(userIds.map(userId => `**${state.getPlayerDisplayName(userId)}**`));
+}
+
 const advanceSeason = async (): Promise<Season> => {
     // Add new entry for this season
     const newHistoryEntry: Season = state.toHistorySeasonEntry();
@@ -112,6 +116,13 @@ const advanceSeason = async (): Promise<Season> => {
 };
 
 const chooseEvent = (date: Date): DailyEvent => {
+    // Begin home stretch if we're far enough along and not currently in the home stretch
+    if (state.getSeasonCompletion() >= 0.9 && !state.isHomeStretch()) {
+        return {
+            type: DailyEventType.BeginHomeStretch,
+            homeStretchSurprises: [HomeStretchSurprise.Multipliers, HomeStretchSurprise.LongestComboBonus, HomeStretchSurprise.ComboBreakerBonus]
+        };
+    }
     // Sunday standings recap
     if (date.getDay() === 0) {
         return {
@@ -215,14 +226,20 @@ const sendGoodMorningMessage = async (): Promise<void> => {
             const orderedPlayers: Snowflake[] = state.getOrderedPlayers();
             const top: Snowflake = orderedPlayers[0];
             const second: Snowflake = orderedPlayers[1];
-
-            const attachment = new MessageAttachment(await createMidSeasonUpdateImage(state, history.medals), 'results.png');
-
-            await messenger.send(goodMorningChannel, languageGenerator.generate('{weeklyUpdate}', { season: state.getSeasonNumber().toString(), top: `<@${top}>`, second: `<@${second}>` }));
-            await goodMorningChannel.send({ files: [attachment] });
+            await goodMorningChannel.send({
+                content: languageGenerator.generate('{weeklyUpdate}', { season: state.getSeasonNumber().toString(), top: `<@${top}>`, second: `<@${second}>` }),
+                files: [new MessageAttachment(await createMidSeasonUpdateImage(state, history.medals), 'sunday-recap.png')]
+            });
             break;
         case DailyEventType.MonkeyFriday:
             await messenger.send(goodMorningChannel, languageGenerator.generate('{happyFriday}'));
+            break;
+        case DailyEventType.BeginHomeStretch:
+            await goodMorningChannel.send({
+                content: `WAKE UP MY DEAR FRIENDS! For we are now in the home stretch of season **${state.getSeasonNumber()}**! `
+                    + 'There are some surprises which I will reveal in a short while, though in the meantime, please take a look at the current standings...',
+                files: [new MessageAttachment(await createHomeStretchImage(state, history.medals), 'home-stretch.png')]
+            });
             break;
         case DailyEventType.OverriddenMessage:
             await messenger.send(goodMorningChannel, languageGenerator.generate(config.goodMorningMessageOverrides[toCalendarDate(new Date())] ?? '{goodMorning}'));
@@ -369,6 +386,15 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         }
     }
 
+    if (state.getEventType() === DailyEventType.BeginHomeStretch) {
+        // Active home stretch mode!
+        state.setHomeStretch(true);
+        // Set timeout for first home stretch surprise (these events are recursive)
+        const surpriseTime = new Date();
+        surpriseTime.setMinutes(surpriseTime.getMinutes() + 10);
+        await timeoutManager.registerTimeout(TimeoutType.HomeStretchSurprise, surpriseTime, PastTimeoutStrategy.Invoke);
+    }
+
     // Set timeout for anonymous submission reveal
     if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
         const submissionRevealTime = new Date();
@@ -424,7 +450,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
                 await logger.log(naturalJoin(
                     Object.entries(upsets)
                         .map(([userId, upsettees]) => {
-                            return `**${state.getPlayerDisplayName(userId)}** has overtaken ${naturalJoin(upsettees.map(x => `**${state.getPlayerDisplayName(x)}**`))}`;
+                            return `**${state.getPlayerDisplayName(userId)}** has overtaken ${getBoldNames(upsettees)}`;
                         })
                 ));
             } catch (err) {
@@ -738,6 +764,86 @@ const TIMEOUT_CALLBACKS = {
                 }
             }
         });
+    },
+    [TimeoutType.HomeStretchSurprise]: async (): Promise<void> => {
+        const surprises: HomeStretchSurprise[] = state.getEvent()?.homeStretchSurprises;
+        if (surprises && surprises.length > 0) {
+            // Get the next surprise and dump state
+            const surprise: HomeStretchSurprise = surprises.shift();
+            await dumpState();
+            // Recursively schedule the next timeout
+            const nextTimeout: Date = new Date();
+            nextTimeout.setMinutes(nextTimeout.getMinutes() + 10);
+            await timeoutManager.registerTimeout(TimeoutType.HomeStretchSurprise, nextTimeout, PastTimeoutStrategy.Invoke);
+            // Act on this surprise
+            switch (surprise) {
+            case HomeStretchSurprise.Multipliers:
+                const x1players: Snowflake[] = [];
+                const x1_5players: Snowflake[] = [];
+                const x2players: Snowflake[] = [];
+                const orderedPlayers: Snowflake[] = state.getOrderedPlayers();
+                // Update player multipliers and dump state
+                orderedPlayers.forEach(userId => {
+                    if (state.getPlayerPoints(userId) <= 0) {
+                        state.setPlayerMultiplier(userId, 0.5);
+                    } else if (state.getPlayerCompletion(userId) >= 0.85) {
+                        x1players.push(userId);
+                    } else if (state.getPlayerCompletion(userId) >= 0.7) {
+                        x1_5players.push(userId);
+                        state.setPlayerMultiplier(userId, 1.5);
+                    } else if (state.getPlayerCompletion(userId) >= 0.5) {
+                        x2players.push(userId);
+                        state.setPlayerMultiplier(userId, 2);
+                    } else {
+                        state.setPlayerMultiplier(userId, 3);
+                    }
+                });
+                await dumpState();
+                // Notify the channel
+                await messenger.send(goodMorningChannel, 'Here is a very special surprise indeed...');
+                await messenger.send(goodMorningChannel, 'In order to help some of you catch up, I\'ll be handing out some karma multipliers');
+                await sleep(10000);
+                await messenger.send(goodMorningChannel, `First and foremost, ${getBoldNames(x1players)} will sadly not be getting any multiplier`);
+                await sleep(6000);
+                await messenger.send(goodMorningChannel, `${getBoldNames(x1_5players)} will receive 1.5x karma until the end of the season!`);
+                await sleep(6000);
+                await messenger.send(goodMorningChannel, `For ${getBoldNames(x2players)}, it's DOUBLE XP WEEKEND!`);
+                await sleep(6000);
+                await messenger.send(goodMorningChannel, `...and everyone else not mentioned will be getting 3x karma 😉`);
+                break;
+            case HomeStretchSurprise.LongestComboBonus:
+                const maxCombo: Combo = state.getMaxCombo();
+                if (maxCombo) {
+                    await messenger.send(goodMorningChannel, 'It\'s time to announce the winner of the _longest combo_ bonus! This user was first to say good morning the most days in a row...');
+                    await sleep(10000);
+                    // Award points and dump state
+                    const pointsAwarded: number = state.awardPoints(maxCombo.user, config.awardsByRank[1]);
+                    await dumpState();
+                    // Notify channel
+                    await messenger.send(goodMorningChannel, `The winner is <@${maxCombo.user}>, with a streak lasting **${maxCombo.days}** days! This bonus is worth **${state.getNormalizedPoints(pointsAwarded)}%** karma ${config.defaultGoodMorningEmoji}`);
+                }
+                break;
+            case HomeStretchSurprise.ComboBreakerBonus:
+                const maxTimesBroken: number = Math.max(...Object.values(state.getPlayerStates()).map(player => player.combosBroken ?? 0));
+                const maxBreakers: Snowflake[] = state.getOrderedPlayers().filter(userId => state.getPlayerCombosBroken(userId) === maxTimesBroken);
+                if (maxBreakers.length > 0) {
+                    const maxBreaker: Snowflake = maxBreakers[0];
+                    await messenger.send(goodMorningChannel, 'Now to announce the winner of the _combo breaker_ bonus! This user broke the most Good Morning combos...');
+                    await sleep(10000);
+                    // Award points and dump state
+                    const pointsAwarded: number = state.awardPoints(maxBreaker, config.awardsByRank[1]);
+                    await dumpState();
+                    // Notify channel
+                    await messenger.send(goodMorningChannel, `The winner is <@${maxBreaker}>, who broke **${maxTimesBroken}** streaks! This bonus is worth **${state.getNormalizedPoints(pointsAwarded)}%** karma ${config.defaultGoodMorningEmoji}`);
+                }
+                break;
+            }
+        } else {
+            await goodMorningChannel.send({
+                content: 'Well that\'s all for now! Here are the updated standings, good luck everyone!',
+                files: [new MessageAttachment(await createHomeStretchImage(state, history.medals), 'home-stretch2.png')]
+            });
+        }
     }
 };
 

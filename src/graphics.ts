@@ -1,20 +1,29 @@
-import canvas from 'canvas';
+import canvas, { Image } from 'canvas';
 import { Snowflake } from 'discord.js';
 import GoodMorningState from './state.js';
 import { Medals } from "./types.js";
 import { getNumberOfDaysSince, getTodayDateString } from './util.js';
 
+export async function createHomeStretchImage(state: GoodMorningState, medals: Record<Snowflake, Medals>): Promise<Buffer> {
+    return await _createImage(state, medals, {
+        title: 'We\'re almost there!\n  The final days are upon us',
+        sunImageName: 'sun_spooky.png',
+        showMultiplier: true
+    });
+}
 
 export async function createMidSeasonUpdateImage(state: GoodMorningState, medals: Record<Snowflake, Medals>): Promise<Buffer> {
-    return await _createImage(false, state, medals);
+    return await _createImage(state, medals, {
+        title: `We're ${getNumberOfDaysSince(state.getSeasonStartedOn())} days into season ${state.getSeasonNumber()}\n  What a blessed experience!`
+    });
 }
 
 export async function createSeasonResultsImage(oldState: GoodMorningState, medals: Record<Snowflake, Medals>): Promise<Buffer> {
-    return await _createImage(true, oldState, medals);
+    return await _createImage(oldState, medals);
 }
 
 // TODO: This logic is horrible, please clean it up
-const _createImage = async (seasonEnd: boolean, state: GoodMorningState, medals: Record<Snowflake, Medals>): Promise<Buffer> => {
+const _createImage = async (state: GoodMorningState, medals: Record<Snowflake, Medals>, options?: { title?: string, sunImageName?: string, showMultiplier?: boolean }): Promise<Buffer> => {
     const HEADER_HEIGHT = 150;
     const BAR_WIDTH = 735;
     const BAR_HEIGHT = 36;
@@ -43,7 +52,12 @@ const _createImage = async (seasonEnd: boolean, state: GoodMorningState, medals:
     const rankLastImage = await canvas.loadImage('assets/ranklast.png');
 
     // Draw the smiling sun graphic
-    const sunImage = await canvas.loadImage('assets/sun3.png');
+    let sunImage: Image;
+    try {
+        sunImage = await canvas.loadImage(`assets/${options?.sunImageName ?? 'sun3.png'}`);
+    } catch (err) {
+        sunImage = await canvas.loadImage(`assets/sun3.png`);
+    }
     const sunHeight = HEADER_HEIGHT + BAR_HEIGHT;
     const sunWidth = sunHeight * sunImage.width / sunImage.height;
     context.drawImage(sunImage, 0, 0, sunWidth, sunHeight);
@@ -52,21 +66,19 @@ const _createImage = async (seasonEnd: boolean, state: GoodMorningState, medals:
     context.fillStyle = 'rgb(221,231,239)';
     const TITLE_FONT_SIZE = Math.floor(HEADER_HEIGHT / 4);
     context.font = `${TITLE_FONT_SIZE}px sans-serif`;
-    if (seasonEnd) {
+    if (options?.title) {
+        context.fillText(options.title, sunWidth * .85, HEADER_HEIGHT * 7 / 16);
+    } else {
         const winnerName: string = state.getPlayerDisplayName(orderedUserIds[0]);
         context.fillText(`Celebrating the end of season ${state.getSeasonNumber()}\n   ${state.getSeasonStartedOn()} - ${getTodayDateString()}\n      Congrats, ${winnerName}!`,
             sunWidth * .7,
             HEADER_HEIGHT * 5 / 16);
-    } else {
-        context.fillText(`We're ${getNumberOfDaysSince(state.getSeasonStartedOn())} days into season ${state.getSeasonNumber()}\n  What a blessed experience!`,
-            sunWidth * .85,
-            HEADER_HEIGHT * 7 / 16);
     }
 
     let textInsideBar = true;
     for (let i = 0; i < orderedUserIds.length; i++) {
         const userId = orderedUserIds[i];
-        const displayName = state.getPlayerDisplayName(userId);
+        const displayName = options?.showMultiplier ? state.getPlayerDisplayNameWithMultiplier(userId) : state.getPlayerDisplayName(userId);
         const baseY = HEADER_HEIGHT + i * (BAR_HEIGHT + BAR_SPACING);
 
         // Determine the bar's actual rendered width (may be negative, but clip to prevent it from being too large)

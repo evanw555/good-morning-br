@@ -18,11 +18,27 @@ export default class GoodMorningState {
     }
 
     isGracePeriod(): boolean {
-        return this.data.isGracePeriod;
+        return this.data.isGracePeriod ?? false;
     }
 
-    setGracePeriod(gradePeriod: boolean): void {
-        this.data.isGracePeriod = gradePeriod;
+    setGracePeriod(gracePeriod: boolean): void {
+        if (gracePeriod) {
+            this.data.isGracePeriod = true;
+        } else {
+            delete this.data.isGracePeriod;
+        }
+    }
+
+    isHomeStretch(): boolean {
+        return this.data.isHomeStretch ?? false;
+    }
+
+    setHomeStretch(homeStretch: boolean): void {
+        if (homeStretch) {
+            this.data.isHomeStretch = true;
+        } else {
+            delete this.data.isHomeStretch;
+        }
     }
 
     getSeasonStartedOn(): string {
@@ -84,12 +100,28 @@ export default class GoodMorningState {
         return this.getPlayer(userId)?.displayName ?? 'Unknown';
     }
 
+    getPlayerDisplayNameWithMultiplier(userId: Snowflake): string {
+        if (this.getPlayerMultiplier(userId) === 1) {
+            return this.getPlayerDisplayName(userId);
+        } else {
+            return this.getPlayerDisplayName(userId) + ` (${this.getPlayerMultiplier(userId)}x)`;
+        }
+    }
+
     setPlayerDisplayName(userId: Snowflake, displayName: string): void {
         this.getOrCreatePlayer(userId).displayName = displayName;
     }
 
     getPlayerPoints(userId: Snowflake): number {
         return this.getPlayer(userId)?.points ?? 0;
+    }
+
+    getPlayerMultiplier(userId: Snowflake): number {
+        return this.getPlayer(userId)?.multiplier ?? 1;
+    }
+
+    setPlayerMultiplier(userId: Snowflake, multiplier: number): void {
+        this.getOrCreatePlayer(userId).multiplier = multiplier;
     }
 
     getPlayerDeductions(userId: Snowflake): number {
@@ -256,6 +288,20 @@ export default class GoodMorningState {
         return this.getTopScore() / this.getSeasonGoal();
     }
 
+    /**
+     * @returns A number in the range [0, 1] representing the precentage completion of a particular player (e.g. 0.5 means 50% of the way to the goal)
+     */
+    getPlayerCompletion(userId: Snowflake): number {
+        return Math.max(0, this.getPlayerPoints(userId)) / this.getSeasonGoal();
+    }
+
+    /**
+     * @returns The amount of points normalized to a season goal of 100
+     */
+    getNormalizedPoints(points: number): number {
+        return 100 * points / this.getSeasonGoal();
+    }
+
     getDailyStatus(userId: Snowflake): DailyPlayerState | undefined {
         return this.data.dailyStatus[userId];
     }
@@ -271,12 +317,17 @@ export default class GoodMorningState {
         return this.getDailyStatus(userId);
     }
 
-    awardPoints(userId: Snowflake, points: number): void {
+    /**
+     * @returns Actual number of points awarded
+     */
+    awardPoints(userId: Snowflake, points: number): number {
         if (points < 0) {
             throw new Error('Can only award a non-negative number of points!');
         }
-        this.getOrCreateDailyStatus(userId).pointsEarned += points;
-        this.getOrCreatePlayer(userId).points += points;
+        const actualPoints: number = points * this.getPlayerMultiplier(userId);
+        this.getOrCreateDailyStatus(userId).pointsEarned += actualPoints;
+        this.getOrCreatePlayer(userId).points += actualPoints;
+        return actualPoints;
     }
 
     deductPoints(userId: Snowflake, points: number): void {
@@ -399,6 +450,10 @@ export default class GoodMorningState {
 
     setCombo(combo: Combo): void {
         this.data.combo = combo;
+    }
+
+    getMaxCombo(): Combo {
+        return this.data.maxCombo;
     }
 
     getMaxComboDays(): number {
