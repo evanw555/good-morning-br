@@ -227,9 +227,11 @@ export async function reactToMessage(msg: Message, emoji: string | string[]): Pr
 export function getOrderingUpset(upsetter: Snowflake, before: Snowflake[], after: Snowflake[]): Snowflake[] {
     const beforeIndex: number = before.indexOf(upsetter);
     const afterIndex: number = after.indexOf(upsetter);
-    const beforeInferiors: Set<Snowflake> = new Set<string>(before.slice(beforeIndex + 1));
+    const beforeAll: Set<Snowflake> = new Set(before);
+    const beforeInferiors: Set<Snowflake> = new Set(before.slice(beforeIndex + 1));
     const afterInferiors: Snowflake[] = after.slice(afterIndex + 1);
-    return afterInferiors.filter(x => !beforeInferiors.has(x));
+    // "Upsets" defined as the set of all inferiors that were previously not inferiors (yet were still in the game)
+    return afterInferiors.filter(x => !beforeInferiors.has(x) && beforeAll.has(x));
 }
 
 export function getOrderingUpsets(before: Snowflake[], after: Snowflake[]): Record<Snowflake, Snowflake[]> {
