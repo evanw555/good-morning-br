@@ -1,4 +1,5 @@
 import { Snowflake } from "discord.js";
+import ActivityTracker from "./activity-tracker.js";
 import { Combo, DailyEvent, DailyEventType, DailyPlayerState, PlayerState, RawGoodMorningState, Season } from "./types.js";
 import { getTodayDateString } from "./util.js";
 
@@ -114,6 +115,26 @@ export default class GoodMorningState {
 
     getPlayerPoints(userId: Snowflake): number {
         return this.getPlayer(userId)?.points ?? 0;
+    }
+
+    getPlayerActivity(userId: Snowflake): ActivityTracker {
+        return new ActivityTracker(this.getPlayer(userId)?.activity);
+    }
+
+    addPlayerActivity(userId: Snowflake, active: boolean): void {
+        const tracker: ActivityTracker = new ActivityTracker(this.getOrCreatePlayer(userId)?.activity);
+        tracker.add(active);
+        if (tracker.getActivityLevel() === 0) {
+            delete this.getPlayer(userId).activity;
+        } else {
+            this.getPlayer(userId).activity = tracker.dump();
+        }
+    }
+
+    incrementPlayerActivities(): void {
+        this.getPlayers().forEach(userId => {
+            this.addPlayerActivity(userId, this.getPointsEarnedToday(userId) > 0);
+        });
     }
 
     getPlayerMultiplier(userId: Snowflake): number {

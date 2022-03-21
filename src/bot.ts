@@ -5,6 +5,7 @@ import TimeoutManager from './timeout-manager.js';
 import { createHomeStretchImage, createMidSeasonUpdateImage, createSeasonResultsImage } from './graphics.js';
 import { hasVideo, randInt, validateConfig, getTodayDateString, reactToMessage, getOrderingUpset, sleep, randChoice, toCalendarDate, getTomorrow, generateKMeansClusters, getRankString, naturalJoin, getClockTime, getOrderingUpsets } from './util.js';
 import GoodMorningState from './state.js';
+import ActivityTracker from './activity-tracker.js';
 import logger from './logger.js';
 
 import { loadJson } from './load-json.js';
@@ -644,6 +645,13 @@ const TIMEOUT_CALLBACKS = {
         // Activate the queued up event
         state.dequeueNextEvent();
 
+        // Update player activity counters
+        state.incrementPlayerActivities();
+
+        // Dump state and R9K hashes
+        await dumpState();
+        await dumpR9KHashes();
+
         // Register a timeout that will allow the bot to "wake up" tomorrow
         if (state.getEventType() === DailyEventType.GuestReveille) {
             // Register "fallback" timeout to wake up in case the guest reveille doesn't say anything
@@ -652,10 +660,6 @@ const TIMEOUT_CALLBACKS = {
             // Register the normal GM timeout
             await registerGoodMorningTimeout();
         }
-
-        // Dump state and R9K hashes
-        await dumpState();
-        await dumpR9KHashes();
 
         // If this is happening at a non-standard time, explicitly warn players (add some tolerance in case of timeout variance)
         const clockTime: string = getClockTime();
@@ -1019,17 +1023,17 @@ const processCommands = async (msg: Message): Promise<void> => {
         else if (sanitizedText.includes('order') || sanitizedText.includes('rank') || sanitizedText.includes('winning') || sanitizedText.includes('standings')) {
             msg.reply(state.getOrderedPlayers()
                 .map((key) => {
-                    return `- <@${key}>: **${state.getPlayerPoints(key)}** (${state.getPlayerDaysSinceLGM(key)}d)` + (state.getPlayerDeductions(key) ? (' -' + state.getPlayerDeductions(key)) : '');
+                    return `- <@${key}>: **${state.getPlayerPoints(key)}** (${state.getPlayerActivity(key).getActivityLevel()}al, ${state.getPlayerDaysSinceLGM(key)}d)` + (state.getPlayerDeductions(key) ? (' -' + state.getPlayerDeductions(key)) : '');
                 })
-                .join('\n'));
+                .join('\n') || 'None.');
         }
         // Return the daily status info
         else if (sanitizedText.includes('daily')) {
             msg.reply(state.getOrderedDailyPlayers()
                 .map((key) => {
-                    return `- **${getRankString(state.getDailyRank(key) ?? 0)}** <@${key}>: **${state.getPointsEarnedToday(key)}** earned` + (state.getPointsLostToday(key) ? `, **${state.getPointsLostToday(key)}** lost` : '');
+                    return `- **${getRankString(state.getDailyRank(key) ?? 0)}** <@${key}>: **${state.getPlayerActivity(key).getRating()}** ar, **${state.getPointsEarnedToday(key)}** earned` + (state.getPointsLostToday(key) ? `, **${state.getPointsLostToday(key)}** lost` : '');
                 })
-                .join('\n'));
+                .join('\n') || 'None.');
         }
         // Return the state
         else if (sanitizedText.includes('state')) {
@@ -1101,6 +1105,18 @@ const processCommands = async (msg: Message): Promise<void> => {
             const potentialRecipients: Snowflake[] = state.getPotentialMagicWordRecipients();
             const recipient: string = potentialRecipients.length > 0 ? state.getPlayerDisplayName(randChoice(...potentialRecipients)) : 'N/A';
             await msg.reply(`The test magic word is _${magicWord}_, and send the hint to **${recipient}** (Out of **${potentialRecipients.length}** choices)`);
+        }
+        // Activity counter simulation/testing. TODO: DELETE ME ONCE SURE
+        else if (sanitizedText.includes('activity')) {
+            let result = 'Activity Simulation:';
+            let data = '';
+            for (let i = 0; i < 20; i++) {
+                const tracker = new ActivityTracker(data);
+                tracker.add(Math.random() < 0.8);
+                result += `\n\`${tracker.dump()}\` - Level=**${tracker.getActivityLevel()}**, Streak=**${tracker.getStreak()}**, Rating=**${tracker.getRating()}**`;
+                data = tracker.dump();
+            }
+            await msg.reply(result);
         }
     }
 };
@@ -1238,9 +1254,15 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
 
                 // Update the user's points and dump the state
                 const priorPoints: number = state.getPlayerPoints(userId);
-                const awarded: number = isNovelMessage ? (config.awardsByRank[rank] ?? config.defaultAward) : config.defaultAward;
-                state.awardPoints(userId, awarded);
+                if (isNovelMessage) {
+                    const rankedPoints: number = config.awardsByRank[rank] ?? config.defaultAward;
+                    const activityPoints: number = config.defaultAward + state.getPlayerActivity(userId).getRating();
+                    state.awardPoints(userId, Math.max(rankedPoints, activityPoints));
+                } else {
+                    state.awardPoints(userId, config.defaultAward);
+                }
                 dumpState();
+
                 // Add this user's message to the R9K text bank
                 r9k.add(msg.content);
 
@@ -1377,7 +1399,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     const url: string = msg.attachments.first()?.url;
                     if (!url) {
                         await messenger.reply(msg, 'Didn\'t you mean to send me an attachment?');
-                        return;4
+                        return;
                     }
                     state.getEvent().submissions[userId] = url;
                 } else {

@@ -68,6 +68,7 @@ export interface Combo {
 export interface PlayerState {
     displayName: string,
     points: number,
+    activity?: string,
     multiplier?: number,
     // TODO: remove this after season 2
     penalties?: number,
