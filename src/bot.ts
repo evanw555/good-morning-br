@@ -516,7 +516,6 @@ const finalizeAnonymousSubmissions = async () => {
             deadbeats.add(userId);
             // Penalize the player
             state.deductPoints(userId, config.defaultAward);
-            state.incrementPlayerPenalties(userId);
         }
     })
 
@@ -696,7 +695,6 @@ const TIMEOUT_CALLBACKS = {
             // Penalize the reveiller
             const userId: Snowflake = state.getEvent().user;
             state.deductPoints(userId, 2);
-            state.incrementPlayerPenalties(userId);
             // Wake up, then send a message calling out the reveiller (don't tag them, we don't want to give them an advantage...)
             await wakeUp(false);
             await messenger.send(goodMorningChannel, `Good morning! I had to step in because I guess ${state.getPlayerDisplayName(userId)} isn't cut out for the job 😒`);
@@ -1178,7 +1176,6 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     // Deduct points and update point-related data
                     const penalty = 1;
                     state.deductPoints(userId, penalty);
-                    state.incrementPlayerPenalties(userId);
                     // Disable the grumpy event and dump the state
                     state.getEvent().disabled = true;
                     dumpState();
@@ -1333,8 +1330,6 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     reactToMessage(msg, ['😡', '😬', '😒', '😐', '🤫']);
                 }
             }
-            // Increment user's penalty count then dump the state
-            state.incrementPlayerPenalties(userId);
             dumpState();
             // Reply if the user has hit a certain threshold
             if (state.getPlayerPoints(userId) === -2) {

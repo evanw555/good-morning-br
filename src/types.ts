@@ -70,8 +70,6 @@ export interface PlayerState {
     points: number,
     activity?: string,
     multiplier?: number,
-    // TODO: remove this after season 2
-    penalties?: number,
     deductions?: number,
     daysSinceLastGoodMorning?: number,
     combosBroken?: number

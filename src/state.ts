@@ -157,14 +157,6 @@ export default class GoodMorningState {
         return this.getPlayer(userId)?.daysSinceLastGoodMorning ?? 0;
     }
 
-    getPlayerPenalties(userId: Snowflake): number {
-        return this.getPlayer(userId)?.penalties ?? 0;
-    }
-
-    incrementPlayerPenalties(userId: Snowflake): void {
-        this.getOrCreatePlayer(userId).penalties = this.getPlayerPenalties(userId) + 1;
-    }
-
     getPlayerCombosBroken(userId: Snowflake): number {
         return this.getPlayer(userId)?.combosBroken ?? 0;
     }
@@ -184,8 +176,8 @@ export default class GoodMorningState {
             this.getPlayerPoints(y) - this.getPlayerPoints(x)
             // Days since last GM ascending
             || this.getPlayerDaysSinceLGM(x) - this.getPlayerDaysSinceLGM(y)
-            // Penalties ascending
-            || this.getPlayerPenalties(x) - this.getPlayerPenalties(y));
+            // Deductions ascending
+            || this.getPlayerDeductions(x) - this.getPlayerDeductions(y));
     }
 
     getTopPlayer(): Snowflake {
