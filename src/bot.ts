@@ -1129,6 +1129,18 @@ const processCommands = async (msg: Message): Promise<void> => {
             }
             await msg.reply(result);
         }
+        // Refresh all display names
+        else if (sanitizedText.includes('display names')) {
+            try { // TODO: refactor typing event to somewhere else?
+                await msg.channel.sendTyping();
+            } catch (err) {}
+            for (const userId of state.getPlayers()) {
+                const displayName: string = await getDisplayName(userId);
+                state.setPlayerDisplayName(userId, displayName);
+            }
+            await dumpState();
+            await msg.reply('Refreshed all player display names!');
+        }
     }
 };
 
