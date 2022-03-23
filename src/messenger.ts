@@ -5,7 +5,8 @@ import logger from './logger.js';
 interface MessengerBacklogEntry {
     channel: TextBasedChannels,
     message?: Message,
-    text: string
+    text: string,
+    resolve?: () => void
 }
 
 export default class Messenger {
@@ -18,44 +19,57 @@ export default class Messenger {
     }
 
     async send(channel: TextBasedChannels, text: string): Promise<void> {
-        this._send({ channel, text });
+        await this._send({ channel, text });
     }
 
     async reply(message: Message, text: string): Promise<void> {
-        this._send({ channel: message.channel, message, text });
+        await this._send({ channel: message.channel, message, text });
     }
 
     async dm(member: GuildMember, text: string): Promise<void> {
         try {
             const dmChannel: DMChannel = await member.createDM();
-            this._send({ channel: dmChannel, text });
+            await this._send({ channel: dmChannel, text });
         } catch (err) {
             logger.log(`Unable to create DM channel for user \`${member.id}\`: \`${err.toString()}\``);
         }
     }
 
     private async _send(entry: MessengerBacklogEntry): Promise<void> {
+        return new Promise(async (resolve) => {
+            entry.resolve = resolve;
+            await this._processEntry(entry);
+        });
+    }
+
+    private async _processEntry(entry: MessengerBacklogEntry): Promise<void> {
         if (!this._busy) {
             // If the messenger isn't typing/waiting/sending, then go ahead and process the message now
             this._busy = true;
             this._backlog.push(entry);
             while (this._backlog.length > 0) {
-                const { channel, message, text } = this._backlog.shift();
-                // Take a brief pause
-                await sleep(randInt(100, 1500));
-                // Send the typing event and wait based on the length of the message
+                const { channel, message, text, resolve } = this._backlog.shift();
                 try {
-                    await channel.sendTyping();
-                    await sleep(randInt(45, 55) * text.length);
+                    // Take a brief pause
+                    await sleep(randInt(100, 1500));
+                    // Send the typing event and wait based on the length of the message
+                    try {
+                        await channel.sendTyping();
+                        await sleep(randInt(45, 55) * text.length);
+                    } catch (err) {
+                        // Typing events are non-critical, so allow them to fail silently...
+                    }
+                    // Now actually reply/send the message
+                    if (message) {
+                        await message.reply(text);
+                    } else {
+                        await channel.send(text);
+                    }
                 } catch (err) {
-                    // Typing events are non-critical, so allow them to fail silently...
+                    logger.log(`Failed to send message: \`${err.toString()}\``);
                 }
-                // Now actually reply/send the message
-                if (message) {
-                    await message.reply(text);
-                } else {
-                    await channel.send(text);
-                }
+                // Resolve the promise for this message
+                resolve();
             }
             this._busy = false;
         } else {
