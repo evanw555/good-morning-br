@@ -1413,7 +1413,6 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 } else {
                     state.getEvent().submissions[userId] = msg.content;
                 }
-                await dumpState();
                 // Reply to the player via DM to let them know their submission was received
                 const numSubmissions: number = Object.keys(state.getEvent().submissions).length;
                 if (redoSubmission) {
@@ -1425,7 +1424,11 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                         await messenger.send(goodMorningChannel, languageGenerator.generate(`{!We now have|I've received} **${numSubmissions}** submissions! {!DM me|Send me a DM with} a _${state.getEvent().submissionType}_ to {!participate|be included|join the fun}`));
                     }
                     logger.log(`Received submission from player **${state.getPlayerDisplayName(userId)}**, now at **${numSubmissions}** submissions`);
+                    // This may be the user's first engagement, so refresh display name here
+                    // TODO: is there a better, more unified way to do this?
+                    state.setPlayerDisplayName(userId, await getDisplayName(userId));
                 }
+                await dumpState();
             }
         }
         // Handle writer's block submissions
