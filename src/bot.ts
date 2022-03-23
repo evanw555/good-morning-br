@@ -377,11 +377,14 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     const magicWord: string = await chooseMagicWord();
     if (magicWord && !state.isEventAbnormal()) {
         state.setMagicWord(magicWord);
-        // Get list of all suitable recipients of the magic word
+        // Get list of all suitable recipients of the magic word (this is a balancing mechanic, so pick players who are behind yet active)
         const potentialMagicWordRecipients: Snowflake[] = state.getPotentialMagicWordRecipients();
-        // If there are suitable receipients (and it's not the home stretch event), then give out a hint...
-        if (potentialMagicWordRecipients.length > 0 && state.getEventType() !== DailyEventType.BeginHomeStretch) {
-            // If there are any potential recipients, choose one at random and send them the hint
+        // Determine if we should give out the hint
+        const shouldGiveHint: boolean = potentialMagicWordRecipients.length > 0
+            && state.getEventType() !== DailyEventType.BeginHomeStretch
+            && state.getSeasonCompletion() >= 0.1;
+        // If yes, then give out the hint to one randomly selected suitable recipient
+        if (shouldGiveHint) {
             const magicWordRecipient: Snowflake = randChoice(...potentialMagicWordRecipients);
             await messenger.dm(await fetchMember(magicWordRecipient), `Psssst.... the magic word of the day is _"${state.getMagicWord()}"_`);
             await logger.log(`Magic word _"${state.getMagicWord()}"_ was sent to **${state.getPlayerDisplayName(magicWordRecipient)}**`);
