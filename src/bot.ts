@@ -537,6 +537,14 @@ const finalizeAnonymousSubmissions = async () => {
         state.resetDaysSinceLGM(userId);
     }
 
+    // Log the details of the scoring
+    // TODO: Remove this try-catch once we're sure it works
+    try {
+        await logger.log(submissionNumbers.map((n, i) => `**${getRankString(i + 1)}**: #${n} <@${state.getEvent().submissionOwnersByNumber[n]}> w/ \`${breakdown[n][0]}g+${breakdown[n][1]}s+${breakdown[n][2]}b=${scores[n]}\``).join('\n'));
+    } catch (err) {
+        await logger.log('Failed to compute and send voting/scoring log...');
+    }
+
     // Reveal the winners (and loser) to the channel
     await messenger.send(goodMorningChannel, 'Now, time to reveal the results...');
     if (deadbeats.size > 0) {
@@ -581,7 +589,7 @@ const finalizeAnonymousSubmissions = async () => {
 
     // Delete remaining event data
     delete state.getEvent().submissionOwnersByNumber;
-    delete state.getEvent().votingMessage;
+    delete state.getEvent().rootSubmissionMessage;
     await dumpState();
 };
 
@@ -702,10 +710,8 @@ const TIMEOUT_CALLBACKS = {
     },
     [TimeoutType.AnonymousSubmissionReveal]: async (): Promise<void> => {
         // Send the initial message
-        const votingMessage: Message = await messenger.sendAndGet(goodMorningChannel,
-            `Here are your anonymous submissions! Vote by sending me a DM with your top 3 picks (e.g. _"Hello magnificent GMBR, I vote for 3, 6, and 9"_). `
-            + `If you submitted a ${state.getEvent().submissionType}, you _must_ vote otherwise you will be disqualified and penalized.`);
-        state.getEvent().votingMessage = votingMessage.id;
+        const rootSubmissionMessage: Message = await messenger.sendAndGet(goodMorningChannel, `Here are your anonymous submissions! ${config.defaultGoodMorningEmoji}`);
+        state.getEvent().rootSubmissionMessage = rootSubmissionMessage.id;
         state.getEvent().votes = {};
         state.getEvent().submissionOwnersByNumber = {};
         await dumpState();
@@ -739,6 +745,11 @@ const TIMEOUT_CALLBACKS = {
             }
         }
 
+        // Send voting message
+        await messenger.send(goodMorningChannel,
+            `Alright, that's all of them! Vote by sending me a DM with your top 3 picks (e.g. _"Hello magnificent GMBR, I vote for 3, 6, and 9"_). `
+            + `If you submitted a ${state.getEvent().submissionType}, you _must_ vote otherwise you will be disqualified and penalized.`);
+
         // Schedule voting reminders
         [[11, 20], [11, 40]].forEach(([hour, minute]) => {
             const reminderTime: Date = new Date();
@@ -750,23 +761,25 @@ const TIMEOUT_CALLBACKS = {
     [TimeoutType.AnonymousSubmissionVotingReminder]: async (): Promise<void> => {
         // Send notification for the public in the channel
         try {
-            const votingMessage: Message = await goodMorningChannel.messages.fetch(state.getEvent().votingMessage);
-            await messenger.reply(votingMessage, `If you haven't already, please vote on your favorite ${state.getEvent().submissionType}!`);
+            const rootSubmissionMessage: Message = await goodMorningChannel.messages.fetch(state.getEvent().rootSubmissionMessage);
+            await messenger.reply(rootSubmissionMessage, `If you haven't already, please vote on your favorite ${state.getEvent().submissionType}!`);
         } catch (err) {
-            logger.log(`Failed to fetch voting message and send reminder: \`${err.toString()}\``);
+            logger.log(`Failed to fetch root submission message and send reminder: \`${err.toString()}\``);
         }
         // DM players who still haven't voted
-        Object.keys(state.getEvent().submissions).forEach(async (userId) => {
-            if (state.getEvent().votes[userId] === undefined) {
+        const delinquents: Snowflake[] = Object.keys(state.getEvent().submissions).filter(userId => state.getEvent().votes[userId] === undefined);
+        if (delinquents.length > 0) {
+            await logger.log(`Sending voting reminder DM to ${getBoldNames(delinquents)}...`);
+            delinquents.forEach(async (userId) => {
                 try {
                     await messenger.dm(await fetchMember(userId),
-                        `You still haven\'t voted! You and your ${state.getEvent().submissionType} will be disqualified if you don't vote. `
+                        `You still haven\'t voted! You and your ${state.getEvent().submissionType} will be disqualified if you don't vote by noon. `
                             + 'You can vote by telling me which submissions you liked (e.g. _"I liked 2, 4, and 8"_)');
                 } catch (err) {
                     await logger.log(`Unable to send voting reminder DM to **${state.getPlayerDisplayName(userId)}**: \`${err.toString()}\``);
                 }
-            }
-        });
+            });
+        }
     },
     [TimeoutType.HomeStretchSurprise]: async (): Promise<void> => {
         const surprises: HomeStretchSurprise[] = state.getEvent()?.homeStretchSurprises;
