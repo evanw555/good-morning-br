@@ -1037,7 +1037,9 @@ const processCommands = async (msg: Message): Promise<void> => {
         else if (sanitizedText.includes('order') || sanitizedText.includes('rank') || sanitizedText.includes('winning') || sanitizedText.includes('standings')) {
             msg.reply(state.getOrderedPlayers()
                 .map((key) => {
-                    return `- <@${key}>: **${state.getPlayerPoints(key)}** (${state.getPlayerActivity(key).getActivityLevel()}al, ${state.getPlayerDaysSinceLGM(key)}d)` + (state.getPlayerDeductions(key) ? (' -' + state.getPlayerDeductions(key)) : '');
+                    return `- <@${key}>: **${state.getPlayerPoints(key)}**`
+                        + (state.getPlayerDaysSinceLGM(key) ? ` ${state.getPlayerDaysSinceLGM(key)}d` : '')
+                        + (state.getPlayerDeductions(key) ? (' -' + state.getPlayerDeductions(key)) : '');
                 })
                 .join('\n') || 'None.');
         }
@@ -1120,17 +1122,12 @@ const processCommands = async (msg: Message): Promise<void> => {
             const recipient: string = potentialRecipients.length > 0 ? state.getPlayerDisplayName(randChoice(...potentialRecipients)) : 'N/A';
             await msg.reply(`The test magic word is _${magicWord}_, and send the hint to **${recipient}** (Out of **${potentialRecipients.length}** choices)`);
         }
-        // Activity counter simulation/testing. TODO: DELETE ME ONCE SURE
+        // Activity counter simulation/testing
         else if (sanitizedText.includes('activity')) {
-            let result = 'Activity Simulation:';
-            let data = '';
-            for (let i = 0; i < 20; i++) {
-                const tracker = new ActivityTracker(data);
-                tracker.add(Math.random() < 0.8);
-                result += `\n\`${tracker.dump()}\` - Level=**${tracker.getActivityLevel()}**, Streak=**${tracker.getStreak()}**, Rating=**${tracker.getRating()}**`;
-                data = tracker.dump();
-            }
-            await msg.reply(result);
+            await msg.reply(state.getOrderedPlayers()
+                .sort((x, y) => state.getPlayerActivity(y).getRating() - state.getPlayerActivity(x).getRating())
+                .map(userId => `${state.getPlayerActivity(userId).toString()} <@${userId}>`)
+                .join('\n') || 'No players.');
         }
         // Refresh all display names
         else if (sanitizedText.includes('display names')) {

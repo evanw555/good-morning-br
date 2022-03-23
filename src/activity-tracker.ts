@@ -34,4 +34,8 @@ export default class ActivityTracker {
     dump(): string {
         return this.data;
     }
+
+    toString(): string {
+        return `\`${this.data}\` **${this.getActivityLevel() * 100}%** + **${this.getStreak()}** days = **${this.getRating()}**R`
+    }
 }
