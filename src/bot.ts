@@ -3,9 +3,8 @@ import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'disco
 import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PastTimeoutStrategy, HomeStretchSurprise } from './types.js';
 import TimeoutManager from './timeout-manager.js';
 import { createHomeStretchImage, createMidSeasonUpdateImage, createSeasonResultsImage } from './graphics.js';
-import { hasVideo, randInt, validateConfig, getTodayDateString, reactToMessage, getOrderingUpset, sleep, randChoice, toCalendarDate, getTomorrow, generateKMeansClusters, getRankString, naturalJoin, getClockTime, getOrderingUpsets } from './util.js';
+import { hasVideo, randInt, validateConfig, getTodayDateString, reactToMessage, sleep, randChoice, toCalendarDate, getTomorrow, generateKMeansClusters, getRankString, naturalJoin, getClockTime, getOrderingUpsets } from './util.js';
 import GoodMorningState from './state.js';
-import ActivityTracker from './activity-tracker.js';
 import logger from './logger.js';
 
 import { loadJson } from './load-json.js';
@@ -67,7 +66,70 @@ const getBoldNames = (userIds: Snowflake[]): string => {
     return naturalJoin(userIds.map(userId => `**${state.getPlayerDisplayName(userId)}**`));
 }
 
-const advanceSeason = async (): Promise<Season> => {
+const getJoinedMentions = (userIds: Snowflake[]): string => {
+    return naturalJoin(userIds.map(userId => `<@${userId}>`));
+}
+
+const updateSungazer = async (userId: Snowflake, terms: number): Promise<void> => {
+    if (history.sungazers[userId] === undefined) {
+        history.sungazers[userId] = terms;
+        const member: GuildMember = await guild.members.fetch(userId);
+        await member.roles.add(config.sungazers.role);
+    } else {
+        history.sungazers[userId] += terms;
+    }
+}
+
+const updateSungazers = async (winners: { gold?: Snowflake, silver?: Snowflake, bronze?: Snowflake }): Promise<void> => {
+    // Get the sungazer channel
+    const sungazerChannel: TextBasedChannels = (await guild.channels.fetch(config.sungazers.channel)) as TextBasedChannels;
+    const newSungazers: boolean = (winners.gold && history.sungazers[winners.gold] === undefined)
+        || (winners.silver && history.sungazers[winners.silver] === undefined)
+        || (winners.bronze && history.sungazers[winners.bronze] === undefined);
+    if (newSungazers) {
+        await messenger.send(sungazerChannel, 'As the sun fades into the horizon on yet another sunny season, let us welcome the new Sungazers to the Council!');
+    } else {
+        await messenger.send(sungazerChannel, 'Well, my dear dogs... it appears there are no new additions to the council this season. Cheers to our continued hegemony!');
+    }
+    await sleep(10000);
+    // First, decrement the term counters of each existing sungazers
+    for (let userId of Object.keys(history.sungazers)) {
+        history.sungazers[userId]--;
+    }
+    // Then, add terms for each winner (and add roles if necessary)
+    if (winners.gold) {
+        await updateSungazer(winners.gold, 3);
+        await messenger.send(sungazerChannel, `Our newest champion <@${winners.gold}> has earned **3** terms on the council!`);
+    }
+    if (winners.silver) {
+        await updateSungazer(winners.silver, 2);
+        await messenger.send(sungazerChannel, `The runner-up <@${winners.silver}> has earned **2** terms`);
+    }
+    if (winners.bronze) {
+        await updateSungazer(winners.bronze, 1);
+        await messenger.send(sungazerChannel, `And sweet old <@${winners.bronze}> has earned **1** term`);
+    }
+    // Finally, remove any sungazer who's reached the end of their term
+    const expirees: Snowflake[] = Object.keys(history.sungazers).filter(userId => history.sungazers[userId] === 0);
+    if (expirees.length > 0) {
+        await sleep(10000);
+        await messenger.send(sungazerChannel, `The time has come, though, to say goodbye to some now-former sungazers... ${getJoinedMentions(expirees)}, farewell!`);
+        for (let userId of expirees) {
+            delete history.sungazers[userId];
+            const member: GuildMember = await guild.members.fetch(userId);
+            await member.roles.remove(config.sungazers.role);
+        }
+    }
+    const soonToBeExpirees: Snowflake[] = Object.keys(history.sungazers).filter(userId => history.sungazers[userId] === 1);
+    if (soonToBeExpirees.length > 0) {
+        await sleep(10000);
+        await messenger.send(sungazerChannel, `As for ${getJoinedMentions(soonToBeExpirees)}, I advise that you stay spooked! For this is your final term on the council`);
+    }
+    logger.log(`\`${JSON.stringify(history.sungazers)}\``);
+    await dumpHistory();
+}
+
+const advanceSeason = async (): Promise<{ gold?: Snowflake, silver?: Snowflake, bronze?: Snowflake }> => {
     // Add new entry for this season
     const newHistoryEntry: Season = state.toHistorySeasonEntry();
     history.seasons.push(newHistoryEntry);
@@ -113,7 +175,7 @@ const advanceSeason = async (): Promise<Season> => {
     await dumpState();
     await dumpHistory();
 
-    return newHistoryEntry;
+    return winners;
 };
 
 const chooseEvent = (date: Date): DailyEvent => {
@@ -693,8 +755,9 @@ const TIMEOUT_CALLBACKS = {
         // If anyone's score is above the season goal, then proceed to the next season
         if (state.isSeasonGoalReached()) {
             const previousState: GoodMorningState = state;
-            await advanceSeason();
+            const winners = await advanceSeason();
             await sendSeasonEndMessages(goodMorningChannel, previousState);
+            await updateSungazers(winners);
         }
 
         // Update the bot's status
@@ -920,13 +983,21 @@ const dumpWeeklySnapshot = async (weeklySnapshot: GoodMorningState): Promise<voi
 const loadHistory = async (): Promise<void> => {
     try {
         history = await storage.readJson('history');
+        // Temporary logic to initialize newly introduced properties
+        // ...
+        // TODO: This is to add the winners of season 1. REMOVE ME
+        if (history.sungazers === undefined) {
+            history.sungazers = { '161637221445795840': 3, '578081268332494849': 2, '191371149383434240': 1 };
+            await dumpHistory();
+        }
     } catch (err) {
         // Specifically check for file-not-found errors to make sure we don't overwrite anything
         if (err.code === 'ENOENT') {
             await logger.log('Existing history file not found, creating a fresh history...');
             history = {
                 seasons: [],
-                medals: {}
+                medals: {},
+                sungazers: {}
             };
             await dumpHistory();
         } else {
@@ -1140,6 +1211,10 @@ const processCommands = async (msg: Message): Promise<void> => {
             }
             await dumpState();
             await msg.reply('Refreshed all player display names!');
+        }
+        // Temporary solution to add the winners of season 2
+        else if (sanitizedText.includes('updatesungazers')) {
+            await updateSungazers({ gold: '578081268332494849', silver: '191371149383434240', bronze: '349279663383642112' });
         }
     }
 };

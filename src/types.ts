@@ -50,7 +50,11 @@ export interface GoodMorningConfig {
     goodMorningMessageOverrides: Record<CalendarDate, string>,
     defaultGoodMorningEmoji: string,
     goodMorningEmojiOverrides: Record<CalendarDate, string[]>,
-    downvoteEmoji: string
+    downvoteEmoji: string,
+    sungazers: {
+        role: Snowflake,
+        channel: Snowflake
+    }
 }
 
 export interface DailyPlayerState {
@@ -151,5 +155,7 @@ export interface Medals {
 
 export interface GoodMorningHistory {
     seasons: Season[],
-    medals: Record<Snowflake, Medals>
+    medals: Record<Snowflake, Medals>,
+    // Keyed by UserId of sungazer councilmembers, value is the number of seasons they have remaining in their term
+    sungazers: Record<Snowflake, number>
 }
