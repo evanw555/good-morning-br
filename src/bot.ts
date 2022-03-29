@@ -210,7 +210,8 @@ const chooseEvent = (date: Date): DailyEvent => {
         return {
             type: DailyEventType.AnonymousSubmissions,
             // TODO: Add new ones such as "short story", "motivational message" once this has happened a couple times
-            submissionType: randChoice("haiku", "limerick", "poem (ABAB)", "2-sentence horror story"),
+            // TODO: Add back "haiku", "limerick", "poem (ABAB)", "2-sentence horror story"
+            submissionType: "6-word story",
             submissions: {}
         };
     }
