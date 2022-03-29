@@ -3,7 +3,7 @@ import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'disco
 import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PastTimeoutStrategy, HomeStretchSurprise } from './types.js';
 import TimeoutManager from './timeout-manager.js';
 import { createHomeStretchImage, createMidSeasonUpdateImage, createSeasonResultsImage } from './graphics.js';
-import { hasVideo, randInt, validateConfig, getTodayDateString, reactToMessage, sleep, randChoice, toCalendarDate, getTomorrow, generateKMeansClusters, getRankString, naturalJoin, getClockTime, getOrderingUpsets } from './util.js';
+import { hasVideo, randInt, validateConfig, getTodayDateString, reactToMessage, sleep, randChoice, toCalendarDate, getTomorrow, generateKMeansClusters, getRankString, naturalJoin, getClockTime, getOrderingUpsets, toLetterId } from './util.js';
 import GoodMorningState from './state.js';
 import logger from './logger.js';
 
@@ -256,9 +256,9 @@ const chooseEvent = (date: Date): DailyEvent => {
                 user: guestReveiller
             });
         }
-        // If anyone is qualified to provide the GM message, add writer's block as a potential event
+        // If anyone is qualified to provide the GM message, add writer's block as a potential event (with 50% odds)
         const potentialWriters: Snowflake[] = state.queryOrderedPlayers({ maxDays: 1, n: 7 });
-        if (potentialWriters.length > 0) {
+        if (potentialWriters.length > 0 && Math.random() < 0.5) {
             const guestWriter: Snowflake = randChoice(...potentialWriters);
             potentialEvents.push({
                 type: DailyEventType.WritersBlock,
@@ -559,17 +559,25 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
 };
 
 const finalizeAnonymousSubmissions = async () => {
+    // Disable voting by deleting the "vote" command
+    const guildCommands = await guild.commands.fetch();
+    guildCommands.forEach(command => {
+        if (command.name === 'vote' && command.applicationId === client.application.id) {
+            command.delete();
+        }
+    });
+
     // First, tally the votes and compute the scores
-    const scores: Record<string, number> = {}; // Map (submission number : points)
+    const scores: Record<string, number> = {}; // Map (submission code : points)
     const breakdown: Record<string, number[]> = {};
-    Object.values(state.getEvent().votes).forEach(submissionNumbers => {
-        submissionNumbers.forEach((submissionNumber, i) => {
-            scores[submissionNumber] = (scores[submissionNumber] ?? 0) + 3 - i;
+    Object.values(state.getEvent().votes).forEach(codes => {
+        codes.forEach((code, i) => {
+            scores[code] = (scores[code] ?? 0) + 3 - i;
             // Take note of the breakdown
-            if (breakdown[submissionNumber] === undefined) {
-                breakdown[submissionNumber] = [0, 0, 0];
+            if (breakdown[code] === undefined) {
+                breakdown[code] = [0, 0, 0];
             }
-            breakdown[submissionNumber][i]++;
+            breakdown[code][i]++;
         });
     });
 
@@ -584,19 +592,19 @@ const finalizeAnonymousSubmissions = async () => {
         }
     })
 
-    // Deleting certain event data will prevent action taken on further DMs
+    // Deleting certain event data will prevent action taken on further DMs and commands
     delete state.getEvent().submissions;
     delete state.getEvent().votes;
     await dumpState();
 
     // Then, assign points based on rank in score (excluding those who didn't vote)
-    const submissionNumbers: Snowflake[] = Object.keys(scores).filter(n => !deadbeats.has(state.getEvent().submissionOwnersByNumber[n]));
-    submissionNumbers.sort((x, y) => scores[y] - scores[x]);
-    for (let i = 0; i < submissionNumbers.length; i++) {
-        const submissionNumber: string = submissionNumbers[i];
+    const submissionCodes: Snowflake[] = Object.keys(scores).filter(code => !deadbeats.has(state.getEvent().submissionOwnersByCode[code]));
+    submissionCodes.sort((x, y) => scores[y] - scores[x]);
+    for (let i = 0; i < submissionCodes.length; i++) {
+        const submissionCode: string = submissionCodes[i];
         const rank: number = i + 1;
         const pointsEarned: number = config.largeAwardsByRank[rank] ?? config.defaultAward;
-        const userId: Snowflake = state.getEvent().submissionOwnersByNumber[submissionNumber];
+        const userId: Snowflake = state.getEvent().submissionOwnersByCode[submissionCode];
         state.awardPoints(userId, pointsEarned);
         state.setDailyRank(userId, rank);
         state.resetDaysSinceLGM(userId);
@@ -605,7 +613,7 @@ const finalizeAnonymousSubmissions = async () => {
     // Log the details of the scoring
     // TODO: Remove this try-catch once we're sure it works
     try {
-        await logger.log(submissionNumbers.map((n, i) => `**${getRankString(i + 1)}**: #${n} <@${state.getEvent().submissionOwnersByNumber[n]}> w/ \`${breakdown[n][0]}g+${breakdown[n][1]}s+${breakdown[n][2]}b=${scores[n]}\``).join('\n'));
+        await logger.log(submissionCodes.map((c, i) => `**${getRankString(i + 1)}**: #${c} <@${state.getEvent().submissionOwnersByCode[c]}> w/ \`${breakdown[c][0]}g+${breakdown[c][1]}s+${breakdown[c][2]}b=${scores[c]}\``).join('\n'));
     } catch (err) {
         await logger.log('Failed to compute and send voting/scoring log...');
     }
@@ -617,35 +625,35 @@ const finalizeAnonymousSubmissions = async () => {
         const deadbeatsText: string = naturalJoin([...deadbeats].map(userId => `<@${userId}>`));
         await messenger.send(goodMorningChannel, `Before anything else, say hello to the deadbeats who were disqualified for not voting! ${deadbeatsText} 👋`);
     }
-    for (let i = submissionNumbers.length - 1; i >= 0; i--) {
-        const submissionNumber: string = submissionNumbers[i];
-        const userId: Snowflake = state.getEvent().submissionOwnersByNumber[submissionNumber];
+    for (let i = submissionCodes.length - 1; i >= 0; i--) {
+        const submissionCode: string = submissionCodes[i];
+        const userId: Snowflake = state.getEvent().submissionOwnersByCode[submissionCode];
         const rank: number = i + 1;
-        if (i === submissionNumbers.length - 1) {
+        if (i === submissionCodes.length - 1) {
             await sleep(10000);
-            await messenger.send(goodMorningChannel, `In dead last, we have the poor old <@${userId}> with submission **#${submissionNumber}**... better luck next time 😬`);
+            await messenger.send(goodMorningChannel, `In dead last, we have the poor old <@${userId}> with submission **#${submissionCode}**... better luck next time 😬`);
         } else if (i === 0) {
             await sleep(10000);
-            await messenger.send(goodMorningChannel, `And in first place, with submission **#${submissionNumber}**...`);
+            await messenger.send(goodMorningChannel, `And in first place, with submission **#${submissionCode}**...`);
             await sleep(6000);
-            await messenger.send(goodMorningChannel, `Receiving **${breakdown[submissionNumber][0]}** gold votes, **${breakdown[submissionNumber][1]}** silver votes, and **${breakdown[submissionNumber][2]}** bronze votes...`);
+            await messenger.send(goodMorningChannel, `Receiving **${breakdown[submissionCode][0]}** gold votes, **${breakdown[submissionCode][1]}** silver votes, and **${breakdown[submissionCode][2]}** bronze votes...`);
             await sleep(12000);
             await messenger.send(goodMorningChannel, `We have our winner, <@${userId}>! Congrats!`);
         } else if (i < 3) {
             await sleep(10000);
-            await messenger.send(goodMorningChannel, `In ${getRankString(rank)} place, we have <@${userId}> with submission **#${submissionNumber}**!`);
+            await messenger.send(goodMorningChannel, `In ${getRankString(rank)} place, we have <@${userId}> with submission **#${submissionCode}**!`);
         }
     }
 
     // Finally, send DMs to let each user know their ranking
-    const totalSubmissions: number = submissionNumbers.length;
-    for (let i = 0; i < submissionNumbers.length; i++) {
-        const submissionNumber: string = submissionNumbers[i];
-        const userId: Snowflake = state.getEvent().submissionOwnersByNumber[submissionNumber];
+    const totalSubmissions: number = submissionCodes.length;
+    for (let i = 0; i < submissionCodes.length; i++) {
+        const submissionCode: string = submissionCodes[i];
+        const userId: Snowflake = state.getEvent().submissionOwnersByCode[submissionCode];
         const rank: number = i + 1;
         try {
             await messenger.dm(await fetchMember(userId), `Your ${state.getEvent().submissionType} placed **${getRankString(rank)}** of **${totalSubmissions}**, `
-                + `receiving **${breakdown[submissionNumber][0]}** gold votes, **${breakdown[submissionNumber][1]}** silver votes, and **${breakdown[submissionNumber][2]}** bronze votes. `
+                + `receiving **${breakdown[submissionCode][0]}** gold votes, **${breakdown[submissionCode][1]}** silver votes, and **${breakdown[submissionCode][2]}** bronze votes. `
                 + `Thanks for participating ${config.defaultGoodMorningEmoji}`);
         } catch (err) {
             await logger.log(`Unable to send results DM to **${state.getPlayerDisplayName(userId)}**: \`${err.toString()}\``);
@@ -653,7 +661,7 @@ const finalizeAnonymousSubmissions = async () => {
     }
 
     // Delete remaining event data
-    delete state.getEvent().submissionOwnersByNumber;
+    delete state.getEvent().submissionOwnersByCode;
     delete state.getEvent().rootSubmissionMessage;
     await dumpState();
 };
@@ -779,7 +787,7 @@ const TIMEOUT_CALLBACKS = {
         const rootSubmissionMessage: Message = await messenger.sendAndGet(goodMorningChannel, `Here are your anonymous submissions! ${config.defaultGoodMorningEmoji}`);
         state.getEvent().rootSubmissionMessage = rootSubmissionMessage.id;
         state.getEvent().votes = {};
-        state.getEvent().submissionOwnersByNumber = {};
+        state.getEvent().submissionOwnersByCode = {};
         await dumpState();
 
         // Get all the relevant user IDs and shuffle them
@@ -790,15 +798,15 @@ const TIMEOUT_CALLBACKS = {
         for (let i = 0; i < userIds.length; i++) {
             const userId: Snowflake = userIds[i];
             const submission: string = state.getEvent().submissions[userId];
-            const submissionNumber: string = (i + 1).toString();
+            const submissionCode: string = toLetterId(i);
             
             // Keep track of which user this submission's "number" maps to
-            state.getEvent().submissionOwnersByNumber[submissionNumber] = userId;
+            state.getEvent().submissionOwnersByCode[submissionCode] = userId;
             await dumpState();
 
             try {
                 // Send the message out
-                const messageHeader: string = `**Submission #${submissionNumber}:**`;
+                const messageHeader: string = `**Submission #${submissionCode}:**`;
                 if (state.getEvent().isAttachmentSubmission) {
                     await goodMorningChannel.send({ content: messageHeader, files: [new MessageAttachment(submission)] });
                 } else {
@@ -811,9 +819,39 @@ const TIMEOUT_CALLBACKS = {
             }
         }
 
+        // Register the vote command
+        const choices = Object.keys(state.getEvent().submissionOwnersByCode).map(c => { return { name: `Submission ${c}`, value: c }; });
+        await guild.commands.create({
+            name: 'vote',
+            description: `Vote for a ${state.getEvent().submissionType}`,
+            options: [
+                {
+                    type: 'STRING',
+                    name: 'first',
+                    description: 'Your favorite submission',
+                    required: true,
+                    choices
+                },
+                {
+                    type: 'STRING',
+                    name: 'second',
+                    description: 'Your second favorite submission',
+                    required: true,
+                    choices
+                },
+                {
+                    type: 'STRING',
+                    name: 'third',
+                    description: 'Your third favorite submission',
+                    required: true,
+                    choices
+                }
+            ]
+         });
+
         // Send voting message
         await messenger.send(goodMorningChannel,
-            `Alright, that's all of them! Vote by sending me a DM with your top 3 picks (e.g. _"Hello magnificent GMBR, I vote for 3, 6, and 9"_). `
+            `Alright, that's all of them! Use the \`/vote\` command to vote for your 3 favorite submissions. `
             + `If you submitted a ${state.getEvent().submissionType}, you _must_ vote otherwise you will be disqualified and penalized.`);
 
         // Schedule voting reminders
@@ -828,7 +866,7 @@ const TIMEOUT_CALLBACKS = {
         // Send notification for the public in the channel
         try {
             const rootSubmissionMessage: Message = await goodMorningChannel.messages.fetch(state.getEvent().rootSubmissionMessage);
-            await messenger.reply(rootSubmissionMessage, `If you haven't already, please vote on your favorite ${state.getEvent().submissionType}!`);
+            await messenger.reply(rootSubmissionMessage, `If you haven't already, please vote on your favorite ${state.getEvent().submissionType} with \`/vote\`!`);
         } catch (err) {
             logger.log(`Failed to fetch root submission message and send reminder: \`${err.toString()}\``);
         }
@@ -839,8 +877,7 @@ const TIMEOUT_CALLBACKS = {
             delinquents.forEach(async (userId) => {
                 try {
                     await messenger.dm(await fetchMember(userId),
-                        `You still haven\'t voted! You and your ${state.getEvent().submissionType} will be disqualified if you don't vote by noon. `
-                            + 'You can vote by telling me which submissions you liked (e.g. _"I liked 2, 4, and 8"_)');
+                        `You still haven\'t voted! You and your ${state.getEvent().submissionType} will be disqualified if you don't vote by noon. You can vote with the \`/vote\` command.`);
                 } catch (err) {
                     await logger.log(`Unable to send voting reminder DM to **${state.getPlayerDisplayName(userId)}**: \`${err.toString()}\``);
                 }
@@ -1073,6 +1110,50 @@ client.on('ready', async (): Promise<void> => {
 
     // Update the bot's status
     await setStatus(state.isMorning());
+});
+
+client.on('interactionCreate', async (interaction): Promise<void> => {
+    if (interaction.isCommand()) {
+        if (interaction.commandName === 'vote') {
+            await interaction.deferReply({ ephemeral: true });
+            if (state.getEventType() === DailyEventType.AnonymousSubmissions && state.getEvent().votes) {
+                const submissionCodes: string[] = [
+                    interaction.options.getString('first'),
+                    interaction.options.getString('second'),
+                    interaction.options.getString('third')
+                ];
+                const submissionCodeSet: Set<string> = new Set(submissionCodes);
+                const validSubmissionCodes: Set<string> = new Set(Object.keys(state.getEvent().submissionOwnersByCode));
+                // Do some validation on the vote before processing it further
+                if (submissionCodes.length === 0) {
+                    await interaction.editReply(`I don\'t understand, please tell me which submissions you\'re voting for. Choose from ${naturalJoin([...validSubmissionCodes])}.`);
+                } else if (submissionCodeSet.size !== submissionCodes.length) {
+                    await interaction.editReply('You can\'t vote for the same submission twice!');
+                } else {
+                    // Ensure that all votes are for valid submissions
+                    for (let i = 0; i < submissionCodes.length; i++) {
+                        const submissionCode: string = submissionCodes[i];
+                        if (!validSubmissionCodes.has(submissionCode)) {
+                            await interaction.editReply(`${submissionCode} is not a valid submission! Choose from ${naturalJoin([...validSubmissionCodes])}.`);
+                            return;
+                        }
+                        if (state.getEvent().submissionOwnersByCode[submissionCode] === interaction.user.id) {
+                            await interaction.editReply('You can\'t vote for your own submission!');
+                            return;
+                        }
+                    }
+                    // Cast the vote
+                    state.getEvent().votes[interaction.user.id] = submissionCodes;
+                    await dumpState();
+                    // Notify the user of their vote
+                    await interaction.editReply('Your vote has been cast!');
+                }
+            } else {
+                await interaction.editReply('You shouldn\'t be able to vote right now!');
+            }
+        }
+        
+    }
 });
 
 const processCommands = async (msg: Message): Promise<void> => {
@@ -1452,38 +1533,39 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
         if (state.isMorning() && state.getEventType() === DailyEventType.AnonymousSubmissions) {
             const userId: Snowflake = msg.author.id;
             // Handle voting or submitting depending on what phase of the process we're in
-            if (state.getEvent().votes && state.getEvent().submissionOwnersByNumber) {
-                const pattern: RegExp = /\d+/g;
+            // TODO: Remove this once we can prove that the "vote" slash command works as expected
+            if (state.getEvent().votes && state.getEvent().submissionOwnersByCode) {
+                const pattern: RegExp = /[A-Z]+/g;
                 // TODO: Should we validate the exact number of votes? There's no evidence of players griefing without this limitation just yet...
-                const submissionNumbers: string[] = [...msg.content.matchAll(pattern)].map(x => x[0]).slice(0, 3);
-                const submissionNumberSet: Set<string> = new Set(submissionNumbers);
-                const validSubmissionNumbers: Set<string> = new Set(Object.keys(state.getEvent().submissionOwnersByNumber));
+                const submissionCodes: string[] = [...msg.content.matchAll(pattern)].map(x => x[0]).slice(0, 3);
+                const submissionCodeSet: Set<string> = new Set(submissionCodes);
+                const validSubmissionCodes: Set<string> = new Set(Object.keys(state.getEvent().submissionOwnersByCode));
                 // Do some validation on the vote before processing it further
-                if (submissionNumbers.length === 0) {
-                    await messenger.reply(msg, `I don\'t understand, please tell me which submissions you\'re voting for. Choose from ${naturalJoin([...validSubmissionNumbers])}.`);
-                } else if (submissionNumberSet.size !== submissionNumbers.length) {
+                if (submissionCodes.length === 0) {
+                    await messenger.reply(msg, `I don\'t understand, please tell me which submissions you\'re voting for. Choose from ${naturalJoin([...validSubmissionCodes])}.`);
+                } else if (submissionCodeSet.size !== submissionCodes.length) {
                     await messenger.reply(msg, 'You can\'t vote for the same submission twice!');
                 } else {
                     // Ensure that all votes are for valid submissions
-                    for (let i = 0; i < submissionNumbers.length; i++) {
-                        const submissionNumber: string = submissionNumbers[i];
-                        if (!validSubmissionNumbers.has(submissionNumber)) {
-                            await messenger.reply(msg, `${submissionNumber} is not a valid submission number! Choose from ${naturalJoin([...validSubmissionNumbers])}.`);
+                    for (let i = 0; i < submissionCodes.length; i++) {
+                        const submissionCode: string = submissionCodes[i];
+                        if (!validSubmissionCodes.has(submissionCode)) {
+                            await messenger.reply(msg, `${submissionCode} is not a valid submission! Choose from ${naturalJoin([...validSubmissionCodes])}.`);
                             return;
                         }
-                        if (state.getEvent().submissionOwnersByNumber[submissionNumber] === msg.author.id) {
+                        if (state.getEvent().submissionOwnersByCode[submissionCode] === msg.author.id) {
                             await messenger.reply(msg, 'You can\'t vote for your own submission!');
                             return;
                         }
                     }
                     // Cast the vote
-                    state.getEvent().votes[msg.author.id] = submissionNumbers;
+                    state.getEvent().votes[msg.author.id] = submissionCodes;
                     await dumpState();
                     // Notify the user of their vote
-                    if (submissionNumbers.length === 1) {
-                        await messenger.reply(msg, `Your vote has been cast! You've voted for submission **#${submissionNumbers[0]}**. You can make a correction by sending me another message.`)
+                    if (submissionCodes.length === 1) {
+                        await messenger.reply(msg, `Your vote has been cast! You've voted for submission **#${submissionCodes[0]}**. You can make a correction by sending me another message.`)
                     } else {
-                        await messenger.reply(msg, `Your vote has been cast! Your picks (in order) are ${naturalJoin(submissionNumbers.map(n => `**#${n}**`), 'then')}. You can make a correction by sending me another message.`)
+                        await messenger.reply(msg, `Your vote has been cast! Your picks (in order) are ${naturalJoin(submissionCodes.map(n => `**#${n}**`), 'then')}. You can make a correction by sending me another message.`)
                     }
 
                 }

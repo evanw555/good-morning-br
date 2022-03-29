@@ -109,8 +109,8 @@ export interface DailyEvent {
     submissionType?: string,
     isAttachmentSubmission?: boolean,
     submissions?: Record<Snowflake, string>, // Map of UserId -> submission content/url
-    submissionOwnersByNumber?: Record<string, Snowflake>, // Map of submission number -> UserId
-    votes?: Record<Snowflake, string[]>, // Map of UserId -> list of submission IDs
+    submissionOwnersByCode?: Record<string, Snowflake>, // Map of submission code -> UserId
+    votes?: Record<Snowflake, string[]>, // Map of UserId -> list of submission codes
     rootSubmissionMessage?: Snowflake, // MessageId
     // Used specifically for the "grumpy morning" event
     disabled?: boolean,

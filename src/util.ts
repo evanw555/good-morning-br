@@ -311,3 +311,10 @@ export function naturalJoin(input: string[], conjunction: string = 'and'): strin
 export function capitalize(input: string): string {
     return input.substring(0, 1).toUpperCase() + input.substring(1);
 }
+
+/**
+ * Given some non-negative number, returns an alphabetical representation (e.g. 0 is "A", 1 is "B", 25 is "Z", 26 is "AA")
+ */
+export function toLetterId(input: number): string {
+    return (input < 26 ? '' : toLetterId(Math.floor(input / 26) - 1)) + String.fromCharCode((input % 26) + 65);
+}
