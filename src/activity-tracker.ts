@@ -36,6 +36,6 @@ export default class ActivityTracker {
     }
 
     toString(): string {
-        return `\`${this.data}\` **${this.getActivityLevel() * 100}%** + **${this.getStreak()}** days = **${this.getRating()}**R`
+        return `\`${this.data.padEnd(ActivityTracker.CAPACITY)}\` **${this.getRating()}**R = **${this.getActivityLevel() * 100}%** + **${this.getStreak()}**d`
     }
 }
