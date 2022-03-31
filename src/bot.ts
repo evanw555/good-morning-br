@@ -614,7 +614,7 @@ const finalizeAnonymousSubmissions = async () => {
     // Log the details of the scoring
     // TODO: Remove this try-catch once we're sure it works
     try {
-        await logger.log(submissionCodes.map((c, i) => `**${getRankString(i + 1)}**: #${c} <@${state.getEvent().submissionOwnersByCode[c]}> w/ \`${breakdown[c][0]}g+${breakdown[c][1]}s+${breakdown[c][2]}b=${scores[c]}\``).join('\n'));
+        await logger.log(submissionCodes.map((c, i) => `**${getRankString(i + 1)}**: ${c} <@${state.getEvent().submissionOwnersByCode[c]}> w/ \`${breakdown[c][0]}g+${breakdown[c][1]}s+${breakdown[c][2]}b=${scores[c]}\``).join('\n'));
     } catch (err) {
         await logger.log('Failed to compute and send voting/scoring log...');
     }
@@ -632,17 +632,17 @@ const finalizeAnonymousSubmissions = async () => {
         const rank: number = i + 1;
         if (i === submissionCodes.length - 1) {
             await sleep(10000);
-            await messenger.send(goodMorningChannel, `In dead last, we have the poor old <@${userId}> with submission **#${submissionCode}**... better luck next time 😬`);
+            await messenger.send(goodMorningChannel, `In dead last, we have the poor old <@${userId}> with submission **${submissionCode}**... better luck next time 😬`);
         } else if (i === 0) {
             await sleep(10000);
-            await messenger.send(goodMorningChannel, `And in first place, with submission **#${submissionCode}**...`);
+            await messenger.send(goodMorningChannel, `And in first place, with submission **${submissionCode}**...`);
             await sleep(6000);
             await messenger.send(goodMorningChannel, `Receiving **${breakdown[submissionCode][0]}** gold votes, **${breakdown[submissionCode][1]}** silver votes, and **${breakdown[submissionCode][2]}** bronze votes...`);
             await sleep(12000);
             await messenger.send(goodMorningChannel, `We have our winner, <@${userId}>! Congrats!`);
         } else if (i < 3) {
             await sleep(10000);
-            await messenger.send(goodMorningChannel, `In ${getRankString(rank)} place, we have <@${userId}> with submission **#${submissionCode}**!`);
+            await messenger.send(goodMorningChannel, `In ${getRankString(rank)} place, we have <@${userId}> with submission **${submissionCode}**!`);
         }
     }
 
@@ -807,7 +807,7 @@ const TIMEOUT_CALLBACKS = {
 
             try {
                 // Send the message out
-                const messageHeader: string = `**Submission #${submissionCode}:**`;
+                const messageHeader: string = `**Submission ${submissionCode}:**`;
                 if (state.getEvent().isAttachmentSubmission) {
                     await goodMorningChannel.send({ content: messageHeader, files: [new MessageAttachment(submission)] });
                 } else {
@@ -1023,11 +1023,6 @@ const loadHistory = async (): Promise<void> => {
         history = await storage.readJson('history');
         // Temporary logic to initialize newly introduced properties
         // ...
-        // TODO: This is to add the winners of season 1. REMOVE ME
-        if (history.sungazers === undefined) {
-            history.sungazers = { '161637221445795840': 3, '578081268332494849': 2, '191371149383434240': 1 };
-            await dumpHistory();
-        }
     } catch (err) {
         // Specifically check for file-not-found errors to make sure we don't overwrite anything
         if (err.code === 'ENOENT') {
@@ -1293,10 +1288,6 @@ const processCommands = async (msg: Message): Promise<void> => {
             }
             await dumpState();
             await msg.reply('Refreshed all player display names!');
-        }
-        // Temporary solution to add the winners of season 2
-        else if (sanitizedText.includes('updatesungazers')) {
-            await updateSungazers({ gold: '578081268332494849', silver: '191371149383434240', bronze: '349279663383642112' });
         }
     }
 };
@@ -1564,9 +1555,9 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     await dumpState();
                     // Notify the user of their vote
                     if (submissionCodes.length === 1) {
-                        await messenger.reply(msg, `Your vote has been cast! You've voted for submission **#${submissionCodes[0]}**. You can make a correction by sending me another message.`)
+                        await messenger.reply(msg, `Your vote has been cast! You've voted for submission **${submissionCodes[0]}**. You can make a correction by sending me another message.`)
                     } else {
-                        await messenger.reply(msg, `Your vote has been cast! Your picks (in order) are ${naturalJoin(submissionCodes.map(n => `**#${n}**`), 'then')}. You can make a correction by sending me another message.`)
+                        await messenger.reply(msg, `Your vote has been cast! Your picks (in order) are ${naturalJoin(submissionCodes.map(n => `**${n}**`), 'then')}. You can make a correction by sending me another message.`)
                     }
 
                 }
