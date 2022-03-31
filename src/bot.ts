@@ -1304,7 +1304,11 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
         }
 
         // If this user is the guest reveiller and the morning has not yet begun, wake the bot up
-        if (state.getEventType() === DailyEventType.GuestReveille && state.getEvent().user === userId && !state.isMorning() && isAm) {
+        const isReveille: boolean = state.getEventType() === DailyEventType.GuestReveille
+            && state.getEvent().user === userId
+            && !state.isMorning()
+            && isAm;
+        if (isReveille) {
             await wakeUp(false);
         }
 
@@ -1323,8 +1327,8 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
 
             // The conditions for triggering MF and GM are separate so that players can post videos-then-messages, vice-versa, or both together
             const triggerMonkeyFriday: boolean = (state.getEventType() === DailyEventType.MonkeyFriday) && messageHasVideo;
-            // Only trigger GM if it contains text, since players often post images/video without text
-            const triggerStandardGM: boolean = messageHasText;
+            // Only trigger GM if it contains text, since players often post images/video without text (but reply to reveillers no matter what)
+            const triggerStandardGM: boolean = messageHasText || isReveille;
 
             // Handle MF messages if the conditions are met and its the user's first MF of the day
             if (triggerMonkeyFriday && !state.hasDailyVideoRank(userId)) {
