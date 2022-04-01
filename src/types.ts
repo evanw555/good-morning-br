@@ -83,7 +83,6 @@ export enum DailyEventType {
     RecapSunday = 'RECAP_SUNDAY',
     MonkeyFriday = 'MONKEY_FRIDAY',
     BeginHomeStretch = 'BEGIN_HOME_STRETCH',
-    OverriddenMessage = 'OVERRIDDEN_MESSAGE',
     Beckoning = 'BECKONING',
     GrumpyMorning = 'GRUMPY_MORNING',
     SleepyMorning = 'SLEEPY_MORNING',

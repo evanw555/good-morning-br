@@ -179,24 +179,10 @@ const advanceSeason = async (): Promise<{ gold?: Snowflake, silver?: Snowflake, 
 };
 
 const chooseEvent = (date: Date): DailyEvent => {
-    // Begin home stretch if we're far enough along and not currently in the home stretch
-    if (state.getSeasonCompletion() >= 0.9 && !state.isHomeStretch()) {
-        return {
-            type: DailyEventType.BeginHomeStretch,
-            homeStretchSurprises: [HomeStretchSurprise.Multipliers, HomeStretchSurprise.LongestComboBonus, HomeStretchSurprise.ComboBreakerBonus]
-        };
-    }
     // Sunday standings recap
     if (date.getDay() === 0) {
         return {
             type: DailyEventType.RecapSunday
-        };
-    }
-    // If this date has a calendar date message override, use that
-    const calendarDate: CalendarDate = toCalendarDate(date); // e.g. "12/25" for xmas
-    if (calendarDate in config.goodMorningMessageOverrides) {
-        return {
-            type: DailyEventType.OverriddenMessage
         };
     }
     // Monkey Friday
@@ -210,8 +196,8 @@ const chooseEvent = (date: Date): DailyEvent => {
         return {
             type: DailyEventType.AnonymousSubmissions,
             // TODO: Add new ones such as "short story", "motivational message" once this has happened a couple times
-            // TODO: Add back "haiku", "limerick", "poem (ABAB)", "2-sentence horror story"
-            submissionType: "6-word story",
+            // TODO: Add back "haiku", "limerick", "poem (ABAB)", "6-word story"
+            submissionType: "2-sentence horror story",
             submissions: {}
         };
     }
@@ -223,6 +209,18 @@ const chooseEvent = (date: Date): DailyEvent => {
             submissionType: "pic that goes hard",
             isAttachmentSubmission: true,
             submissions: {}
+        };
+    }
+    // If this date has a calendar date message override, then just do a standard GM (don't do any of the nonstandard ones below)
+    const calendarDate: CalendarDate = toCalendarDate(date); // e.g. "12/25" for xmas
+    if (calendarDate in config.goodMorningMessageOverrides) {
+        return undefined;
+    }
+    // Begin home stretch if we're far enough along and not currently in the home stretch (this will be delayed if an above event needs to happen instead e.g. MF)
+    if (state.getSeasonCompletion() >= 0.9 && !state.isHomeStretch()) {
+        return {
+            type: DailyEventType.BeginHomeStretch,
+            homeStretchSurprises: [HomeStretchSurprise.Multipliers, HomeStretchSurprise.LongestComboBonus, HomeStretchSurprise.ComboBreakerBonus]
         };
     }
     // Every 2/3 days, take a chance to do some other event
@@ -283,6 +281,11 @@ const chooseMagicWord = async (): Promise<string> => {
 }
 
 const sendGoodMorningMessage = async (): Promise<void> => {
+    // Get the overridden message for today, if it exists (some events may use this instead)
+    // TODO: need a cleaner way to handle this, but these potential conflicts need to be handled somehow...
+    const calendarDate: CalendarDate = toCalendarDate(new Date());
+    const overriddenMessage: string | undefined = config.goodMorningMessageOverrides[calendarDate];
+    // Now, actually send out the message
     if (goodMorningChannel) {
         switch (state.getEventType()) {
         case DailyEventType.RecapSunday:
@@ -291,12 +294,12 @@ const sendGoodMorningMessage = async (): Promise<void> => {
             const top: Snowflake = orderedPlayers[0];
             const second: Snowflake = orderedPlayers[1];
             await goodMorningChannel.send({
-                content: languageGenerator.generate('{weeklyUpdate}', { season: state.getSeasonNumber().toString(), top: `<@${top}>`, second: `<@${second}>` }),
+                content: languageGenerator.generate(overriddenMessage ?? '{weeklyUpdate}', { season: state.getSeasonNumber().toString(), top: `<@${top}>`, second: `<@${second}>` }),
                 files: [new MessageAttachment(await createMidSeasonUpdateImage(state, history.medals), 'sunday-recap.png')]
             });
             break;
         case DailyEventType.MonkeyFriday:
-            await messenger.send(goodMorningChannel, languageGenerator.generate('{happyFriday}'));
+            await messenger.send(goodMorningChannel, languageGenerator.generate(overriddenMessage ?? '{happyFriday}'));
             break;
         case DailyEventType.BeginHomeStretch:
             await goodMorningChannel.send({
@@ -304,9 +307,6 @@ const sendGoodMorningMessage = async (): Promise<void> => {
                     + 'There are some surprises which I will reveal in a short while, though in the meantime, please take a look at the current standings...',
                 files: [new MessageAttachment(await createHomeStretchImage(state, history.medals), 'home-stretch.png')]
             });
-            break;
-        case DailyEventType.OverriddenMessage:
-            await messenger.send(goodMorningChannel, languageGenerator.generate(config.goodMorningMessageOverrides[toCalendarDate(new Date())] ?? '{goodMorning}'));
             break;
         case DailyEventType.Beckoning:
             await messenger.send(goodMorningChannel, languageGenerator.generate('{beckoning.goodMorning?}', { player: `<@${state.getEvent().user}>` }));
@@ -322,12 +322,16 @@ const sendGoodMorningMessage = async (): Promise<void> => {
             if (state.getEvent().customMessage) {
                 await messenger.send(goodMorningChannel, state.getEvent().customMessage);
             } else {
-                await messenger.send(goodMorningChannel, languageGenerator.generate('{goodMorning}'));
+                await messenger.send(goodMorningChannel, languageGenerator.generate(overriddenMessage ?? '{goodMorning}'));
             }
             break;
         case DailyEventType.AnonymousSubmissions:
+            if (overriddenMessage) {
+                await messenger.send(goodMorningChannel, languageGenerator.generate(overriddenMessage));
+            }
             const phrase: string = state.getEvent().isAttachmentSubmission ? 'find a' : 'write a special Good Morning';
-            const text = `Good morning! Today is a special one. Rather than sending your good morning messages here for all to see, `
+            const intro: string = overriddenMessage ? 'There\'s more!' : 'Good morning! Today is a special one.';
+            const text = `${intro} Rather than sending your good morning messages here for all to see, `
                 + `I'd like you to ${phrase} _${state.getEvent().submissionType}_ and send it directly to me via DM! `
                 + `At 11:00, I'll post them here anonymously and you'll all be voting on your favorites 😉`;
             await messenger.send(goodMorningChannel, text);
@@ -335,7 +339,7 @@ const sendGoodMorningMessage = async (): Promise<void> => {
         default:
             // Otherwise, send the standard GM message as normal
             if (Math.random() < config.goodMorningMessageProbability) {
-                await messenger.send(goodMorningChannel, languageGenerator.generate('{goodMorning}'));
+                await messenger.send(goodMorningChannel, languageGenerator.generate(overriddenMessage ?? '{goodMorning}'));
             }
             break;
         }
