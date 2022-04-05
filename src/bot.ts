@@ -477,7 +477,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
 
     // Set timeout for when morning almost ends
     const preNoonToday: Date = new Date();
-    preNoonToday.setHours(11, randInt(50, 57), randInt(0, 60), 0);
+    preNoonToday.setHours(11, randInt(48, 56), randInt(0, 60), 0);
     // We register this with the "Increment Hour" strategy since its subsequent timeout (Noon) is registered in series
     await timeoutManager.registerTimeout(TimeoutType.NextPreNoon, preNoonToday, PastTimeoutStrategy.IncrementHour);
 
