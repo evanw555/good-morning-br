@@ -3,7 +3,7 @@ import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'disco
 import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PastTimeoutStrategy, HomeStretchSurprise } from './types.js';
 import TimeoutManager from './timeout-manager.js';
 import { createHomeStretchImage, createMidSeasonUpdateImage, createSeasonResultsImage } from './graphics.js';
-import { hasVideo, randInt, validateConfig, getTodayDateString, reactToMessage, sleep, randChoice, toCalendarDate, getTomorrow, generateKMeansClusters, getRankString, naturalJoin, getClockTime, getOrderingUpsets, toLetterId } from './util.js';
+import { hasVideo, randInt, validateConfig, getTodayDateString, reactToMessage, sleep, randChoice, toCalendarDate, getTomorrow, generateKMeansClusters, getRankString, naturalJoin, getClockTime, getOrderingUpsets, toLetterId, revealLettersGeometric } from './util.js';
 import GoodMorningState from './state.js';
 import logger from './logger.js';
 
@@ -439,11 +439,8 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     // Set today's positive react emoji
     state.setGoodMorningEmoji(config.goodMorningEmojiOverrides[toCalendarDate(new Date())] ?? config.defaultGoodMorningEmoji);
 
-    // Set today's magic word (if it's not an abnormal event)
-    state.clearMagicWord();
-    const magicWord: string = await chooseMagicWord();
-    if (magicWord && !state.isEventAbnormal()) {
-        state.setMagicWord(magicWord);
+    // Give a hint for today's magic word
+    if (state.hasMagicWord()) {
         // Get list of all suitable recipients of the magic word (this is a balancing mechanic, so pick players who are behind yet active)
         const potentialMagicWordRecipients: Snowflake[] = state.getPotentialMagicWordRecipients();
         // Determine if we should give out the hint
@@ -454,7 +451,9 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         if (shouldGiveHint) {
             const magicWordRecipient: Snowflake = randChoice(...potentialMagicWordRecipients);
             await messenger.dm(await fetchMember(magicWordRecipient), `Psssst.... the magic word of the day is _"${state.getMagicWord()}"_`);
-            await logger.log(`Magic word _"${state.getMagicWord()}"_ was sent to **${state.getPlayerDisplayName(magicWordRecipient)}**`);
+            if (magicWordRecipient !== guildOwner.id) {
+                await logger.log(`Magic word _"${state.getMagicWord()}"_ was sent to **${state.getPlayerDisplayName(magicWordRecipient)}**`);
+            }
         }
     }
 
@@ -729,6 +728,13 @@ const TIMEOUT_CALLBACKS = {
 
         // Activate the queued up event
         state.dequeueNextEvent();
+
+        // Set tomorrow's magic word (if it's not an abnormal event)
+        state.clearMagicWord();
+        const magicWord: string = await chooseMagicWord();
+        if (magicWord && !state.isEventAbnormal()) {
+            state.setMagicWord(magicWord);
+        }
 
         // Update player activity counters
         state.incrementPlayerActivities();

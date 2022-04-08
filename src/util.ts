@@ -318,3 +318,20 @@ export function capitalize(input: string): string {
 export function toLetterId(input: number): string {
     return (input < 26 ? '' : toLetterId(Math.floor(input / 26) - 1)) + String.fromCharCode((input % 26) + 65);
 }
+
+/**
+ * TODO: This is experimental
+ */
+export function revealLettersGeometric(input: string): string {
+    const letters: string[] = input.split('');
+    let result = letters.shift();
+    while (letters.length > 0) {
+        const p = letters.length / input.length;
+        if (Math.random() < p) {
+            result += letters.shift();
+        } else {
+            break;
+        }
+    }
+    return result;
+}
