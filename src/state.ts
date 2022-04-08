@@ -521,6 +521,20 @@ export default class GoodMorningState {
             || this.getEventType() === DailyEventType.AnonymousSubmissions;
     }
 
+    haveAllSubmittersVoted(): boolean {
+        return this.getEventType() === DailyEventType.AnonymousSubmissions
+            && this.getEvent().submissions !== undefined
+            && this.getEvent().votes !== undefined
+            && Object.keys(this.getEvent().submissions).every(userId => userId in this.getEvent().votes);
+    }
+
+    /**
+     * TODO: Is this safe? Should we be checking for the right event?
+     */
+    getSubmissionNonVoters(): Snowflake[] {
+        return Object.keys(this.getEvent().submissions).filter(userId => this.getEvent().votes[userId] === undefined);
+    }
+
     toJson(): string {
         return JSON.stringify(this.data, null, 2);
     }

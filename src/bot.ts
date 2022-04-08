@@ -588,6 +588,11 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
 };
 
 const finalizeAnonymousSubmissions = async () => {
+    if (!state.getEvent().votes || !state.getEvent().submissions) {
+        await logger.log('WARNING! Attempting to finalize submissions with the votes and/or submissions already wiped. Aborting!');
+        return;
+    }
+
     // Disable voting by deleting the "vote" command
     const guildCommands = await guild.commands.fetch();
     guildCommands.forEach(command => {
@@ -612,13 +617,11 @@ const finalizeAnonymousSubmissions = async () => {
 
     // Compile the set of those who didn't vote
     const deadbeats: Set<Snowflake> = new Set();
-    Object.keys(state.getEvent().submissions).forEach(userId => {
-        if (state.getEvent().votes[userId] === undefined) {
-            // Add the player to the set
-            deadbeats.add(userId);
-            // Penalize the player
-            state.deductPoints(userId, config.defaultAward);
-        }
+    state.getSubmissionNonVoters().forEach(userId => {
+        // Add the player to the set
+        deadbeats.add(userId);
+        // Penalize the player
+        state.deductPoints(userId, config.defaultAward);
     })
 
     // Deleting certain event data will prevent action taken on further DMs and commands
@@ -708,10 +711,14 @@ const TIMEOUT_CALLBACKS = {
 
         // Check the results of anonymous submissions
         if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
-            await finalizeAnonymousSubmissions();
-
-            // Sleep to provide a buffer in case more messages need to be sent
-            await sleep(10000);
+            // ...if they haven't been finalized already
+            if (state.getEvent().votes) {
+                await finalizeAnonymousSubmissions();
+                // Sleep to provide a buffer in case more messages need to be sent
+                await sleep(10000);
+            } else {
+                await logger.log('Aborting pre-noon submission finalizing, as the votes have already been wiped.');
+            }
         }
 
         // Update current leader property
@@ -902,25 +909,35 @@ const TIMEOUT_CALLBACKS = {
         });
     },
     [TimeoutType.AnonymousSubmissionVotingReminder]: async (): Promise<void> => {
-        // Send notification for the public in the channel
-        try {
-            const rootSubmissionMessage: Message = await goodMorningChannel.messages.fetch(state.getEvent().rootSubmissionMessage);
-            await messenger.reply(rootSubmissionMessage, `If you haven't already, please vote on your favorite ${state.getEvent().submissionType} with \`/vote\`!`);
-        } catch (err) {
-            logger.log(`Failed to fetch root submission message and send reminder: \`${err.toString()}\``);
+        if (!state.getEvent().votes) {
+            await logger.log('Aborting submission voting reminder, as the votes have already been wiped.');
+            return;
         }
-        // DM players who still haven't voted
-        const delinquents: Snowflake[] = Object.keys(state.getEvent().submissions).filter(userId => state.getEvent().votes[userId] === undefined);
-        if (delinquents.length > 0) {
-            await logger.log(`Sending voting reminder DM to ${getBoldNames(delinquents)}...`);
-            delinquents.forEach(async (userId) => {
-                try {
-                    await messenger.dm(await fetchMember(userId),
-                        `You still haven\'t voted! You and your ${state.getEvent().submissionType} will be disqualified if you don't vote by noon. You can vote with the \`/vote\` command.`);
-                } catch (err) {
-                    await logger.log(`Unable to send voting reminder DM to **${state.getPlayerDisplayName(userId)}**: \`${err.toString()}\``);
-                }
-            });
+
+        if (state.haveAllSubmittersVoted()) {
+            // If all submitters have voted, then we can finalize the submissions early
+            await finalizeAnonymousSubmissions();
+        } else {
+            // Otherwise, send a voting notification to the channel
+            try {
+                const rootSubmissionMessage: Message = await goodMorningChannel.messages.fetch(state.getEvent().rootSubmissionMessage);
+                await messenger.reply(rootSubmissionMessage, `If you haven't already, please vote on your favorite ${state.getEvent().submissionType} with \`/vote\`!`);
+            } catch (err) {
+                logger.log(`Failed to fetch root submission message and send reminder: \`${err.toString()}\``);
+            }
+            // Also, DM players who still haven't voted
+            const delinquents: Snowflake[] = state.getSubmissionNonVoters();
+            if (delinquents.length > 0) {
+                await logger.log(`Sending voting reminder DM to ${getBoldNames(delinquents)}...`);
+                delinquents.forEach(async (userId) => {
+                    try {
+                        await messenger.dm(await fetchMember(userId),
+                            `You still haven\'t voted! You and your ${state.getEvent().submissionType} will be disqualified if you don't vote by noon. You can vote with the \`/vote\` command.`);
+                    } catch (err) {
+                        await logger.log(`Unable to send voting reminder DM to **${state.getPlayerDisplayName(userId)}**: \`${err.toString()}\``);
+                    }
+                });
+            }
         }
     },
     [TimeoutType.HomeStretchSurprise]: async (): Promise<void> => {
