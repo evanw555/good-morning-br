@@ -1,9 +1,9 @@
-import { Client, DMChannel, Intents, MessageAttachment } from 'discord.js';
+import { Client, DMChannel, Intents, MessageAttachment, TextChannel } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'discord.js';
 import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PastTimeoutStrategy, HomeStretchSurprise } from './types.js';
 import TimeoutManager from './timeout-manager.js';
 import { createHomeStretchImage, createMidSeasonUpdateImage, createSeasonResultsImage } from './graphics.js';
-import { hasVideo, randInt, validateConfig, getTodayDateString, reactToMessage, sleep, randChoice, toCalendarDate, getTomorrow, generateKMeansClusters, getRankString, naturalJoin, getClockTime, getOrderingUpsets, toLetterId, revealLettersGeometric } from './util.js';
+import { hasVideo, randInt, validateConfig, getTodayDateString, reactToMessage, sleep, randChoice, toCalendarDate, getTomorrow, generateKMeansClusters, getRankString, naturalJoin, getClockTime, getOrderingUpsets, toLetterId } from './util.js';
 import GoodMorningState from './state.js';
 import logger from './logger.js';
 
@@ -38,7 +38,7 @@ const client = new Client({
 
 let guild: Guild;
 
-let goodMorningChannel: TextBasedChannels;
+let goodMorningChannel: TextChannel;
 let guildOwner: GuildMember;
 let guildOwnerDmChannel: DMChannel;
 
@@ -68,6 +68,28 @@ const getBoldNames = (userIds: Snowflake[]): string => {
 
 const getJoinedMentions = (userIds: Snowflake[]): string => {
     return naturalJoin(userIds.map(userId => `<@${userId}>`));
+}
+
+const grantGMChannelAccess = async (userIds: Snowflake[]): Promise<void> => {
+    for (let userId of userIds) {
+        try {
+            await goodMorningChannel.permissionOverwrites.delete(await fetchMember(userId));
+        } catch (err) {
+            await logger.log(`Unable to grant GM channel access for user <@${userId}>: \`${err.toString()}\``);
+        }
+    }
+}
+
+const revokeGMChannelAccess = async (userIds: Snowflake[]): Promise<void> => {
+    for (let userId of userIds) {
+        try {
+            await goodMorningChannel.permissionOverwrites.create(await fetchMember(userId), {
+                'SEND_MESSAGES': false
+            });
+        } catch (err) {
+            await logger.log(`Unable to revoke GM channel access for user <@${userId}>: \`${err.toString()}\``);
+        }
+    }
 }
 
 const updateSungazer = async (userId: Snowflake, terms: number): Promise<void> => {
@@ -560,6 +582,9 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
 
     // Dump state
     await dumpState();
+
+    // Finally, re-grant access for all players with negative points
+    await grantGMChannelAccess(state.getDelinquentPlayers());
 };
 
 const finalizeAnonymousSubmissions = async () => {
@@ -723,6 +748,9 @@ const TIMEOUT_CALLBACKS = {
         await dumpState();
     },
     [TimeoutType.NextNoon]: async (): Promise<void> => {
+        // Revoke access for all players with negative points
+        await revokeGMChannelAccess(state.getDelinquentPlayers());
+
         // Update basic state properties
         state.setMorning(false);
 
@@ -1096,7 +1124,7 @@ client.on('ready', async (): Promise<void> => {
 
     // Attempt to load the good morning channel (abort if not successful)
     try {
-        goodMorningChannel = (await client.channels.fetch(config.goodMorningChannelId)) as TextBasedChannels;
+        goodMorningChannel = (await client.channels.fetch(config.goodMorningChannelId)) as TextChannel;
     } catch (err) {}
     if (!goodMorningChannel) {
         await logger.log(`Couldn't load good morning channel with Id "${config.goodMorningChannelId}", aborting...`);

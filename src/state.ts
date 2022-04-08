@@ -69,6 +69,13 @@ export default class GoodMorningState {
         return Object.keys(this.data.players);
     }
 
+    /**
+     * @returns List of user IDs of players with negative points.
+     */
+    getDelinquentPlayers(): Snowflake[] {
+        return this.getPlayers().filter(userId => this.getPlayerPoints(userId) < 0);
+    }
+
     getPlayerStates(): Record<Snowflake, PlayerState> {
         return this.data.players;
     }
