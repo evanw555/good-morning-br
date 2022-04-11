@@ -347,6 +347,8 @@ export default class GoodMorningState {
         const actualPoints: number = points * this.getPlayerMultiplier(userId);
         this.getOrCreateDailyStatus(userId).pointsEarned += actualPoints;
         this.getOrCreatePlayer(userId).points += actualPoints;
+        // Round to 2 decimal places
+        this.getOrCreatePlayer(userId).points = parseFloat(this.getPlayerPoints(userId).toFixed(2));
         return actualPoints;
     }
 
@@ -360,6 +362,8 @@ export default class GoodMorningState {
         this.getOrCreatePlayer(userId).points -= points;
         // Update the season total deductions count
         this.getOrCreatePlayer(userId).deductions = this.getPlayerDeductions(userId) + points;
+        // Round to 2 decimal places
+        this.getOrCreatePlayer(userId).points = parseFloat(this.getPlayerPoints(userId).toFixed(2));
     }
 
     getPointsEarnedToday(userId: Snowflake): number {
