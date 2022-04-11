@@ -606,7 +606,8 @@ const finalizeAnonymousSubmissions = async () => {
     const breakdown: Record<string, number[]> = {};
     Object.values(state.getEvent().votes).forEach(codes => {
         codes.forEach((code, i) => {
-            scores[code] = (scores[code] ?? 0) + 3 - i;
+            // Gold is worth 3.1, silver 2.1, and bronze 1.1 (add 0.1 to break ties using total number of votes)
+            scores[code] = (scores[code] ?? 0) + 3.1 - i;
             // Take note of the breakdown
             if (breakdown[code] === undefined) {
                 breakdown[code] = [0, 0, 0];
