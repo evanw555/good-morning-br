@@ -242,7 +242,7 @@ export default class GoodMorningState {
      * @returns List of user IDs for players who are suitable to receive the magic word hint
      */
     getPotentialMagicWordRecipients(): Snowflake[] {
-        return this.queryOrderedPlayers({ skipPlayers: 3, maxDays: 3 });
+        return this.queryOrderedPlayers({ skipPlayers: 3, maxDays: 2, maxRelativeCompletion: 0.85 });
     }
 
     /**
@@ -250,11 +250,12 @@ export default class GoodMorningState {
      * - skipPlayers: omit the top N players (e.g. 2 means omit the first-place and second-place players)
      * - maxDays: only include players who've said GM in the last N days
      * - minDays: only include players who haven't said GM in the last N-1 days
+     * - maxRelativeCompletion: only include players with at most this relative completion
      * - n: only return the first N players (after the previous filters have been applied)
      * @param options parameters map
      * @returns ordered and filtered list of user IDs
      */
-    queryOrderedPlayers(options: { skipPlayers?: number, maxDays?: number, minDays?: number, n?: number }): Snowflake[] {
+    queryOrderedPlayers(options: { skipPlayers?: number, maxDays?: number, minDays?: number, maxRelativeCompletion?: number, n?: number }): Snowflake[] {
         let result: Snowflake[] = this.getOrderedPlayers();
 
         if (options.skipPlayers) {
@@ -267,6 +268,10 @@ export default class GoodMorningState {
 
         if (options.minDays) {
             result = result.filter((userId) => this.getPlayerDaysSinceLGM(userId) >= options.minDays)
+        }
+
+        if (options.maxRelativeCompletion) {
+            result = result.filter((userId) => this.getPlayerRelativeCompletion(userId) <= options.maxRelativeCompletion);
         }
 
         if (options.n) {
@@ -313,6 +318,15 @@ export default class GoodMorningState {
      */
     getPlayerCompletion(userId: Snowflake): number {
         return Math.max(0, this.getPlayerPoints(userId)) / this.getSeasonGoal();
+    }
+
+    /**
+     * Returns a number in the range [0, 1] representing the percentage completion of a particular player relative to
+     * the player with the highest completion (e.g. 0.75 means 75% of the max player's score).
+     * @returns The player's relative completion
+     */
+    getPlayerRelativeCompletion(userId: Snowflake): number {
+        return this.getPlayerPoints(userId) / this.getTopScore();
     }
 
     /**
