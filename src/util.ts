@@ -335,3 +335,13 @@ export function revealLettersGeometric(input: string): string {
     }
     return result;
 }
+
+/**
+ * Take a given input float and return it rounded to some fixed number of decimal places.
+ * @param input the float
+ * @param places number of decimal places (defaults to 2)
+ * @returns the float rounded to some fixed number of decimal places
+ */
+export function toFixed(input: number, places: number = 2): number {
+    return parseFloat(input.toFixed(places));
+}

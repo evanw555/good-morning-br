@@ -1,7 +1,7 @@
 import { Snowflake } from "discord.js";
 import ActivityTracker from "./activity-tracker.js";
 import { Combo, DailyEvent, DailyEventType, DailyPlayerState, PlayerState, RawGoodMorningState, Season } from "./types.js";
-import { getTodayDateString } from "./util.js";
+import { getTodayDateString, toFixed } from "./util.js";
 
 export default class GoodMorningState {
     private data: RawGoodMorningState;
@@ -359,10 +359,8 @@ export default class GoodMorningState {
             throw new Error('Can only award a non-negative number of points!');
         }
         const actualPoints: number = points * this.getPlayerMultiplier(userId);
-        this.getOrCreateDailyStatus(userId).pointsEarned += actualPoints;
-        this.getOrCreatePlayer(userId).points += actualPoints;
-        // Round to 2 decimal places
-        this.getOrCreatePlayer(userId).points = parseFloat(this.getPlayerPoints(userId).toFixed(2));
+        this.getOrCreateDailyStatus(userId).pointsEarned = toFixed(this.getPointsEarnedToday(userId) + actualPoints);
+        this.getOrCreatePlayer(userId).points = toFixed(this.getPlayerPoints(userId) + actualPoints);
         return actualPoints;
     }
 
@@ -371,13 +369,11 @@ export default class GoodMorningState {
             throw new Error('Can only deduct a non-negative number of points!');
         }
         // Update the daily "points lost" value
-        this.getOrCreateDailyStatus(userId).pointsLost = this.getPointsLostToday(userId) + points;
+        this.getOrCreateDailyStatus(userId).pointsLost = toFixed(this.getPointsLostToday(userId) + points);
         // Deduct points from the player
-        this.getOrCreatePlayer(userId).points -= points;
+        this.getOrCreatePlayer(userId).points = toFixed(this.getPlayerPoints(userId) - points);;
         // Update the season total deductions count
-        this.getOrCreatePlayer(userId).deductions = this.getPlayerDeductions(userId) + points;
-        // Round to 2 decimal places
-        this.getOrCreatePlayer(userId).points = parseFloat(this.getPlayerPoints(userId).toFixed(2));
+        this.getOrCreatePlayer(userId).deductions = toFixed(this.getPlayerDeductions(userId) + points);
     }
 
     getPointsEarnedToday(userId: Snowflake): number {

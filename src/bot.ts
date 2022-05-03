@@ -3,7 +3,7 @@ import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'disco
 import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PastTimeoutStrategy, HomeStretchSurprise } from './types.js';
 import TimeoutManager from './timeout-manager.js';
 import { createHomeStretchImage, createMidSeasonUpdateImage, createSeasonResultsImage } from './graphics.js';
-import { hasVideo, randInt, validateConfig, getTodayDateString, reactToMessage, sleep, randChoice, toCalendarDate, getTomorrow, generateKMeansClusters, getRankString, naturalJoin, getClockTime, getOrderingUpsets, toLetterId } from './util.js';
+import { hasVideo, randInt, validateConfig, getTodayDateString, reactToMessage, sleep, randChoice, toCalendarDate, getTomorrow, generateKMeansClusters, getRankString, naturalJoin, getClockTime, getOrderingUpsets, toLetterId, toFixed } from './util.js';
 import GoodMorningState from './state.js';
 import logger from './logger.js';
 
@@ -607,7 +607,7 @@ const finalizeAnonymousSubmissions = async () => {
     Object.values(state.getEvent().votes).forEach(codes => {
         codes.forEach((code, i) => {
             // Gold is worth 3.1, silver 2.1, and bronze 1.1 (add 0.1 to break ties using total number of votes)
-            scores[code] = (scores[code] ?? 0) + 3.1 - i;
+            scores[code] = toFixed((scores[code] ?? 0) + 3.1 - i);
             // Take note of the breakdown
             if (breakdown[code] === undefined) {
                 breakdown[code] = [0, 0, 0];
