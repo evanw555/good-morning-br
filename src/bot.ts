@@ -267,6 +267,13 @@ const chooseEvent = (date: Date): DailyEvent => {
                 type: DailyEventType.Beckoning,
                 user: randChoice(...potentialBeckonees)
             });
+            // Add another one to double the odds of this happening if there are more than one potential beckonees
+            if (potentialBeckonees.length > 1) {
+                potentialEvents.push({
+                    type: DailyEventType.Beckoning,
+                    user: randChoice(...potentialBeckonees)
+                });
+            }
         }
         // If anyone is qualified to be a guest reveiller, add guest reveille as a potential event
         const potentialReveillers: Snowflake[] = state.getPotentialReveillers();
