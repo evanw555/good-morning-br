@@ -611,14 +611,17 @@ const finalizeAnonymousSubmissions = async () => {
     // First, tally the votes and compute the scores
     const scores: Record<string, number> = {}; // Map (submission code : points)
     const breakdown: Record<string, number[]> = {};
+    // Prime both maps (some submissions may get no votes)
+    Object.keys(state.getEvent().submissionOwnersByCode).forEach(code => {
+        scores[code] = 0;
+        breakdown[code] = [0, 0, 0];
+    });
+    // Now tally the actual scores and breakdowns
     Object.values(state.getEvent().votes).forEach(codes => {
         codes.forEach((code, i) => {
             // Gold is worth 3.1, silver 2.1, and bronze 1.1 (add 0.1 to break ties using total number of votes)
-            scores[code] = toFixed((scores[code] ?? 0) + 3.1 - i);
+            scores[code] = toFixed(scores[code] + 3.1 - i);
             // Take note of the breakdown
-            if (breakdown[code] === undefined) {
-                breakdown[code] = [0, 0, 0];
-            }
             breakdown[code][i]++;
         });
     });
@@ -669,7 +672,8 @@ const finalizeAnonymousSubmissions = async () => {
         const submissionCode: string = submissionCodes[i];
         const userId: Snowflake = state.getEvent().submissionOwnersByCode[submissionCode];
         const rank: number = i + 1;
-        if (i === submissionCodes.length - 1) {
+        // TODO: Instead, round up all users who got no votes
+        if (i === submissionCodes.length - 1 && scores[submissionCode] > 0) {
             await sleep(10000);
             await messenger.send(goodMorningChannel, `In dead last, we have the poor old <@${userId}> with submission **${submissionCode}**... better luck next time 😬`);
         } else if (i === 0) {
