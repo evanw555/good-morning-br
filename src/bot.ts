@@ -136,6 +136,7 @@ const updateSungazers = async (winners: { gold?: Snowflake, silver?: Snowflake, 
     if (expirees.length > 0) {
         await sleep(10000);
         await messenger.send(sungazerChannel, `The time has come, though, to say goodbye to some now-former sungazers... ${getJoinedMentions(expirees)}, farewell!`);
+        await sleep(30000);
         for (let userId of expirees) {
             delete history.sungazers[userId];
             const member: GuildMember = await guild.members.fetch(userId);
