@@ -238,7 +238,7 @@ const chooseEvent = (date: Date): DailyEvent => {
         return undefined;
     }
     // Begin home stretch if we're far enough along and not currently in the home stretch (this will be delayed if an above event needs to happen instead e.g. MF)
-    if (state.getSeasonCompletion() >= 0.9 && !state.isHomeStretch()) {
+    if (state.getSeasonCompletion() >= 0.85 && !state.isHomeStretch()) {
         return {
             type: DailyEventType.BeginHomeStretch,
             homeStretchSurprises: [HomeStretchSurprise.Multipliers, HomeStretchSurprise.LongestComboBonus, HomeStretchSurprise.ComboBreakerBonus]
@@ -972,7 +972,7 @@ const TIMEOUT_CALLBACKS = {
                 orderedPlayers.forEach(userId => {
                     if (state.getPlayerPoints(userId) <= 0) {
                         state.setPlayerMultiplier(userId, 0.5);
-                    } else if (state.getPlayerCompletion(userId) >= 0.85) {
+                    } else if (state.getPlayerCompletion(userId) >= 0.8) {
                         x1players.push(userId);
                     } else if (state.getPlayerCompletion(userId) >= 0.7) {
                         x1_5players.push(userId);
