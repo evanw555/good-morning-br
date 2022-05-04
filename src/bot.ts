@@ -616,10 +616,11 @@ const finalizeAnonymousSubmissions = async () => {
         breakdown[code] = [0, 0, 0];
     });
     // Now tally the actual scores and breakdowns
+    // Add 0.1 to break ties using total number of votes, 0.01 to ultimately break ties with golds
+    const voteValues: number[] = [3.11, 2.1, 1.1];
     Object.values(state.getEvent().votes).forEach(codes => {
         codes.forEach((code, i) => {
-            // Gold is worth 3.1, silver 2.1, and bronze 1.1 (add 0.1 to break ties using total number of votes)
-            scores[code] = toFixed(scores[code] + 3.1 - i);
+            scores[code] = toFixed(scores[code] + (voteValues[i] ?? 0));
             // Take note of the breakdown
             breakdown[code][i]++;
         });
