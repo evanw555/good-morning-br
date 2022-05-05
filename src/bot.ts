@@ -382,8 +382,7 @@ const sendSeasonEndMessages = async (channel: TextBasedChannels, previousState: 
     await messenger.send(channel, 'Thanks to all those who have participated. You have made these mornings bright and joyous for not just me, but for everyone here 🌞');
     await sleep(10000);
     await messenger.send(channel, 'In a couple minutes, I\'ll reveal the winners and the final standings...');
-    await messenger.send(channel, 'In the meantime, please congratulate yourselves, take a deep breath, and appreciate the friends you\'ve made in this channel 🙂');
-    await messenger.send(channel, '(penalties are disabled until tomorrow morning)');
+    await messenger.send(channel, 'In the meantime, please congratulate yourselves (penalties are disabled), take a deep breath, and appreciate the friends you\'ve made in this channel 🙂');
     // Send the "final results image"
     await sleep(120000);
     await messenger.send(channel, 'Alright, here are the final standings...');
@@ -398,11 +397,12 @@ const sendSeasonEndMessages = async (channel: TextBasedChannels, previousState: 
     // Send information about the season rewards
     await sleep(15000);
     await messenger.send(channel, `As a reward, <@${winner}> will get the following perks throughout season **${newSeason}**:`);
-    await messenger.send(channel, ' ⭐ Ability to set a special "good morning" emoji that everyone in the server can use');
+    // await messenger.send(channel, ' ⭐ Ability to set a special "good morning" emoji that everyone in the server can use');
     await messenger.send(channel, ' ⭐ Honorary Robert status, with the ability to post in **#robertism**');
-    await messenger.send(channel, ' ⭐ More TBD perks that will be announced soon!');
+    await messenger.send(channel, ' ⭐ Other secret perks...');
     // Wait, then send info about the next season
     await sleep(30000);
+    await messenger.send(channel, 'Now that this season is over, I\'ll be taking a vacation for several days. Feel free to post whatever whenever until I return 🌞');
     await messenger.send(channel, `See you all in season **${newSeason}** 😉`);
 };
 
@@ -423,7 +423,7 @@ const setStatus = async (active: boolean): Promise<void> => {
     }
 };
 
-const registerGoodMorningTimeout = async (): Promise<void> => {
+const registerGoodMorningTimeout = async (days: number = 1): Promise<void> => {
     const MIN_HOURS: Record<string, number> = {
         [DailyEventType.SleepyMorning]: 10
     };
@@ -435,9 +435,11 @@ const registerGoodMorningTimeout = async (): Promise<void> => {
     const MAX_HOUR_EXCLUSIVE: number = MAX_HOURS[state.getEventType()] ?? 10;
 
     const morningTomorrow: Date = new Date();
-    // Set date as tomorrow if it's after the earliest possible morning time
-    if (morningTomorrow.getHours() >= MIN_HOUR) {
-        morningTomorrow.setDate(morningTomorrow.getDate() + 1);
+    // Set date to number of days in the future (1 by default)
+    morningTomorrow.setDate(morningTomorrow.getDate() + days);
+    // If it's currently before the earliest possible morning time, then rewind the target date by one day
+    if (morningTomorrow.getHours() < MIN_HOUR) {
+        morningTomorrow.setDate(morningTomorrow.getDate() - 1);
     }
     // Set time as sometime between 7am and 10am
     morningTomorrow.setHours(randInt(MIN_HOUR, MAX_HOUR_EXCLUSIVE), randInt(0, 60), randInt(0, 60));
@@ -791,13 +793,15 @@ const TIMEOUT_CALLBACKS = {
         await dumpState();
         await dumpR9KHashes();
 
-        // Register a timeout that will allow the bot to "wake up" tomorrow
-        if (state.getEventType() === DailyEventType.GuestReveille) {
-            // Register "fallback" timeout to wake up in case the guest reveille doesn't say anything
-            await registerGuestReveilleFallbackTimeout();
-        } else {
-            // Register the normal GM timeout
-            await registerGoodMorningTimeout();
+        // Register a timeout that will allow the bot to "wake up" tomorrow (if the season is still going)
+        if (!state.isSeasonGoalReached()) {
+            if (state.getEventType() === DailyEventType.GuestReveille) {
+                // Register "fallback" timeout to wake up in case the guest reveille doesn't say anything
+                await registerGuestReveilleFallbackTimeout();
+            } else {
+                // Register the normal GM timeout
+                await registerGoodMorningTimeout();
+            }
         }
 
         // If this is happening at a non-standard time, explicitly warn players (add some tolerance in case of timeout variance)
@@ -825,6 +829,8 @@ const TIMEOUT_CALLBACKS = {
             const winners = await advanceSeason();
             await sendSeasonEndMessages(goodMorningChannel, previousState);
             await updateSungazers(winners);
+            // Register the next GM timeout for a few days in the future to provide a buffer
+            await registerGoodMorningTimeout(5);
         }
 
         // Update the bot's status
