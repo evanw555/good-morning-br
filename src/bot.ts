@@ -245,8 +245,9 @@ const chooseEvent = (date: Date): DailyEvent => {
             homeStretchSurprises: [HomeStretchSurprise.Multipliers, HomeStretchSurprise.LongestComboBonus, HomeStretchSurprise.ComboBreakerBonus]
         };
     }
-    // Every 2/3 days, take a chance to do some other event
-    if (date.getDate() % 3 !== 0) {
+    // On a rising chance cadence of 5 days, take a chance to do some other event
+    const eventChance: number = ((date.getDate() % 5) + 1) / 5;
+    if (Math.random() < eventChance) {
         // Compile a list of potential events (include default events)
         const potentialEvents: DailyEvent[] = [
             {
@@ -293,10 +294,8 @@ const chooseEvent = (date: Date): DailyEvent => {
                 user: guestWriter
             });
         }
-        // Now maybe return one of those events
-        if (Math.random() < 0.75) {
-            return randChoice(...potentialEvents);
-        }
+        // Now return one of those events
+        return randChoice(...potentialEvents);
     }
 };
 
