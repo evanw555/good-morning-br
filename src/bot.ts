@@ -1407,16 +1407,15 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             if (triggerMonkeyFriday && !state.hasDailyVideoRank(userId)) {
                 const videoRank: number = state.getNextDailyVideoRank();
                 state.setDailyVideoRank(userId, videoRank);
-                // Award MF points and update point-related data
-                const pointsEarned: number = config.awardsByRank[videoRank] ?? config.defaultAward;
-                state.awardPoints(userId, pointsEarned);
-                dumpState();
-                // Reply or react to the message depending on the video rank
+                // Award points then reply (or react) to the message depending on the video rank
                 if (videoRank === 1) {
+                    state.awardPoints(userId, config.defaultAward);
                     messenger.reply(msg, languageGenerator.generate('{goodMorningReply.video?} 🐒'));
                 } else {
+                    state.awardPoints(userId, config.defaultAward / 2);
                     reactToMessage(msg, '🐒');
                 }
+                await dumpState();
             }
 
             // Handle standard GM messages if the conditions are met and its the user's first GM of the day
