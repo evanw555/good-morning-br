@@ -1503,7 +1503,9 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 if (isNovelMessage) {
                     const rankedPoints: number = config.awardsByRank[rank] ?? config.defaultAward;
                     const activityPoints: number = config.defaultAward + state.getPlayerActivity(userId).getRating();
-                    state.awardPoints(userId, Math.max(rankedPoints, activityPoints));
+                    const applyLeaderNerf: boolean = state.getSeasonCompletion() > 0.1 && state.getPlayerRelativeCompletion(userId) > 0.9;
+                    const compositePoints: number = applyLeaderNerf ? Math.min(rankedPoints, activityPoints) : Math.max(rankedPoints, activityPoints);
+                    state.awardPoints(userId, compositePoints);
                 } else {
                     state.awardPoints(userId, config.defaultAward);
                 }
