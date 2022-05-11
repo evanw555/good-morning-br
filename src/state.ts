@@ -1,6 +1,6 @@
 import { Snowflake } from "discord.js";
 import ActivityTracker from "./activity-tracker.js";
-import { Combo, DailyEvent, DailyEventType, DailyPlayerState, PlayerState, RawGoodMorningState, Season } from "./types.js";
+import { Combo, DailyEvent, DailyEventType, DailyPlayerState, FullDate, PlayerState, RawGoodMorningState, Season } from "./types.js";
 import { getTodayDateString, toFixed } from "./util.js";
 
 export default class GoodMorningState {
@@ -42,8 +42,12 @@ export default class GoodMorningState {
         }
     }
 
-    getSeasonStartedOn(): string {
+    getSeasonStartedOn(): FullDate {
         return this.data.startedOn;
+    }
+
+    setSeasonStartedOn(startedOn: FullDate): void {
+        this.data.startedOn = startedOn;
     }
 
     /**

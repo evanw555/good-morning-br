@@ -365,8 +365,10 @@ const sendGoodMorningMessage = async (): Promise<void> => {
             await messenger.send(goodMorningChannel, text);
             break;
         default:
-            // Otherwise, send the standard GM message as normal
-            if (Math.random() < config.goodMorningMessageProbability) {
+            // Otherwise, send the standard GM message as normal (do a season intro greeting if today is the first day)
+            if (state.getSeasonStartedOn() === getTodayDateString()) {
+                await messenger.send(goodMorningChannel, `Good morning everyone and welcome to season **${state.getSeasonNumber()}**! I hope to see many familiar faces, and if I'm lucky maybe even some new ones ${config.defaultGoodMorningEmoji}`);
+            } else if (Math.random() < config.goodMorningMessageProbability) {
                 await messenger.send(goodMorningChannel, languageGenerator.generate(overriddenMessage ?? '{goodMorning}'));
             }
             break;
@@ -512,6 +514,12 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
 
     // Update the bot's status to active
     await setStatus(true);
+
+    // If there is no player data, then reset the started-on date for this season
+    if (state.getNumPlayers() === 0) {
+        state.setSeasonStartedOn(getTodayDateString());
+        await logger.log('Set season started-on date to today');
+    }
 
     // Send the good morning message
     if (sendMessage) {
