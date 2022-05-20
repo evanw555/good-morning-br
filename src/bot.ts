@@ -202,36 +202,38 @@ const advanceSeason = async (): Promise<{ gold?: Snowflake, silver?: Snowflake, 
 };
 
 const chooseEvent = (date: Date): DailyEvent => {
-    // Sunday standings recap
+    // Sunday: Recap
     if (date.getDay() === 0) {
         return {
             type: DailyEventType.RecapSunday
         };
     }
-    // Monkey Friday
+    // Friday: Monkey Friday
     if (date.getDay() === 5) {
         return {
             type: DailyEventType.MonkeyFriday
         };
     }
-    // If it's an even-numbered Wednesday, then do text submissions
-    if (date.getDate() % 2 === 0 && date.getDay() === 3) {
-        return {
-            type: DailyEventType.AnonymousSubmissions,
-            // TODO: Add new ones such as "short story", "motivational message" once this has happened a couple times
-            submissionType: randChoice("haiku", "limerick", "poem (ABAB)", "2-sentence horror story", `${randInt(6, 10)}-word story`),
-            submissions: {}
-        };
-    }
-    // If it's an even-numbered Tuesday, then do attachment submissions
-    if (date.getDate() % 2 === 0 && date.getDay() === 2) {
-        return {
-            type: DailyEventType.AnonymousSubmissions,
-            // TODO: Add new ones such as "cute wholesome animal pic" once this has happened a couple times
-            submissionType: "pic that goes hard",
-            isAttachmentSubmission: true,
-            submissions: {}
-        };
+    // Tuesday: Anonymous Submissions
+    if (date.getDay() === 2) {
+        if (date.getDate() % 2 === 0) {
+            // If it's an even-numbered day, do text submissions
+            return {
+                type: DailyEventType.AnonymousSubmissions,
+                // TODO: Add new ones such as "short story", "motivational message" once this has happened a couple times
+                submissionType: randChoice("haiku", "limerick", "poem (ABAB)", "2-sentence horror story", `${randInt(6, 10)}-word story`),
+                submissions: {}
+            };
+        } else {
+            // If it's an odd-numbered day, do attachment submissions
+            return {
+                type: DailyEventType.AnonymousSubmissions,
+                // TODO: Add new ones such as "cute wholesome animal pic" once this has happened a couple times
+                submissionType: "pic that goes hard",
+                isAttachmentSubmission: true,
+                submissions: {}
+            };
+        }
     }
     // If this date has a calendar date message override, then just do a standard GM (don't do any of the nonstandard ones below)
     const calendarDate: CalendarDate = toCalendarDate(date); // e.g. "12/25" for xmas
