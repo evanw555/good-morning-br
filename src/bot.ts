@@ -533,6 +533,11 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     state.setGracePeriod(false);
     state.resetDailyState();
 
+    // If we're 10% of the way through the season, determine the nerf threshold for today
+    if (state.getSeasonCompletion() > 0.1) {
+        state.setNerfThreshold(toFixed(0.9 * state.getTopScore()));
+    }
+
     // If it's a Recap Sunday, then process weekly changes
     if (state.getEventType() === DailyEventType.RecapSunday) {
         const weeklySnapshot: GoodMorningState = await loadWeeklySnapshot();
@@ -784,6 +789,7 @@ const TIMEOUT_CALLBACKS = {
 
         // Update basic state properties
         state.setMorning(false);
+        state.clearNerfThreshold();
 
         // Activate the queued up event
         state.dequeueNextEvent();
@@ -1404,6 +1410,9 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             // Reset user's "days since last good morning" counter
             state.resetDaysSinceLGM(userId);
 
+            // Determine whether a "nerf" should be applied to this player before his points are altered
+            const applyLeaderNerf: boolean = state.hasNerfThreshold() && state.getPlayerPoints(userId) > state.getNerfThreshold();
+
             // Determine some properties related to the contents of the message
             const messageHasVideo: boolean = hasVideo(msg);
             const messageHasText: boolean = msg.content && msg.content.trim().length !== 0;
@@ -1513,9 +1522,11 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 if (isNovelMessage) {
                     const rankedPoints: number = config.awardsByRank[rank] ?? config.defaultAward;
                     const activityPoints: number = config.defaultAward + state.getPlayerActivity(userId).getRating();
-                    const applyLeaderNerf: boolean = state.getSeasonCompletion() > 0.1 && state.getPlayerRelativeCompletion(userId) > 0.9;
-                    const compositePoints: number = applyLeaderNerf ? Math.min(rankedPoints, activityPoints) : Math.max(rankedPoints, activityPoints);
-                    state.awardPoints(userId, compositePoints);
+                    if (applyLeaderNerf) {
+                        state.awardPoints(userId, Math.min(rankedPoints, activityPoints));
+                    } else {
+                        state.awardPoints(userId, Math.max(rankedPoints, activityPoints));
+                    }
                 } else {
                     state.awardPoints(userId, config.defaultAward);
                 }

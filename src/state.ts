@@ -478,6 +478,22 @@ export default class GoodMorningState {
         delete this.data.magicWord;
     }
 
+    getNerfThreshold(): number {
+        return this.data.nerfThreshold;
+    }
+
+    hasNerfThreshold(): boolean {
+        return this.data.nerfThreshold !== undefined;
+    }
+
+    setNerfThreshold(nerfThreshold: number): void {
+        this.data.nerfThreshold = nerfThreshold;
+    }
+
+    clearNerfThreshold(): void {
+        delete this.data.nerfThreshold;
+    }
+
     getCombo(): Combo {
         return this.data.combo;
     }
