@@ -426,10 +426,12 @@ const setStatus = async (active: boolean): Promise<void> => {
 
 const registerGoodMorningTimeout = async (days: number = 1): Promise<void> => {
     const MIN_HOURS: Record<string, number> = {
-        [DailyEventType.SleepyMorning]: 10
+        [DailyEventType.SleepyMorning]: 10,
+        [DailyEventType.ReverseGoodMorning]: 7
     };
     const MAX_HOURS: Record<string, number> = {
         [DailyEventType.SleepyMorning]: 11,
+        [DailyEventType.ReverseGoodMorning]: 11,
         [DailyEventType.AnonymousSubmissions]: 8
     };
     const MIN_HOUR: number = MIN_HOURS[state.getEventType()] ?? 6;
