@@ -597,11 +597,12 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         for (let i = 0; i < mostRecentUsers.length; i++) {
             const userId: Snowflake = mostRecentUsers[i];
             const rank: number = i + 1;
-            const pointsEarned: number = config.awardsByRank[rank] ?? config.defaultAward;
+            const rankedPoints: number = config.awardsByRank[rank] ?? config.defaultAward;
             // Dump the rank info into the daily status map and assign points accordingly
-            state.awardPoints(userId, pointsEarned);
+            state.awardPoints(userId, rankedPoints);
             state.setDailyRank(userId, rank);
             state.resetDaysSinceLGM(userId);
+            dailyVolatileLog.push([new Date(), `<@${userId}> was ${getRankString(rank)}-to-last = \`${rankedPoints}\``]);
         }
         // Send a message to the channel tagging the respective players
         if (mostRecentUsers.length >= 3) {
@@ -1535,7 +1536,10 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 const isNovelMessage: boolean = !r9k.contains(msg.content);
 
                 // Update the user's points and dump the state
-                if (isNovelMessage) {
+                if (state.getEventType() === DailyEventType.ReverseGoodMorning) {
+                    state.awardPoints(userId, config.defaultAward / 2);
+                    logStory += 'and said GM after the reverse cutoff';
+                } else if (isNovelMessage) {
                     const rankedPoints: number = config.awardsByRank[rank] ?? config.defaultAward;
                     const activityPoints: number = config.defaultAward + state.getPlayerActivity(userId).getRating();
                     if (applyLeaderNerf) {
@@ -1608,7 +1612,6 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 return;
             }
 
-            let pointsDeducted: number = 0;
             // It's not morning, so punish the player accordingly...
             if (state.wasPlayerPenalizedToday(userId)) {
                 // Deduct a half point for repeat offenses
