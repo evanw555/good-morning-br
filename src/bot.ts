@@ -45,6 +45,8 @@ let guildOwnerDmChannel: DMChannel;
 let state: GoodMorningState;
 let history: GoodMorningHistory;
 
+let dailyVolatileLog: [Date, String][] = [];
+
 const getDisplayName = async (userId: Snowflake): Promise<string> => {
     try {
         const member = await guild.members.fetch(userId);
@@ -534,6 +536,8 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     state.setMorning(true);
     state.setGracePeriod(false);
     state.resetDailyState();
+    dailyVolatileLog = [];
+    dailyVolatileLog.push([new Date(), 'GMBR has arisen.']);
 
     // If we're 10% of the way through the season, determine the nerf threshold for today
     if (state.getSeasonCompletion() > 0.1) {
@@ -1192,6 +1196,7 @@ client.on('ready', async (): Promise<void> => {
 
     if (guildOwner && goodMorningChannel) {
         await logger.log(`Bot rebooting at **${getClockTime()}** with guild owner **${guildOwner.displayName}** and GM channel ${goodMorningChannel.toString()}`);
+        dailyVolatileLog.push([new Date(), 'Bot rebooting...']);
     }
     await logTimeouts();
 
@@ -1380,6 +1385,9 @@ const processCommands = async (msg: Message): Promise<void> => {
             await dumpState();
             await msg.reply('Refreshed all player display names!');
         }
+        else if (sanitizedText.includes('log')) {
+            await msg.channel.send(dailyVolatileLog.map(entry => `**[${entry[0].toLocaleTimeString('en-US')}]:** ${entry[1]}`).join('\n') || 'Log is empty.');
+        }
     }
 };
 
@@ -1458,6 +1466,9 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 const rank: number = state.getNextDailyRank();
                 state.setDailyRank(userId, rank);
 
+                const priorPoints: number = state.getPlayerPoints(userId);
+                let logStory: string = `<@${userId}> with \`${priorPoints}\` prior said GM ${getRankString(rank)}, `;
+
                 // If user is first, update the combo state accordingly
                 let comboDaysBroken: number = 0;
                 let sendComboBrokenMessage: boolean = false;
@@ -1468,6 +1479,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                         if (combo.user === userId) {
                             // If it's the existing combo holder, then increment his combo counter
                             combo.days++;
+                            logStory += `increased his combo to ${combo.days} days, `;
                         } else {
                             // Else, reset the combo
                             comboBreakee = combo.user;
@@ -1486,6 +1498,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                                 // Increment the breaker's "combos broken" counter
                                 state.incrementPlayerCombosBroken(userId);
                             }
+                            logStory += `broke <@${comboBreakee}>'s ${comboDaysBroken}-day combo, `;
                         }
                     } else {
                         state.setCombo({
@@ -1508,30 +1521,35 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 if (state.hasMagicWord() && msg.content.toLowerCase().includes(state.getMagicWord().toLowerCase())) {
                     state.awardPoints(userId, config.awardsByRank[1]);
                     await messenger.dm(msg.member, `You said _"${state.getMagicWord()}"_, the magic word of the day! Nice 😉`);
+                    logStory += `said the magic word "${state.getMagicWord()}", `;
                 }
 
                 // Compute beckoning bonus and reset the state beckoning property if needed
                 const wasBeckoned: boolean = state.getEventType() === DailyEventType.Beckoning && msg.author.id === state.getEvent().user;
                 if (wasBeckoned) {
                     state.awardPoints(userId, config.awardsByRank[1]);
+                    logStory += 'replied to a beckon, ';
                 }
 
                 // Messages are "novel" if the text is unique
                 const isNovelMessage: boolean = !r9k.contains(msg.content);
 
                 // Update the user's points and dump the state
-                const priorPoints: number = state.getPlayerPoints(userId);
                 if (isNovelMessage) {
                     const rankedPoints: number = config.awardsByRank[rank] ?? config.defaultAward;
                     const activityPoints: number = config.defaultAward + state.getPlayerActivity(userId).getRating();
                     if (applyLeaderNerf) {
                         state.awardPoints(userId, Math.min(rankedPoints, activityPoints));
+                        logStory += `and was awarded \`min(${rankedPoints}, ${activityPoints})\` with leader nerf`;
                     } else {
                         state.awardPoints(userId, Math.max(rankedPoints, activityPoints));
+                        logStory += `and was awarded \`max(${rankedPoints}, ${activityPoints})\``;
                     }
                 } else {
                     state.awardPoints(userId, config.defaultAward);
+                    logStory += 'and sent an unoriginal GM message';
                 }
+                dailyVolatileLog.push([new Date(), logStory]);
                 dumpState();
 
                 // Add this user's message to the R9K text bank
