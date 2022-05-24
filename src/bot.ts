@@ -1506,11 +1506,9 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                                 user: userId,
                                 days: 1
                             });
-                            // If the broken combo is big enough, then penalize/reward the users involved
+                            // If the broken combo is big enough, then reward the breaker
                             if (comboDaysBroken >= config.minimumComboDays) {
                                 sendComboBrokenMessage = true;
-                                // Breakee loses at most one "default award" as a penalty
-                                state.deductPoints(comboBreakee, config.defaultAward);
                                 // Breaker is awarded points for each day of the broken combo (half a "default award" per day)
                                 state.awardPoints(userId, comboDaysBroken * config.defaultAward * 0.5);
                                 // Increment the breaker's "combos broken" counter
