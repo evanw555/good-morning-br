@@ -692,23 +692,25 @@ const finalizeAnonymousSubmissions = async () => {
         const deadbeatsText: string = naturalJoin([...deadbeats].map(userId => `<@${userId}>`));
         await messenger.send(goodMorningChannel, `Before anything else, say hello to the deadbeats who were disqualified for not voting! ${deadbeatsText} 👋`);
     }
+    const zeroVoteCodes: string[] = submissionCodes.filter(code => scores[code] === 0);
+    if (zeroVoteCodes.length > 0) {
+        const zeroVoteUserIds: Snowflake[] = zeroVoteCodes.map(code => state.getEvent().submissionOwnersByCode[code]);
+        await sleep(12000);
+        await messenger.send(goodMorningChannel, `Now, let us extend our solemn condolences to ${getJoinedMentions(zeroVoteUserIds)}, for they received no votes this fateful morning... 😬`);
+    }
     for (let i = submissionCodes.length - 1; i >= 0; i--) {
         const submissionCode: string = submissionCodes[i];
         const userId: Snowflake = state.getEvent().submissionOwnersByCode[submissionCode];
         const rank: number = i + 1;
-        // TODO: Instead, round up all users who got no votes
-        if (i === submissionCodes.length - 1 && scores[submissionCode] > 0) {
-            await sleep(10000);
-            await messenger.send(goodMorningChannel, `In dead last, we have the poor old <@${userId}> with submission **${submissionCode}**... better luck next time 😬`);
-        } else if (i === 0) {
-            await sleep(10000);
+        if (i === 0) {
+            await sleep(12000);
             await messenger.send(goodMorningChannel, `And in first place, with submission **${submissionCode}**...`);
             await sleep(6000);
             await messenger.send(goodMorningChannel, `Receiving **${breakdown[submissionCode][0]}** gold votes, **${breakdown[submissionCode][1]}** silver votes, and **${breakdown[submissionCode][2]}** bronze votes...`);
             await sleep(12000);
             await messenger.send(goodMorningChannel, `We have our winner, <@${userId}>! Congrats!`);
         } else if (i < 3) {
-            await sleep(10000);
+            await sleep(12000);
             await messenger.send(goodMorningChannel, `In ${getRankString(rank)} place, we have <@${userId}> with submission **${submissionCode}**!`);
         }
     }
