@@ -39,6 +39,7 @@ const client = new Client({
 let guild: Guild;
 
 let goodMorningChannel: TextChannel;
+let sungazersChannel: TextChannel;
 let guildOwner: GuildMember;
 let guildOwnerDmChannel: DMChannel;
 
@@ -223,7 +224,7 @@ const chooseEvent = (date: Date): DailyEvent => {
             return {
                 type: DailyEventType.AnonymousSubmissions,
                 // TODO: Add new ones such as "short story", "motivational message" once this has happened a couple times
-                submissionType: randChoice("haiku", "limerick", "poem (ABAB)", "2-sentence horror story", `${randInt(6, 10)}-word story`),
+                submissionType: randChoice("haiku", "limerick", "poem (ABAB)", "2-sentence horror story", "fake movie title", `${randInt(6, 10)}-word story`),
                 submissions: {}
             };
         } else {
@@ -685,7 +686,7 @@ const finalizeAnonymousSubmissions = async () => {
         await logger.log('Failed to compute and send voting/scoring log...');
     }
 
-    // Reveal the winners (and loser) to the channel
+    // Reveal the winners (and losers) to the channel
     await messenger.send(goodMorningChannel, 'Now, time to reveal the results...');
     if (deadbeats.size > 0) {
         await sleep(10000);
@@ -817,14 +818,19 @@ const TIMEOUT_CALLBACKS = {
         await dumpState();
         await dumpR9KHashes();
 
-        // Register a timeout that will allow the bot to "wake up" tomorrow (if the season is still going)
+        // If the season is still going...
         if (!state.isSeasonGoalReached()) {
+            // Register a timeout that will allow the bot to "wake up" tomorrow
             if (state.getEventType() === DailyEventType.GuestReveille) {
                 // Register "fallback" timeout to wake up in case the guest reveille doesn't say anything
                 await registerGuestReveilleFallbackTimeout();
             } else {
                 // Register the normal GM timeout
                 await registerGoodMorningTimeout();
+            }
+            // Notify the sungazers about tomorrow's event (if applicable)
+            if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
+                await sungazersChannel.send(`FYI gazers: tomorrow, everyone will be sending me a _${state.getEvent().submissionType}_ ${config.defaultGoodMorningEmoji}`);
             }
         }
 
@@ -1187,7 +1193,16 @@ client.on('ready', async (): Promise<void> => {
         goodMorningChannel = (await client.channels.fetch(config.goodMorningChannelId)) as TextChannel;
     } catch (err) {}
     if (!goodMorningChannel) {
-        await logger.log(`Couldn't load good morning channel with Id "${config.goodMorningChannelId}", aborting...`);
+        await logger.log(`Couldn't load good morning channel with ID \`${config.goodMorningChannelId}\`, aborting...`);
+        process.exit(1);
+    }
+
+    // Attempt to load the sungazers channel (abort if not successful)
+    try {
+        sungazersChannel = (await client.channels.fetch(config.sungazers.channel)) as TextChannel;
+    } catch (err) {}
+    if (!sungazersChannel) {
+        await logger.log(`Couldn't load sungazers channel with ID \`${config.sungazers.channel}\`, aborting...`);
         process.exit(1);
     }
 
