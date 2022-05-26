@@ -678,14 +678,6 @@ const finalizeAnonymousSubmissions = async () => {
         state.resetDaysSinceLGM(userId);
     }
 
-    // Log the details of the scoring
-    // TODO: Remove this try-catch once we're sure it works
-    try {
-        await logger.log(submissionCodes.map((c, i) => `**${getRankString(i + 1)}**: ${c} <@${state.getEvent().submissionOwnersByCode[c]}> w/ \`${breakdown[c][0]}g+${breakdown[c][1]}s+${breakdown[c][2]}b=${scores[c]}\``).join('\n'));
-    } catch (err) {
-        await logger.log('Failed to compute and send voting/scoring log...');
-    }
-
     // Reveal the winners (and losers) to the channel
     await messenger.send(goodMorningChannel, 'Now, time to reveal the results...');
     if (deadbeats.size > 0) {
@@ -729,6 +721,15 @@ const finalizeAnonymousSubmissions = async () => {
         } catch (err) {
             await logger.log(`Unable to send results DM to **${state.getPlayerDisplayName(userId)}**: \`${err.toString()}\``);
         }
+    }
+
+    // Send the details of the scoring to the sungazers
+    // TODO: Remove this try-catch once we're sure it works
+    try {
+        await messenger.send(sungazersChannel, 'FYI gazers, here are the details of today\'s voting...');
+        await messenger.send(sungazersChannel, submissionCodes.map((c, i) => `**${getRankString(i + 1)}**: ${c} <@${state.getEvent().submissionOwnersByCode[c]}> \`${breakdown[c][0]}🥇+${breakdown[c][1]}🥈+${breakdown[c][2]}🥉=${scores[c]}\``).join('\n'));
+    } catch (err) {
+        await logger.log('Failed to compute and send voting/scoring log...');
     }
 
     // Delete remaining event data
