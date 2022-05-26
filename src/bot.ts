@@ -795,6 +795,12 @@ const TIMEOUT_CALLBACKS = {
         await dumpState();
     },
     [TimeoutType.NextNoon]: async (): Promise<void> => {
+        // If attempting to end the morning while already asleep, warn the admin and abort
+        if (!state.isMorning()) {
+            logger.log('WARNING! Attempted to end the morning while `state.isMorning` is already `false`');
+            return;
+        }
+
         // Revoke access for all players with negative points
         await revokeGMChannelAccess(state.getDelinquentPlayers());
 
