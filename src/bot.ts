@@ -1416,6 +1416,10 @@ const processCommands = async (msg: Message): Promise<void> => {
     }
 };
 
+const saidMagicWord = (message: Message): boolean => {
+    return state.hasMagicWord() && message.content?.toLowerCase().includes(state.getMagicWord().toLowerCase());
+};
+
 client.on('messageCreate', async (msg: Message): Promise<void> => {
     if (goodMorningChannel && msg.channel.id === goodMorningChannel.id && !msg.author.bot) {
         const userId: Snowflake = msg.author.id;
@@ -1541,7 +1545,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 }
 
                 // If the player said the magic word, reward them and let them know privately
-                if (state.hasMagicWord() && msg.content.toLowerCase().includes(state.getMagicWord().toLowerCase())) {
+                if (saidMagicWord(msg)) {
                     state.awardPoints(userId, config.awardsByRank[1]);
                     await messenger.dm(msg.member, `You said _"${state.getMagicWord()}"_, the magic word of the day! Nice 😉`);
                     logStory += `said the magic word "${state.getMagicWord()}", `;
@@ -1621,6 +1625,10 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
 
                 // Very last thing to do is to update the player's displayName (only do this here since it may be expensive)
                 state.setPlayerDisplayName(userId, await getDisplayName(userId));
+            } else if (saidMagicWord(msg)) {
+                // If this isn't the user's GM message yet they still said the magic word, let them know...
+                await logger.log(`**${state.getPlayerDisplayName(userId)}** just said the magic word _"${state.getMagicWord()}"_, though too late...`);
+                await messenger.reply(msg, languageGenerator.generate(`You {!said|just said} the {!magic word|word of the day|secret word|magic word of the day}, {!yet|but|though} {!you're a little too late|it wasn't in your GM message} so it doesn't count...`));
             }
         } else {
             // If the bot hasn't woken up yet and it's a reverse GM, react and track the rank of each player for now...
