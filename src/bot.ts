@@ -1628,7 +1628,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             } else if (saidMagicWord(msg)) {
                 // If this isn't the user's GM message yet they still said the magic word, let them know...
                 await logger.log(`**${state.getPlayerDisplayName(userId)}** just said the magic word _"${state.getMagicWord()}"_, though too late...`);
-                await messenger.reply(msg, languageGenerator.generate(`You {!said|just said} the {!magic word|word of the day|secret word|magic word of the day}, {!yet|but|though} {!you're a little too late|it wasn't in your GM message} so it doesn't count...`));
+                await messenger.dm(msg.member, languageGenerator.generate(`You {!said|just said} the {!magic word|word of the day|secret word|magic word of the day}, {!yet|but|though} {!you're a little too late|it wasn't in your GM message} so it doesn't count...`));
             }
         } else {
             // If the bot hasn't woken up yet and it's a reverse GM, react and track the rank of each player for now...
