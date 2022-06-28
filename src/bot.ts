@@ -224,7 +224,7 @@ const chooseEvent = (date: Date): DailyEvent => {
             return {
                 type: DailyEventType.AnonymousSubmissions,
                 // TODO: Add new ones such as "short story", "motivational message" once this has happened a couple times
-                submissionType: randChoice("haiku", "limerick", "poem (ABAB)", "2-sentence horror story", "fake movie title", `${randInt(6, 10)}-word story`),
+                submissionType: randChoice("haiku", "limerick", "poem (ABAB)", "2-sentence horror story", "fake movie title", `${randInt(6, 12)}-word story`),
                 submissions: {}
             };
         } else {
@@ -232,7 +232,7 @@ const chooseEvent = (date: Date): DailyEvent => {
             return {
                 type: DailyEventType.AnonymousSubmissions,
                 // TODO: Add new ones such as "cute wholesome animal pic" once this has happened a couple times
-                submissionType: "pic that goes hard",
+                submissionType: randChoice("pic that goes hard", "cursed image"),
                 isAttachmentSubmission: true,
                 submissions: {}
             };
