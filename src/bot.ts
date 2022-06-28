@@ -543,7 +543,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     // If we're 20% of the way through the season, determine the nerf threshold for today
     if (state.getSeasonCompletion() > 0.2) {
         // Threshold is 2 top awards below the top score
-        const nerfThreshold: number = toFixed(state.getTopScore() - (2 * config.awardsByRank[0]));
+        const nerfThreshold: number = toFixed(state.getTopScore() - (2 * config.awardsByRank[1]));
         state.setNerfThreshold(nerfThreshold);
         dailyVolatileLog.push([new Date(), `Set nerf threshold to ${nerfThreshold}`]);
     }
