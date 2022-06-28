@@ -727,7 +727,16 @@ const finalizeAnonymousSubmissions = async () => {
     // TODO: Remove this try-catch once we're sure it works
     try {
         await messenger.send(sungazersChannel, 'FYI gazers, here are the details of today\'s voting...');
-        await messenger.send(sungazersChannel, submissionCodes.map((c, i) => `**${getRankString(i + 1)}**: ${c} <@${state.getEvent().submissionOwnersByCode[c]}> \`${breakdown[c][0]}🥇+${breakdown[c][1]}🥈+${breakdown[c][2]}🥉=${scores[c]}\``).join('\n'));
+        const allCodes: string[] = submissionCodes.concat(Array.from(deadbeats));
+        await messenger.send(sungazersChannel, allCodes.map((c, i) => {
+            const medalsText: string = ('🥇'.repeat(breakdown[c][0]) + '🥈'.repeat(breakdown[c][1]) + '🥉'.repeat(breakdown[c][2])) || '🌚';
+            const userId: Snowflake = state.getEvent().submissionOwnersByCode[c];
+            if (deadbeats.has(c)) {
+                return `**DQ**: ${c} <@${userId}> \`${medalsText}=${scores[c]}\``;
+            } else {
+                return `**${getRankString(i + 1)}**: ${c} <@${userId}> \`${medalsText}=${scores[c]}\``;
+            }
+        }).join('\n'));
     } catch (err) {
         await logger.log('Failed to compute and send voting/scoring log...');
     }
