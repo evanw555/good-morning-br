@@ -1639,6 +1639,11 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 await logger.log(`**${state.getPlayerDisplayName(userId)}** just said the magic word _"${state.getMagicWord()}"_, though too late...`);
                 await messenger.dm(msg.member, languageGenerator.generate(`You {!said|just said} the {!magic word|word of the day|secret word|magic word of the day}, {!yet|but|though} {!you're a little too late|it wasn't in your GM message} so it doesn't count...`));
             }
+
+            // Regardless of whether it's their first message or not, react to the magic word with a small probability
+            if (saidMagicWord(msg) && Math.random() < 0.25) {
+                await reactToMessage(msg, ['😉', '😏', '😜', '😛']);
+            }
         } else {
             // If the bot hasn't woken up yet and it's a reverse GM, react and track the rank of each player for now...
             // TODO: Clean this up! Doesn't even take R9K into account
