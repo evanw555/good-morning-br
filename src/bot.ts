@@ -2,11 +2,11 @@ import { Client, DMChannel, Intents, MessageAttachment, TextChannel } from 'disc
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'discord.js';
 import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PastTimeoutStrategy, HomeStretchSurprise } from './types.js';
 import { createHomeStretchImage, createMidSeasonUpdateImage, createSeasonResultsImage } from './graphics.js';
-import { hasVideo, randInt, validateConfig, getTodayDateString, reactToMessage, sleep, randChoice, toCalendarDate, getTomorrow, generateKMeansClusters, getRankString, naturalJoin, getClockTime, getOrderingUpsets, toLetterId, toFixed } from './util.js';
+import { hasVideo, validateConfig, getTodayDateString, reactToMessage, sleep, toCalendarDate, getTomorrow, generateKMeansClusters, getRankString, naturalJoin, getClockTime, getOrderingUpsets, toLetterId, toFixed } from './util.js';
 import GoodMorningState from './state.js';
 import logger from './logger.js';
 
-import { FileStorage, LanguageGenerator, loadJson, R9KTextBank, TimeoutManager } from 'evanw555.js';
+import { FileStorage, LanguageGenerator, loadJson, Messenger, R9KTextBank, randChoice, randInt, TimeoutManager } from 'evanw555.js';
 const auth = loadJson('config/auth.json');
 const config: GoodMorningConfig = loadJson('config/config.json');
 
@@ -17,9 +17,10 @@ languageGenerator.setLogger((message) => {
     logger.log(message);
 });
 const r9k = new R9KTextBank();
-
-import Messenger from './messenger.js';
 const messenger = new Messenger();
+messenger.setLogger((message) => {
+    logger.log(message);
+});
 
 const client = new Client({
     intents: [
