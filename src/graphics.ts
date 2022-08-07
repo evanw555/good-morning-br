@@ -1,8 +1,8 @@
 import canvas, { Image } from 'canvas';
 import { Snowflake } from 'discord.js';
+import { getNumberOfDaysSince, getTodayDateString } from 'evanw555.js';
 import GoodMorningState from './state.js';
 import { Medals } from "./types.js";
-import { getNumberOfDaysSince, getTodayDateString } from './util.js';
 
 export async function createHomeStretchImage(state: GoodMorningState, medals: Record<Snowflake, Medals>): Promise<Buffer> {
     return await _createImage(state, medals, {

@@ -2,11 +2,11 @@ import { Client, DMChannel, Intents, MessageAttachment, TextChannel } from 'disc
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'discord.js';
 import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PastTimeoutStrategy, HomeStretchSurprise } from './types.js';
 import { createHomeStretchImage, createMidSeasonUpdateImage, createSeasonResultsImage } from './graphics.js';
-import { hasVideo, validateConfig, getTodayDateString, reactToMessage, sleep, toCalendarDate, getTomorrow, generateKMeansClusters, getRankString, naturalJoin, getClockTime, getOrderingUpsets, toLetterId, toFixed } from './util.js';
+import { hasVideo, validateConfig, reactToMessage, getOrderingUpsets } from './util.js';
 import GoodMorningState from './state.js';
 import logger from './logger.js';
 
-import { FileStorage, LanguageGenerator, loadJson, Messenger, R9KTextBank, randChoice, randInt, TimeoutManager } from 'evanw555.js';
+import { FileStorage, generateKMeansClusters, getClockTime, getRankString, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger, naturalJoin, R9KTextBank, randChoice, randInt, shuffle, sleep, TimeoutManager, toCalendarDate, toFixed, toLetterId } from 'evanw555.js';
 const auth = loadJson('config/auth.json');
 const config: GoodMorningConfig = loadJson('config/config.json');
 
@@ -904,7 +904,7 @@ const TIMEOUT_CALLBACKS = {
 
         // Get all the relevant user IDs and shuffle them
         const userIds: Snowflake[] = Object.keys(state.getEvent().submissions);
-        userIds.sort((x, y) => Math.random() - Math.random());
+        shuffle(userIds);
 
         // For each submission (in shuffled order)...
         for (let i = 0; i < userIds.length; i++) {
