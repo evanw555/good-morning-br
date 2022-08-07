@@ -1,12 +1,12 @@
 import { Client, DMChannel, Intents, MessageAttachment, TextChannel } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'discord.js';
-import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PastTimeoutStrategy, HomeStretchSurprise } from './types.js';
+import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, HomeStretchSurprise } from './types.js';
 import { createHomeStretchImage, createMidSeasonUpdateImage, createSeasonResultsImage } from './graphics.js';
 import { hasVideo, validateConfig, reactToMessage, getOrderingUpsets } from './util.js';
 import GoodMorningState from './state.js';
 import logger from './logger.js';
 
-import { FileStorage, generateKMeansClusters, getClockTime, getRankString, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger, naturalJoin, R9KTextBank, randChoice, randInt, shuffle, sleep, TimeoutManager, toCalendarDate, toFixed, toLetterId } from 'evanw555.js';
+import { FileStorage, generateKMeansClusters, getClockTime, getRankString, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger, naturalJoin, PastTimeoutStrategy, R9KTextBank, randChoice, randInt, shuffle, sleep, TimeoutManager, toCalendarDate, toFixed, toLetterId } from 'evanw555.js';
 const auth = loadJson('config/auth.json');
 const config: GoodMorningConfig = loadJson('config/config.json');
 

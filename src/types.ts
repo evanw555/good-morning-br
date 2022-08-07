@@ -1,4 +1,4 @@
-import { Snowflake } from "discord-api-types";
+import { Snowflake } from "discord.js"
 
 export enum TimeoutType{
     NextGoodMorning = 'NEXT_GOOD_MORNING',
@@ -9,22 +9,6 @@ export enum TimeoutType{
     AnonymousSubmissionReveal = 'ANONYMOUS_SUBMISSION_REVEAL',
     AnonymousSubmissionVotingReminder = 'ANONYMOUS_SUBMISSION_VOTING_REMINDER',
     HomeStretchSurprise = 'HOME_STRETCH_SURPRISE'
-}
-
-/**
- * How to handle a timeout which is registered for sometime in the past.
- */
-export enum PastTimeoutStrategy {
-    Delete = 'DELETE',
-    Invoke = 'INVOKE',
-    IncrementHour = 'INCREMENT_HOUR',
-    IncrementDay = 'INCREMENT_DAY'
-}
-
-export interface Timeout {
-    type: TimeoutType,
-    date: string,
-    pastStrategy: PastTimeoutStrategy
 }
 
 /**
