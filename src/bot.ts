@@ -1,24 +1,21 @@
 import { Client, DMChannel, Intents, MessageAttachment, TextChannel } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'discord.js';
 import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PastTimeoutStrategy, HomeStretchSurprise } from './types.js';
-import TimeoutManager from './timeout-manager.js';
 import { createHomeStretchImage, createMidSeasonUpdateImage, createSeasonResultsImage } from './graphics.js';
 import { hasVideo, randInt, validateConfig, getTodayDateString, reactToMessage, sleep, randChoice, toCalendarDate, getTomorrow, generateKMeansClusters, getRankString, naturalJoin, getClockTime, getOrderingUpsets, toLetterId, toFixed } from './util.js';
 import GoodMorningState from './state.js';
 import logger from './logger.js';
 
-import { loadJson } from './load-json.js';
+import { FileStorage, LanguageGenerator, loadJson, R9KTextBank, TimeoutManager } from 'evanw555.js';
 const auth = loadJson('config/auth.json');
 const config: GoodMorningConfig = loadJson('config/config.json');
 
-import FileStorage from './file-storage.js';
 const storage = new FileStorage('./data/');
-
-import LanguageGenerator from './language-generator.js';
 const languageConfig = loadJson('config/language.json');
 const languageGenerator = new LanguageGenerator(languageConfig);
-
-import R9KTextBank from './r9k.js';
+languageGenerator.setLogger((message) => {
+    logger.log(message);
+});
 const r9k = new R9KTextBank();
 
 import Messenger from './messenger.js';
@@ -453,7 +450,7 @@ const registerGoodMorningTimeout = async (days: number = 1): Promise<void> => {
     morningTomorrow.setHours(randInt(MIN_HOUR, MAX_HOUR_EXCLUSIVE), randInt(0, 60), randInt(0, 60));
 
     // We register this with the "Increment Day" strategy since it happens at a particular time and it's not competing with any other triggers.
-    await timeoutManager.registerTimeout(TimeoutType.NextGoodMorning, morningTomorrow, PastTimeoutStrategy.IncrementDay);
+    await timeoutManager.registerTimeout(TimeoutType.NextGoodMorning, morningTomorrow, { pastStrategy: PastTimeoutStrategy.IncrementDay });
 };
 
 const registerGuestReveilleFallbackTimeout = async (): Promise<void> => {
@@ -462,7 +459,7 @@ const registerGuestReveilleFallbackTimeout = async (): Promise<void> => {
     date.setHours(11, randInt(30, 45), randInt(0, 60));
     // We register this with the "Invoke" strategy since this way of "waking up" is competing with a user-driven trigger.
     // We want to invoke this ASAP in order to avoid this event when it's no longer needed.
-    await timeoutManager.registerTimeout(TimeoutType.GuestReveilleFallback, date, PastTimeoutStrategy.Invoke);
+    await timeoutManager.registerTimeout(TimeoutType.GuestReveilleFallback, date, { pastStrategy: PastTimeoutStrategy.Invoke });
 };
 
 const wakeUp = async (sendMessage: boolean): Promise<void> => {
@@ -502,7 +499,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         // Set timeout for first home stretch surprise (these events are recursive)
         const surpriseTime = new Date();
         surpriseTime.setMinutes(surpriseTime.getMinutes() + 10);
-        await timeoutManager.registerTimeout(TimeoutType.HomeStretchSurprise, surpriseTime, PastTimeoutStrategy.Invoke);
+        await timeoutManager.registerTimeout(TimeoutType.HomeStretchSurprise, surpriseTime, { pastStrategy: PastTimeoutStrategy.Invoke });
     }
 
     // Set timeout for anonymous submission reveal
@@ -510,14 +507,14 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         const submissionRevealTime = new Date();
         submissionRevealTime.setHours(11, 0, 0, 0);
         // We register this with the "Invoke" strategy since we want it to happen before Pre-Noon (with which it's registered in parallel)
-        await timeoutManager.registerTimeout(TimeoutType.AnonymousSubmissionReveal, submissionRevealTime, PastTimeoutStrategy.Invoke);
+        await timeoutManager.registerTimeout(TimeoutType.AnonymousSubmissionReveal, submissionRevealTime, { pastStrategy: PastTimeoutStrategy.Invoke });
     }
 
     // Set timeout for when morning almost ends
     const preNoonToday: Date = new Date();
     preNoonToday.setHours(11, randInt(48, 56), randInt(0, 60), 0);
     // We register this with the "Increment Hour" strategy since its subsequent timeout (Noon) is registered in series
-    await timeoutManager.registerTimeout(TimeoutType.NextPreNoon, preNoonToday, PastTimeoutStrategy.IncrementHour);
+    await timeoutManager.registerTimeout(TimeoutType.NextPreNoon, preNoonToday, { pastStrategy: PastTimeoutStrategy.IncrementHour });
 
     // Update the bot's status to active
     await setStatus(true);
@@ -759,7 +756,7 @@ const TIMEOUT_CALLBACKS = {
         const noonToday: Date = new Date();
         noonToday.setHours(12, 0, 0, 0);
         // We register this with the "Increment Hour" strategy since its subsequent timeout (GoodMorning) is registered in series
-        await timeoutManager.registerTimeout(TimeoutType.NextNoon, noonToday, PastTimeoutStrategy.IncrementHour);
+        await timeoutManager.registerTimeout(TimeoutType.NextNoon, noonToday, { pastStrategy: PastTimeoutStrategy.IncrementHour });
 
         // Check the results of anonymous submissions
         if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
@@ -973,7 +970,7 @@ const TIMEOUT_CALLBACKS = {
             const reminderTime: Date = new Date();
             reminderTime.setHours(hour, minute);
             // We register these with the "Delete" strategy since they are terminal and aren't needed if in the past
-            timeoutManager.registerTimeout(TimeoutType.AnonymousSubmissionVotingReminder, reminderTime, PastTimeoutStrategy.Delete);
+            timeoutManager.registerTimeout(TimeoutType.AnonymousSubmissionVotingReminder, reminderTime, { pastStrategy: PastTimeoutStrategy.Delete });
         });
     },
     [TimeoutType.AnonymousSubmissionVotingReminder]: async (): Promise<void> => {
@@ -1017,7 +1014,7 @@ const TIMEOUT_CALLBACKS = {
             // Recursively schedule the next timeout
             const nextTimeout: Date = new Date();
             nextTimeout.setMinutes(nextTimeout.getMinutes() + 10);
-            await timeoutManager.registerTimeout(TimeoutType.HomeStretchSurprise, nextTimeout, PastTimeoutStrategy.Invoke);
+            await timeoutManager.registerTimeout(TimeoutType.HomeStretchSurprise, nextTimeout, { pastStrategy: PastTimeoutStrategy.Invoke });
             // Act on this surprise
             switch (surprise) {
             case HomeStretchSurprise.Multipliers:
