@@ -6,7 +6,7 @@ import { hasVideo, validateConfig, reactToMessage, getOrderingUpsets } from './u
 import GoodMorningState from './state.js';
 import logger from './logger.js';
 
-import { FileStorage, generateKMeansClusters, getClockTime, getRankString, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger, naturalJoin, PastTimeoutStrategy, R9KTextBank, randChoice, randInt, shuffle, sleep, TimeoutManager, toCalendarDate, toFixed, toLetterId } from 'evanw555.js';
+import { FileStorage, generateKMeansClusters, getClockTime, getRankString, getRelativeDateTimeString, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger, naturalJoin, PastTimeoutStrategy, R9KTextBank, randChoice, randInt, shuffle, sleep, TimeoutManager, toCalendarDate, toFixed, toLetterId } from 'evanw555.js';
 const auth = loadJson('config/auth.json');
 const config: GoodMorningConfig = loadJson('config/config.json');
 
@@ -876,8 +876,12 @@ const TIMEOUT_CALLBACKS = {
             const winners = await advanceSeason();
             await sendSeasonEndMessages(goodMorningChannel, previousState);
             await updateSungazers(winners);
-            // Register the next GM timeout for a few days in the future to provide a buffer
-            await registerGoodMorningTimeout(5);
+            // Register the next GM timeout for next Monday
+            const nextSeasonStart: Date = new Date();
+            nextSeasonStart.setHours(8, 0, 0, 0);
+            nextSeasonStart.setDate(nextSeasonStart.getDate() + 8 - nextSeasonStart.getDay());
+            await timeoutManager.registerTimeout(TimeoutType.NextGoodMorning, nextSeasonStart, { pastStrategy: PastTimeoutStrategy.IncrementDay });
+            await logger.log(`Registered next season's first GM for **${getRelativeDateTimeString(nextSeasonStart)}**`);
         }
 
         // Update the bot's status
