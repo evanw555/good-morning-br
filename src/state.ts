@@ -1,10 +1,12 @@
 import { Snowflake } from "discord.js";
 import { getTodayDateString, toFixed } from "evanw555.js";
-import ActivityTracker from "./activity-tracker.js";
-import { Combo, DailyEvent, DailyEventType, DailyPlayerState, FullDate, PlayerState, RawGoodMorningState, Season } from "./types.js";
+import ActivityTracker from "./activity-tracker";
+import AbstractGame from "./games/abstract-game";
+import { Combo, DailyEvent, DailyEventType, DailyPlayerState, FullDate, GameState, PlayerState, RawGoodMorningState, Season } from "./types";
 
 export default class GoodMorningState {
     private data: RawGoodMorningState;
+    private game?: AbstractGame<GameState>;
 
     constructor(rawState: RawGoodMorningState) {
         this.data = rawState;
@@ -568,6 +570,19 @@ export default class GoodMorningState {
     getSubmissionNonVoters(): Snowflake[] {
         return Object.keys(this.getEvent().submissions).filter(userId => this.getEvent().votes[userId] === undefined);
     }
+
+    getGame(): AbstractGame<GameState> {
+        return this.game;
+    }
+
+    hasGame(): boolean {
+        return this.game !== undefined;
+    }
+
+    setGame(game: AbstractGame<GameState>): void {
+        this.game = game;
+        this.data.game = game.getState();
+    } 
 
     toJson(): string {
         return JSON.stringify(this.data, null, 2);

@@ -1,12 +1,13 @@
 import { Client, DMChannel, Intents, MessageAttachment, TextChannel } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'discord.js';
-import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, HomeStretchSurprise } from './types.js';
-import { createHomeStretchImage, createMidSeasonUpdateImage, createSeasonResultsImage } from './graphics.js';
-import { hasVideo, validateConfig, reactToMessage, getOrderingUpsets } from './util.js';
-import GoodMorningState from './state.js';
-import logger from './logger.js';
+import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, HomeStretchSurprise } from './types';
+import { createHomeStretchImage, createMidSeasonUpdateImage, createSeasonResultsImage } from './graphics';
+import { hasVideo, validateConfig, reactToMessage, getOrderingUpsets } from './util';
+import GoodMorningState from './state';
+import logger from './logger';
 
 import { FileStorage, generateKMeansClusters, getClockTime, getRankString, getRelativeDateTimeString, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger, naturalJoin, PastTimeoutStrategy, R9KTextBank, randChoice, randInt, shuffle, sleep, TimeoutManager, toCalendarDate, toFixed, toLetterId } from 'evanw555.js';
+import DungeonCrawler from './games/dungeon';
 const auth = loadJson('config/auth.json');
 const config: GoodMorningConfig = loadJson('config/config.json');
 
@@ -203,10 +204,16 @@ const advanceSeason = async (): Promise<{ gold?: Snowflake, silver?: Snowflake, 
 };
 
 const chooseEvent = (date: Date): DailyEvent => {
-    // Sunday: Recap
+    // Sunday: Game Update
     if (date.getDay() === 0) {
         return {
-            type: DailyEventType.RecapSunday
+            type: DailyEventType.GameUpdate
+        };
+    }
+    // Saturday: Game Decision
+    if (date.getDay() === 6) {
+        return {
+            type: DailyEventType.GameDecision
         };
     }
     // Friday: Monkey Friday
@@ -1287,7 +1294,52 @@ client.on('interactionCreate', async (interaction): Promise<void> => {
     }
 });
 
+let awaitingGameCommands = false;
+
 const processCommands = async (msg: Message): Promise<void> => {
+    if (msg.content.toLocaleLowerCase() === 'dungeon?') {
+        await msg.reply('Generating new game...');
+        awaitingGameCommands = true;
+        const dungeon = DungeonCrawler.createBest(20, 40);
+        state.setGame(dungeon);
+        await dumpState();
+        const attachment = new MessageAttachment(await dungeon.renderState(), 'dungeon.png');
+        await msg.channel.send({ content: `Map Disparity: ${dungeon.getMapFairness().description}`, files: [attachment] });
+        return;
+    }
+    if (awaitingGameCommands) {
+        if (state.hasGame()) {
+            try {
+                const response = state.getGame().addPlayerDecision(msg.author.id, msg.content);
+                await msg.reply(response);
+            } catch (err) {
+                await msg.reply(err.toString());
+                return;
+            }
+
+            const game = state.getGame();
+            if (game instanceof DungeonCrawler) {
+                // TODO: Temp logic to move all other players
+                for (const otherId of game.getOrderedPlayers()) {
+                    if (otherId !== msg.author.id) {
+                        const nextAction = game.getNextActionsTowardGoal(otherId, 5);
+                        if (nextAction) {
+                            game.addPlayerDecision(otherId, nextAction);
+                        }
+                    }
+                }
+            }
+
+            // Process decisions and render state
+            state.getGame().processPlayerDecisions();
+            await dumpState();
+            const attachment = new MessageAttachment(await state.getGame().renderState(), 'dungeon.png');
+            await msg.channel.send({ files: [attachment] });
+        } else {
+            await msg.reply('The game has not been created yet!');
+        }
+        return;
+    }
     // Test out hashing of raw text input
     if (msg.content.startsWith('#')) {
         const exists = r9k.contains(msg.content);

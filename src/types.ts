@@ -74,7 +74,10 @@ export enum DailyEventType {
     // Abnormal events (i.e. not the typical "wait-for-GM-then-say-GM" event)
     GuestReveille = 'GUEST_REVEILLE',
     ReverseGoodMorning = 'REVERSE_GOOD_MORNING',
-    AnonymousSubmissions = 'ANONYMOUS_SUBMISSIONS'
+    AnonymousSubmissions = 'ANONYMOUS_SUBMISSIONS',
+    // 2.0 events
+    GameDecision = 'GAME_DECISION',
+    GameUpdate = 'GAME_UPDATE'
 }
 
 export enum HomeStretchSurprise {
@@ -103,6 +106,22 @@ export interface DailyEvent {
     homeStretchSurprises?: HomeStretchSurprise[]
 }
 
+export interface DungeonGameState {
+    type: 'DUNGEON_GAME_STATE',
+    decisions: Record<Snowflake, string>,
+    rows: number,
+    columns: number
+    map: number[][],
+    players: Record<Snowflake, { r: number, c: number, avatarUrl: string }>
+}
+
+export interface DummyGameState {
+    type: 'DUMMY_GAME_STATE',
+    decisions: Record<Snowflake, string>,
+}
+
+export type GameState = DungeonGameState | DummyGameState;
+
 export interface RawGoodMorningState {
     season: number,
     goal: number,
@@ -119,7 +138,8 @@ export interface RawGoodMorningState {
     event?: DailyEvent,
     nextEvent?: DailyEvent,
     dailyStatus: Record<Snowflake, DailyPlayerState>,
-    players: Record<Snowflake, PlayerState>
+    players: Record<Snowflake, PlayerState>,
+    game?: GameState
 }
 
 export interface Season {
