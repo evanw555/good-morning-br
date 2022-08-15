@@ -384,19 +384,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             }
         }
         const players: Record<Snowflake, DungeonPlayerState> = {};
-        players['321059211368988703'] = {
-            r: 0,
-            c: 20,
-            avatarUrl: 'https://cdn.discordapp.com/avatars/321059211368988703/7b0b07b54bc050c93fd4fcf17dcd6546.png?size=32',
-            displayName: 'FatherYahweh',
-            points: 10
-        };
-        let j = 0;
-        for (const member of members) {
-            if (member.id === '321059211368988703') {
-                continue;
-            }
-            j++;
+        for (let j = 0; j < members.length; j++) {
+            const member = members[j];
             const [ r, c ] = DungeonCrawler.getInitialLocationV2(j, 41, 41);
             players[member.id] = {
                 r,

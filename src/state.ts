@@ -395,6 +395,10 @@ export default class GoodMorningState {
         this.getOrCreatePlayer(userId).deductions = toFixed(this.getPlayerDeductions(userId) + points);
     }
 
+    setPlayerPoints(userId: Snowflake, points: number): void {
+        this.getOrCreatePlayer(userId).points = toFixed(points);
+    }
+
     getPointsEarnedToday(userId: Snowflake): number {
         return this.getDailyStatus(userId)?.pointsEarned ?? 0;
     }

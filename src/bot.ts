@@ -1,6 +1,6 @@
 import { Client, DMChannel, Intents, MessageAttachment, TextChannel } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'discord.js';
-import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, HomeStretchSurprise } from './types';
+import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, HomeStretchSurprise, GameState } from './types';
 import { createHomeStretchImage, createMidSeasonUpdateImage, createSeasonResultsImage } from './graphics';
 import { hasVideo, validateConfig, reactToMessage, getOrderingUpsets } from './util';
 import GoodMorningState from './state';
@@ -249,7 +249,8 @@ const chooseEvent = (date: Date): DailyEvent => {
         return undefined;
     }
     // Begin home stretch if we're far enough along and not currently in the home stretch (this will be delayed if an above event needs to happen instead e.g. MF)
-    if (state.getSeasonCompletion() >= 0.85 && !state.isHomeStretch()) {
+    // TODO (2.0): Re-enable this?
+    if (false && state.getSeasonCompletion() >= 0.85 && !state.isHomeStretch()) {
         return {
             type: DailyEventType.BeginHomeStretch,
             homeStretchSurprises: [HomeStretchSurprise.Multipliers, HomeStretchSurprise.LongestComboBonus, HomeStretchSurprise.ComboBreakerBonus]
@@ -260,13 +261,14 @@ const chooseEvent = (date: Date): DailyEvent => {
     if (Math.random() < eventChance) {
         // Compile a list of potential events (include default events)
         const potentialEvents: DailyEvent[] = [
-            {
-                type: DailyEventType.ReverseGoodMorning,
-                reverseGMRanks: {}
-            },
-            {
-                type: DailyEventType.GrumpyMorning
-            },
+            // TODO (2.0): Should I re-enable these?
+            // {
+            //     type: DailyEventType.ReverseGoodMorning,
+            //     reverseGMRanks: {}
+            // },
+            // {
+            //     type: DailyEventType.GrumpyMorning
+            // },
             {
                 type: DailyEventType.SleepyMorning
             }
@@ -374,10 +376,23 @@ const sendGoodMorningMessage = async (): Promise<void> => {
                 + `At 11:00, I'll post them here anonymously and you'll all be voting on your favorites 😉`;
             await messenger.send(goodMorningChannel, text);
             break;
+        case DailyEventType.GameDecision:
+            // TODO (2.0): FINISH THIS!
+            await goodMorningChannel.send({
+                content: 'Happy Saturday!',
+                files: [new MessageAttachment(await state.getGame().renderState(), 'game-state.png')]
+            });
+            break;
+        case DailyEventType.GameUpdate:
+            // TODO (2.0): FINISH THIS!
+            break;
         default:
             // Otherwise, send the standard GM message as normal (do a season intro greeting if today is the first day)
             if (state.getSeasonStartedOn() === getTodayDateString()) {
-                await messenger.send(goodMorningChannel, `Good morning everyone and welcome to season **${state.getSeasonNumber()}**! I hope to see many familiar faces, and if I'm lucky maybe even some new ones ${config.defaultGoodMorningEmoji}`);
+                const text = `Good morning everyone and welcome to season **${state.getSeasonNumber()}**! `
+                    + 'This season will be very different from seasons past, you\'ll see what I mean on Saturday... '
+                    + `I hope to see many familiar faces, and if I\'m lucky maybe even some new ones ${config.defaultGoodMorningEmoji}`;
+                await messenger.send(goodMorningChannel, text);
             } else if (Math.random() < config.goodMorningMessageProbability) {
                 await messenger.send(goodMorningChannel, languageGenerator.generate(overriddenMessage ?? '{goodMorning}'));
             }
@@ -477,6 +492,36 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         return;
     }
 
+    // If today is the first decision of the season, instantiate the game...
+    if (state.getEventType() === DailyEventType.GameDecision && !state.hasGame()) {
+        // Fetch all participating members, ordered by performance in the first week
+        const participatingUserIds: Snowflake[] = state.getOrderedPlayers();
+        const members = [];
+        for (const userId of participatingUserIds) {
+            try {
+                const member = await guild.members.fetch(userId);
+                members.push(member);
+            } catch (err) {
+                await logger.log(`Failed to fetch member <@${userId}> when creating dungeon: \`${err}\``);
+            }
+        }
+        // Create the dungeon using these initial members
+        const dungeon = DungeonCrawler.createBest(members, 20, 60);
+        state.setGame(dungeon);
+    }
+
+    // If today is a decision day, transfer all earned points into the game
+    if (state.getEventType() === DailyEventType.GameDecision) {
+        for (const userId of state.getOrderedPlayers()) {
+            // TODO (2.0): Handle users who aren't in the game (week 2)
+            // Transfer whole earned points into the game
+            const points = state.getPlayerPoints(userId);
+            state.getGame().addPoints(userId, Math.floor(points));
+            // Reset the standard GMBR points for this user to the remainder
+            state.setPlayerPoints(userId, points % 1);
+        }
+    }
+
     // Increment "days since last good morning" counters for all participating users
     state.incrementAllLGMs();
 
@@ -484,7 +529,8 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     state.setGoodMorningEmoji(config.goodMorningEmojiOverrides[toCalendarDate(new Date())] ?? config.defaultGoodMorningEmoji);
 
     // Give a hint for today's magic word
-    if (state.hasMagicWord()) {
+    // TODO (2.0): How can this be re-enabled?
+    if (false && state.hasMagicWord()) {
         // Get list of all suitable recipients of the magic word (this is a balancing mechanic, so pick players who are behind yet active)
         const potentialMagicWordRecipients: Snowflake[] = state.getPotentialMagicWordRecipients();
         // Determine if we should give out the hint
@@ -781,7 +827,8 @@ const TIMEOUT_CALLBACKS = {
         // Update current leader property
         const previousLeader: Snowflake = state.getCurrentLeader();
         const leaderUpset: boolean = state.updateCurrentLeader();
-        if (leaderUpset) {
+        // TODO (2.0): Should this be re-enabled?
+        if (false && leaderUpset) {
             const newLeader: Snowflake = state.getCurrentLeader();
             // If it's not the end of the season, notify the channel of the leader shift
             if (!state.isSeasonGoalReached()) {
@@ -878,7 +925,8 @@ const TIMEOUT_CALLBACKS = {
         }
 
         // If anyone's score is above the season goal, then proceed to the next season
-        if (state.isSeasonGoalReached()) {
+        // TODO: Re-enable this?
+        if (false && state.isSeasonGoalReached()) {
             const previousState: GoodMorningState = state;
             const winners = await advanceSeason();
             await sendSeasonEndMessages(goodMorningChannel, previousState);
@@ -1539,6 +1587,11 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 return;
             }
 
+            // If the event is a game update Sunday, ignore all messages
+            if (state.getEventType() === DailyEventType.GameUpdate) {
+                return;
+            }
+
             // Reset user's "days since last good morning" counter
             state.resetDaysSinceLGM(userId);
 
@@ -1771,8 +1824,12 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             await processCommands(msg);
             return;
         }
+        // Process game decisions via DM
+        if (state.isMorning() && state.getEventType() === DailyEventType.GameDecision) {
+            // TODO (2.0): Handle decisions here
+        }
         // Process DM submissions depending on the event
-        if (state.isMorning() && state.getEventType() === DailyEventType.AnonymousSubmissions) {
+        else if (state.isMorning() && state.getEventType() === DailyEventType.AnonymousSubmissions) {
             const userId: Snowflake = msg.author.id;
             // Handle voting or submitting depending on what phase of the process we're in
             // TODO: Remove this once we can prove that the "vote" slash command works as expected
