@@ -224,7 +224,8 @@ const chooseEvent = (date: Date): DailyEvent => {
     }
     // Tuesday: Anonymous Submissions
     if (date.getDay() === 2) {
-        if (date.getDate() % 2 === 0) {
+        // TODO (2.0): Swapped temporarily to start the season off with a PTGH
+        if (date.getDate() % 2 === 1) {
             // If it's an even-numbered day, do text submissions
             return {
                 type: DailyEventType.AnonymousSubmissions,
