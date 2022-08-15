@@ -1565,8 +1565,8 @@ const saidMagicWord = (message: Message): boolean => {
 client.on('messageCreate', async (msg: Message): Promise<void> => {
     if (goodMorningChannel && msg.channel.id === goodMorningChannel.id && !msg.author.bot) {
         const userId: Snowflake = msg.author.id;
-        const firstMessageThisSeason: boolean = !state.hasPlayer(userId);
         const isAm: boolean = new Date().getHours() < 12;
+        const isJoiningGameLate: boolean = state.isPlayerNewToGame(userId);
 
         // If the grace period is active, then completely ignore all messages
         if (state.isGracePeriod()) {
@@ -1591,6 +1591,12 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             // If the event is a game update Sunday, ignore all messages
             if (state.getEventType() === DailyEventType.GameUpdate) {
                 return;
+            }
+
+            // If the game has started without the user, add them now
+            // TODO (2.0): This doesn't account for special days like submissions
+            if (isJoiningGameLate) {
+                state.getGame().addPlayer(msg.member);
             }
 
             // Reset user's "days since last good morning" counter
@@ -1738,8 +1744,9 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 }
                 // If this post is NOT a Monkey Friday post, reply as normal (this is to avoid double replies on Monkey Friday)
                 else if (!triggerMonkeyFriday) {
-                    // If it's the user's first message this season (and we're at least 10% in), reply to them with a special message
-                    if (firstMessageThisSeason && state.getSeasonCompletion() > 0.1) {
+                    // If the game has started and the user is just now joining, greet them specially
+                    if (isJoiningGameLate) {
+                        state.getGame().addPlayer(msg.member);
                         messenger.reply(msg, languageGenerator.generate('{goodMorningReply.new?}'));
                     }
                     // If the user was beckoned, reply to them specially

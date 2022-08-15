@@ -599,7 +599,14 @@ export default class GoodMorningState {
     setGame(game: AbstractGame<GameState>): void {
         this.game = game;
         this.data.game = game.getState();
-    } 
+    }
+
+    /**
+     * @returns True if the game has started and the user hasn't joined yet
+     */
+    isPlayerNewToGame(userId: Snowflake): boolean {
+       return this.hasGame() && !this.getGame().hasPlayer(userId);
+    }
 
     toJson(): string {
         return JSON.stringify(this.data, null, 2);

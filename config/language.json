@@ -203,7 +203,8 @@
             "{!Hello|Hi there|Greetings}! May this {adjectives.positive?} morning be the first of many...",
             "It's always {!wonderful|a blessing|serendipitous} to see a {!fresh|new} face here... Good morning!",
             "Welcome! {!Pleasure|Pleased} to meet you on this {!nice|fine} morning, my friend",
-            "Good morning! To meet a new friend is truly a miracle, {!treasure this moment|may today treat you well}"
+            "Good morning! To meet a new friend is truly a miracle, {!treasure this moment|may today treat you well}",
+            "{!It is|'Tis} a {!blessed|wondrous} morning, for a new {!friend|dog} has joined {!the|our special} game"
         ],
         "negative": [
             "Good morning, {!didn't expect|wasn't expecting} to hear from you",

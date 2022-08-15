@@ -32,6 +32,21 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return false;
     }
 
+    hasPlayer(userId: Snowflake): boolean {
+        return userId in this.state.players;
+    }
+
+    addPlayer(member: GuildMember): void {
+        this.state.players[member.id] = {
+            // TODO (2.0): Add the user to a random location near the worst player's location
+            r: 0,
+            c: 0,
+            points: 0,
+            displayName: member.displayName,
+            avatarUrl: member.user.displayAvatarURL({ size: 32, format: 'png' })
+        };
+    }
+
     async renderState(): Promise<Buffer> {
         const WIDTH: number = this.state.columns * DungeonCrawler.TILE_SIZE;
         const HEIGHT: number = this.state.rows * DungeonCrawler.TILE_SIZE;

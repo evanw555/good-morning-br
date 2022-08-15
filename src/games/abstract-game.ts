@@ -1,4 +1,4 @@
-import { Snowflake } from "discord.js";
+import { GuildMember, Snowflake } from "discord.js";
 import { GameState } from "../types";
 
 export default abstract class AbstractGame<T extends GameState> {
@@ -8,6 +8,8 @@ export default abstract class AbstractGame<T extends GameState> {
         this.state = state;
     }
 
+    abstract hasPlayer(userId: Snowflake): boolean
+    abstract addPlayer(member: GuildMember): void
     abstract isSeasonComplete(): boolean
     abstract renderState(): Promise<Buffer>
     abstract beginTurn(): void
