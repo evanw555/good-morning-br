@@ -223,12 +223,11 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         c2.fillText(`Turn ${this.state.turn}, Action ${this.state.action}`, WIDTH + DungeonCrawler.TILE_SIZE * 1.5, DungeonCrawler.TILE_SIZE);
         for (const userId of this.getOrderedPlayers()) {
             y++;
-            const text = `${this.state.players[userId].displayName}\n${this.getPlayerLocationString(userId)} $${this.state.players[userId].points}`
+            const player = this.state.players[userId];
+            const text = `${player.displayName}\n${this.getPlayerLocationString(userId)} $${player.points}`
             const textX = WIDTH + DungeonCrawler.TILE_SIZE * 1.5;
             const textY = y * DungeonCrawler.TILE_SIZE * 2;
-            // c2.fillText(text, textX + 1, textY + 1);
-            // c2.fillStyle = this.state.players[userId].color;
-            c2.fillStyle = y % 2 === 0 ? 'white' : 'gray';
+            c2.fillStyle = `hsl(360,${player.points < 0 ? 50 : 0}%,${y % 2 === 0 ? 60 : 40}%)`;
             c2.fillText(text, textX, textY);
         }
 
@@ -236,14 +235,20 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     }
 
     beginTurn(): void {
+        // Increment turn and reset action counter
         this.state.turn++;
         this.state.action = 0;
 
         for (const userId of this.getOrderedPlayers()) {
             const player = this.state.players[userId];
+            // Reset per-turn metadata and statuses
             delete player.previousLocation;
             player.originLocation = { r: player.r, c: player.c };
             delete player.knockedOut;
+            // If the user has negative points, knock them out
+            if (this.state.players[userId].points < 0 && !this.hasPendingDecisions(userId)) {
+                player.knockedOut = true;
+            }
         }
     }
 
@@ -494,6 +499,11 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         const newLocation = { r: this.state.players[userId].r, c: this.state.players[userId].c };
         const warnings: string[] = [];
         let cost = 0;
+
+        // Abort if the user has negative points
+        if (this.state.players[userId].points < 0) {
+            throw new Error('Oh dear... looks like you have negative points buddy, nice try...');
+        }
 
         // Prevent pause-griefing
         if (commands.filter(c => c === 'pause').length > 3) {

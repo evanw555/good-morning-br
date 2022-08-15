@@ -515,11 +515,12 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     if (state.getEventType() === DailyEventType.GameDecision) {
         for (const userId of state.getOrderedPlayers()) {
             // TODO (2.0): Handle users who aren't in the game (week 2)
-            // Transfer whole earned points into the game
+            // Transfer whole earned/lost points into the game
             const points = state.getPlayerPoints(userId);
-            state.getGame().addPoints(userId, Math.floor(points));
+            const roundedPoints = points > 0 ? Math.floor(points) : Math.ceil(points);
+            state.getGame().addPoints(userId, roundedPoints);
             // Reset the standard GMBR points for this user to the remainder
-            state.setPlayerPoints(userId, points % 1);
+            state.setPlayerPoints(userId, points - roundedPoints);
         }
     }
 
