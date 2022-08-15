@@ -1298,9 +1298,11 @@ let awaitingGameCommands = false;
 
 const processCommands = async (msg: Message): Promise<void> => {
     if (msg.content.toLocaleLowerCase() === 'dungeon?') {
+        await msg.reply('Populating members...');
+        const members = (await guild.members.list({ limit: randInt(10, 20) })).toJSON();
         await msg.reply('Generating new game...');
         awaitingGameCommands = true;
-        const dungeon = DungeonCrawler.createBest(20, 40);
+        const dungeon = DungeonCrawler.createBest(members, 20, 60);
         state.setGame(dungeon);
         await dumpState();
         const attachment = new MessageAttachment(await dungeon.renderState(), 'dungeon.png');
@@ -1321,6 +1323,7 @@ const processCommands = async (msg: Message): Promise<void> => {
             if (game instanceof DungeonCrawler) {
                 // TODO: Temp logic to move all other players
                 for (const otherId of game.getOrderedPlayers()) {
+                    game.addPoints(otherId, 5);
                     if (otherId !== msg.author.id) {
                         const nextAction = game.getNextActionsTowardGoal(otherId, 5);
                         if (nextAction) {
@@ -1331,10 +1334,17 @@ const processCommands = async (msg: Message): Promise<void> => {
             }
 
             // Process decisions and render state
-            state.getGame().processPlayerDecisions();
-            await dumpState();
-            const attachment = new MessageAttachment(await state.getGame().renderState(), 'dungeon.png');
-            await msg.channel.send({ files: [attachment] });
+            while (true) {
+                const processingData = state.getGame().processPlayerDecisions();
+                await dumpState();
+                const attachment = new MessageAttachment(await state.getGame().renderState(), 'dungeon.png');
+                await msg.channel.send({ content: processingData.summary, files: [attachment] });
+                await sleep(10000);
+                if (!processingData.continueProcessing) {
+                    break;
+                }
+            }
+            msg.reply('Turn is over!');
         } else {
             await msg.reply('The game has not been created yet!');
         }

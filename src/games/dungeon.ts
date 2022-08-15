@@ -1,8 +1,8 @@
 import canvas, { Image } from 'canvas';
-import { Snowflake } from 'discord.js';
+import { GuildMember, Snowflake } from 'discord.js';
 import { AStarFinder } from 'astar-typescript';
-import { getRankString, randInt, shuffle, toLetterId } from 'evanw555.js';
-import { DummyGameState, DungeonGameState } from "../types";
+import { getRankString, naturalJoin, randInt, shuffle, toLetterId } from 'evanw555.js';
+import { DummyGameState, DungeonGameState, DungeonPlayerState } from "../types";
 import AbstractGame from "./abstract-game";
 
 enum TileType {
@@ -15,15 +15,21 @@ enum TileType {
     TRAP = 6
 }
 
+type ActionName = 'up' | 'down' | 'left' | 'right' | 'unlock' | 'lock' | 'seal' | 'trap';
+
 export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     private static readonly TILE_SIZE: number = 24;
+
+    private static readonly STYLE_SKY: string = 'hsl(217, 94%, 69%)';
+    private static readonly STYLE_LIGHT_SKY: string = 'hsl(217, 85%, 75%)';
+    private static readonly STYLE_CLOUD: string = 'rgba(222, 222, 222, 1)';
 
     constructor(state: DungeonGameState) {
         super(state);
     }
 
     isSeasonComplete(): boolean {
-        throw new Error("Method not implemented.");
+        return false;
     }
 
     async renderState(): Promise<Buffer> {
@@ -33,7 +39,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         const context = c.getContext('2d');
 
         // Fill the blue sky background
-        context.fillStyle = 'rgba(100,157,250,1)';
+        context.fillStyle = DungeonCrawler.STYLE_SKY;
         context.fillRect(0, 0, WIDTH, HEIGHT);
 
         for (let r = 0; r < this.state.rows; r++) {
@@ -53,7 +59,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     context.arc((c + .5) * DungeonCrawler.TILE_SIZE, (r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE / 4, 0, Math.PI * 2, false);
                     context.fill();
                 } else if (this.state.map[r][c] !== TileType.EMPTY) {
-                    context.fillStyle = 'rgba(222, 222, 222, 1)';
+                    context.fillStyle = DungeonCrawler.STYLE_CLOUD;
                     context.beginPath();
                     context.arc((c + .5) * DungeonCrawler.TILE_SIZE, (r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE / 2, 0, Math.PI * 2, false);
                     context.fill();
@@ -72,16 +78,23 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     }
                     // context.fillRect(c * DungeonCrawler.TILE_SIZE, r * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE);
                     if (this.state.map[r][c] === TileType.KEY_HOLE) {
-                        context.fillStyle = 'rgba(100,157,250,1)';
-                        context.fillRect((c + .4) * DungeonCrawler.TILE_SIZE, (r + .3) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE * .2, DungeonCrawler.TILE_SIZE * .4);
+                        // Draw key hole cost
+                        context.fillStyle = DungeonCrawler.STYLE_LIGHT_SKY;
+                        context.font = `${DungeonCrawler.TILE_SIZE * .7}px sans-serif`;
+                        context.fillText(this.state.keyHoleCosts[DungeonCrawler.getLocationString(r, c)].toString(), (c + .25) * DungeonCrawler.TILE_SIZE, (r + .75) * DungeonCrawler.TILE_SIZE);
+                        // context.fillRect((c + .4) * DungeonCrawler.TILE_SIZE, (r + .3) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE * .2, DungeonCrawler.TILE_SIZE * .4);
                     } else if (this.state.map[r][c] === TileType.OPENED_KEY_HOLE) {
-                        context.fillStyle = 'rgba(100,157,250,1)';
+                        context.fillStyle = DungeonCrawler.STYLE_SKY;
                         if (this.isWalkable(r - 1, c) || this.isWalkable(r + 1, c)) {
-                            context.fillRect((c + .2) * DungeonCrawler.TILE_SIZE, r * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE * .6, DungeonCrawler.TILE_SIZE);
+                            context.fillRect((c + .1) * DungeonCrawler.TILE_SIZE, (r - .1) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE * .8, DungeonCrawler.TILE_SIZE * 1.2);
                         }
                         if (this.isWalkable(r, c - 1) || this.isWalkable(r, c + 1)) {
-                            context.fillRect(c * DungeonCrawler.TILE_SIZE, (r + .2) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE * .6);
+                            context.fillRect((c - .1) * DungeonCrawler.TILE_SIZE, (r + .1) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE * 1.2, DungeonCrawler.TILE_SIZE * .8);
                         }
+                        // Draw opened key hole cost
+                        context.fillStyle = DungeonCrawler.STYLE_CLOUD;
+                        context.font = `${DungeonCrawler.TILE_SIZE * .7}px sans-serif`;
+                        context.fillText(this.state.keyHoleCosts[DungeonCrawler.getLocationString(r, c)].toString(), (c + .25) * DungeonCrawler.TILE_SIZE, (r + .75) * DungeonCrawler.TILE_SIZE);
                     }
                 } else {
                     context.fillStyle = 'black';
@@ -180,7 +193,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         let y = 1;
         for (const userId of this.getOrderedPlayers()) {
             y++;
-            const text = `${this.getPlayerLocationString(userId)}: ${userId}`
+            const text = `${this.getPlayerLocationString(userId)}: ${this.state.players[userId].displayName}`
             const textX = WIDTH + DungeonCrawler.TILE_SIZE * 1.5;
             const textY = y * DungeonCrawler.TILE_SIZE;
             c2.fillStyle = 'white';
@@ -192,23 +205,27 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return masterImage.toBuffer();
     }
 
+    addPoints(userId: Snowflake, points: number): void {
+        this.state.players[userId].points += points;
+    }
+
     parseLocationString(location: string): { r: number, c: number } | undefined {
         // TODO: Horrible brute-force method, too lazy to reverse the letter stuff
         for (let r = 0; r < this.state.rows; r++) {
             for (let c = 0; c < this.state.columns; c++) {
-                if (location && location.toUpperCase() === this.getLocationString(r, c)) {
+                if (location && location.toUpperCase() === DungeonCrawler.getLocationString(r, c)) {
                     return { r, c };
                 }
             }
         }
     }
 
-    private getLocationString(r: number, c: number): string {
+    private static getLocationString(r: number, c: number): string {
         return `${toLetterId(r)}${c + 1}`;
     }
 
     private getPlayerLocationString(userId: string): string {
-        return this.getLocationString(this.state.players[userId].r, this.state.players[userId].c);
+        return DungeonCrawler.getLocationString(this.state.players[userId].r, this.state.players[userId].c);
     }
 
     getOrderedPlayers(): string[] {
@@ -241,8 +258,9 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return [basePosition[0] + offsets[side][0] * magnitude * direction, basePosition[1] + offsets[side][1] * magnitude * direction];
     }
 
-    static create(): DungeonCrawler {
+    static create(members: GuildMember[]): DungeonCrawler {
         const map: number[][] = [];
+        const keyHoleCosts: Record<string, number> = {};
         const isWall = (r, c) => {
             return r < 0 || c < 0 || r >= 41 || c >= 41 || map[r][c] !== TileType.EMPTY;
         };
@@ -279,20 +297,43 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         map[hnr][hnc] = TileType.EMPTY;
                         step(nr, nc, [dr, dc]);
                     } else if (map[hnr][hnc] === TileType.WALL) {
+                        const location = DungeonCrawler.getLocationString(hnr, hnc);
+                        const distance = getEuclideanDistanceToGoal(hnr, hnc);
                         // If there's a wall between here and the next spot...
                         if ((r === 0 || c === 0 || r === 40 || c === 40) && Math.random() < 0.25) {
                             // If the current spot is on the edge, clear walls liberally
                             map[hnr][hnc] = TileType.EMPTY;
-                        } else if (getEuclideanDistanceToGoal(hnr, hnc) < 18 && getEuclideanDistanceToGoal(hnr, hnc) > 10 && Math.random() < .1) {
+                        } else if (distance < 20) {
+                            if (Math.random() < .02) {
+                                // With an even smaller chance, clear this wall
+                                map[hnr][hnc] = TileType.EMPTY;
+                            }
                             // In the mid-ring of the map, add keyholes somewhat liberally
-                            map[hnr][hnc] = TileType.KEY_HOLE;
-                        } else if (getEuclideanDistanceToGoal(hnr, hnc) < 5 && Math.random() < .25) {
-                            // In the inner-ring of the map, add keyholes very liberally
-                            map[hnr][hnc] = TileType.KEY_HOLE;
-                        } else if (Math.random() < .02) {
-                            // With an even smaller chance, clear this wall
-                            map[hnr][hnc] = TileType.EMPTY;
-                        }
+                            else if (distance < 7) {
+                                if (Math.random() < .3) {
+                                    map[hnr][hnc] = TileType.KEY_HOLE;
+                                    keyHoleCosts[location] = Math.max(randInt(1, 10), randInt(1, 10));
+                                }
+                            } else if (distance < 16) {
+                                if (Math.random() < .075) {
+                                    map[hnr][hnc] = TileType.KEY_HOLE;
+                                    keyHoleCosts[location] = Math.floor((randInt(1, 10) + randInt(1, 10)) / 2);
+                                }
+                            } else {
+                                if (Math.random() < .25) {
+                                    map[hnr][hnc] = TileType.KEY_HOLE;
+                                    keyHoleCosts[location] = Math.min(randInt(1, 10), randInt(1, 10));
+                                }
+                            }
+                        // } else if (getEuclideanDistanceToGoal(hnr, hnc) < 18 && getEuclideanDistanceToGoal(hnr, hnc) > 10 && Math.random() < .1) {
+                        //     // In the mid-ring of the map, add keyholes somewhat liberally
+                        //     map[hnr][hnc] = TileType.KEY_HOLE;
+                        //     keyHoleCosts[DungeonCrawler.getLocationString(hnr, hnc)] = randInt(1, 10);
+                        // } else if (getEuclideanDistanceToGoal(hnr, hnc) < 5 && Math.random() < .25) {
+                        //     // In the inner-ring of the map, add keyholes very liberally
+                        //     map[hnr][hnc] = TileType.KEY_HOLE;
+                        //     keyHoleCosts[DungeonCrawler.getLocationString(hnr, hnc)] = randInt(5, 10);
+                        // } else 
                         // if ([[-1, 0], [1, 0], [0, -1], [0, 1]].filter(([ddr, ddc]) => {
                         //     return !isWall(r + ddr, c + ddc);
                         // }).length === 1) {
@@ -304,6 +345,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         //         map[hnr][hnc] = ++i;
                         //     }
                         // }
+                        }
                     }
                 }
             }
@@ -328,19 +370,27 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 }
             }
         }
-        const players = {};
+        const players: Record<Snowflake, DungeonPlayerState> = {};
         players['321059211368988703'] = {
             r: 0,
             c: 20,
-            avatarUrl: 'https://cdn.discordapp.com/avatars/321059211368988703/7b0b07b54bc050c93fd4fcf17dcd6546.png?size=32'
+            avatarUrl: 'https://cdn.discordapp.com/avatars/321059211368988703/7b0b07b54bc050c93fd4fcf17dcd6546.png?size=32',
+            displayName: 'FatherYahweh',
+            points: 10
         };
-        for (let j = 1; j < 20; j++) {
+        let j = 0;
+        for (const member of members) {
+            if (member.id === '321059211368988703') {
+                continue;
+            }
+            j++;
             const [ r, c ] = DungeonCrawler.getInitialLocationV2(j, 41, 41);
-            const hue = Math.floor((j / 20) * 256);
-            players[`${randInt(10, 100)}${toLetterId(randInt(100, 1000)).toLowerCase()}`] = {
+            players[member.id] = {
                 r,
                 c,
-                avatarUrl: `hsl(${hue},${randInt(50, 100)}%,${randInt(40, 60)}%)`
+                avatarUrl: member.user.displayAvatarURL({ size: 32, format: 'png' }),
+                displayName: member.displayName,
+                points: 5
             };
         }
         const dungeon = new DungeonCrawler({
@@ -349,17 +399,18 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             rows: 41,
             columns: 41,
             map,
+            keyHoleCosts,
             players
         });
         return dungeon;
     }
 
-    static createBest(attempts: number, minSteps: number = 0): DungeonCrawler {
+    static createBest(members: GuildMember[], attempts: number, minSteps: number = 0): DungeonCrawler {
         let maxFairness = { fairness: 0 };
         let bestMap = null;
         let validAttempts = 0;
         while (validAttempts < attempts) {
-            const newDungeon = DungeonCrawler.create();
+            const newDungeon = DungeonCrawler.create(members);
             const fairness = newDungeon.getMapFairness();
             if (fairness.min >= minSteps) {
                 validAttempts++;
@@ -400,17 +451,27 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return this.isInBounds(r, c) && (this.state.map[r][c] === TileType.WALL || this.state.map[r][c] === TileType.OPENED_KEY_HOLE || this.state.map[r][c] === TileType.KEY_HOLE);
     }
 
+    private getPlayerAtLocation(r: number, c: number): Snowflake | undefined {
+        for (const userId of this.getOrderedPlayers()) {
+            if (this.state.players[userId].r === r && this.state.players[userId].c === c) {
+                return userId;
+            }
+        }
+    }
+
     addPlayerDecision(userId: Snowflake, text: string): string {
-        const commands: string[] = text.replace(/\s+/g, ' ').split(' ');
+        const commands: string[] = text.replace(/\s+/g, ' ').split(' ').map(c => c.toLowerCase());
         const newLocation = { r: this.state.players[userId].r, c: this.state.players[userId].c };
-        let assumedKeyHole = false;
+        const warnings: string[] = [];
+        let cost = 0;
         for (const command of commands) {
-            const [c, arg] = command.toLowerCase().split(':');
+            const [c, arg] = command.split(':') as [ActionName, string];
+            cost += this.getActionCost(c, newLocation.r, newLocation.c);
             switch (c) {
                 case 'up':
                     if (this.isKeyHole(newLocation.r - 1, newLocation.c)) {
                         newLocation.r--;
-                        assumedKeyHole = true;
+                        warnings.push(`Doorway at **${DungeonCrawler.getLocationString(newLocation.r, newLocation.c)}** must be unlocked, whether by you or someone else.`);
                     } else if (this.isWalkable(newLocation.r - 1, newLocation.c)) {
                         newLocation.r--;
                     } else {
@@ -420,7 +481,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 case 'down':
                     if (this.isKeyHole(newLocation.r + 1, newLocation.c)) {
                         newLocation.r++
-                        assumedKeyHole = true;
+                        warnings.push(`Doorway at **${DungeonCrawler.getLocationString(newLocation.r, newLocation.c)}** must be unlocked, whether by you or someone else.`);
                     } else if (this.isWalkable(newLocation.r + 1, newLocation.c)) {
                         newLocation.r++;
                     } else {
@@ -430,7 +491,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 case 'left':
                     if (this.isKeyHole(newLocation.r, newLocation.c - 1)) {
                         newLocation.c--
-                        assumedKeyHole = true;
+                        warnings.push(`Doorway at **${DungeonCrawler.getLocationString(newLocation.r, newLocation.c)}** must be unlocked, whether by you or someone else.`);
                     } else if (this.isWalkable(newLocation.r, newLocation.c - 1)) {
                         newLocation.c--;
                     } else {
@@ -440,7 +501,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 case 'right':
                     if (this.isKeyHole(newLocation.r, newLocation.c + 1)) {
                         newLocation.c++
-                        assumedKeyHole = true;
+                        warnings.push(`Doorway at **${DungeonCrawler.getLocationString(newLocation.r, newLocation.c)}** must be unlocked, whether by you or someone else.`);
                     } else if (this.isWalkable(newLocation.r, newLocation.c + 1)) {
                         newLocation.c++;
                     } else {
@@ -451,7 +512,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     if (this.isNextToKeyHole(newLocation.r, newLocation.c)) {
                         // COOL
                     } else {
-                        throw new Error(`You can't use "unlock" at **${this.getLocationString(newLocation.r, newLocation.c)}**, as there'd be no keyhole near you to unlock!`);
+                        throw new Error(`You can't use "unlock" at **${DungeonCrawler.getLocationString(newLocation.r, newLocation.c)}**, as there'd be no keyhole near you to unlock!`);
                     }
                     break;
                 case 'seal':
@@ -462,7 +523,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     if (!target) {
                         throw new Error(`**${arg}** is not a valid location on the map!`);
                     }
-                    if (this.isWalkable(target.r, target.c)) {
+                    if (this.state.map[target.r][target.c] === TileType.EMPTY || this.state.map[target.r][target.c] === TileType.HIDDEN_TRAP) {
                         // COOL
                     } else {
                         throw new Error(`Can't set a trap at **${arg}**, try a different spot.`);
@@ -472,63 +533,226 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     throw new Error(`\`${command}\` is an invalid action!`);
             }
         }
-        this.state.decisions[userId] = text;
-        return `Valid actions, your new location will be **${this.getLocationString(newLocation.r, newLocation.c)}**`
-            + (assumedKeyHole ? ', BUT PLEASE NOTE that this route assumes that a keyhole will be opened by someone else' : '');
+        if (cost > this.state.players[userId].points) {
+            throw new Error(`You can't afford these actions. It would cost **${cost}** points, yet you only have **${this.state.players[userId].points}**.`);
+        }
+        this.state.decisions[userId] = commands;
+        return `Valid actions, your new location will be **${DungeonCrawler.getLocationString(newLocation.r, newLocation.c)}**`
+            + (warnings.length > 0 ? ', BUT PLEASE NOTE THE FOLLOWING WARNINGS:\n' + warnings.join('\n') : '');
     }
 
+    private getActionCost(action: ActionName, r: number, c: number): number {
+        const actionCosts: Record<ActionName, () => number> = {
+            'up': () => {
+                return 1;
+            },
+            'down': () => {
+                return 1;
+            },
+            'left': () => {
+                return 1;
+            },
+            'right': () => {
+                return 1;
+            },
+            'unlock': () => {
+                let cost = 0;
+                for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+                    if (this.isKeyHole(r + dr, c + dc)) {
+                        cost += this.state.keyHoleCosts[DungeonCrawler.getLocationString(r + dr, c + dc)];
+                    }
+                }
+                return cost;
+            },
+            'lock': () => {
+                let cost = 0;
+                for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+                    if (this.state.map[r + dr][c + dc] === TileType.OPENED_KEY_HOLE) {
+                        cost += this.state.keyHoleCosts[DungeonCrawler.getLocationString(r + dr, c + dc)];
+                    }
+                }
+                return cost;
+            },
+            'seal': () => {
+                let cost = 0;
+                for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+                    if (this.isSealable(r + dr, c + dc)) {
+                        cost += 2 * this.state.keyHoleCosts[DungeonCrawler.getLocationString(r + dr, c + dc)];
+                    }
+                }
+                return cost;
+            },
+            'trap': () => {
+                return 2;
+            }
+        };
+        return actionCosts[action]();
+    }
 
-    processPlayerDecisions(): void {
+    processPlayerDecisions(): { summary: string, continueProcessing: boolean } {
+        const summaryData = {
+            consecutiveStepUsers: [],
+            statements: []
+        };
+        const addStepStatements = () => {
+            if (summaryData.consecutiveStepUsers.length > 0) {
+                if (summaryData.consecutiveStepUsers.length === 1) {
+                    summaryData.statements.push(`**${summaryData.consecutiveStepUsers[0]}** took a step`);
+                } else {
+                    summaryData.statements.push(`**${summaryData.consecutiveStepUsers.length}** players took a step`);
+                }
+                summaryData.consecutiveStepUsers = [];
+            }
+        };
+        const pushNonStepStatement = (s) => {
+            addStepStatements();
+            summaryData.statements.push(s);
+        };
+        // Process one decision from each player
         for (const userId of this.getOrderedPlayers()) {
-            if (userId in this.state.decisions) {
+            if (userId in this.state.decisions && this.state.decisions[userId].length > 0) {
                 const player = this.state.players[userId];
-                const commandActions = {
+                const commandActions: Record<ActionName, (arg: string) => boolean> = {
                     'up': () => {
-                        if (this.isWalkable(player.r - 1, player.c)) {
-                            player.r--;
+                        const nr = player.r - 1;
+                        const nc = player.c;
+                        const playerInLocation: Snowflake = this.getPlayerAtLocation(nr, nc);
+                        if (playerInLocation) {
+                            pushNonStepStatement(`**${player.displayName}** bumped into **${this.state.players[playerInLocation].displayName}**`);
+                            return false;
                         }
+                        if (this.isWalkable(nr, nc)) {
+                            player.r--;
+                            summaryData.consecutiveStepUsers.push(player.displayName);
+                            return true;
+                        }
+                        pushNonStepStatement(`**${player.displayName}** walked into a wall`);
+                        return false;
                     },
                     'down': () => {
-                        if (this.isWalkable(player.r + 1, player.c)) {
-                            player.r++;
+                        const nr = player.r + 1;
+                        const nc = player.c;
+                        const playerInLocation: Snowflake = this.getPlayerAtLocation(nr, nc);
+                        if (playerInLocation) {
+                            pushNonStepStatement(`**${player.displayName}** bumped into **${this.state.players[playerInLocation].displayName}**`);
+                            return false;
                         }
+                        if (this.isWalkable(nr, nc)) {
+                            player.r++;
+                            summaryData.consecutiveStepUsers.push(player.displayName);
+                            return true;
+                        }
+                        pushNonStepStatement(`**${player.displayName}** walked into a wall`);
+                        return false;
                     },
                     'left': () => {
-                        if (this.isWalkable(player.r, player.c - 1)) {
-                            player.c--
+                        const nr = player.r;
+                        const nc = player.c - 1;
+                        const playerInLocation: Snowflake = this.getPlayerAtLocation(nr, nc);
+                        if (playerInLocation) {
+                            pushNonStepStatement(`**${player.displayName}** bumped into **${this.state.players[playerInLocation].displayName}**`);
+                            return false;
                         }
+                        if (this.isWalkable(nr, nc)) {
+                            player.c--
+                            summaryData.consecutiveStepUsers.push(player.displayName);
+                            return true;
+                        }
+                        pushNonStepStatement(`**${player.displayName}** walked into a wall`);
+                        return false;
                     },
                     'right': () => {
-                        if (this.isWalkable(player.r, player.c + 1)) {
-                            player.c++
+                        const nr = player.r;
+                        const nc = player.c + 1;
+                        const playerInLocation: Snowflake = this.getPlayerAtLocation(nr, nc);
+                        if (playerInLocation) {
+                            pushNonStepStatement(`**${player.displayName}** bumped into **${this.state.players[playerInLocation].displayName}**`);
+                            return false;
                         }
+                        if (this.isWalkable(nr, nc)) {
+                            player.c++
+                            summaryData.consecutiveStepUsers.push(player.displayName);
+                            return true;
+                        }
+                        pushNonStepStatement(`**${player.displayName}** walked into a wall`);
+                        return false;
                     },
                     'unlock': () => {
+                        let numDoorwaysUnlocked = 0;
                         for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
                             if (this.isKeyHole(player.r + dr, player.c + dc)) {
                                 this.state.map[player.r + dr][player.c + dc] = TileType.OPENED_KEY_HOLE;
+                                numDoorwaysUnlocked++;
                             }
                         }
+                        pushNonStepStatement(`**${player.displayName}** unlocked **${numDoorwaysUnlocked}** doorways`);
+                        return true;
+                    },
+                    'lock': () => {
+                        let numDoorwaysLocked = 0;
+                        for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+                            if (this.state.map[player.r + dr][player.c + dc] === TileType.OPENED_KEY_HOLE) {
+                                this.state.map[player.r + dr][player.c + dc] = TileType.KEY_HOLE;
+                                numDoorwaysLocked++;
+                            }
+                        }
+                        pushNonStepStatement(`**${player.displayName}** locked **${numDoorwaysLocked}** doorways`);
+                        return true;
                     },
                     'seal': () => {
+                        let numDoorwaysSealed = 0;
                         for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
                             if (this.isSealable(player.r + dr, player.c + dc)) {
                                 this.state.map[player.r + dr][player.c + dc] = TileType.WALL;
+                                numDoorwaysSealed++;
                             }
                         }
+                        pushNonStepStatement(`**${player.displayName}** sealed **${numDoorwaysSealed}** doorways`);
+                        return true;
                     },
                     'trap': (arg) => {
                         const { r, c } = this.parseLocationString(arg);
                         this.state.map[r][c] = TileType.HIDDEN_TRAP;
+                        return true;
                     }
+                };
+                // Get the next action for this user
+                const nextAction = this.state.decisions[userId][0];
+                const [actionName, arg] = nextAction.toLowerCase().split(':') as [ActionName, string];
+
+                // If the player can't afford this action, delete all their decisions (ending their turn)
+                const actionCost: number = this.getActionCost(actionName, player.r, player.c);
+                // TODO: player points!!!
+                if (actionCost > player.points) {
+                    delete this.state.decisions[userId];
+                    pushNonStepStatement(`**${player.displayName}** ran out of action points`);
+                    continue;
                 }
-                const actions = this.state.decisions[userId].replace(/\s+/g, ' ').split(' ');
-                for (const action of actions) {
-                    const [actionName, arg] = action.toLowerCase().split(':');
-                    commandActions[actionName](arg);
+
+                // Execute the action
+                const consumeAction: boolean = commandActions[actionName](arg);
+
+                // Consume points
+                player.points -= actionCost;
+
+                // If the action was successful, remove this decision from the queue so any following ones can be processed
+                if (consumeAction) {
+                    this.state.decisions[userId].shift();
+                    // Delete the decision list if it's been exhausted
+                    if (this.state.decisions[userId].length === 0) {
+                        delete this.state.decisions[userId];
+                    }
                 }
             }
         }
+
+
+        // If there are no decisions left, end the turn
+        addStepStatements();
+        return {
+            summary: naturalJoin(summaryData.statements, 'then'),
+            continueProcessing: Object.keys(this.state.decisions).length > 0
+        };
     }
 
     getNextActionsTowardGoal(userId: Snowflake, n: number = 1): string {

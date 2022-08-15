@@ -106,13 +106,22 @@ export interface DailyEvent {
     homeStretchSurprises?: HomeStretchSurprise[]
 }
 
+export interface DungeonPlayerState {
+    r: number,
+    c: number,
+    avatarUrl: string,
+    displayName: string,
+    points: number
+}
+
 export interface DungeonGameState {
     type: 'DUNGEON_GAME_STATE',
-    decisions: Record<Snowflake, string>,
+    decisions: Record<Snowflake, string[]>,
     rows: number,
     columns: number
     map: number[][],
-    players: Record<Snowflake, { r: number, c: number, avatarUrl: string }>
+    keyHoleCosts: Record<string, number>,
+    players: Record<Snowflake, DungeonPlayerState>
 }
 
 export interface DummyGameState {
