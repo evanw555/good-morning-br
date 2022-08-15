@@ -1,6 +1,6 @@
 import { Client, DMChannel, Intents, MessageAttachment, TextChannel } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'discord.js';
-import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, HomeStretchSurprise, GameState } from './types';
+import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, HomeStretchSurprise } from './types';
 import { createHomeStretchImage, createMidSeasonUpdateImage, createSeasonResultsImage } from './graphics';
 import { hasVideo, validateConfig, reactToMessage, getOrderingUpsets } from './util';
 import GoodMorningState from './state';
@@ -1343,6 +1343,7 @@ client.on('interactionCreate', async (interaction): Promise<void> => {
     }
 });
 
+let tempDungeon: DungeonCrawler = null;
 let awaitingGameCommands = false;
 
 const processCommands = async (msg: Message): Promise<void> => {
@@ -1351,36 +1352,31 @@ const processCommands = async (msg: Message): Promise<void> => {
         const members = (await guild.members.list({ limit: randInt(10, 20) })).toJSON();
         await msg.reply('Generating new game...');
         awaitingGameCommands = true;
-        const dungeon = DungeonCrawler.createBest(members, 20, 60);
-        state.setGame(dungeon);
-        dungeon.beginTurn();
-        await dumpState();
-        const attachment = new MessageAttachment(await dungeon.renderState(), 'dungeon.png');
-        await msg.channel.send({ content: `Map Fairness: ${dungeon.getMapFairness().description}`, files: [attachment] });
+        tempDungeon = DungeonCrawler.createBest(members, 20, 60);
+        tempDungeon.beginTurn();
+        const attachment = new MessageAttachment(await tempDungeon.renderState(), 'dungeon.png');
+        await msg.channel.send({ content: `Map Fairness: ${tempDungeon.getMapFairness().description}`, files: [attachment] });
         return;
     }
     if (awaitingGameCommands) {
-        if (state.hasGame()) {
+        if (tempDungeon) {
             try {
-                const response = state.getGame().addPlayerDecision(msg.author.id, msg.content);
+                const response = tempDungeon.addPlayerDecision(msg.author.id, msg.content);
                 await msg.reply(response);
             } catch (err) {
                 await msg.reply(err.toString());
                 return;
             }
 
-            const game = state.getGame();
-            if (game instanceof DungeonCrawler) {
-                // TODO: Temp logic to move all other players
-                for (const otherId of game.getOrderedPlayers()) {
-                    if (otherId !== msg.author.id) {
-                        const nextAction = game.getNextActionsTowardGoal(otherId, game.getPoints(otherId));
-                        if (nextAction) {
-                            try {
-                                game.addPlayerDecision(otherId, nextAction);
-                            } catch (err) {
-                                await logger.log(`Failed to add action \`${nextAction}\` for player <@${otherId}>: ${err}`);
-                            }
+            // TODO: Temp logic to move all other players
+            for (const otherId of tempDungeon.getOrderedPlayers()) {
+                if (otherId !== msg.author.id) {
+                    const nextAction = tempDungeon.getNextActionsTowardGoal(otherId, tempDungeon.getPoints(otherId));
+                    if (nextAction) {
+                        try {
+                            tempDungeon.addPlayerDecision(otherId, nextAction);
+                        } catch (err) {
+                            await logger.log(`Failed to add action \`${nextAction}\` for player <@${otherId}>: ${err}`);
                         }
                     }
                 }
@@ -1388,9 +1384,8 @@ const processCommands = async (msg: Message): Promise<void> => {
 
             // Process decisions and render state
             while (true) {
-                const processingData = state.getGame().processPlayerDecisions();
-                await dumpState();
-                const attachment = new MessageAttachment(await state.getGame().renderState(), 'dungeon.png');
+                const processingData = tempDungeon.processPlayerDecisions();
+                const attachment = new MessageAttachment(await tempDungeon.renderState(), 'dungeon.png');
                 await msg.channel.send({ content: processingData.summary, files: [attachment] });
                 await sleep(5000);
                 if (!processingData.continueProcessing) {
@@ -1400,15 +1395,12 @@ const processCommands = async (msg: Message): Promise<void> => {
             msg.reply('Turn is over!');
 
             // Give everyone points then show the final state
-            if (game instanceof DungeonCrawler) {
-                // TODO: Temp logic to move all other players
-                for (const otherId of game.getOrderedPlayers()) {
-                    game.addPoints(otherId, randInt(1, 10));
-                }
+            // TODO: Temp logic to move all other players
+            for (const otherId of tempDungeon.getOrderedPlayers()) {
+                tempDungeon.addPoints(otherId, randInt(1, 10));
             }
-            game.beginTurn();
-            await dumpState();
-            const attachment = new MessageAttachment(await state.getGame().renderState(), 'dungeon.png');
+            tempDungeon.beginTurn();
+            const attachment = new MessageAttachment(await tempDungeon.renderState(), 'dungeon.png');
             await msg.channel.send({ content: 'Beginning of the next turn', files: [attachment] });
 
         } else {
@@ -1554,6 +1546,14 @@ const processCommands = async (msg: Message): Promise<void> => {
         }
         else if (sanitizedText.includes('log')) {
             await msg.channel.send(dailyVolatileLog.map(entry => `**[${entry[0].toLocaleTimeString('en-US')}]:** ${entry[1]}`).join('\n') || 'Log is empty.');
+        }
+        else if (sanitizedText.includes('game')) {
+            if (state.hasGame()) {
+                const attachment = new MessageAttachment(await state.getGame().renderState(), 'game-state.png');
+                await msg.reply({ content: 'The current game state:', files: [attachment] });
+            } else {
+                await msg.reply('The game hasn\'t been created yet!');
+            }
         }
     }
 };
