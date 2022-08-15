@@ -495,7 +495,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     }
 
     addPlayerDecision(userId: Snowflake, text: string): string {
-        const commands: string[] = text.replace(/\s+/g, ' ').split(' ').map(c => c.toLowerCase());
+        const commands: string[] = text.replace(/\s+/g, ' ').trim().split(' ').map(c => c.toLowerCase());
         const newLocation = { r: this.state.players[userId].r, c: this.state.players[userId].c };
         const warnings: string[] = [];
         let cost = 0;

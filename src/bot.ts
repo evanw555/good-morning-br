@@ -1564,8 +1564,8 @@ const saidMagicWord = (message: Message): boolean => {
 };
 
 client.on('messageCreate', async (msg: Message): Promise<void> => {
+    const userId: Snowflake = msg.author.id;
     if (goodMorningChannel && msg.channel.id === goodMorningChannel.id && !msg.author.bot) {
-        const userId: Snowflake = msg.author.id;
         const isAm: boolean = new Date().getHours() < 12;
         const isJoiningGameLate: boolean = state.isPlayerNewToGame(userId);
 
@@ -1835,7 +1835,20 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
         }
         // Process game decisions via DM
         if (state.isMorning() && state.getEventType() === DailyEventType.GameDecision) {
-            // TODO (2.0): Handle decisions here
+            if (state.hasGame()) {
+                try {
+                    // Validate decision string
+                    const response: string = state.getGame().addPlayerDecision(userId, msg.content);
+                    // If it succeeds, dump the state and reply with the validation response
+                    await dumpState();
+                    await messenger.reply(msg, response);
+                } catch (err) {
+                    // Validation failed, notify the user why it failed
+                    await messenger.reply(msg, err.toString());
+                }
+            } else {
+                await messenger.reply(msg, 'Oh dear... Looks like the game hasn\'t started yet. Please tell the admin.');
+            }
         }
         // Process DM submissions depending on the event
         else if (state.isMorning() && state.getEventType() === DailyEventType.AnonymousSubmissions) {
