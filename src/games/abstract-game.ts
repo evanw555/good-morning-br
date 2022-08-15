@@ -10,6 +10,8 @@ export default abstract class AbstractGame<T extends GameState> {
 
     abstract isSeasonComplete(): boolean
     abstract renderState(): Promise<Buffer>
+    abstract beginTurn(): void
+    abstract getPoints(userId: Snowflake): number
     abstract addPoints(userId: Snowflake, points: number): void
     abstract addPlayerDecision(userId: Snowflake, text: string): string
     abstract processPlayerDecisions(): { summary: string, continueProcessing: boolean }

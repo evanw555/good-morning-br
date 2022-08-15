@@ -2,6 +2,7 @@ import { Snowflake } from "discord.js";
 import { getTodayDateString, toFixed } from "evanw555.js";
 import ActivityTracker from "./activity-tracker";
 import AbstractGame from "./games/abstract-game";
+import DungeonCrawler from "./games/dungeon";
 import { Combo, DailyEvent, DailyEventType, DailyPlayerState, FullDate, GameState, PlayerState, RawGoodMorningState, Season } from "./types";
 
 export default class GoodMorningState {
@@ -10,6 +11,18 @@ export default class GoodMorningState {
 
     constructor(rawState: RawGoodMorningState) {
         this.data = rawState;
+        // TODO: Is there a better way to construct the game instance?
+        if (rawState.game) {
+            switch(rawState.game.type) {
+                case 'DUMMY_GAME_STATE':
+                    // TODO: Handle this
+                    this.game = null;
+                    break;
+                case 'DUNGEON_GAME_STATE':
+                    this.game = new DungeonCrawler(rawState.game);
+                    break;
+            }
+        }
     }
 
     isMorning(): boolean {

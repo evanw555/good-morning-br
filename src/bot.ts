@@ -1304,9 +1304,10 @@ const processCommands = async (msg: Message): Promise<void> => {
         awaitingGameCommands = true;
         const dungeon = DungeonCrawler.createBest(members, 20, 60);
         state.setGame(dungeon);
+        dungeon.beginTurn();
         await dumpState();
         const attachment = new MessageAttachment(await dungeon.renderState(), 'dungeon.png');
-        await msg.channel.send({ content: `Map Disparity: ${dungeon.getMapFairness().description}`, files: [attachment] });
+        await msg.channel.send({ content: `Map Fairness: ${dungeon.getMapFairness().description}`, files: [attachment] });
         return;
     }
     if (awaitingGameCommands) {
@@ -1323,11 +1324,14 @@ const processCommands = async (msg: Message): Promise<void> => {
             if (game instanceof DungeonCrawler) {
                 // TODO: Temp logic to move all other players
                 for (const otherId of game.getOrderedPlayers()) {
-                    game.addPoints(otherId, 5);
                     if (otherId !== msg.author.id) {
-                        const nextAction = game.getNextActionsTowardGoal(otherId, 5);
+                        const nextAction = game.getNextActionsTowardGoal(otherId, game.getPoints(otherId));
                         if (nextAction) {
-                            game.addPlayerDecision(otherId, nextAction);
+                            try {
+                                game.addPlayerDecision(otherId, nextAction);
+                            } catch (err) {
+                                await logger.log(`Failed to add action \`${nextAction}\` for player <@${otherId}>: ${err}`);
+                            }
                         }
                     }
                 }
@@ -1339,12 +1343,25 @@ const processCommands = async (msg: Message): Promise<void> => {
                 await dumpState();
                 const attachment = new MessageAttachment(await state.getGame().renderState(), 'dungeon.png');
                 await msg.channel.send({ content: processingData.summary, files: [attachment] });
-                await sleep(10000);
+                await sleep(5000);
                 if (!processingData.continueProcessing) {
                     break;
                 }
             }
             msg.reply('Turn is over!');
+
+            // Give everyone points then show the final state
+            if (game instanceof DungeonCrawler) {
+                // TODO: Temp logic to move all other players
+                for (const otherId of game.getOrderedPlayers()) {
+                    game.addPoints(otherId, randInt(1, 10));
+                }
+            }
+            game.beginTurn();
+            await dumpState();
+            const attachment = new MessageAttachment(await state.getGame().renderState(), 'dungeon.png');
+            await msg.channel.send({ content: 'Beginning of the next turn', files: [attachment] });
+
         } else {
             await msg.reply('The game has not been created yet!');
         }
