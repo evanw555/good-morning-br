@@ -8,10 +8,13 @@ export default abstract class AbstractGame<T extends GameState> {
         this.state = state;
     }
 
+    abstract getIntroductionText(): string
+    abstract getInstructionsText(): string
     abstract hasPlayer(userId: Snowflake): boolean
     abstract addPlayer(member: GuildMember): void
     abstract isSeasonComplete(): boolean
     abstract renderState(): Promise<Buffer>
+    abstract getTurn(): number
     abstract beginTurn(): void
     abstract getPoints(userId: Snowflake): number
     abstract addPoints(userId: Snowflake, points: number): void

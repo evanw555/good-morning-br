@@ -28,6 +28,34 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         super(state);
     }
 
+    getIntroductionText(): string {
+        return 'My dear dogs... Welcome to the Clouded Labyrinth of the Shining Idol! '
+            + 'This season, you will all be traversing this silver-lined dungeon in search of bright mornings. '
+            + 'The first, second, and third pups to reach me at the center will be crowned victorious. '
+            + 'Each Saturday, you will have all day to choose your moves, each costing some amount of points. '
+            + 'The next day (Sunday), your moves will be performed one-by-one.';
+    }
+
+    getInstructionsText(): string {
+        return 'Here are the possible actions you may take and their associated costs. Send me something like `up right unlock right pause right punch trap:b12 down`.\n'
+                + '`up`, `down`, `left`, `right`: move one step in such direction. Costs `1`\n'
+                + '`unlock`: open all doorways adjacent to you. Cost is denoted on each doorway\n'
+                + '`lock`: close all doorways adjacent to you. Cost is denoted on each doorway\n'
+                + '`seal`: permanently close all doorways adjacent to you. Cost is **twice the value** denoted on each doorway\n'
+                + '`punch`: 75% chance of knocking out any player adjacent to you, ending their turn. Costs `2`\n'
+                + '`trap:[LOCATION]`: place a hidden trap at the specified location (e.g. `trap:G9`). Costs `2`\n'
+                + '`pause`: do nothing. Free\n\n'
+            + 'Misc Rules:\n'
+                + '1. If you do not choose your actions, actions will be chosen for you (use `pause` to do nothing instead).\n'
+                + '2. In a given turn, one action is processed from each player in a _random_ order until all players have no actions left.\n'
+                + '3. You cannot walk over/past other players unless they are KO\'ed or you are walking into each other head-on.\n'
+                + '4. Players starting their turn with negative points are KO\'ed the entire turn.\n'
+                + '5. If you somehow walk into a wall, your turn is ended.\n'
+                + '6. If you walk into another player, your turn is ended if they have no more actions remaining.\n'
+                + '7. If your turn is ended early due to any of these reasons, you will only lose points for each action taken.\n'
+                + '8. If you end your turn on a trap, the trap can now be seen and you are sent back to where you started (points are still lost).'
+    }
+
     isSeasonComplete(): boolean {
         return false;
     }
@@ -232,6 +260,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         }
 
         return masterImage.toBuffer();
+    }
+
+    getTurn(): number {
+        return this.state.turn;
     }
 
     beginTurn(): void {

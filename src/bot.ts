@@ -367,9 +367,11 @@ const sendGoodMorningMessage = async (): Promise<void> => {
             }
             break;
         case DailyEventType.AnonymousSubmissions:
+            // If there's an overridden message, just send it naively upfront
             if (overriddenMessage) {
                 await messenger.send(goodMorningChannel, languageGenerator.generate(overriddenMessage));
             }
+            // Send the standard submission prompt
             const phrase: string = state.getEvent().isAttachmentSubmission ? 'find a' : 'write a special Good Morning';
             const intro: string = overriddenMessage ? 'There\'s more!' : 'Good morning! Today is a special one.';
             const text = `${intro} Rather than sending your good morning messages here for all to see, `
@@ -378,11 +380,20 @@ const sendGoodMorningMessage = async (): Promise<void> => {
             await messenger.send(goodMorningChannel, text);
             break;
         case DailyEventType.GameDecision:
-            // TODO (2.0): FINISH THIS!
+            // If there's an overridden message, just send it naively upfront
+            if (overriddenMessage) {
+                await messenger.send(goodMorningChannel, languageGenerator.generate(overriddenMessage));
+            }
+            // Send the game state plus header text and basic instructions
+            let decisionHeader = `Turn **${state.getGame().getTurn()}** has begun!`;
+            if (state.getGame().getTurn() === 1) {
+                decisionHeader = state.getGame().getIntroductionText();
+            }
             await goodMorningChannel.send({
-                content: 'Happy Saturday!',
+                content: decisionHeader,
                 files: [new MessageAttachment(await state.getGame().renderState(), 'game-state.png')]
             });
+            await messenger.send(goodMorningChannel, 'Choose your moves by sending me a DM with your desired sequence of actions. DM me _"help"_ for more info.');
             break;
         case DailyEventType.GameUpdate:
             // TODO (2.0): FINISH THIS!
@@ -522,6 +533,8 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
             // Reset the standard GMBR points for this user to the remainder
             state.setPlayerPoints(userId, points - roundedPoints);
         }
+        // Begin this week's turn
+        state.getGame().beginTurn();
     }
 
     // Increment "days since last good morning" counters for all participating users
@@ -1551,7 +1564,8 @@ const processCommands = async (msg: Message): Promise<void> => {
         else if (sanitizedText.includes('game')) {
             if (state.hasGame()) {
                 const attachment = new MessageAttachment(await state.getGame().renderState(), 'game-state.png');
-                await msg.reply({ content: 'The current game state:', files: [attachment] });
+                await msg.channel.send({ content: 'The current game state:', files: [attachment] });
+                await msg.channel.send(state.getGame().getInstructionsText());
             } else {
                 await msg.reply('The game hasn\'t been created yet!');
             }
@@ -1836,6 +1850,12 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
         // Process game decisions via DM
         if (state.isMorning() && state.getEventType() === DailyEventType.GameDecision) {
             if (state.hasGame()) {
+                // Handle help requests
+                if (msg.content.trim().toLowerCase() === 'help') {
+                    await logger.log(`<@${userId}> asked for help!`);
+                    await msg.reply(state.getGame().getInstructionsText());
+                    return;
+                }
                 try {
                     // Validate decision string
                     const response: string = state.getGame().addPlayerDecision(userId, msg.content);
