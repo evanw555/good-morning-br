@@ -224,9 +224,8 @@ const chooseEvent = (date: Date): DailyEvent => {
     }
     // Tuesday: Anonymous Submissions
     if (date.getDay() === 2) {
-        // TODO (2.0): Swapped temporarily to start the season off with a PTGH
-        if (date.getDate() % 2 === 1) {
-            // If it's an even-numbered day, do text submissions
+        if (date.getDate() <= 7) {
+            // If it's the first week of the month, do text submissions
             return {
                 type: DailyEventType.AnonymousSubmissions,
                 // TODO: Add new ones such as "short story", "motivational message" once this has happened a couple times
@@ -234,7 +233,7 @@ const chooseEvent = (date: Date): DailyEvent => {
                 submissions: {}
             };
         } else {
-            // If it's an odd-numbered day, do attachment submissions
+            // Otherwise, do attachment submissions
             return {
                 type: DailyEventType.AnonymousSubmissions,
                 // TODO: Add back ones such as "cursed image" once this has happened a couple times
