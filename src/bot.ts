@@ -688,10 +688,26 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
 };
 
 const finalizeAnonymousSubmissions = async () => {
-    if (!state.getEvent().votes || !state.getEvent().submissions) {
+    const event = state.getEvent();
+
+    if (!event.votes || !event.submissions) {
         await logger.log('WARNING! Attempting to finalize submissions with the votes and/or submissions already wiped. Aborting!');
         return;
     }
+
+    // First and foremost, hold onto all the state data locally
+    const votes = event.votes;
+    const submissionOwnersByCode = event.submissionOwnersByCode;
+    const allCodes = Object.keys(submissionOwnersByCode);
+    const submissionNonVoters: Snowflake[] = state.getSubmissionNonVoters();
+    const nonVoterSet: Set<Snowflake> = new Set(submissionNonVoters);
+    const disqualifiedCodes: string[] = allCodes.filter(code => nonVoterSet.has(submissionOwnersByCode[code]));
+
+    // Now that all the data has been gathered, delete everything from the state to prevent further action
+    delete event.votes;
+    delete event.submissions;
+    delete event.submissionOwnersByCode;
+    await dumpState();
 
     // Disable voting by deleting the "vote" command
     const guildCommands = await guild.commands.fetch();
@@ -705,14 +721,14 @@ const finalizeAnonymousSubmissions = async () => {
     const scores: Record<string, number> = {}; // Map (submission code : points)
     const breakdown: Record<string, number[]> = {};
     // Prime both maps (some submissions may get no votes)
-    Object.keys(state.getEvent().submissionOwnersByCode).forEach(code => {
+    allCodes.forEach(code => {
         scores[code] = 0;
         breakdown[code] = [0, 0, 0];
     });
     // Now tally the actual scores and breakdowns
     // Add 0.1 to break ties using total number of votes, 0.01 to ultimately break ties with golds
     const voteValues: number[] = [3.11, 2.1, 1.1];
-    Object.values(state.getEvent().votes).forEach(codes => {
+    Object.values(votes).forEach(codes => {
         codes.forEach((code, i) => {
             scores[code] = toFixed(scores[code] + (voteValues[i] ?? 0));
             // Take note of the breakdown
@@ -720,28 +736,19 @@ const finalizeAnonymousSubmissions = async () => {
         });
     });
 
-    // Compile the set of those who didn't vote
-    const deadbeats: Set<Snowflake> = new Set();
-    state.getSubmissionNonVoters().forEach(userId => {
-        // Add the player to the set
-        deadbeats.add(userId);
-        // Penalize the player
+    // Penalize the submitters who didn't vote
+    submissionNonVoters.forEach(userId => {
         state.deductPoints(userId, config.defaultAward);
-    })
-
-    // Deleting certain event data will prevent action taken on further DMs and commands
-    delete state.getEvent().submissions;
-    delete state.getEvent().votes;
-    await dumpState();
+    });
 
     // Then, assign points based on rank in score (excluding those who didn't vote)
-    const submissionCodes: Snowflake[] = Object.keys(scores).filter(code => !deadbeats.has(state.getEvent().submissionOwnersByCode[code]));
-    submissionCodes.sort((x, y) => scores[y] - scores[x]);
-    for (let i = 0; i < submissionCodes.length; i++) {
-        const submissionCode: string = submissionCodes[i];
+    const validCodesSorted: Snowflake[] = allCodes.filter(code => !nonVoterSet.has(submissionOwnersByCode[code]));
+    validCodesSorted.sort((x, y) => scores[y] - scores[x]);
+    for (let i = 0; i < validCodesSorted.length; i++) {
+        const submissionCode: string = validCodesSorted[i];
         const rank: number = i + 1;
         const pointsEarned: number = config.largeAwardsByRank[rank] ?? config.defaultAward;
-        const userId: Snowflake = state.getEvent().submissionOwnersByCode[submissionCode];
+        const userId: Snowflake = submissionOwnersByCode[submissionCode];
         state.awardPoints(userId, pointsEarned);
         state.setDailyRank(userId, rank);
         state.resetDaysSinceLGM(userId);
@@ -749,43 +756,42 @@ const finalizeAnonymousSubmissions = async () => {
 
     // Reveal the winners (and losers) to the channel
     await messenger.send(goodMorningChannel, 'Now, time to reveal the results...');
-    if (deadbeats.size > 0) {
+    if (submissionNonVoters.length > 0) {
         await sleep(10000);
-        const deadbeatsText: string = naturalJoin([...deadbeats].map(userId => `<@${userId}>`));
-        await messenger.send(goodMorningChannel, `Before anything else, say hello to the deadbeats who were disqualified for not voting! ${deadbeatsText} 👋`);
+        await messenger.send(goodMorningChannel, `Before anything else, say hello to the deadbeats who were disqualified for not voting! ${getJoinedMentions(submissionNonVoters)} 👋`);
     }
-    const zeroVoteCodes: string[] = submissionCodes.filter(code => scores[code] === 0);
+    const zeroVoteCodes: string[] = validCodesSorted.filter(code => scores[code] === 0);
     if (zeroVoteCodes.length > 0) {
-        const zeroVoteUserIds: Snowflake[] = zeroVoteCodes.map(code => state.getEvent().submissionOwnersByCode[code]);
+        const zeroVoteUserIds: Snowflake[] = zeroVoteCodes.map(code => submissionOwnersByCode[code]);
         await sleep(12000);
         await messenger.send(goodMorningChannel, `Now, let us extend our solemn condolences to ${getJoinedMentions(zeroVoteUserIds)}, for they received no votes this fateful morning... 😬`);
     }
-    for (let i = submissionCodes.length - 1; i >= 0; i--) {
-        const submissionCode: string = submissionCodes[i];
-        const userId: Snowflake = state.getEvent().submissionOwnersByCode[submissionCode];
+    for (let i = validCodesSorted.length - 1; i >= 0; i--) {
+        const code: string = validCodesSorted[i];
+        const userId: Snowflake = submissionOwnersByCode[code];
         const rank: number = i + 1;
         if (i === 0) {
             await sleep(12000);
-            await messenger.send(goodMorningChannel, `And in first place, with submission **${submissionCode}**...`);
+            await messenger.send(goodMorningChannel, `And in first place, with submission **${code}**...`);
             await sleep(6000);
-            await messenger.send(goodMorningChannel, `Receiving **${breakdown[submissionCode][0]}** gold votes, **${breakdown[submissionCode][1]}** silver votes, and **${breakdown[submissionCode][2]}** bronze votes...`);
+            await messenger.send(goodMorningChannel, `Receiving **${breakdown[code][0]}** gold votes, **${breakdown[code][1]}** silver votes, and **${breakdown[code][2]}** bronze votes...`);
             await sleep(12000);
             await messenger.send(goodMorningChannel, `We have our winner, <@${userId}>! Congrats!`);
         } else if (i < 3) {
             await sleep(12000);
-            await messenger.send(goodMorningChannel, `In ${getRankString(rank)} place, we have <@${userId}> with submission **${submissionCode}**!`);
+            await messenger.send(goodMorningChannel, `In ${getRankString(rank)} place, we have <@${userId}> with submission **${code}**!`);
         }
     }
 
     // Finally, send DMs to let each user know their ranking
-    const totalSubmissions: number = submissionCodes.length;
-    for (let i = 0; i < submissionCodes.length; i++) {
-        const submissionCode: string = submissionCodes[i];
-        const userId: Snowflake = state.getEvent().submissionOwnersByCode[submissionCode];
+    const numValidSubmissions: number = validCodesSorted.length;
+    for (let i = 0; i < validCodesSorted.length; i++) {
+        const code: string = validCodesSorted[i];
+        const userId: Snowflake = submissionOwnersByCode[code];
         const rank: number = i + 1;
         try {
-            await messenger.dm(await fetchMember(userId), `Your ${state.getEvent().submissionType} placed **${getRankString(rank)}** of **${totalSubmissions}**, `
-                + `receiving **${breakdown[submissionCode][0]}** gold votes, **${breakdown[submissionCode][1]}** silver votes, and **${breakdown[submissionCode][2]}** bronze votes. `
+            await messenger.dm(await fetchMember(userId), `Your ${state.getEvent().submissionType} placed **${getRankString(rank)}** of **${numValidSubmissions}**, `
+                + `receiving **${breakdown[code][0]}** gold votes, **${breakdown[code][1]}** silver votes, and **${breakdown[code][2]}** bronze votes. `
                 + `Thanks for participating ${config.defaultGoodMorningEmoji}`);
         } catch (err) {
             await logger.log(`Unable to send results DM to **${state.getPlayerDisplayName(userId)}**: \`${err.toString()}\``);
@@ -794,26 +800,23 @@ const finalizeAnonymousSubmissions = async () => {
 
     // Send the details of the scoring to the sungazers
     // TODO: Remove this try-catch once we're sure it works
+    await messenger.send(sungazersChannel, 'FYI gazers, here are the details of today\'s voting...');
     try {
-        await messenger.send(sungazersChannel, 'FYI gazers, here are the details of today\'s voting...');
-        const allCodes: string[] = submissionCodes.concat(Array.from(deadbeats));
-        await messenger.send(sungazersChannel, allCodes.map((c, i) => {
+        const allCodesSorted: string[] = validCodesSorted.concat(disqualifiedCodes);
+        const scoringDetails: string = allCodesSorted.map((c, i) => {
             const medalsText: string = ('🥇'.repeat(breakdown[c][0]) + '🥈'.repeat(breakdown[c][1]) + '🥉'.repeat(breakdown[c][2])) || '🌚';
-            const userId: Snowflake = state.getEvent().submissionOwnersByCode[c];
-            if (deadbeats.has(c)) {
+            const userId: Snowflake = submissionOwnersByCode[c];
+            if (nonVoterSet.has(userId)) {
                 return `**DQ**: ${c} <@${userId}> \`${medalsText}=${scores[c]}\``;
             } else {
                 return `**${getRankString(i + 1)}**: ${c} <@${userId}> \`${medalsText}=${scores[c]}\``;
             }
-        }).join('\n'));
+        }).join('\n');
+        await messenger.send(sungazersChannel, scoringDetails);
     } catch (err) {
-        await logger.log('Failed to compute and send voting/scoring log...');
+        await messenger.send(sungazersChannel, 'Nvm, my brain is melting');
+        await logger.log(`Failed to compute and send voting/scoring log: \`${err}\``);
     }
-
-    // Delete remaining event data
-    delete state.getEvent().submissionOwnersByCode;
-    delete state.getEvent().rootSubmissionMessage;
-    await dumpState();
 };
 
 const TIMEOUT_CALLBACKS = {
@@ -1053,12 +1056,12 @@ const TIMEOUT_CALLBACKS = {
             await logger.log('Aborting submission voting reminder, as the votes have already been wiped.');
             return;
         }
-
-        if (state.haveAllSubmittersVoted()) {
-            // If all submitters have voted, then we can finalize the submissions early
-            await finalizeAnonymousSubmissions();
-        } else {
-            // Otherwise, send a voting notification to the channel
+        const delinquents: Snowflake[] = state.getSubmissionNonVoters();
+        if (delinquents.length === 1) {
+            // Send voting reminder targeting the one remaining user
+            await messenger.send(goodMorningChannel, `Ahem <@${delinquents[0]}>... Please vote.`);
+        } else if (delinquents.length > 1) {
+            // Send a voting notification to the channel
             try {
                 const rootSubmissionMessage: Message = await goodMorningChannel.messages.fetch(state.getEvent().rootSubmissionMessage);
                 await messenger.reply(rootSubmissionMessage, `If you haven't already, please vote on your favorite ${state.getEvent().submissionType} with \`/vote\`!`);
@@ -1066,7 +1069,6 @@ const TIMEOUT_CALLBACKS = {
                 logger.log(`Failed to fetch root submission message and send reminder: \`${err.toString()}\``);
             }
             // Also, DM players who still haven't voted
-            const delinquents: Snowflake[] = state.getSubmissionNonVoters();
             if (delinquents.length > 0) {
                 await logger.log(`Sending voting reminder DM to ${getBoldNames(delinquents)}...`);
                 delinquents.forEach(async (userId) => {
@@ -1346,8 +1348,15 @@ client.on('interactionCreate', async (interaction): Promise<void> => {
                     // Cast the vote
                     state.getEvent().votes[interaction.user.id] = submissionCodes;
                     await dumpState();
-                    // Notify the user of their vote
-                    await interaction.editReply('Your vote has been cast!');
+
+                    if (state.haveAllSubmittersVoted()) {
+                        // If all the votes have been cast, then finalize the voting
+                        await interaction.editReply('Thanks, but you were the last to vote (no penalty, but be quicker next time) 🌚');
+                        await finalizeAnonymousSubmissions();
+                    } else {
+                        // Otherwise, just send confirmation to the voter
+                        await interaction.editReply('Your vote has been cast!');
+                    }
                 }
             } else {
                 await interaction.editReply('You shouldn\'t be able to vote right now!');
