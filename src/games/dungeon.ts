@@ -91,11 +91,11 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     // Draw goal
                     context.fillStyle = 'rgba(200, 0, 100, 1)';
                     context.fillRect(c * DungeonCrawler.TILE_SIZE, r * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE);
-                } else if (this.state.map[r][c] === TileType.CHEST) {
+                } else if (this.isTileType(r, c, TileType.CHEST)) {
                     // Draw chests
                     context.fillStyle = 'yellow';
                     context.fillRect(c * DungeonCrawler.TILE_SIZE, r * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE);
-                } else if (this.state.map[r][c] === TileType.TRAP) {
+                } else if (this.isTileType(r, c, TileType.TRAP)) {
                     // Draw revealed traps
                     context.fillStyle = 'black';
                     context.beginPath();
@@ -120,13 +120,13 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         context.fill();
                     }
                     // context.fillRect(c * DungeonCrawler.TILE_SIZE, r * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE);
-                    if (this.state.map[r][c] === TileType.KEY_HOLE) {
+                    if (this.isTileType(r, c, TileType.KEY_HOLE)) {
                         // Draw key hole cost
                         context.fillStyle = DungeonCrawler.STYLE_LIGHT_SKY;
                         context.font = `${DungeonCrawler.TILE_SIZE * .7}px sans-serif`;
                         context.fillText(this.state.keyHoleCosts[DungeonCrawler.getLocationString(r, c)].toString(), (c + .25) * DungeonCrawler.TILE_SIZE, (r + .75) * DungeonCrawler.TILE_SIZE);
                         // context.fillRect((c + .4) * DungeonCrawler.TILE_SIZE, (r + .3) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE * .2, DungeonCrawler.TILE_SIZE * .4);
-                    } else if (this.state.map[r][c] === TileType.OPENED_KEY_HOLE) {
+                    } else if (this.isTileType(r, c, TileType.OPENED_KEY_HOLE)) {
                         context.fillStyle = DungeonCrawler.STYLE_SKY;
                         if (this.isWalkable(r - 1, c) || this.isWalkable(r + 1, c)) {
                             context.fillRect((c + .1) * DungeonCrawler.TILE_SIZE, (r - .1) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE * .8, DungeonCrawler.TILE_SIZE * 1.2);
@@ -141,7 +141,6 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     }
                 } else {
                     context.fillStyle = 'black';
-                    // context.fillText(this.state.map[r][c].toString(), c * DungeonCrawler.TILE_SIZE, (r + .5) * DungeonCrawler.TILE_SIZE);
                 }
             }
         }
@@ -483,11 +482,14 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
 
     private getTileAtUser(userId: Snowflake): TileType {
         const player = this.state.players[userId];
-        return this.getTile(player.r, player.c);
+        return this.state.map[player.r][player.c];
     }
 
-    private getTile(r: number, c: number): TileType {
-        return this.state.map[r][c];
+    private isTileType(r: number, c: number, type: TileType): boolean {
+        if (!this.isInBounds(r, c)) {
+            return false;
+        }
+        return this.state.map[r][c] === type;
     }
 
     private isInBounds(r: number, c: number): boolean {
@@ -502,20 +504,24 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return t === TileType.EMPTY || t === TileType.OPENED_KEY_HOLE || t === TileType.CHEST || t === TileType.HIDDEN_TRAP || t === TileType.TRAP;
     }
 
-    private isKeyHole(r: number, c: number): boolean {
-        return this.isInBounds(r, c) && this.state.map[r][c] === TileType.KEY_HOLE;
-    }
-
     private isSealable(r: number, c: number): boolean {
-        return this.isInBounds(r, c) && (this.state.map[r][c] === TileType.KEY_HOLE || this.state.map[r][c] === TileType.OPENED_KEY_HOLE);
+        return this.isTileType(r, c, TileType.KEY_HOLE) || this.isTileType(r, c, TileType.OPENED_KEY_HOLE);
     }
 
-    private isNextToKeyHole(r: number, c: number): boolean {
-        return this.isKeyHole(r - 1, c) || this.isKeyHole(r + 1, c) || this.isKeyHole(r, c - 1) || this.isKeyHole(r, c + 1);
+    /**
+     * @returns True if this location is adjacent to a locked doorway, unlocked doorway, or a sealed doorway.
+     */
+    private isNextToDoorway(r: number, c: number): boolean {
+        for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+            if (this.isInBounds(r + dr, c + dc) && (DungeonCrawler.getLocationString(r + dr, c + dc) in this.state.keyHoleCosts)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private isCloudy(r: number, c: number): boolean {
-        return this.isInBounds(r, c) && (this.state.map[r][c] === TileType.WALL || this.state.map[r][c] === TileType.OPENED_KEY_HOLE || this.state.map[r][c] === TileType.KEY_HOLE);
+        return this.isTileType(r, c, TileType.WALL) || this.isTileType(r, c, TileType.KEY_HOLE) || this.isTileType(r, c, TileType.OPENED_KEY_HOLE);
     }
 
     private getPlayerAtLocation(r: number, c: number): Snowflake | undefined {
@@ -547,7 +553,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             cost += this.getActionCost(c, newLocation.r, newLocation.c);
             switch (c) {
                 case 'up':
-                    if (this.isKeyHole(newLocation.r - 1, newLocation.c)) {
+                    if (this.isTileType(newLocation.r - 1, newLocation.c, TileType.KEY_HOLE)) {
                         newLocation.r--;
                         warnings.push(`Doorway at **${DungeonCrawler.getLocationString(newLocation.r, newLocation.c)}** must be unlocked, whether by you or someone else.`);
                     } else if (this.isWalkable(newLocation.r - 1, newLocation.c)) {
@@ -557,7 +563,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     }
                     break;
                 case 'down':
-                    if (this.isKeyHole(newLocation.r + 1, newLocation.c)) {
+                    if (this.isTileType(newLocation.r + 1, newLocation.c, TileType.KEY_HOLE)) {
                         newLocation.r++
                         warnings.push(`Doorway at **${DungeonCrawler.getLocationString(newLocation.r, newLocation.c)}** must be unlocked, whether by you or someone else.`);
                     } else if (this.isWalkable(newLocation.r + 1, newLocation.c)) {
@@ -567,7 +573,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     }
                     break;
                 case 'left':
-                    if (this.isKeyHole(newLocation.r, newLocation.c - 1)) {
+                    if (this.isTileType(newLocation.r, newLocation.c - 1, TileType.KEY_HOLE)) {
                         newLocation.c--
                         warnings.push(`Doorway at **${DungeonCrawler.getLocationString(newLocation.r, newLocation.c)}** must be unlocked, whether by you or someone else.`);
                     } else if (this.isWalkable(newLocation.r, newLocation.c - 1)) {
@@ -577,7 +583,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     }
                     break;
                 case 'right':
-                    if (this.isKeyHole(newLocation.r, newLocation.c + 1)) {
+                    if (this.isTileType(newLocation.r, newLocation.c + 1, TileType.KEY_HOLE)) {
                         newLocation.c++
                         warnings.push(`Doorway at **${DungeonCrawler.getLocationString(newLocation.r, newLocation.c)}** must be unlocked, whether by you or someone else.`);
                     } else if (this.isWalkable(newLocation.r, newLocation.c + 1)) {
@@ -590,24 +596,26 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     // TODO: Do validation?
                     break;
                 case 'unlock':
-                    if (this.isNextToKeyHole(newLocation.r, newLocation.c)) {
-                        // COOL
-                    } else {
-                        throw new Error(`You can't use "unlock" at **${DungeonCrawler.getLocationString(newLocation.r, newLocation.c)}**, as there'd be no keyhole near you to unlock!`);
+                    if (!this.isNextToDoorway(newLocation.r, newLocation.c)) {
+                        throw new Error(`You can't use "unlock" at **${DungeonCrawler.getLocationString(newLocation.r, newLocation.c)}**, as there'd be no doorway near you to unlock!`);
                     }
                     break;
                 case 'lock':
-                    // TODO: Do validation?
+                    if (!this.isNextToDoorway(newLocation.r, newLocation.c)) {
+                        throw new Error(`You can't use "lock" at **${DungeonCrawler.getLocationString(newLocation.r, newLocation.c)}**, as there'd be no doorway near you to lock!`);
+                    }
                     break;
                 case 'seal':
-                    // TODO: Do validation?
+                    if (!this.isNextToDoorway(newLocation.r, newLocation.c)) {
+                        throw new Error(`You can't use "seal" at **${DungeonCrawler.getLocationString(newLocation.r, newLocation.c)}**, as there'd be no doorway near you to seal!`);
+                    }
                     break;
                 case 'trap':
                     const target = this.parseLocationString(arg);
                     if (!target) {
                         throw new Error(`**${arg}** is not a valid location on the map!`);
                     }
-                    if (this.state.map[target.r][target.c] === TileType.EMPTY || this.state.map[target.r][target.c] === TileType.HIDDEN_TRAP) {
+                    if (this.isTileType(target.r, target.c, TileType.EMPTY) || this.isTileType(target.r, target.c, TileType.HIDDEN_TRAP)) {
                         // COOL
                     } else {
                         throw new Error(`Can't set a trap at **${arg}**, try a different spot.`);
@@ -620,11 +628,13 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     throw new Error(`\`${command}\` is an invalid action!`);
             }
         }
+
         if (cost > this.state.players[userId].points) {
             throw new Error(`You can't afford these actions. It would cost **${cost}** points, yet you only have **${this.state.players[userId].points}**.`);
         }
+
         this.state.decisions[userId] = commands;
-        return `Valid actions, your new location will be **${DungeonCrawler.getLocationString(newLocation.r, newLocation.c)}**`
+        return `Valid actions (cost: **${cost}**), your new location will be **${DungeonCrawler.getLocationString(newLocation.r, newLocation.c)}**`
             + (warnings.length > 0 ? ', BUT PLEASE NOTE THE FOLLOWING WARNINGS:\n' + warnings.join('\n') : '');
     }
 
@@ -648,7 +658,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             'unlock': () => {
                 let cost = 0;
                 for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
-                    if (this.isKeyHole(r + dr, c + dc)) {
+                    if (this.isTileType(r + dr, c + dc, TileType.KEY_HOLE)) {
                         cost += this.state.keyHoleCosts[DungeonCrawler.getLocationString(r + dr, c + dc)];
                     }
                 }
@@ -657,7 +667,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             'lock': () => {
                 let cost = 0;
                 for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
-                    if (this.state.map[r + dr][c + dc] === TileType.OPENED_KEY_HOLE) {
+                    if (this.isTileType(r + dr, c + dc, TileType.OPENED_KEY_HOLE)) {
                         cost += this.state.keyHoleCosts[DungeonCrawler.getLocationString(r + dr, c + dc)];
                     }
                 }
@@ -762,7 +772,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     'unlock': () => {
                         let numDoorwaysUnlocked = 0;
                         for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
-                            if (this.isKeyHole(player.r + dr, player.c + dc)) {
+                            if (this.isTileType(player.r + dr, player.c + dc, TileType.KEY_HOLE)) {
                                 this.state.map[player.r + dr][player.c + dc] = TileType.OPENED_KEY_HOLE;
                                 numDoorwaysUnlocked++;
                             }
@@ -777,7 +787,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     'lock': () => {
                         let numDoorwaysLocked = 0;
                         for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
-                            if (this.state.map[player.r + dr][player.c + dc] === TileType.OPENED_KEY_HOLE) {
+                            if (this.isTileType(player.r + dr, player.c + dc, TileType.OPENED_KEY_HOLE)) {
                                 this.state.map[player.r + dr][player.c + dc] = TileType.KEY_HOLE;
                                 numDoorwaysLocked++;
                             }
