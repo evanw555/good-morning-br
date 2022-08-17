@@ -6,7 +6,7 @@ import { hasVideo, validateConfig, reactToMessage, getOrderingUpsets } from './u
 import GoodMorningState from './state';
 import logger from './logger';
 
-import { FileStorage, generateKMeansClusters, getClockTime, getRankString, getRelativeDateTimeString, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger, naturalJoin, PastTimeoutStrategy, R9KTextBank, randChoice, randInt, shuffle, sleep, TimeoutManager, toCalendarDate, toFixed, toLetterId } from 'evanw555.js';
+import { FileStorage, generateKMeansClusters, getClockTime, getRankString, getRelativeDateTimeString, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger, naturalJoin, PastTimeoutStrategy, prettyPrint, R9KTextBank, randChoice, randInt, shuffle, sleep, TimeoutManager, toCalendarDate, toFixed, toLetterId } from 'evanw555.js';
 import DungeonCrawler from './games/dungeon';
 const auth = loadJson('config/auth.json');
 const config: GoodMorningConfig = loadJson('config/config.json');
@@ -1578,6 +1578,11 @@ const processCommands = async (msg: Message): Promise<void> => {
             } else {
                 await msg.reply('The game hasn\'t been created yet!');
             }
+        }
+        // TODO: Remove this soon, testing
+        else if (sanitizedText.includes('serialize')) {
+            const dungeon = DungeonCrawler.create([msg.member]);
+            await messenger.sendLargeMonospaced(msg.channel, prettyPrint(dungeon.getState()));
         }
     }
 };
