@@ -1581,7 +1581,7 @@ const processCommands = async (msg: Message): Promise<void> => {
         }
         // TODO: Remove this soon, testing
         else if (sanitizedText.includes('serialize')) {
-            const dungeon = DungeonCrawler.create([await msg.member.fetch()]);
+            const dungeon = DungeonCrawler.create((await guild.members.list({ limit: randInt(1, 30) })).toJSON());
             await messenger.sendLargeMonospaced(msg.channel, prettyPrint(dungeon.getState()));
         }
     }
