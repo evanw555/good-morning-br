@@ -1478,7 +1478,8 @@ const processCommands = async (msg: Message): Promise<void> => {
         }
         // Return the state
         else if (sanitizedText.includes('state')) {
-            await messenger.sendLargeMonospaced(msg.channel, state.toJson());
+            // Collapse all primitive lists into one line
+            await messenger.sendLargeMonospaced(msg.channel, state.toSpecialJson());
         }
         // Return the timeout info
         else if (sanitizedText.includes('timeouts')) {

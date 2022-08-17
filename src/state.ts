@@ -1,5 +1,5 @@
 import { Snowflake } from "discord.js";
-import { getTodayDateString, toFixed } from "evanw555.js";
+import { getTodayDateString, prettyPrint, toFixed } from "evanw555.js";
 import ActivityTracker from "./activity-tracker";
 import AbstractGame from "./games/abstract-game";
 import DungeonCrawler from "./games/dungeon";
@@ -610,5 +610,9 @@ export default class GoodMorningState {
 
     toJson(): string {
         return JSON.stringify(this.data, null, 2);
+    }
+
+    toSpecialJson(): string {
+        return prettyPrint(this.data);
     }
 }
