@@ -322,6 +322,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return Object.keys(this.state.players).sort((x, y) => getLocationRank(x) - getLocationRank(y));
     }
 
+    getShuffledPlayers(): string[] {
+        return shuffle(Object.keys(this.state.players));
+    }
+
     private static getInitialLocation(seq: number, rows: number, cols: number): [number, number] {
         const offset = Math.floor(seq / 4);
         const corner = seq % 4;
@@ -719,7 +723,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         };
         const bumpers: Record<Snowflake, Snowflake> = {};
         // Process one decision from each player
-        for (const userId of this.getOrderedPlayers()) {
+        for (const userId of this.getShuffledPlayers()) {
             const player = this.state.players[userId];
             delete player.previousLocation;
             if (userId in this.state.decisions && this.state.decisions[userId].length > 0) {
