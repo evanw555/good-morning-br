@@ -543,14 +543,12 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     state.setGoodMorningEmoji(config.goodMorningEmojiOverrides[toCalendarDate(new Date())] ?? config.defaultGoodMorningEmoji);
 
     // Give a hint for today's magic word
-    // TODO (2.0): How can this be re-enabled?
-    if (false && state.hasMagicWord()) {
+    if (state.hasMagicWord()) {
         // Get list of all suitable recipients of the magic word (this is a balancing mechanic, so pick players who are behind yet active)
         const potentialMagicWordRecipients: Snowflake[] = state.getPotentialMagicWordRecipients();
         // Determine if we should give out the hint
         const shouldGiveHint: boolean = potentialMagicWordRecipients.length > 0
-            && state.getEventType() !== DailyEventType.BeginHomeStretch
-            && state.getSeasonCompletion() >= 0.1;
+            && state.getEventType() !== DailyEventType.BeginHomeStretch;
         // If yes, then give out the hint to one randomly selected suitable recipient
         if (shouldGiveHint) {
             const magicWordRecipient: Snowflake = randChoice(...potentialMagicWordRecipients);

@@ -261,7 +261,7 @@ export default class GoodMorningState {
      * @returns List of user IDs for players who are suitable to receive the magic word hint
      */
     getPotentialMagicWordRecipients(): Snowflake[] {
-        return this.queryOrderedPlayers({ skipPlayers: 3, maxDays: 2, maxRelativeCompletion: 0.8 });
+        return this.queryOrderedPlayers({ maxRelativeCompletion: 0.5, minPoints: 1 });
     }
 
     /**
@@ -270,30 +270,35 @@ export default class GoodMorningState {
      * - maxDays: only include players who've said GM in the last N days
      * - minDays: only include players who haven't said GM in the last N-1 days
      * - maxRelativeCompletion: only include players with at most this relative completion
+     * - minPoints: only include player with at least so many points
      * - n: only return the first N players (after the previous filters have been applied)
      * @param options parameters map
      * @returns ordered and filtered list of user IDs
      */
-    queryOrderedPlayers(options: { skipPlayers?: number, maxDays?: number, minDays?: number, maxRelativeCompletion?: number, n?: number }): Snowflake[] {
+    queryOrderedPlayers(options: { skipPlayers?: number, maxDays?: number, minDays?: number, maxRelativeCompletion?: number, minPoints?: number, n?: number }): Snowflake[] {
         let result: Snowflake[] = this.getOrderedPlayers();
 
-        if (options.skipPlayers) {
+        if (options.skipPlayers !== undefined) {
             result = result.slice(options.skipPlayers);
         }
 
-        if (options.maxDays) {
-            result = result.filter((userId) => this.getPlayerDaysSinceLGM(userId) <= options.maxDays)
+        if (options.maxDays !== undefined) {
+            result = result.filter(userId => this.getPlayerDaysSinceLGM(userId) <= options.maxDays)
         }
 
-        if (options.minDays) {
-            result = result.filter((userId) => this.getPlayerDaysSinceLGM(userId) >= options.minDays)
+        if (options.minDays !== undefined) {
+            result = result.filter(userId => this.getPlayerDaysSinceLGM(userId) >= options.minDays)
         }
 
-        if (options.maxRelativeCompletion) {
-            result = result.filter((userId) => this.getPlayerRelativeCompletion(userId) <= options.maxRelativeCompletion);
+        if (options.maxRelativeCompletion !== undefined) {
+            result = result.filter(userId => this.getPlayerRelativeCompletion(userId) <= options.maxRelativeCompletion);
         }
 
-        if (options.n) {
+        if (options.minPoints !== undefined) {
+            result = result.filter(userId => this.getPlayerPoints(userId) >= options.minPoints);
+        }
+
+        if (options.n !== undefined) {
             result = result.slice(0, options.n);
         }
 
