@@ -1393,7 +1393,7 @@ const processCommands = async (msg: Message): Promise<void> => {
             // TODO: Temp logic to move all other players
             for (const otherId of tempDungeon.getOrderedPlayers()) {
                 if (otherId !== msg.author.id) {
-                    const nextAction = tempDungeon.getNextActionsTowardGoal(otherId, tempDungeon.getPoints(otherId));
+                    const nextAction = tempDungeon.getNextActionsTowardGoal(otherId, tempDungeon.getPoints(otherId)).join(' ');
                     if (nextAction) {
                         try {
                             tempDungeon.addPlayerDecision(otherId, nextAction);

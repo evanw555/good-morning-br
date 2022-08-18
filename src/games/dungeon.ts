@@ -277,8 +277,13 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             player.originLocation = { r: player.r, c: player.c };
             delete player.knockedOut;
             // If the user has negative points, knock them out
-            if (this.state.players[userId].points < 0 && !this.hasPendingDecisions(userId)) {
+            if (player.points < 0 && !this.hasPendingDecisions(userId)) {
                 player.knockedOut = true;
+            }
+            // Otherwise if player has at least one point, choose a default sequence of actions for the user
+            else if (player.points >= 1) {
+                const actions: string[] = this.getNextActionsTowardGoal(userId, Math.floor(player.points));
+                this.state.decisions[userId] = actions;
             }
         }
     }
@@ -914,7 +919,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return userId in this.state.decisions && this.state.decisions[userId].length > 0;
     }
 
-    getNextActionsTowardGoal(userId: Snowflake, n: number = 1): string {
+    getNextActionsTowardGoal(userId: Snowflake, n: number = 1): string[] {
         const path = this.searchToGoal(userId);
         const result = [];
         if (path && path.length > n) {
@@ -932,7 +937,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 }
             }
         }
-        return result.join(' ');
+        return result;
     }
 
     getNumStepsToGoal(userId: Snowflake): number {
