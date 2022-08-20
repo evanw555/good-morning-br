@@ -258,6 +258,32 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 const location = this.parseLocationString(locationString);
                 context.fillText(this.state.players[this.state.trapOwners[locationString]].displayName, location.c * DungeonCrawler.TILE_SIZE, location.r * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE);
             }
+            // Render all player decisions
+            // TODO (2.0): Reuse decision rendering logic from above??
+            for (const userId of Object.keys(this.state.players)) {
+                const player = this.state.players[userId];
+                const decisions: string[] = this.state.decisions[userId] ?? [];
+                const tempLocation = { r: player.r, c: player.c };
+                const locations = DungeonCrawler.getSequenceOfLocations(tempLocation, decisions as ActionName[]);
+                context.strokeStyle = 'red';
+                context.lineWidth = 2;
+                context.setLineDash([Math.floor(DungeonCrawler.TILE_SIZE * .25), Math.floor(DungeonCrawler.TILE_SIZE * .25)]);
+                for (let i = 1; i < locations.length; i++) {
+                    const prev = locations[i - 1];
+                    const curr = locations[i];
+                    context.beginPath();
+                    context.moveTo((prev.c + .5) * DungeonCrawler.TILE_SIZE, (prev.r + .5) * DungeonCrawler.TILE_SIZE);
+                    context.lineTo((curr.c + .5) * DungeonCrawler.TILE_SIZE, (curr.r + .5) * DungeonCrawler.TILE_SIZE);
+                    context.stroke();
+                    // Show the final location
+                    if (i === locations.length - 1) {
+                        context.setLineDash([]);
+                        context.beginPath();
+                        context.arc((curr.c + .5) * DungeonCrawler.TILE_SIZE, (curr.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE / 2 + 1, 0, Math.PI * 2, false);
+                        context.stroke();
+                    }
+                }
+            }
         }
 
         const TOTAL_WIDTH = WIDTH + DungeonCrawler.TILE_SIZE * 12;
