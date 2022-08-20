@@ -254,7 +254,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             const text = `${player.displayName}\n${this.getPlayerLocationString(userId)} $${player.points}`
             const textX = WIDTH + DungeonCrawler.TILE_SIZE * 1.5;
             const textY = y * DungeonCrawler.TILE_SIZE * 2;
-            c2.fillStyle = `hsl(360,${player.points < 0 ? 50 : 0}%,${y % 2 === 0 ? 60 : 40}%)`;
+            c2.fillStyle = `hsl(360,${player.points < 0 ? 50 : 0}%,${y % 2 === 0 ? 75 : 55}%)`;
             c2.fillText(text, textX, textY);
         }
 
