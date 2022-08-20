@@ -166,7 +166,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             const locations = DungeonCrawler.getSequenceOfLocations(tempLocation, decisions as ActionName[]);
             context.strokeStyle = 'red';
             context.lineWidth = 2;
-            context.setLineDash([DungeonCrawler.TILE_SIZE * .25, DungeonCrawler.TILE_SIZE * .25]);
+            context.setLineDash([Math.floor(DungeonCrawler.TILE_SIZE * .25), Math.floor(DungeonCrawler.TILE_SIZE * .25)]);
             for (let i = 1; i < locations.length; i++) {
                 const prev = locations[i - 1];
                 const curr = locations[i];
@@ -361,7 +361,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         let previousLocation = initialLocation;
         for (const action of actions) {
             const newLocation = DungeonCrawler.getNextLocation(previousLocation, action);
-            if (newLocation.r !== previousLocation.r && newLocation.c !== previousLocation.c) {
+            if (newLocation.r !== previousLocation.r || newLocation.c !== previousLocation.c) {
                 result.push(newLocation);
             }
             previousLocation = newLocation;
