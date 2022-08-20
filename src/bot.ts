@@ -1625,7 +1625,7 @@ const processCommands = async (msg: Message): Promise<void> => {
         }
         else if (sanitizedText.includes('game')) {
             if (state.hasGame()) {
-                const attachment = new MessageAttachment(await state.getGame().renderState({ admin: true }), 'game-state.png');
+                const attachment = new MessageAttachment(await state.getGame().renderState({ showPlayerDecision: msg.author.id, admin: true }), 'game-admin.png');
                 await msg.channel.send({ content: 'The current game state:', files: [attachment] });
                 await msg.channel.send(state.getGame().getInstructionsText());
             } else {

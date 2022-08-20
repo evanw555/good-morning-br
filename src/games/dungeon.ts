@@ -163,8 +163,17 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             const player = this.state.players[options.showPlayerDecision];
             const decisions: string[] = this.state.decisions[options.showPlayerDecision] ?? [];
             const tempLocation = { r: player.r, c: player.c };
-            for (const decision of decisions) {
-                // TODO (2.0): Finish this! Should it be merged with the validation logic?
+            const locations = DungeonCrawler.getSequenceOfLocations(tempLocation, decisions as ActionName[]);
+            context.strokeStyle = 'red';
+            context.lineWidth = 2;
+            context.setLineDash([DungeonCrawler.TILE_SIZE * .25, DungeonCrawler.TILE_SIZE * .25]);
+            for (let i = 1; i < locations.length; i++) {
+                const prev = locations[i - 1];
+                const curr = locations[i];
+                context.beginPath();
+                context.moveTo((prev.c + .5) * DungeonCrawler.TILE_SIZE, (prev.r + .5) * DungeonCrawler.TILE_SIZE);
+                context.lineTo((curr.c + .5) * DungeonCrawler.TILE_SIZE, (curr.r + .5) * DungeonCrawler.TILE_SIZE);
+                context.stroke();
             }
         }
 
@@ -345,6 +354,33 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
 
     getShuffledPlayers(): string[] {
         return shuffle(Object.keys(this.state.players));
+    }
+
+    private static getSequenceOfLocations(initialLocation: { r: number, c: number }, actions: ActionName[]): { r: number, c: number }[] {
+        const result = [initialLocation];
+        let previousLocation = initialLocation;
+        for (const action of actions) {
+            const newLocation = DungeonCrawler.getNextLocation(previousLocation, action);
+            if (newLocation.r !== previousLocation.r && newLocation.c !== previousLocation.c) {
+                result.push(newLocation);
+            }
+            previousLocation = newLocation;
+        }
+        return result;
+    }
+
+    private static getNextLocation(location: { r: number, c: number }, action: ActionName): { r: number, c: number } {
+        if (action === 'up') {
+            return { r: location.r - 1, c: location.c };
+        } else if (action === 'down') {
+            return { r: location.r + 1, c: location.c };
+        } else if (action === 'left') {
+            return { r: location.r, c: location.c - 1};
+        } else if (action === 'right') {
+            return { r: location.r, c: location.c + 1 };
+        } else {
+            return location;
+        }
     }
 
     private static getInitialLocation(seq: number, rows: number, cols: number): [number, number] {
