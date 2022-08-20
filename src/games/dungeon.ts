@@ -546,10 +546,11 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         const commands: string[] = text.replace(/\s+/g, ' ').trim().split(' ').map(c => c.toLowerCase());
         const newLocation = { r: this.state.players[userId].r, c: this.state.players[userId].c };
         const warnings: string[] = [];
-        let cost = 0;
+        const playerPoints: number = this.state.players[userId].points;
+        let cost: number = 0;
 
         // Abort if the user has negative points
-        if (this.state.players[userId].points < 0) {
+        if (playerPoints < 0) {
             throw new Error('Oh dear... looks like you have negative points buddy, nice try...');
         }
 
@@ -639,13 +640,14 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             }
         }
 
-        if (cost > this.state.players[userId].points) {
+        if (cost > playerPoints) {
             throw new Error(`You can't afford these actions. It would cost **${cost}** points, yet you only have **${this.state.players[userId].points}**.`);
         }
 
         this.state.decisions[userId] = commands;
-        return `Valid actions (cost: **${cost}**), your new location will be **${DungeonCrawler.getLocationString(newLocation.r, newLocation.c)}**`
-            + (warnings.length > 0 ? ', BUT PLEASE NOTE THE FOLLOWING WARNINGS:\n' + warnings.join('\n') : '');
+        return `Valid actions, your new location will be **${DungeonCrawler.getLocationString(newLocation.r, newLocation.c)}**. `
+            + `This will consume **${cost}** of your **${playerPoints}** points if successful. `
+            + (warnings.length > 0 ? ' BUT PLEASE NOTE THE FOLLOWING WARNINGS:\n' + warnings.join('\n') : '');
     }
 
     private getActionCost(action: ActionName, r: number, c: number): number {

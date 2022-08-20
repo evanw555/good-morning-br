@@ -1929,6 +1929,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     // If it succeeds, dump the state and reply with the validation response
                     await dumpState();
                     await messenger.reply(msg, response);
+                    await logger.log(`<@${userId}> made a valid decision!`);
                 } catch (err) {
                     // Validation failed, notify the user why it failed
                     await messenger.reply(msg, err.toString());
