@@ -176,14 +176,16 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 context.stroke();
                 // Show the final location
                 if (i === locations.length - 1) {
+                    context.setLineDash([]);
                     context.beginPath();
-                    context.arc((player.c + .5) * DungeonCrawler.TILE_SIZE, (player.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE / 2 + 1, 0, Math.PI * 2, false);
+                    context.arc((curr.c + .5) * DungeonCrawler.TILE_SIZE, (curr.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE / 2 + 1, 0, Math.PI * 2, false);
                     context.stroke();
                 }
             }
             // Show attempted traps
             context.font = `${DungeonCrawler.TILE_SIZE * .5}px sans-serif`;
             context.lineWidth = 1;
+            context.setLineDash([]);
             for (const decision of decisions.filter(d => d.includes('trap:'))) {
                 const [ action, locationString ] = decision.split(':');
                 const location = this.parseLocationString(locationString);
