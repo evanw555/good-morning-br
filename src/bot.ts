@@ -390,7 +390,7 @@ const sendGoodMorningMessage = async (): Promise<void> => {
             }
             await goodMorningChannel.send({
                 content: decisionHeader,
-                files: [new MessageAttachment(await state.getGame().renderState(), 'game-state.png')]
+                files: [new MessageAttachment(await state.getGame().renderState(), `game-turn${state.getGame().getTurn()}-decision.png`)]
             });
             await messenger.send(goodMorningChannel, 'Choose your moves by sending me a DM with your desired sequence of actions. DM me _"help"_ for more info.');
             break;
@@ -1625,7 +1625,7 @@ const processCommands = async (msg: Message): Promise<void> => {
         }
         else if (sanitizedText.includes('game')) {
             if (state.hasGame()) {
-                const attachment = new MessageAttachment(await state.getGame().renderState(), 'game-state.png');
+                const attachment = new MessageAttachment(await state.getGame().renderState({ admin: true }), 'game-state.png');
                 await msg.channel.send({ content: 'The current game state:', files: [attachment] });
                 await msg.channel.send(state.getGame().getInstructionsText());
             } else {

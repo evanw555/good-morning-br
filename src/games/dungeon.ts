@@ -75,7 +75,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         };
     }
 
-    async renderState(): Promise<Buffer> {
+    async renderState(options?: { showPlayerDecision?: Snowflake, admin?: boolean }): Promise<Buffer> {
         const WIDTH: number = this.state.columns * DungeonCrawler.TILE_SIZE;
         const HEIGHT: number = this.state.rows * DungeonCrawler.TILE_SIZE;
         const c = canvas.createCanvas(WIDTH, HEIGHT);
@@ -158,6 +158,16 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             }
         }
 
+        // Render the player's actions if enabled
+        if (options?.showPlayerDecision) {
+            const player = this.state.players[options.showPlayerDecision];
+            const decisions: string[] = this.state.decisions[options.showPlayerDecision] ?? [];
+            const tempLocation = { r: player.r, c: player.c };
+            for (const decision of decisions) {
+                // TODO (2.0): Finish this! Should it be merged with the validation logic?
+            }
+        }
+
         // Render all players
         for (const userId of Object.keys(this.state.players)) {
             const player = this.state.players[userId];
@@ -211,6 +221,17 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 context.moveTo((player.c + 1) * DungeonCrawler.TILE_SIZE, player.r * DungeonCrawler.TILE_SIZE);
                 context.lineTo(player.c * DungeonCrawler.TILE_SIZE, (player.r + 1) * DungeonCrawler.TILE_SIZE);
                 context.stroke();
+            }
+        }
+
+        // Render admin stuff
+        if (options?.admin) {
+            // Render trap owners
+            context.font = `${DungeonCrawler.TILE_SIZE * .25}px sans-serif`;
+            context.fillStyle = 'black';
+            for (const locationString of Object.keys(this.state.trapOwners)) {
+                const location = this.parseLocationString(locationString);
+                context.fillText(this.state.players[this.state.trapOwners[locationString]].displayName, location.c * DungeonCrawler.TILE_SIZE, location.r * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE);
             }
         }
 
