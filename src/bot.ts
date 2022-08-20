@@ -395,7 +395,15 @@ const sendGoodMorningMessage = async (): Promise<void> => {
             await messenger.send(goodMorningChannel, 'Choose your moves by sending me a DM with your desired sequence of actions. DM me _"help"_ for more info.');
             break;
         case DailyEventType.GameUpdate:
-            // TODO (2.0): FINISH THIS!
+            if (!state.hasGame()) {
+                await logger.log('Attempted to send out the game update Sunday GM message with no game instance! Aborting...');
+                return;
+            }
+            await messenger.send(goodMorningChannel, languageGenerator.generate(overriddenMessage ?? '{goodMorning}'));
+            await goodMorningChannel.send({
+                content: 'Here\'s where we\'re all starting from. In just a few minutes, we\'ll be seeing the outcome of this week\'s turn...',
+                files: [new MessageAttachment(await state.getGame().renderState(), `game-turn${state.getGame().getTurn()}-begin.png`)]
+            });
             break;
         default:
             // Otherwise, send the standard GM message as normal (do a season intro greeting if today is the first day)
@@ -559,8 +567,15 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         }
     }
 
+    // Set timeout to prime the game processing loop
+    if (state.getEventType() === DailyEventType.GameUpdate) {
+        const firstDecisionProcessDate: Date = new Date();
+        firstDecisionProcessDate.setMinutes(firstDecisionProcessDate.getMinutes() + 5);
+        await timeoutManager.registerTimeout(TimeoutType.ProcessGameDecisions, firstDecisionProcessDate, { pastStrategy: PastTimeoutStrategy.Invoke });
+    }
+
     if (state.getEventType() === DailyEventType.BeginHomeStretch) {
-        // Active home stretch mode!
+        // Activate home stretch mode!
         state.setHomeStretch(true);
         // Set timeout for first home stretch surprise (these events are recursive)
         const surpriseTime = new Date();
@@ -604,7 +619,8 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     dailyVolatileLog.push([new Date(), 'GMBR has arisen.']);
 
     // If we're 20% of the way through the season, determine the nerf threshold for today
-    if (state.getSeasonCompletion() > 0.2) {
+    // TODO (2.0): Do we want this?
+    if (false && state.getSeasonCompletion() > 0.2) {
         // Threshold is 2 top awards below the top score
         const nerfThreshold: number = toFixed(state.getTopScore() - (2 * config.awardsByRank[1]));
         state.setNerfThreshold(nerfThreshold);
@@ -1157,6 +1173,45 @@ const TIMEOUT_CALLBACKS = {
                 content: 'Well that\'s all for now! Here are the updated standings, good luck everyone!',
                 files: [new MessageAttachment(await createHomeStretchImage(state, history.medals), 'home-stretch2.png')]
             });
+        }
+    },
+    [TimeoutType.ProcessGameDecisions]: async (): Promise<void> => {
+        if (!state.hasGame()) {
+            await logger.log('Tried to invoke the game decision processing loop with no game instance! Aborting...');
+            return;
+        }
+
+        // Start sending the typing event
+        try {
+            await goodMorningChannel.sendTyping();
+        } catch (err) {
+            await logger.log(`Failed to send typing on game processing loop: ${err}`);
+        }
+
+        // Process player decisions
+        const game = state.getGame();
+        const processingResult = game.processPlayerDecisions();
+
+        // Sleep based on the length of the text
+        // TODO: This should be integrated into the messenger tool
+        try {
+            await sleep(processingResult.summary.length * randInt(45, 55));
+        } catch (err) {
+            await logger.log(`Failed to sleep on game processing loop: ${err}`);
+        }
+
+        // Render the updated state and send it out
+        const attachment = new MessageAttachment(await game.renderState(), `game-turn${game.getTurn()}.png`);
+        await goodMorningChannel.send({ content: processingResult.summary, files: [attachment] });
+
+        if (processingResult.continueProcessing) {
+            // If there are more decisions to be processed, schedule the next processing timeout
+            const nextProcessDate: Date = new Date();
+            nextProcessDate.setMinutes(nextProcessDate.getMinutes() + randInt(3, 7));
+            await timeoutManager.registerTimeout(TimeoutType.ProcessGameDecisions, nextProcessDate, { pastStrategy: PastTimeoutStrategy.Invoke });
+        } else {
+            // Otherwise, let the people know that the turn is over
+            await messenger.send(goodMorningChannel, languageGenerator.generate('{!Well|Alright,} that\'s {!all|it} for this {!week|turn}! Are you all {!proud of your actions|happy with the outcome|optimistic|feeling good}?'));
         }
     }
 };

@@ -8,7 +8,9 @@ export enum TimeoutType{
     GuestReveilleFallback = 'GUEST_REVEILLE_FALLBACK',
     AnonymousSubmissionReveal = 'ANONYMOUS_SUBMISSION_REVEAL',
     AnonymousSubmissionVotingReminder = 'ANONYMOUS_SUBMISSION_VOTING_REMINDER',
-    HomeStretchSurprise = 'HOME_STRETCH_SURPRISE'
+    HomeStretchSurprise = 'HOME_STRETCH_SURPRISE',
+    // GMBR 2.0 events
+    ProcessGameDecisions = 'PROCESS_GAME_DECISIONS'
 }
 
 /**
