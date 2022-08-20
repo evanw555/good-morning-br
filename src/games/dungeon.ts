@@ -452,7 +452,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 c,
                 avatarUrl: member.user.displayAvatarURL({ size: 32, format: 'png' }),
                 displayName: member.displayName,
-                points: 5
+                // Prime the game with a few extra points to reward early players
+                points: 3
             };
         }
         const dungeon = new DungeonCrawler({
