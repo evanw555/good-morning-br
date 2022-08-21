@@ -85,13 +85,14 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         context.fillStyle = DungeonCrawler.STYLE_SKY;
         context.fillRect(0, 0, WIDTH, HEIGHT);
 
+        // Draw the sun at the center
+        const sunImage = await canvas.loadImage('assets/sun4.png');
+        context.drawImage(sunImage, (this.state.columns - .5) * DungeonCrawler.TILE_SIZE, (this.state.rows - .5) * DungeonCrawler.TILE_SIZE, 2 * DungeonCrawler.TILE_SIZE, 2 * DungeonCrawler.TILE_SIZE);
+
+        // Draw all the tiles
         for (let r = 0; r < this.state.rows; r++) {
             for (let c = 0; c < this.state.columns; c++) {
-                if (r === 20 && c === 20) {
-                    // Draw goal
-                    context.fillStyle = 'rgba(200, 0, 100, 1)';
-                    context.fillRect(c * DungeonCrawler.TILE_SIZE, r * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE);
-                } else if (this.isTileType(r, c, TileType.CHEST)) {
+                if (this.isTileType(r, c, TileType.CHEST)) {
                     // Draw chests
                     context.fillStyle = 'yellow';
                     context.fillRect(c * DungeonCrawler.TILE_SIZE, r * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE);
