@@ -841,7 +841,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         if (bumpers[blockingUserId] === userId) {
                             // If the other user previously bumped into this user, then allow him to pass by
                             pushNonStepStatement(`**${player.displayName}** walked past **${blockingUser.displayName}**`);
-                        } if (blockingUser.knockedOut) {
+                        } else if (blockingUser.knockedOut) {
                             // If the other user is knocked out, walk past him
                             pushNonStepStatement(`**${player.displayName}** stepped over the knocked-out body of **${blockingUser.displayName}**`);
                         } else {
