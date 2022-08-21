@@ -1670,11 +1670,6 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 return;
             }
 
-            // If the event is a game update Sunday, ignore all messages
-            if (state.getEventType() === DailyEventType.GameUpdate) {
-                return;
-            }
-
             // If the game has started without the user, add them now
             // TODO (2.0): This doesn't account for special days like submissions
             if (isJoiningGameLate) {
