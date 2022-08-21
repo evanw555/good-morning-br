@@ -85,10 +85,6 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         context.fillStyle = DungeonCrawler.STYLE_SKY;
         context.fillRect(0, 0, WIDTH, HEIGHT);
 
-        // Draw the sun at the center
-        const sunImage = await canvas.loadImage('assets/sun4.png');
-        context.drawImage(sunImage, (this.state.columns - .5) * DungeonCrawler.TILE_SIZE, (this.state.rows - .5) * DungeonCrawler.TILE_SIZE, 2 * DungeonCrawler.TILE_SIZE, 2 * DungeonCrawler.TILE_SIZE);
-
         // Draw all the tiles
         for (let r = 0; r < this.state.rows; r++) {
             for (let c = 0; c < this.state.columns; c++) {
@@ -145,6 +141,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 }
             }
         }
+
+        // Draw the sun at the center
+        const sunImage = await canvas.loadImage('assets/sun4.png');
+        context.drawImage(sunImage, (this.state.columns - .5) * DungeonCrawler.TILE_SIZE, (this.state.rows - .5) * DungeonCrawler.TILE_SIZE, 2 * DungeonCrawler.TILE_SIZE, 2 * DungeonCrawler.TILE_SIZE);
 
         // Render all player "previous locations" before rendering the players themselves
         context.strokeStyle = DungeonCrawler.STYLE_LIGHT_SKY;
