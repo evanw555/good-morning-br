@@ -1191,6 +1191,7 @@ const TIMEOUT_CALLBACKS = {
         // Process player decisions
         const game = state.getGame();
         const processingResult = game.processPlayerDecisions();
+        await dumpState();
 
         // Sleep based on the length of the text
         // TODO: This should be integrated into the messenger tool
