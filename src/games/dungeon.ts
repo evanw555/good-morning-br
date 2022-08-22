@@ -253,11 +253,11 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         // Render admin stuff
         if (options?.admin) {
             // Render trap owners
-            context.font = `${DungeonCrawler.TILE_SIZE * .25}px sans-serif`;
+            context.font = `${DungeonCrawler.TILE_SIZE * .35}px sans-serif`;
             context.fillStyle = 'black';
             for (const locationString of Object.keys(this.state.trapOwners)) {
                 const location = this.parseLocationString(locationString);
-                context.fillText(this.state.players[this.state.trapOwners[locationString]].displayName, location.c * DungeonCrawler.TILE_SIZE, location.r * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE);
+                context.fillText(this.state.players[this.state.trapOwners[locationString]].displayName, location.c * DungeonCrawler.TILE_SIZE, (location.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE);
             }
             // Render all player decisions
             // TODO (2.0): Reuse decision rendering logic from above??
