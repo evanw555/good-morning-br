@@ -521,18 +521,30 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
                 const member = await guild.members.fetch(userId);
                 members.push(member);
             } catch (err) {
-                await logger.log(`Failed to fetch member <@${userId}> when creating dungeon: \`${err}\``);
+                await logger.log(`Failed to fetch member <@${userId}> when creating game: \`${err}\``);
             }
         }
         // Create the dungeon using these initial members
+        // TODO (2.0): Eventually, this should be more generic for other game types
         const dungeon = DungeonCrawler.createBest(members, 20, 60);
         state.setGame(dungeon);
     }
 
     // If today is a decision day, transfer all earned points into the game
+    const newlyAddedPlayers: Snowflake[] = [];
     if (state.getEventType() === DailyEventType.GameDecision) {
         for (const userId of state.getOrderedPlayers()) {
-            // TODO (2.0): Handle users who aren't in the game (week 2)
+            // Add player to the game if they're new (for the first week, this should be handled by the logic above)
+            if (!state.getGame().hasPlayer(userId)) {
+                try {
+                    const member = await guild.members.fetch(userId);
+                    state.getGame().addPlayer(member);
+                    newlyAddedPlayers.push(member.id);
+                } catch (err) {
+                    await logger.log(`Failed to fetch member <@${userId}> when adding new players to game: \`${err}\``);
+                    continue;
+                }
+            }
             // Transfer whole earned/lost points into the game
             const points = state.getPlayerPoints(userId);
             const roundedPoints = points > 0 ? Math.floor(points) : Math.ceil(points);
@@ -609,6 +621,13 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     // Send the good morning message
     if (sendMessage) {
         await sendGoodMorningMessage();
+    }
+
+    // Let the channel know of all the newly joined players
+    if (newlyAddedPlayers.length === 1) {
+        await messenger.send(goodMorningChannel, `Let's all give a warm welcome to ${getJoinedMentions(newlyAddedPlayers)}, for this puppy is joining the game this week!`)
+    } else if (newlyAddedPlayers.length > 1) {
+        await messenger.send(goodMorningChannel, `Let's all give a warm welcome to ${getJoinedMentions(newlyAddedPlayers)}, for they are joining the game this week!`);
     }
 
     // Reset the daily state
@@ -1649,7 +1668,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
     const userId: Snowflake = msg.author.id;
     if (goodMorningChannel && msg.channel.id === goodMorningChannel.id && !msg.author.bot) {
         const isAm: boolean = new Date().getHours() < 12;
-        const isJoiningGameLate: boolean = state.isPlayerNewToGame(userId);
+        const isPlayerNew: boolean = !state.hasPlayer(userId);
 
         // If the grace period is active, then completely ignore all messages
         if (state.isGracePeriod()) {
@@ -1669,12 +1688,6 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             // If the event is an anonymous submission day, then completely ignore the message
             if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
                 return;
-            }
-
-            // If the game has started without the user, add them now
-            // TODO (2.0): This doesn't account for special days like submissions
-            if (isJoiningGameLate) {
-                state.getGame().addPlayer(msg.member);
             }
 
             // Reset user's "days since last good morning" counter
@@ -1823,8 +1836,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 // If this post is NOT a Monkey Friday post, reply as normal (this is to avoid double replies on Monkey Friday)
                 else if (!triggerMonkeyFriday) {
                     // If the game has started and the user is just now joining, greet them specially
-                    if (isJoiningGameLate) {
-                        state.getGame().addPlayer(msg.member);
+                    if (isPlayerNew && state.hasGame()) {
                         messenger.reply(msg, languageGenerator.generate('{goodMorningReply.new?}'));
                     }
                     // If the user was beckoned, reply to them specially

@@ -4,6 +4,7 @@ import { AStarFinder } from 'astar-typescript';
 import { getRankString, naturalJoin, randInt, shuffle, toLetterId } from 'evanw555.js';
 import { DummyGameState, DungeonGameState, DungeonPlayerState } from "../types";
 import AbstractGame from "./abstract-game";
+import logger from '../logger';
 
 enum TileType {
     EMPTY = 0,
@@ -65,6 +66,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     }
 
     addPlayer(member: GuildMember): void {
+        if (member.id in this.state.players) {
+            logger.log(`Refusing to add **${member.displayName}** to the dungeon, as they're already in it!`);
+            return;
+        }
         this.state.players[member.id] = {
             // TODO (2.0): Add the user to a random location near the worst player's location
             r: 0,
@@ -960,7 +965,6 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
 
                 // If the player can't afford this action, delete all their decisions (ending their turn)
                 const actionCost: number = this.getActionCost(actionName, player.r, player.c);
-                // TODO: player points!!!
                 if (actionCost > player.points) {
                     delete this.state.decisions[userId];
                     pushNonStepStatement(`**${player.displayName}** ran out of action points`);
