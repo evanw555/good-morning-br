@@ -1647,9 +1647,10 @@ const processCommands = async (msg: Message): Promise<void> => {
         }
         else if (sanitizedText.includes('game')) {
             if (state.hasGame()) {
-                const attachment = new MessageAttachment(await state.getGame().renderState({ showPlayerDecision: msg.author.id, admin: true }), 'game-admin.png');
-                await msg.channel.send({ content: 'The current game state:', files: [attachment] });
-                await msg.channel.send(state.getGame().getInstructionsText());
+                await msg.channel.send({ content: 'Admin-view game state, decision-view state:', files: [
+                    new MessageAttachment(await state.getGame().renderState({ admin: true }), 'game-test-admin.png'),
+                    new MessageAttachment(await state.getGame().renderState({ showPlayerDecision: msg.author.id }), 'game-test-decision.png')
+                ]});
             } else {
                 await msg.reply('The game hasn\'t been created yet!');
             }
@@ -1940,7 +1941,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     await dumpState();
                     await msg.reply({
                         content: response,
-                        files: [new MessageAttachment(await state.getGame().renderState({ showPlayerDecision: msg.author.id }), `game-turn${state.getGame().getTurn()}-confirmation.png`)]
+                        files: [new MessageAttachment(await state.getGame().renderState({ showPlayerDecision: userId }), `game-turn${state.getGame().getTurn()}-confirmation.png`)]
                     });
                     await logger.log(`<@${userId}> made a valid decision!`);
                 } catch (err) {

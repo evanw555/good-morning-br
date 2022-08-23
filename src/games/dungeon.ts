@@ -1,8 +1,8 @@
-import canvas, { Image } from 'canvas';
+import canvas from 'canvas';
 import { GuildMember, Snowflake } from 'discord.js';
 import { AStarFinder } from 'astar-typescript';
-import { getRankString, naturalJoin, randInt, shuffle, toLetterId } from 'evanw555.js';
-import { DummyGameState, DungeonGameState, DungeonPlayerState } from "../types";
+import { naturalJoin, randInt, shuffle, toLetterId } from 'evanw555.js';
+import { DungeonGameState, DungeonPlayerState } from "../types";
 import AbstractGame from "./abstract-game";
 import logger from '../logger';
 
@@ -199,11 +199,21 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             // Show attempted traps
             context.font = `${DungeonCrawler.TILE_SIZE * .5}px sans-serif`;
             context.lineWidth = 1;
+            context.strokeStyle = 'red';
             context.setLineDash([]);
             for (const decision of decisions.filter(d => d.includes('trap:'))) {
                 const [ action, locationString ] = decision.split(':');
                 const location = this.parseLocationString(locationString);
-                context.strokeText('YOUR\nTRAP', location.c * DungeonCrawler.TILE_SIZE, (location.r - .5) * DungeonCrawler.TILE_SIZE);
+                context.strokeText('PLACE\nTRAP', location.c * DungeonCrawler.TILE_SIZE, (location.r - .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE);
+            }
+            // Show placed traps
+            context.lineWidth = 2;
+            context.strokeStyle = 'black';
+            context.setLineDash([Math.floor(DungeonCrawler.TILE_SIZE * .125), Math.floor(DungeonCrawler.TILE_SIZE * .125)]);
+            for (const location of this.getHiddenTrapsForPlayer(options.showPlayerDecision)) {
+                context.beginPath();
+                context.arc((location.c + .5) * DungeonCrawler.TILE_SIZE, (location.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE / 4, 0, Math.PI * 2, false);
+                context.stroke();
             }
         }
 
@@ -649,6 +659,19 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
 
     private isCloudy(r: number, c: number): boolean {
         return this.isTileType(r, c, TileType.WALL) || this.isTileType(r, c, TileType.KEY_HOLE) || this.isTileType(r, c, TileType.OPENED_KEY_HOLE);
+    }
+
+    private getHiddenTrapsForPlayer(userId: Snowflake): { r: number, c: number }[] {
+        const locations = [];
+        for (const [locationString, ownerId] of Object.entries(this.state.trapOwners)) {
+            if (ownerId === userId) {
+                const location = this.parseLocationString(locationString);
+                if (this.isTileType(location.r, location.c, TileType.HIDDEN_TRAP)) {
+                    locations.push(location);
+                }
+            }
+        }
+        return locations;
     }
 
     private getPlayerAtLocation(r: number, c: number): Snowflake | undefined {
