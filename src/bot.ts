@@ -1954,44 +1954,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
         // Process DM submissions depending on the event
         else if (state.isMorning() && state.getEventType() === DailyEventType.AnonymousSubmissions) {
             const userId: Snowflake = msg.author.id;
-            // Handle voting or submitting depending on what phase of the process we're in
-            // TODO: Remove this once we can prove that the "vote" slash command works as expected
-            if (state.getEvent().votes && state.getEvent().submissionOwnersByCode) {
-                const pattern: RegExp = /[A-Z]+/g;
-                // TODO: Should we validate the exact number of votes? There's no evidence of players griefing without this limitation just yet...
-                const submissionCodes: string[] = [...msg.content.matchAll(pattern)].map(x => x[0]).slice(0, 3);
-                const submissionCodeSet: Set<string> = new Set(submissionCodes);
-                const validSubmissionCodes: Set<string> = new Set(Object.keys(state.getEvent().submissionOwnersByCode));
-                // Do some validation on the vote before processing it further
-                if (submissionCodes.length === 0) {
-                    await messenger.reply(msg, `I don\'t understand, please tell me which submissions you\'re voting for. Choose from ${naturalJoin([...validSubmissionCodes])}.`);
-                } else if (submissionCodeSet.size !== submissionCodes.length) {
-                    await messenger.reply(msg, 'You can\'t vote for the same submission twice!');
-                } else {
-                    // Ensure that all votes are for valid submissions
-                    for (let i = 0; i < submissionCodes.length; i++) {
-                        const submissionCode: string = submissionCodes[i];
-                        if (!validSubmissionCodes.has(submissionCode)) {
-                            await messenger.reply(msg, `${submissionCode} is not a valid submission! Choose from ${naturalJoin([...validSubmissionCodes])}.`);
-                            return;
-                        }
-                        if (state.getEvent().submissionOwnersByCode[submissionCode] === msg.author.id) {
-                            await messenger.reply(msg, 'You can\'t vote for your own submission!');
-                            return;
-                        }
-                    }
-                    // Cast the vote
-                    state.getEvent().votes[msg.author.id] = submissionCodes;
-                    await dumpState();
-                    // Notify the user of their vote
-                    if (submissionCodes.length === 1) {
-                        await messenger.reply(msg, `Your vote has been cast! You've voted for submission **${submissionCodes[0]}**. You can make a correction by sending me another message.`)
-                    } else {
-                        await messenger.reply(msg, `Your vote has been cast! Your picks (in order) are ${naturalJoin(submissionCodes.map(n => `**${n}**`), 'then')}. You can make a correction by sending me another message.`)
-                    }
-
-                }
-            } else if (state.getEvent().submissions) {
+            if (state.getEvent().submissions) {
                 const redoSubmission: boolean = userId in state.getEvent().submissions;
                 // Add the submission
                 if (state.getEvent().isAttachmentSubmission) {
