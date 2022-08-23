@@ -70,10 +70,18 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             logger.log(`Refusing to add **${member.displayName}** to the dungeon, as they're already in it!`);
             return;
         }
+        // Get the worst 33% of players based on location
+        const playersClosestToGoal: Snowflake[] = this.getPlayersClosestToGoal();
+        const worstPlayers = playersClosestToGoal.slice(-Math.floor(playersClosestToGoal.length / 3));
+        // Choose a random vacant spawn location around any of these players
+        const spawnLocation = this.getSpawnableLocationAroundPlayers(worstPlayers);
+        // If there was no available spawn location, then just choose a random tile in the top row
+        const spawnR = spawnLocation?.r ?? 0;
+        const spawnC = spawnLocation?.c ?? randInt(0, this.state.columns);
+        // Create the player at this spawn location
         this.state.players[member.id] = {
-            // TODO (2.0): Add the user to a random location near the worst player's location
-            r: 0,
-            c: 0,
+            r: spawnR,
+            c: spawnC,
             points: 0,
             displayName: member.displayName,
             avatarUrl: member.user.displayAvatarURL({ size: 32, format: 'png' })
@@ -393,14 +401,18 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return DungeonCrawler.getLocationString(this.state.players[userId].r, this.state.players[userId].c);
     }
 
-    getOrderedPlayers(): string[] {
+    getOrderedPlayers(): Snowflake[] {
         const getLocationRank = (userId) => {
             return this.state.players[userId].r * this.state.columns + this.state.players[userId].c;
         }
         return Object.keys(this.state.players).sort((x, y) => getLocationRank(x) - getLocationRank(y));
     }
 
-    getShuffledPlayers(): string[] {
+    getPlayersClosestToGoal(): Snowflake[] {
+        return Object.keys(this.state.players).sort((x, y) => this.getPlayerDistanceToGoal(x) - this.getPlayerDistanceToGoal(y));
+    }
+
+    getShuffledPlayers(): Snowflake[] {
         return shuffle(Object.keys(this.state.players));
     }
 
@@ -1097,5 +1109,43 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
 
     getEuclideanDistanceToGoal(r: number, c: number): number {
         return Math.sqrt(Math.pow(this.getGoalRow() - r, 2) + Math.pow(this.getGoalColumn() - c, 2));
+    }
+
+    getPlayerDistanceToGoal(userId: Snowflake):  number {
+        const player = this.state.players[userId];
+        return this.getEuclideanDistanceToGoal(player.r, player.c);
+    }
+
+    /**
+     * In a 3x3 box around the given player, return a random location that a user may spawn in (is walkable and isn't occupied by another user).
+     * If no such tile exists, return nothing.
+     */
+    getSpawnableLocationAroundPlayer(userId: Snowflake): { r: number, c: number } | undefined {
+        const offsets = [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, -1], [1, 0], [1, 1]];
+        shuffle(offsets);
+        const player = this.state.players[userId];
+        for (const [dr, dc] of offsets) {
+            const nr = player.r + dr;
+            const nc = player.c + dc;
+            if (this.isWalkable(nr, nc) && !this.getPlayerAtLocation(nr, nc)) {
+                return { r: nr, c: nc };
+            }
+        }
+    }
+
+    /**
+     * Given a list of players, return a random location that a user may spawn in in a 3x3 box around any of the players.
+     * If no such tile exists for any of the players, return nothing.
+     */
+    getSpawnableLocationAroundPlayers(userIds: Snowflake[]): { r: number, c: number } | undefined {
+        // Make sure to clone it first
+        const shuffledUserIds: Snowflake[] = userIds.slice();
+        shuffle(shuffledUserIds);
+        for (const userId of shuffledUserIds) {
+            const location = this.getSpawnableLocationAroundPlayer(userId);
+            if (location) {
+                return location;
+            }
+        }
     }
 }
