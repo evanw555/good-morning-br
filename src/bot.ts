@@ -1428,6 +1428,8 @@ client.on('interactionCreate', async (interaction): Promise<void> => {
                     } else {
                         // Otherwise, just send confirmation to the voter
                         await interaction.editReply('Your vote has been cast!');
+                        // Notify the admin of how many votes remain
+                        await logger.log(`**${state.getPlayerDisplayName(interaction.user.id)}** just voted, waiting on **${state.getSubmissionNonVoters().length}** more votes.`);
                     }
                 }
             } else {
