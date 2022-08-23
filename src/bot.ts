@@ -236,8 +236,8 @@ const chooseEvent = (date: Date): DailyEvent => {
             // Otherwise, do attachment submissions
             return {
                 type: DailyEventType.AnonymousSubmissions,
-                // TODO: Add back ones such as "cursed image" once this has happened a couple times
-                submissionType: randChoice("pic that goes hard", "dummy stupid pic", "pic that goes adorable", randChoice("pic that goes ruh", "pic that goes buh")),
+                // TODO: Add back ones such as "cursed image", "dummy stupid pic", "pic that goes adorable", randChoice("pic that goes ruh", "pic that goes buh") once this has happened a couple times
+                submissionType: randChoice("pic that goes hard"),
                 isAttachmentSubmission: true,
                 submissions: {}
             };
