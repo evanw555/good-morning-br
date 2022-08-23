@@ -1977,10 +1977,10 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     if (numSubmissions % 3 === 0) {
                         await messenger.send(goodMorningChannel, languageGenerator.generate(`{!We now have|I've received|We're now at|I now count|Currently at|I have} **${numSubmissions}** {!submissions|submissions|entries}! {!DM me|Send me a DM with|Send me} a _${state.getEvent().submissionType}_ to {!participate|be included|join the fun|enter the contest|be a part of the contest}`));
                     }
-                    logger.log(`Received submission from player **${state.getPlayerDisplayName(userId)}**, now at **${numSubmissions}** submissions`);
                     // This may be the user's first engagement, so refresh display name here
                     // TODO: is there a better, more unified way to do this?
                     state.setPlayerDisplayName(userId, await getDisplayName(userId));
+                    logger.log(`Received submission from player **${state.getPlayerDisplayName(userId)}**, now at **${numSubmissions}** submissions`);
                 }
                 await dumpState();
             }
