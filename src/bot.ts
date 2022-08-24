@@ -6,7 +6,7 @@ import { hasVideo, validateConfig, reactToMessage, getOrderingUpsets } from './u
 import GoodMorningState from './state';
 import logger from './logger';
 
-import { FileStorage, generateKMeansClusters, getClockTime, getRankString, getRelativeDateTimeString, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger, naturalJoin, PastTimeoutStrategy, prettyPrint, R9KTextBank, randChoice, randInt, shuffle, sleep, TimeoutManager, toCalendarDate, toFixed, toLetterId } from 'evanw555.js';
+import { FileStorage, generateKMeansClusters, getClockTime, getRandomDateBetween, getRankString, getRelativeDateTimeString, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger, naturalJoin, PastTimeoutStrategy, prettyPrint, R9KTextBank, randChoice, randInt, shuffle, sleep, TimeoutManager, toCalendarDate, toFixed, toLetterId } from 'evanw555.js';
 import DungeonCrawler from './games/dungeon';
 const auth = loadJson('config/auth.json');
 const config: GoodMorningConfig = loadJson('config/config.json');
@@ -203,7 +203,7 @@ const advanceSeason = async (): Promise<{ gold?: Snowflake, silver?: Snowflake, 
     return winners;
 };
 
-const chooseEvent = (date: Date): DailyEvent => {
+const chooseEvent = (date: Date): DailyEvent | undefined => {
     // Sunday: Game Update
     if (date.getDay() === 0) {
         return {
@@ -472,31 +472,43 @@ const setStatus = async (active: boolean): Promise<void> => {
     }
 };
 
-const registerGoodMorningTimeout = async (days: number = 1): Promise<void> => {
-    const MIN_HOURS: Record<string, number> = {
-        [DailyEventType.SleepyMorning]: 10,
-        [DailyEventType.ReverseGoodMorning]: 7
+const chooseGoodMorningTime = (eventType: DailyEventType | undefined): Date => {
+    // Hour-minute overrides of the earliest/latest possible time of a particular event
+    const MIN_HOURS: Record<string, [number, number]> = {
+        [DailyEventType.SleepyMorning]: [10, 0],
+        [DailyEventType.ReverseGoodMorning]: [7, 0]
     };
-    const MAX_HOURS: Record<string, number> = {
-        [DailyEventType.SleepyMorning]: 11,
-        [DailyEventType.ReverseGoodMorning]: 11,
-        [DailyEventType.AnonymousSubmissions]: 8
+    const MAX_HOURS: Record<string, [number, number]> = {
+        [DailyEventType.SleepyMorning]: [11, 30],
+        [DailyEventType.ReverseGoodMorning]: [11, 15],
+        [DailyEventType.AnonymousSubmissions]: [8, 0]
     };
-    const MIN_HOUR: number = MIN_HOURS[state.getEventType()] ?? 6;
-    const MAX_HOUR_EXCLUSIVE: number = MAX_HOURS[state.getEventType()] ?? 10;
+    const MIN_HOUR: [number, number] = MIN_HOURS[eventType] ?? [6, 0];
+    const MAX_HOUR_EXCLUSIVE: [number, number] = MAX_HOURS[eventType] ?? [10, 45];
 
-    const morningTomorrow: Date = new Date();
-    // Set date to number of days in the future (1 by default)
-    morningTomorrow.setDate(morningTomorrow.getDate() + days);
-    // If it's currently before the earliest possible morning time, then rewind the target date by one day
-    if (morningTomorrow.getHours() < MIN_HOUR) {
-        morningTomorrow.setDate(morningTomorrow.getDate() - 1);
+    // Set boundary of possible date a number of days in the future (1 by default)
+    const lowDate: Date = new Date();
+    lowDate.setDate(lowDate.getDate());
+    lowDate.setHours(...MIN_HOUR, 0, 0);
+    const highDate: Date = new Date();
+    highDate.setDate(highDate.getDate());
+    highDate.setHours(...MAX_HOUR_EXCLUSIVE, 0, 0);
+
+    // Choose a random time between those two times with a 3rd degree Bates distribution
+    return getRandomDateBetween(lowDate, highDate, 3);
+};
+
+const registerGoodMorningTimeout = async (): Promise<void> => {
+    // Choose a random time based on the event type
+    const nextMorning: Date = chooseGoodMorningTime(state.getEventType());
+
+    // If the chosen morning time has already past, then advance the date to tomorrow
+    if (nextMorning.getTime() < new Date().getTime()) {
+        nextMorning.setDate(nextMorning.getDate() + 1);
     }
-    // Set time as sometime between 7am and 10am
-    morningTomorrow.setHours(randInt(MIN_HOUR, MAX_HOUR_EXCLUSIVE), randInt(0, 60), randInt(0, 60));
 
     // We register this with the "Increment Day" strategy since it happens at a particular time and it's not competing with any other triggers.
-    await timeoutManager.registerTimeout(TimeoutType.NextGoodMorning, morningTomorrow, { pastStrategy: PastTimeoutStrategy.IncrementDay });
+    await timeoutManager.registerTimeout(TimeoutType.NextGoodMorning, nextMorning, { pastStrategy: PastTimeoutStrategy.IncrementDay });
 };
 
 const registerGuestReveilleFallbackTimeout = async (): Promise<void> => {
@@ -1672,13 +1684,18 @@ const processCommands = async (msg: Message): Promise<void> => {
         }
         // Simulate events for the next 2 weeks
         else if (sanitizedText.includes('event')) {
-            let message: string = '';
-            const date: Date = getTomorrow();
-            for (let i = 0; i < 21; i++) {
-                message += `\`${toCalendarDate(date)}\`: \`${JSON.stringify(chooseEvent(date))}\`\n`;
-                date.setDate(date.getDate() + 1);
+            let message: string = 'Sample events:';
+            for (let i = 1; i < 22; i++) {
+                // Choose event for i days in the future
+                let eventTime: Date = new Date();
+                eventTime.setDate(eventTime.getDate() + i);
+                const event: DailyEvent | undefined = chooseEvent(eventTime);
+                // Choose time for this event (have to reset days, annoying)
+                eventTime = chooseGoodMorningTime(event?.type);
+                eventTime.setDate(eventTime.getDate() + i);
+                message += `\n${getRelativeDateTimeString(eventTime)}: ${JSON.stringify(event)}`;
             }
-            await msg.reply(message);
+            await messenger.sendLargeMonospaced(msg.channel, message);
         }
         // Return the max score
         else if (sanitizedText.includes('max')) {
