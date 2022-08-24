@@ -738,6 +738,8 @@ const finalizeAnonymousSubmissions = async () => {
 
     // First and foremost, hold onto all the state data locally
     const votes = event.votes;
+    const submissions: Record<Snowflake, string> = event.submissions;
+    const isAttachmentSubmission: boolean = event.isAttachmentSubmission ?? false;
     const submissionOwnersByCode = event.submissionOwnersByCode;
     const allCodes = Object.keys(submissionOwnersByCode);
     const deadbeats: Snowflake[] = state.getSubmissionDeadbeats();
@@ -813,6 +815,7 @@ const finalizeAnonymousSubmissions = async () => {
         const code: string = validCodesSorted[i];
         const userId: Snowflake = submissionOwnersByCode[code];
         const rank: number = i + 1;
+        const submission: string = submissions[userId];
         if (i === 0) {
             await sleep(12000);
             await messenger.send(goodMorningChannel, `And in first place, with submission **${code}**...`);
@@ -823,14 +826,27 @@ const finalizeAnonymousSubmissions = async () => {
                 await messenger.send(goodMorningChannel, 'Being awarded only participation points on account of them sadly forfeiting...');
                 await sleep(6000);
             }
-            await messenger.send(goodMorningChannel, `We have our winner, <@${userId}>! Congrats!`);
+            // TODO: Integrate this into the Messenger utility
+            await goodMorningChannel.send({
+                content: `We have our winner, <@${userId}>! Congrats!`,
+                files: isAttachmentSubmission ? [new MessageAttachment(submission)] : undefined,
+                embeds: isAttachmentSubmission ? undefined : [{
+                    description: submission
+                }]
+            });
         } else if (i < 3) {
             await sleep(12000);
-            if (forfeiters.includes(userId)) {
-                await messenger.send(goodMorningChannel, `In ${getRankString(rank)} place yet only receiving participation points, we have the forfeiting <@${userId}> with submission **${code}**!`);
-            } else {
-                await messenger.send(goodMorningChannel, `In ${getRankString(rank)} place, we have <@${userId}> with submission **${code}**!`);
-            }
+            const headerText: string = forfeiters.includes(userId)
+                ? `In ${getRankString(rank)} place yet only receiving participation points, we have the forfeiting <@${userId}> with submission **${code}**!`
+                : `In ${getRankString(rank)} place, we have <@${userId}> with submission **${code}**!`;
+            // TODO: Integrate this into the Messenger utility
+            await goodMorningChannel.send({
+                content: headerText,
+                files: isAttachmentSubmission ? [new MessageAttachment(submission)] : undefined,
+                embeds: isAttachmentSubmission ? undefined : [{
+                    description: submission
+                }]
+            });
         }
     }
 
