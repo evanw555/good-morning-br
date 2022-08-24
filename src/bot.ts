@@ -256,8 +256,8 @@ const chooseEvent = (date: Date): DailyEvent | undefined => {
             homeStretchSurprises: [HomeStretchSurprise.Multipliers, HomeStretchSurprise.LongestComboBonus, HomeStretchSurprise.ComboBreakerBonus]
         };
     }
-    // On a rising chance cadence of 5 days, take a chance to do some other event
-    const eventChance: number = ((date.getDate() % 5) + 1) / 5;
+    // High chance of a random event 2/3 days, low chance 1/3 days
+    const eventChance: number = (date.getDate() % 3 === 0) ? 0.2 : 0.8;
     if (Math.random() < eventChance) {
         // Compile a list of potential events (include default events)
         const potentialEvents: DailyEvent[] = [
