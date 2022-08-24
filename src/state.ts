@@ -250,12 +250,8 @@ export default class GoodMorningState {
      * @returns List of user IDs for players who may serve as a potential reveiller
      */
     getPotentialReveillers(): Snowflake[] {
-        const orderedPlayers: Snowflake[] = this.getOrderedPlayers();
-        return orderedPlayers
-            // The first-place player cannot be the guest reveiller (and neither can the bottom quarter of players)
-            .slice(1, Math.floor(orderedPlayers.length * 0.75))
-            // Only players who said good morning today can be reveillers
-            .filter((userId) => this.getPlayerDaysSinceLGM(userId) === 0);
+        // Only players who aren't the leader, yet have earned at least half as much as the leader, and have said GM today
+        return this.queryOrderedPlayers({ skipPlayers: 1, minRelativeCompletion: 0.5, maxDays: 0 });
     }
     /**
      * @returns List of user IDs for players who are suitable to receive the magic word hint
@@ -265,17 +261,26 @@ export default class GoodMorningState {
     }
 
     /**
-     * Query the ordered (by score) list of players, but with the following parameters:
-     * - skipPlayers: omit the top N players (e.g. 2 means omit the first-place and second-place players)
-     * - maxDays: only include players who've said GM in the last N days
-     * - minDays: only include players who haven't said GM in the last N-1 days
-     * - maxRelativeCompletion: only include players with at most this relative completion
-     * - minPoints: only include player with at least so many points
-     * - n: only return the first N players (after the previous filters have been applied)
+     * Query the ordered (by score) list of players, but with the following parameters...
      * @param options parameters map
+     * @param options.skipPlayers omit the top N players (e.g. 2 means omit the first-place and second-place players)
+     * @param options.maxDays only include players who've said GM in the last N days
+     * @param options.minDays only include players who haven't said GM in the last N-1 days
+     * @param options.maxRelativeCompletion only include players with at most this relative completion
+     * @param options.minRelativeCompletion only include players with at least this relative completion
+     * @param options.minPoints only include player with at least so many points
+     * @param options.n only return the first N players (after the previous filters have been applied)
      * @returns ordered and filtered list of user IDs
      */
-    queryOrderedPlayers(options: { skipPlayers?: number, maxDays?: number, minDays?: number, maxRelativeCompletion?: number, minPoints?: number, n?: number }): Snowflake[] {
+    queryOrderedPlayers(options: {
+        skipPlayers?: number,
+        maxDays?: number,
+        minDays?: number,
+        maxRelativeCompletion?: number,
+        minRelativeCompletion?: number,
+        minPoints?: number,
+        n?: number
+    }): Snowflake[]{
         let result: Snowflake[] = this.getOrderedPlayers();
 
         if (options.skipPlayers !== undefined) {
@@ -292,6 +297,10 @@ export default class GoodMorningState {
 
         if (options.maxRelativeCompletion !== undefined) {
             result = result.filter(userId => this.getPlayerRelativeCompletion(userId) <= options.maxRelativeCompletion);
+        }
+
+        if (options.minRelativeCompletion !== undefined) {
+            result = result.filter(userId => this.getPlayerRelativeCompletion(userId) >= options.minRelativeCompletion);
         }
 
         if (options.minPoints !== undefined) {
