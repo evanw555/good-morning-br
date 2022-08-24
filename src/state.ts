@@ -579,18 +579,32 @@ export default class GoodMorningState {
             || this.getEventType() === DailyEventType.AnonymousSubmissions;
     }
 
+    /**
+     * @returns True if every user who has submitted something has either voted or submitted.
+     */
     haveAllSubmittersVoted(): boolean {
         return this.getEventType() === DailyEventType.AnonymousSubmissions
             && this.getEvent().submissions !== undefined
             && this.getEvent().votes !== undefined
-            && Object.keys(this.getEvent().submissions).every(userId => userId in this.getEvent().votes);
+            && Object.keys(this.getEvent().submissions).every(userId => userId in this.getEvent().votes || this.hasUserForfeited(userId));
+    }
+
+    hasUserForfeited(userId: Snowflake): boolean {
+        return (this.getEvent()?.forfeiters ?? []).includes(userId);
     }
 
     /**
-     * TODO: Is this safe? Should we be checking for the right event?
+     * Get the list of all users who have sent in a submission, yet haven't voted and haven't forfeited.
      */
-    getSubmissionNonVoters(): Snowflake[] {
-        return Object.keys(this.getEvent().submissions).filter(userId => this.getEvent().votes[userId] === undefined);
+    getSubmissionDeadbeats(): Snowflake[] {
+        if (!this.getEvent()?.submissions) {
+            return [];
+        }
+        return Object.keys(this.getEvent().submissions)
+            // Users who haven't forfeited...
+            .filter(userId => !this.hasUserForfeited(userId))
+            // And who haven't voted...
+            .filter(userId => !this.getEvent().votes[userId]);
     }
 
     getGame(): AbstractGame<GameState> {

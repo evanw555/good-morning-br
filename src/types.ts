@@ -100,6 +100,7 @@ export interface DailyEvent {
     submissionOwnersByCode?: Record<string, Snowflake>, // Map of submission code -> UserId
     votes?: Record<Snowflake, string[]>, // Map of UserId -> list of submission codes
     rootSubmissionMessage?: Snowflake, // MessageId
+    forfeiters?: Snowflake[], // List of UserIds
     // Used specifically for the "grumpy morning" event
     disabled?: boolean,
     // Used specifically for the "writer's block" event
