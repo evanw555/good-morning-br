@@ -271,6 +271,10 @@ const chooseEvent = (date: Date): DailyEvent | undefined => {
             // },
             {
                 type: DailyEventType.SleepyMorning
+            },
+            {
+                type: DailyEventType.Nightmare,
+                disabled: true
             }
         ];
         // If someone should be beckoned, add beckoning as a potential event
@@ -494,8 +498,8 @@ const chooseGoodMorningTime = (eventType: DailyEventType | undefined): Date => {
     highDate.setDate(highDate.getDate());
     highDate.setHours(...MAX_HOUR_EXCLUSIVE, 0, 0);
 
-    // Choose a random time between those two times with a 3rd degree Bates distribution
-    return getRandomDateBetween(lowDate, highDate, 3);
+    // Choose a random time between those two times with a 2nd degree Bates distribution
+    return getRandomDateBetween(lowDate, highDate, 2);
 };
 
 const registerGoodMorningTimeout = async (): Promise<void> => {
@@ -998,6 +1002,15 @@ const TIMEOUT_CALLBACKS = {
                 // Register the normal GM timeout
                 await registerGoodMorningTimeout();
             }
+            // If there's a nightmare event, schedule the timeout for it
+            if (state.getEventType() === DailyEventType.Nightmare) {
+                // Sometime between 1am-4am
+                const nightmareDate: Date = getTomorrow();
+                nightmareDate.setHours(randInt(1, 4), randInt(0, 60), randInt(0, 60), 0);
+                // If this event was missed, simply delete it (nothing will be impacted if it's skipped)
+                await timeoutManager.registerTimeout(TimeoutType.Nightmare, nightmareDate, { pastStrategy: PastTimeoutStrategy.Delete });
+                await logger.log(`Scheduled nightmare event for **${getRelativeDateTimeString(nightmareDate)}**`);
+            }
             // Notify the sungazers about tomorrow's event (if applicable)
             if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
                 await sungazersChannel.send(`FYI gazers: tomorrow, everyone will be sending me a _${state.getEvent().submissionType}_ ${config.defaultGoodMorningEmoji}`);
@@ -1162,6 +1175,21 @@ const TIMEOUT_CALLBACKS = {
                 });
             }
         }
+    },
+    [TimeoutType.Nightmare]: async (): Promise<void> => {
+        if (state.getEventType() !== DailyEventType.Nightmare) {
+            await logger.log('Attempting to trigger nightmare timeout without a nightmare event! Aborting...');
+            return;
+        }
+        if (state.isMorning()) {
+            await logger.log('Attempting to trigger nightmare timeout after the morning has started! Aborting...');
+            return;
+        }
+
+        delete state.getEvent().disabled;
+        await dumpState();
+
+        await messenger.send(goodMorningChannel, 'Just woke up from a scary nightmare, anyone awake to cheer me up?');
     },
     [TimeoutType.HomeStretchSurprise]: async (): Promise<void> => {
         const surprises: HomeStretchSurprise[] = state.getEvent()?.homeStretchSurprises;
@@ -1693,7 +1721,8 @@ const processCommands = async (msg: Message): Promise<void> => {
                 // Choose time for this event (have to reset days, annoying)
                 eventTime = chooseGoodMorningTime(event?.type);
                 eventTime.setDate(eventTime.getDate() + i);
-                message += `\n${getRelativeDateTimeString(eventTime)}: ${JSON.stringify(event)}`;
+                const eventString = event ? (Object.keys(event).length === 1 ? event.type : JSON.stringify(event)) : 'None'
+                message += `\n${getRelativeDateTimeString(eventTime)}: ${eventString}`;
             }
             await messenger.sendLargeMonospaced(msg.channel, message);
         }
@@ -1968,6 +1997,14 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 await reactToMessage(msg, ['😉', '😏', '😜', '😛']);
             }
         } else {
+            // If someone is the first to message after the nightmare event goes off, award them points then go back to sleep
+            if (state.getEventType() === DailyEventType.Nightmare && !state.getEvent().disabled) {
+                state.getEvent().disabled = true;
+                state.awardPoints(userId, config.defaultAward);
+                await dumpState();
+                await messenger.reply(msg, 'Thanks! Alright, now I\'m back off to bed... 🤫');
+                return;
+            }
             // If the bot hasn't woken up yet and it's a reverse GM, react and track the rank of each player for now...
             // TODO: Clean this up! Doesn't even take R9K into account
             if (state.getEventType() === DailyEventType.ReverseGoodMorning && isAm) {

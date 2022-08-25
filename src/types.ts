@@ -8,6 +8,7 @@ export enum TimeoutType{
     GuestReveilleFallback = 'GUEST_REVEILLE_FALLBACK',
     AnonymousSubmissionReveal = 'ANONYMOUS_SUBMISSION_REVEAL',
     AnonymousSubmissionVotingReminder = 'ANONYMOUS_SUBMISSION_VOTING_REMINDER',
+    Nightmare = 'NIGHTMARE',
     HomeStretchSurprise = 'HOME_STRETCH_SURPRISE',
     // GMBR 2.0 events
     ProcessGameDecisions = 'PROCESS_GAME_DECISIONS'
@@ -73,6 +74,7 @@ export enum DailyEventType {
     GrumpyMorning = 'GRUMPY_MORNING',
     SleepyMorning = 'SLEEPY_MORNING',
     WritersBlock = 'WRITERS_BLOCK',
+    Nightmare = 'NIGHTMARE',
     // Abnormal events (i.e. not the typical "wait-for-GM-then-say-GM" event)
     GuestReveille = 'GUEST_REVEILLE',
     ReverseGoodMorning = 'REVERSE_GOOD_MORNING',
@@ -101,7 +103,7 @@ export interface DailyEvent {
     votes?: Record<Snowflake, string[]>, // Map of UserId -> list of submission codes
     rootSubmissionMessage?: Snowflake, // MessageId
     forfeiters?: Snowflake[], // List of UserIds
-    // Used specifically for the "grumpy morning" event
+    // Used specifically for the "grumpy morning" / "nightmare" events
     disabled?: boolean,
     // Used specifically for the "writer's block" event
     customMessage?: string,
