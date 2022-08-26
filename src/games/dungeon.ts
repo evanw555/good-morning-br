@@ -20,6 +20,7 @@ type ActionName = 'up' | 'down' | 'left' | 'right' | 'pause' | 'unlock' | 'lock'
 
 export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     private static readonly TILE_SIZE: number = 24;
+    private static readonly STARTER_POINTS: number = 3;
 
     private static readonly STYLE_SKY: string = 'hsl(217, 94%, 69%)';
     private static readonly STYLE_LIGHT_SKY: string = 'hsl(217, 85%, 75%)';
@@ -65,7 +66,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return userId in this.state.players;
     }
 
-    addPlayer(member: GuildMember): void {
+    addPlayer(member: GuildMember): string {
         if (member.id in this.state.players) {
             logger.log(`Refusing to add **${member.displayName}** to the dungeon, as they're already in it!`);
             return;
@@ -78,14 +79,18 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         // If there was no available spawn location, then just choose a random tile in the top row
         const spawnR = spawnLocation?.r ?? 0;
         const spawnC = spawnLocation?.c ?? randInt(0, this.state.columns);
+        // This new player gets starter points (plus more if later in the game) as a balance
+        const lateStarterPoints: number = DungeonCrawler.STARTER_POINTS + this.getTurn();
         // Create the player at this spawn location
         this.state.players[member.id] = {
             r: spawnR,
             c: spawnC,
-            points: 0,
+            points: lateStarterPoints,
             displayName: member.displayName,
             avatarUrl: member.user.displayAvatarURL({ size: 32, format: 'png' })
         };
+        const locationText: string = spawnLocation ? `near **${this.state.players[spawnLocation.userId].displayName}**` : `at \`${DungeonCrawler.getLocationString(spawnR, spawnC)}\``;
+        return `Added player **${member.displayName}** ${locationText} with **${lateStarterPoints}** starter points`;
     }
 
     async renderState(options?: { showPlayerDecision?: Snowflake, admin?: boolean }): Promise<Buffer> {
@@ -579,8 +584,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 c,
                 avatarUrl: member.user.displayAvatarURL({ size: 32, format: 'png' }),
                 displayName: member.displayName,
-                // Prime the game with a few extra points to reward early players
-                points: 3
+                points: DungeonCrawler.STARTER_POINTS
             };
         }
         const dungeon = new DungeonCrawler({
@@ -1160,14 +1164,14 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
      * Given a list of players, return a random location that a user may spawn in in a 3x3 box around any of the players.
      * If no such tile exists for any of the players, return nothing.
      */
-    getSpawnableLocationAroundPlayers(userIds: Snowflake[]): { r: number, c: number } | undefined {
+    getSpawnableLocationAroundPlayers(userIds: Snowflake[]): { r: number, c: number, userId: Snowflake } | undefined {
         // Make sure to clone it first
         const shuffledUserIds: Snowflake[] = userIds.slice();
         shuffle(shuffledUserIds);
         for (const userId of shuffledUserIds) {
             const location = this.getSpawnableLocationAroundPlayer(userId);
             if (location) {
-                return location;
+                return { r: location.r, c: location.c, userId };
             }
         }
     }

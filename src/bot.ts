@@ -553,12 +553,14 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     // If today is a decision day, transfer all earned points into the game
     const newlyAddedPlayers: Snowflake[] = [];
     if (state.getEventType() === DailyEventType.GameDecision) {
+        const addPlayerLogs: string[] = [];
         for (const userId of state.getOrderedPlayers()) {
             // Add player to the game if they're new (for the first week, this should be handled by the logic above)
             if (!state.getGame().hasPlayer(userId)) {
                 try {
                     const member = await guild.members.fetch(userId);
-                    state.getGame().addPlayer(member);
+                    const addPlayerLog: string = state.getGame().addPlayer(member);
+                    addPlayerLogs.push(addPlayerLog);
                     newlyAddedPlayers.push(member.id);
                 } catch (err) {
                     await logger.log(`Failed to fetch member <@${userId}> when adding new players to game: \`${err}\``);
@@ -572,6 +574,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
             // Reset the standard GMBR points for this user to the remainder
             state.setPlayerPoints(userId, points - roundedPoints);
         }
+        await logger.log(addPlayerLogs.join('\n') || 'No new players were added this week.');
         // Begin this week's turn
         state.getGame().beginTurn();
     }
