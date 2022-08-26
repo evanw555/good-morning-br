@@ -315,7 +315,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             }
         }
 
-        const TOTAL_WIDTH = WIDTH + DungeonCrawler.TILE_SIZE * 12;
+        const SIDEBAR_WIDTH = DungeonCrawler.TILE_SIZE * 11;
+        const TOTAL_WIDTH = WIDTH + DungeonCrawler.TILE_SIZE + SIDEBAR_WIDTH;
         const TOTAL_HEIGHT = HEIGHT + DungeonCrawler.TILE_SIZE;
         const masterImage = canvas.createCanvas(TOTAL_WIDTH, TOTAL_HEIGHT);
         const c2 = masterImage.getContext('2d');
@@ -346,18 +347,31 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
 
         // Render usernames in order of location
         c2.font = `${DungeonCrawler.TILE_SIZE * .75}px sans-serif`;
-        let y = 0;
+        let y = 2;
         c2.fillStyle = 'white';
-        c2.fillText(`Turn ${this.state.turn}, Action ${this.state.action}`, WIDTH + DungeonCrawler.TILE_SIZE * 1.5, DungeonCrawler.TILE_SIZE);
+        const leftTextX = WIDTH + DungeonCrawler.TILE_SIZE * 1.5;
+        c2.fillText(`Turn ${this.state.turn}, Action ${this.state.action}`, leftTextX, DungeonCrawler.TILE_SIZE);
         for (const userId of this.getOrderedPlayers()) {
             y++;
             const player = this.state.players[userId];
-            const text = `${player.displayName}\n${this.getPlayerLocationString(userId)} $${player.points}`
-            const textX = WIDTH + DungeonCrawler.TILE_SIZE * 1.5;
-            const textY = y * DungeonCrawler.TILE_SIZE * 2;
-            c2.fillStyle = `hsl(360,${player.points < 0 ? 50 : 0}%,${y % 2 === 0 ? 75 : 55}%)`;
-            c2.fillText(text, textX, textY);
+            c2.fillStyle = player.knockedOut ? 'hsl(360,50%,55%)' : `hsl(360,0%,${y % 2 === 0 ? 85 : 55}%)`;
+            const textY = y * DungeonCrawler.TILE_SIZE;
+            // Draw the location and points
+            const leftTextWidth = 1.5 * DungeonCrawler.TILE_SIZE;
+            c2.fillText(this.getPlayerLocationString(userId), leftTextX, textY, leftTextWidth);
+            // Draw the points
+            const middleTextX = leftTextX + leftTextWidth + (0.5 * DungeonCrawler.TILE_SIZE);
+            const middleTextWidth = 1.25 * DungeonCrawler.TILE_SIZE;
+            c2.fillText(`$${player.points}`, middleTextX, textY, middleTextWidth);
+            // Draw the username
+            const rightTextX = middleTextX + middleTextWidth + (0.5 * DungeonCrawler.TILE_SIZE);
+            const rightTextWidth = TOTAL_WIDTH - rightTextX;
+            c2.fillText(player.displayName, rightTextX, textY, rightTextWidth);
         }
+
+        // Write extra text on the sidebar
+        y += 2;
+        c2.fillText('Reach me in the center to win!\nDM me "help" for help', leftTextX, y * DungeonCrawler.TILE_SIZE);
 
         return masterImage.toBuffer();
     }
