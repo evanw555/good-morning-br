@@ -244,6 +244,15 @@
             "It's never a complete morning without {!you chiming in|your radiant presence|your kind words}! Although I was hoping you'd say something a little more {adjectives.novel?}...",
             "Good morning! Though something tells me I've heard this before...",
             "Each morning I await your {adjectives.positive?} {!greeting|words} {!oh so eagerly|with bated breath|with such anticipation}, {!but|yet} this morning's greeting {!feels|seems|felt} a little forgettable"
+        ],
+        "1159": [
+            "MAD LAD!",
+            "Buddy!",
+            "Dear dog!",
+            "We got a mad lad {!over|right} here...",
+            "My {!dear dog|friend}, you are quite the mad lad...",
+            "What a morning to be living {!on the edge|dangerously}",
+            "Your life is full of {nouns.positive?1-2}, {!do not|please don't} {!throw it away|waste it|squander it}"
         ]
     },
     "beckoning": {

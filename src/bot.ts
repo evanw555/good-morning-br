@@ -1788,6 +1788,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
     const userId: Snowflake = msg.author.id;
     if (goodMorningChannel && msg.channel.id === goodMorningChannel.id && !msg.author.bot) {
         const isAm: boolean = new Date().getHours() < 12;
+        const is1159: boolean = getClockTime() === '11:59';
         const isPlayerNew: boolean = !state.hasPlayer(userId);
 
         // If the grace period is active, then completely ignore all messages
@@ -1915,6 +1916,12 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     logStory += `said the magic word "${state.getMagicWord()}", `;
                 }
 
+                // If the player said GM at the last possible moment, reward them
+                if (is1159) {
+                    state.awardPoints(userId, config.defaultAward / 2);
+                    logStory == 'was at the last minute, ';
+                }
+
                 // Compute beckoning bonus and reset the state beckoning property if needed
                 const wasBeckoned: boolean = state.getEventType() === DailyEventType.Beckoning && msg.author.id === state.getEvent().user;
                 if (wasBeckoned) {
@@ -1974,6 +1981,10 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     // Always reply with a negative reply if the player had negative points
                     else if (priorPoints < 0) {
                         messenger.reply(msg, languageGenerator.generate('{goodMorningReply.negative?}'));
+                    }
+                    // If the user said GM at the last moment, reply specially
+                    else if (is1159) {
+                        messenger.reply(msg, languageGenerator.generate('{goodMorningReply.1159?}'));
                     }
                     // Reply (or react) to the user based on their rank (and chance)
                     else if (rank <= config.goodMorningReplyCount) {
