@@ -400,7 +400,7 @@ const sendGoodMorningMessage = async (): Promise<void> => {
                 content: decisionHeader,
                 files: [new MessageAttachment(await state.getGame().renderState(), `game-turn${state.getGame().getTurn()}-decision.png`)]
             });
-            await messenger.send(goodMorningChannel, 'Choose your moves by sending me a DM with your desired sequence of actions. DM me _"help"_ for more info.');
+            await messenger.send(goodMorningChannel, 'Choose your moves by sending me a DM with your desired sequence of actions. You have until tomorrow morning to choose. DM me _"help"_ for more info.');
             break;
         case DailyEventType.GameUpdate:
             if (!state.hasGame()) {
@@ -550,9 +550,12 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         state.setGame(dungeon);
     }
 
-    // If today is a decision day, transfer all earned points into the game
+    // If today is a decision day
     const newlyAddedPlayers: Snowflake[] = [];
     if (state.getEventType() === DailyEventType.GameDecision) {
+        // Start accepting game decisions
+        state.setAcceptingGameDecisions(true);
+        // Add new players to the game and transfer all earned points into the game
         const addPlayerLogs: string[] = [];
         for (const userId of state.getOrderedPlayers()) {
             // Add player to the game if they're new (for the first week, this should be handled by the logic above)
@@ -577,6 +580,9 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         await logger.log(addPlayerLogs.join('\n') || 'No new players were added this week.');
         // Begin this week's turn
         state.getGame().beginTurn();
+    } else {
+        // For all other morning types, stop accepting game decisions
+        state.setAcceptingGameDecisions(false);
     }
 
     // Increment "days since last good morning" counters for all participating users
@@ -2062,7 +2068,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             return;
         }
         // Process game decisions via DM
-        if (state.isMorning() && state.getEventType() === DailyEventType.GameDecision) {
+        if (state.isAcceptingGameDecisions()) {
             if (state.hasGame()) {
                 // Handle help requests
                 if (msg.content.trim().toLowerCase() === 'help') {

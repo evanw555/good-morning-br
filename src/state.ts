@@ -636,6 +636,18 @@ export default class GoodMorningState {
        return this.hasGame() && !this.getGame().hasPlayer(userId);
     }
 
+    isAcceptingGameDecisions(): boolean {
+        return this.data.acceptingGameDecisions ?? false;
+    }
+
+    setAcceptingGameDecisions(acceptingGameDecisions: boolean): void {
+        if (acceptingGameDecisions) {
+            this.data.acceptingGameDecisions = true;
+        } else {
+            delete this.data.acceptingGameDecisions;
+        }
+    }
+
     toJson(): string {
         return JSON.stringify(this.data, null, 2);
     }
