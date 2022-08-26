@@ -346,25 +346,26 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         }
 
         // Render usernames in order of location
+        const MARGIN = 0.5 * DungeonCrawler.TILE_SIZE;
         c2.font = `${DungeonCrawler.TILE_SIZE * .75}px sans-serif`;
         let y = 2;
         c2.fillStyle = 'white';
-        const leftTextX = WIDTH + DungeonCrawler.TILE_SIZE * 1.5;
+        const leftTextX = WIDTH + DungeonCrawler.TILE_SIZE + MARGIN;
         c2.fillText(`Turn ${this.state.turn}, Action ${this.state.action}`, leftTextX, DungeonCrawler.TILE_SIZE);
         for (const userId of this.getOrderedPlayers()) {
             y++;
             const player = this.state.players[userId];
             c2.fillStyle = player.knockedOut ? 'hsl(360,50%,55%)' : `hsl(360,0%,${y % 2 === 0 ? 85 : 55}%)`;
             const textY = y * DungeonCrawler.TILE_SIZE;
-            // Draw the location and points
+            // Draw the location
             const leftTextWidth = 1.5 * DungeonCrawler.TILE_SIZE;
             c2.fillText(this.getPlayerLocationString(userId), leftTextX, textY, leftTextWidth);
             // Draw the points
-            const middleTextX = leftTextX + leftTextWidth + (0.5 * DungeonCrawler.TILE_SIZE);
+            const middleTextX = leftTextX + leftTextWidth + MARGIN;
             const middleTextWidth = 1.25 * DungeonCrawler.TILE_SIZE;
             c2.fillText(`$${player.points}`, middleTextX, textY, middleTextWidth);
             // Draw the username
-            const rightTextX = middleTextX + middleTextWidth + (0.5 * DungeonCrawler.TILE_SIZE);
+            const rightTextX = middleTextX + middleTextWidth + MARGIN;
             const rightTextWidth = TOTAL_WIDTH - rightTextX;
             c2.fillText(player.displayName, rightTextX, textY, rightTextWidth);
         }
@@ -374,7 +375,41 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         c2.fillStyle = 'white';
         c2.fillText('Reach me in the center to win!\nDM me "help" for help', leftTextX, y * DungeonCrawler.TILE_SIZE, TOTAL_WIDTH - leftTextX);
 
+        // Draw potential actions
+        y += 2;
+        for (const [actionName, { cost, description }] of Object.entries(this.getChoices())) {
+            y++;
+            c2.fillStyle = `hsl(360,0%,${y % 2 === 0 ? 85 : 55}%)`;
+            const textY = y * DungeonCrawler.TILE_SIZE;
+            // Draw the action name
+            const leftTextWidth = 1.5 * DungeonCrawler.TILE_SIZE;
+            c2.fillText(actionName, leftTextX, textY, leftTextWidth);
+            // Draw the cost
+            const middleTextX = leftTextX + leftTextWidth + MARGIN;
+            const middleTextWidth = 0.75 * DungeonCrawler.TILE_SIZE;
+            c2.fillText(`${cost}`, middleTextX, textY, middleTextWidth);
+            // Draw the description
+            const rightTextX = middleTextX + middleTextWidth + MARGIN;
+            const rightTextWidth = TOTAL_WIDTH - rightTextX;
+            c2.fillText(description, rightTextX, textY, rightTextWidth);
+        }
+
         return masterImage.toBuffer();
+    }
+
+    private getChoices(): Record<ActionName, { cost: number | string, description: string }> {
+        return {
+            'up': { cost: 1, description: 'Move up 1 tile' },
+            'down': { cost: 1, description: 'Move down 1 tile' },
+            'left': { cost: 1, description: 'Move left 1 tile' },
+            'right': { cost: 1, description: 'Move right 1 tile' },
+            'pause': { cost: 0, description: 'Do nothing' },
+            'unlock': { cost: 'N', description: 'Open adjacent doorways' },
+            'lock': { cost: 'N', description: 'Close adjacent doorways' },
+            'seal': { cost: '2N', description: 'Permanently close doorways' },
+            'punch': { cost: 2, description: 'Try to KO adjacent players' },
+            'trap': { cost: 2, description: 'Place trap e.g. "trap:B12"' }
+        };
     }
 
     getTurn(): number {

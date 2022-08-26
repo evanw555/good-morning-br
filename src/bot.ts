@@ -1561,7 +1561,7 @@ let tempDungeon: DungeonCrawler = null;
 let awaitingGameCommands = false;
 
 const processCommands = async (msg: Message): Promise<void> => {
-    if (msg.content.toLocaleLowerCase() === 'dungeon?') {
+    if (msg.content.toLocaleLowerCase() === 'temp dungeon?') {
         await msg.reply('Populating members...');
         const members = (await guild.members.list({ limit: randInt(10, 20) })).toJSON();
         await msg.reply('Generating new game...');
