@@ -89,7 +89,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             displayName: member.displayName,
             avatarUrl: member.user.displayAvatarURL({ size: 32, format: 'png' })
         };
-        const locationText: string = spawnLocation ? `near **${this.state.players[spawnLocation.userId].displayName}**` : `at \`${DungeonCrawler.getLocationString(spawnR, spawnC)}\``;
+        const locationText: string = spawnLocation ? `near **${this.getDisplayName(spawnLocation.userId)}**` : `at \`${DungeonCrawler.getLocationString(spawnR, spawnC)}\``;
         return `Added player **${member.displayName}** ${locationText} with **${lateStarterPoints}** starter points`;
     }
 
@@ -212,9 +212,9 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 context.strokeText('PLACE\nTRAP', location.c * DungeonCrawler.TILE_SIZE, (location.r - .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE);
             }
             // Show placed traps
-            context.lineWidth = 2;
+            context.lineWidth = 1;
             context.strokeStyle = 'black';
-            context.setLineDash([Math.floor(DungeonCrawler.TILE_SIZE * .125), Math.floor(DungeonCrawler.TILE_SIZE * .125)]);
+            context.setLineDash([Math.floor(DungeonCrawler.TILE_SIZE * .1), Math.floor(DungeonCrawler.TILE_SIZE * .1)]);
             for (const location of this.getHiddenTrapsForPlayer(options.showPlayerDecision)) {
                 context.beginPath();
                 context.arc((location.c + .5) * DungeonCrawler.TILE_SIZE, (location.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE / 4, 0, Math.PI * 2, false);
@@ -285,7 +285,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             context.fillStyle = 'black';
             for (const locationString of Object.keys(this.state.trapOwners)) {
                 const location = this.parseLocationString(locationString);
-                context.fillText(this.state.players[this.state.trapOwners[locationString]].displayName, location.c * DungeonCrawler.TILE_SIZE, (location.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE);
+                context.fillText(this.getDisplayName(this.state.trapOwners[locationString]), location.c * DungeonCrawler.TILE_SIZE, (location.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE);
             }
             // Render all player decisions
             // TODO (2.0): Reuse decision rendering logic from above??
@@ -371,7 +371,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
 
         // Write extra text on the sidebar
         y += 2;
-        c2.fillText('Reach me in the center to win!\nDM me "help" for help', leftTextX, y * DungeonCrawler.TILE_SIZE);
+        c2.fillStyle = 'white';
+        c2.fillText('Reach me in the center to win!\nDM me "help" for help', leftTextX, y * DungeonCrawler.TILE_SIZE, TOTAL_WIDTH - leftTextX);
 
         return masterImage.toBuffer();
     }
@@ -443,6 +444,13 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
 
     getShuffledPlayers(): Snowflake[] {
         return shuffle(Object.keys(this.state.players));
+    }
+
+    getDisplayName(userId: Snowflake): string {
+        if (userId in this.state.players) {
+            return this.state.players[userId].displayName;
+        }
+        return userId || 'Unknown Player';
     }
 
     private static getSequenceOfLocations(initialLocation: { r: number, c: number }, actions: ActionName[]): { r: number, c: number }[] {
@@ -1054,17 +1062,21 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         this.state.map[player.r][player.c] = TileType.TRAP;
                         trapRevealed = true;
                         const trapOwnerId = this.state.trapOwners[DungeonCrawler.getLocationString(player.r, player.c)];
-                        pushNonStepStatement(`**${player.displayName}** revealed a hidden trap placed by **${this.state.players[trapOwnerId].displayName}**`);
+                        pushNonStepStatement(`**${player.displayName}** revealed a hidden trap placed by **${this.getDisplayName(trapOwnerId)}**`);
                     }
-                    // Handle revealed traps
+                    // Handle revealed traps (this will trigger if the above condition is triggered)
                     if (this.getTileAtUser(userId) === TileType.TRAP) {
                         player.r = player.originLocation.r;
                         player.c = player.originLocation.c;
+                        const trapOwnerId = this.state.trapOwners[DungeonCrawler.getLocationString(player.r, player.c)];
                         if (trapRevealed) {
                             pushNonStepStatement(`was sent back to **${this.getPlayerLocationString(userId)}**`);
                         } else {
-                            pushNonStepStatement(`**${player.displayName}** stepped on a trap and was sent back to **${this.getPlayerLocationString(userId)}**`);
+                            pushNonStepStatement(`**${player.displayName}** stepped on **${this.getDisplayName(trapOwnerId)}'s** trap and was sent back to **${this.getPlayerLocationString(userId)}**`);
                         }
+                        // Reward the trap's owner
+                        this.state.players[trapOwnerId].points++;
+                        pushNonStepStatement(`**${this.getDisplayName(trapOwnerId)}** earned **1** point for trapping`);
                     }
                 }
             }
