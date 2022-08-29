@@ -252,8 +252,12 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 context.clip();
     
                 // Draw the image at imageX, imageY
-                const avatarImage = await canvas.loadImage(player.avatarUrl);
-                context.drawImage(avatarImage, player.c * DungeonCrawler.TILE_SIZE, player.r * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE);
+                try {
+                    const avatarImage = await canvas.loadImage(player.avatarUrl);
+                    context.drawImage(avatarImage, player.c * DungeonCrawler.TILE_SIZE, player.r * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE);
+                } catch (err) {
+                    logger.log(`Failed to load/draw avatar for player **${player.displayName}**`);
+                }
     
                 // Restore context to undo the clipping
                 context.restore();
