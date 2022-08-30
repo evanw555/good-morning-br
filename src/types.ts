@@ -124,7 +124,8 @@ export interface DungeonPlayerState {
     points: number,
     knockedOut?: boolean,
     previousLocation?: DungeonLocation,
-    originLocation?: DungeonLocation
+    originLocation?: DungeonLocation,
+    warpedFrom?: DungeonLocation
 }
 
 export interface DungeonGameState {

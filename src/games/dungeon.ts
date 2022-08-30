@@ -16,7 +16,7 @@ enum TileType {
     TRAP = 6
 }
 
-type ActionName = 'up' | 'down' | 'left' | 'right' | 'pause' | 'unlock' | 'lock' | 'seal' | 'trap' | 'punch';
+type ActionName = 'up' | 'down' | 'left' | 'right' | 'pause' | 'unlock' | 'lock' | 'seal' | 'trap' | 'punch' | 'warp';
 
 export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     private static readonly TILE_SIZE: number = 24;
@@ -46,6 +46,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 + '`seal`: permanently close all doorways adjacent to you. Cost is **twice the value** denoted on each doorway\n'
                 + '`punch`: 75% chance of knocking out any player adjacent to you, ending their turn. Costs `2`\n'
                 + '`trap:[LOCATION]`: place a hidden trap at the specified location (e.g. `trap:G9`). Costs `2`\n'
+                + '`warp`: warp to a random player. Costs `6`\n'
                 + '`pause`: do nothing. Free\n\n'
             + 'Misc Rules:\n'
                 + '1. If you do not choose your actions, actions will be chosen for you (use `pause` to do nothing instead).\n'
@@ -55,7 +56,9 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 + '5. If you somehow walk into a wall, your turn is ended.\n'
                 + '6. If you walk into another player, your turn is ended if they have no more actions remaining.\n'
                 + '7. If your turn is ended early due to any of these reasons, you will only lose points for each action taken.\n'
-                + '8. If you end your turn on a trap, the trap can now be seen and you are sent back to where you started (points are still lost).'
+                + '8. If you end your turn on a trap, the trap can now be seen and you are sent back to where you started (points are still lost).\n'
+                + '9. If you warp, you will be KO\'ed so that others can walk past you.\n'
+                + '10. If you warp multiple times in one turn, all subsequent warps will only go through if it brings you closer to the goal.'
     }
 
     isSeasonComplete(): boolean {
@@ -162,16 +165,26 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
 
         // Draw the sun at the center
         const sunImage = await canvas.loadImage('assets/sun4.png');
-        context.drawImage(sunImage, (Math.floor(this.state.columns / 2) - .5) * DungeonCrawler.TILE_SIZE, (Math.floor(this.state.rows / 2) - .5) * DungeonCrawler.TILE_SIZE, 2 * DungeonCrawler.TILE_SIZE, 2 * DungeonCrawler.TILE_SIZE);
+        context.drawImage(sunImage, (this.getGoalColumn() - .5) * DungeonCrawler.TILE_SIZE, (this.getGoalRow() - .5) * DungeonCrawler.TILE_SIZE, 2 * DungeonCrawler.TILE_SIZE, 2 * DungeonCrawler.TILE_SIZE);
 
         // Render all player "previous locations" before rendering the players themselves
         context.strokeStyle = DungeonCrawler.STYLE_LIGHT_SKY;
         context.lineWidth = 2;
         for (const userId of Object.keys(this.state.players)) {
             const player = this.state.players[userId];
+            // Render movement line
             if (player.previousLocation) {
+                context.setLineDash([]);
                 context.beginPath();
                 context.moveTo((player.previousLocation.c + .5) * DungeonCrawler.TILE_SIZE, (player.previousLocation.r + .5) * DungeonCrawler.TILE_SIZE);
+                context.lineTo((player.c + .5) * DungeonCrawler.TILE_SIZE, (player.r + .5) * DungeonCrawler.TILE_SIZE);
+                context.stroke();
+            }
+            // Render dashed warp line
+            if (player.warpedFrom) {
+                context.setLineDash([Math.floor(DungeonCrawler.TILE_SIZE * 0.5), Math.floor(DungeonCrawler.TILE_SIZE * 0.5)]);
+                context.beginPath();
+                context.moveTo((player.warpedFrom.c + .5) * DungeonCrawler.TILE_SIZE, (player.warpedFrom.r + .5) * DungeonCrawler.TILE_SIZE);
                 context.lineTo((player.c + .5) * DungeonCrawler.TILE_SIZE, (player.r + .5) * DungeonCrawler.TILE_SIZE);
                 context.stroke();
             }
@@ -225,10 +238,6 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         // Render all players
         for (const userId of Object.keys(this.state.players)) {
             const player = this.state.players[userId];
-            // context.fillStyle = this.state.players[userId].color;
-            // context.beginPath();
-            // context.arc((this.state.players[userId].x + .5) * DungeonCrawler.TILE_SIZE, (this.state.players[userId].y + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE * .4, 0, Math.PI * 2, false);
-            // context.fill();
 
             // Draw outline
             context.fillStyle = 'black';
@@ -412,7 +421,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             'lock': { cost: 'N', description: 'Close adjacent doorways' },
             'seal': { cost: '2N', description: 'Permanently close doorways' },
             'punch': { cost: 2, description: 'Try to KO adjacent players' },
-            'trap': { cost: 2, description: 'Place trap e.g. "trap:B12"' }
+            'trap': { cost: 2, description: 'Place trap e.g. "trap:B12"' },
+            'warp': { cost: 6, description: 'Warp to a random player' }
         };
     }
 
@@ -429,6 +439,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             const player = this.state.players[userId];
             // Reset per-turn metadata and statuses
             delete player.previousLocation;
+            delete player.warpedFrom;
             player.originLocation = { r: player.r, c: player.c };
             delete player.knockedOut;
             // If the user has negative points, knock them out
@@ -483,6 +494,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
 
     getShuffledPlayers(): Snowflake[] {
         return shuffle(Object.keys(this.state.players));
+    }
+
+    getOtherPlayers(userId: Snowflake): Snowflake[] {
+        return Object.keys(this.state.players).filter(id => id !== userId);
     }
 
     getDisplayName(userId: Snowflake): string {
@@ -764,6 +779,11 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             throw new Error('You can pause no more than 3 times per turn');
         }
 
+        // Ensure that turns with warps only include only warps (delaying may give a better outcome)
+        if (commands.includes('warp') && !commands.every(c => c === 'warp')) {
+            throw new Error('If you warp this turn, ALL your actions must be warps');
+        }
+
         for (const command of commands) {
             const [c, arg] = command.split(':') as [ActionName, string];
             cost += this.getActionCost(c, newLocation.r, newLocation.c);
@@ -840,6 +860,9 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 case 'punch':
                     // TODO: Do validation?
                     break;
+                case 'warp':
+                    // TODO: Do validation?
+                    break;
                 default:
                     throw new Error(`\`${command}\` is an invalid action!`);
             }
@@ -904,6 +927,9 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             },
             'punch': () => {
                 return 2;
+            },
+            'warp': () => {
+                return 6;
             }
         };
         return actionCosts[action]();
@@ -1055,6 +1081,22 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         }
                         if (!nearPlayer) {
                             pushNonStepStatement(`**${player.displayName}** swung at the air`);
+                        }
+                        return true;
+                    },
+                    'warp': () => {
+                        const { r: newR, c: newC, userId: nearUserId } = this.getSpawnableLocationAroundPlayers(this.getOtherPlayers(userId));
+                        const isFirstWarp: boolean = !player.warpedFrom;
+                        const isCloser: boolean = this.getEuclideanDistanceToGoal(newR, newC) < this.getEuclideanDistanceToGoal(player.r, player.c);
+                        // If it's the user's first warp of the turn or the warp is closer to the goal, do it and knock them out
+                        if (isFirstWarp || isCloser) {
+                            player.warpedFrom = { r: player.r, c: player.c };
+                            player.r = newR;
+                            player.c = newC;
+                            player.knockedOut = true;
+                            pushNonStepStatement(`**${player.displayName}** warped to **${this.getDisplayName(nearUserId)}**`);
+                        } else {
+                            pushNonStepStatement(`**${player.displayName}** avoided warping to **${this.getDisplayName(nearUserId)}**`);
                         }
                         return true;
                     }

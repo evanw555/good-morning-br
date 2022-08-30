@@ -1566,6 +1566,7 @@ const processCommands = async (msg: Message): Promise<void> => {
         await msg.reply('Generating new game...');
         awaitingGameCommands = true;
         tempDungeon = DungeonCrawler.createBest(members, 20, 60);
+        tempDungeon.addPoints(msg.author.id, 30);
         tempDungeon.beginTurn();
         const attachment = new MessageAttachment(await tempDungeon.renderState(), 'dungeon.png');
         await msg.channel.send({ content: `Map Fairness: ${tempDungeon.getMapFairness().description}`, files: [attachment] });
@@ -1582,24 +1583,14 @@ const processCommands = async (msg: Message): Promise<void> => {
         if (tempDungeon) {
             try {
                 const response = tempDungeon.addPlayerDecision(msg.author.id, msg.content);
-                await msg.reply(response);
+                await msg.reply({
+                    content: response,
+                    files: [new MessageAttachment(await tempDungeon.renderState({ showPlayerDecision: msg.author.id }), 'confirmation.png')]
+                });
+                await sleep(5000);
             } catch (err) {
                 await msg.reply(err.toString());
                 return;
-            }
-
-            // TODO: Temp logic to move all other players
-            for (const otherId of tempDungeon.getOrderedPlayers()) {
-                if (otherId !== msg.author.id) {
-                    const nextAction = tempDungeon.getNextActionsTowardGoal(otherId, tempDungeon.getPoints(otherId)).join(' ');
-                    if (nextAction) {
-                        try {
-                            tempDungeon.addPlayerDecision(otherId, nextAction);
-                        } catch (err) {
-                            await logger.log(`Failed to add action \`${nextAction}\` for player <@${otherId}>: ${err}`);
-                        }
-                    }
-                }
             }
 
             // Process decisions and render state
@@ -1617,7 +1608,7 @@ const processCommands = async (msg: Message): Promise<void> => {
             // Give everyone points then show the final state
             // TODO: Temp logic to move all other players
             for (const otherId of tempDungeon.getOrderedPlayers()) {
-                tempDungeon.addPoints(otherId, randInt(1, 10));
+                tempDungeon.addPoints(otherId, randInt(1, 5));
             }
             tempDungeon.beginTurn();
             const attachment = new MessageAttachment(await tempDungeon.renderState(), 'dungeon.png');
