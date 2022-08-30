@@ -1474,7 +1474,7 @@ client.on('ready', async (): Promise<void> => {
 });
 
 client.on('interactionCreate', async (interaction): Promise<void> => {
-    if (interaction.isCommand()) {
+    if (interaction.isCommand() && interaction.applicationId === client.application.id) {
         const userId: Snowflake = interaction.user.id;
         await interaction.deferReply({ ephemeral: true });
         if (interaction.commandName === 'vote') {
@@ -1523,7 +1523,6 @@ client.on('interactionCreate', async (interaction): Promise<void> => {
                 await interaction.editReply('You shouldn\'t be able to vote right now!');
             }
         } else if (interaction.commandName === 'forfeit') {
-            await interaction.deferReply({ ephemeral: true });
             if (state.getEventType() === DailyEventType.AnonymousSubmissions && state.getEvent().submissions) {
                 // If voting has started, notify and abort
                 if (state.getEvent().votes) {
@@ -1561,7 +1560,7 @@ let tempDungeon: DungeonCrawler = null;
 let awaitingGameCommands = false;
 
 const processCommands = async (msg: Message): Promise<void> => {
-    if (msg.content.toLocaleLowerCase() === 'temp dungeon?') {
+    if (msg.content.toLowerCase() === 'temp dungeon?') {
         await msg.reply('Populating members...');
         const members = (await guild.members.list({ limit: randInt(10, 20) })).toJSON();
         await msg.reply('Generating new game...');
@@ -1573,6 +1572,13 @@ const processCommands = async (msg: Message): Promise<void> => {
         return;
     }
     if (awaitingGameCommands) {
+        // Emergency abort temp dungeon
+        if (msg.content.toLowerCase() === 'exit') {
+            tempDungeon = null;
+            awaitingGameCommands = false;
+            await msg.reply('Exiting temp dungeon mode...');
+            return;
+        }
         if (tempDungeon) {
             try {
                 const response = tempDungeon.addPlayerDecision(msg.author.id, msg.content);
