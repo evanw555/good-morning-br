@@ -209,7 +209,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             for (const decision of decisions.filter(d => d.includes('trap:'))) {
                 const [ action, locationString ] = decision.split(':');
                 const location = this.parseLocationString(locationString);
-                context.strokeText('PLACE\nTRAP', location.c * DungeonCrawler.TILE_SIZE, (location.r - .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE);
+                context.strokeText('PLACE\nTRAP', location.c * DungeonCrawler.TILE_SIZE, (location.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE);
             }
             // Show placed traps
             context.lineWidth = 1;
