@@ -2145,7 +2145,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 } else {
                     await messenger.reply(msg, languageGenerator.generate('{!Thanks|Cool|Nice}! This {!will make for|is} a {adjectives.positive?} {!message|greeting}'));
                 }
-                logger.log(`**${state.getPlayerDisplayName(msg.author.id)}** submitted their writer's block greeting`);
+                logger.log(`**${state.getPlayerDisplayName(msg.author.id)}** submitted their writer's block greeting:\n${content}`);
             } else {
                 await messenger.reply(msg, 'I can\'t send that...');
             }
