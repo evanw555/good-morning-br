@@ -2097,7 +2097,8 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
         // Process DM submissions depending on the event
         else if (state.isMorning() && state.getEventType() === DailyEventType.AnonymousSubmissions) {
             const userId: Snowflake = msg.author.id;
-            if (state.getEvent().submissions) {
+            // Handle submissions via DM only before voting has started
+            if (state.getEvent().submissions && !state.getEvent().votes) {
                 const redoSubmission: boolean = userId in state.getEvent().submissions;
                 // Add the submission
                 if (state.getEvent().isAttachmentSubmission) {
@@ -2126,6 +2127,8 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     logger.log(`Received submission from player **${state.getPlayerDisplayName(userId)}**, now at **${numSubmissions}** submissions`);
                 }
                 await dumpState();
+            } else {
+                await messenger.reply(msg, 'It\'s a little too late to submit something!');
             }
         }
         // Handle writer's block submissions
