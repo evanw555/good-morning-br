@@ -901,7 +901,10 @@ const finalizeAnonymousSubmissions = async () => {
         const userId: Snowflake = submissionOwnersByCode[code];
         const rank: number = i + 1;
         try {
-            await messenger.dm(await fetchMember(userId), `Your ${state.getEvent().submissionType} placed **${getRankString(rank)}** of **${numValidSubmissions}**, `
+            // We circumvent the messenger utility because we don't want to delay between each message
+            // TODO: Can we add an option to disable typing delays in the messenger?
+            const dmChannel: DMChannel = await (await fetchMember(userId)).createDM();
+            await dmChannel.send(`Your ${state.getEvent().submissionType} placed **${getRankString(rank)}** of **${numValidSubmissions}**, `
                 + `receiving **${breakdown[code][0]}** gold votes, **${breakdown[code][1]}** silver votes, and **${breakdown[code][2]}** bronze votes. `
                 + `Thanks for participating ${config.defaultGoodMorningEmoji}` + (forfeiters.includes(userId) ? ' (and sorry that you had to forfeit)' : ''));
         } catch (err) {
