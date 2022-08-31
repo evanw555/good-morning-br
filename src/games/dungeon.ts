@@ -860,6 +860,9 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     if (!target) {
                         throw new Error(`**${arg}** is not a valid location on the map!`);
                     }
+                    if (this.isGoal(target.r, target.c)) {
+                        throw new Error('You can\'t place a trap on the goal!');
+                    }
                     if (this.isTileType(target.r, target.c, TileType.EMPTY) || this.isTileType(target.r, target.c, TileType.HIDDEN_TRAP)) {
                         // COOL
                     } else {
@@ -1251,6 +1254,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
 
     getGoalColumn(): number {
         return Math.floor(this.state.columns / 2);
+    }
+
+    isGoal(r: number, c: number): boolean {
+        return r === this.getGoalRow() && c === this.getGoalColumn();
     }
 
     getEuclideanDistanceToGoal(r: number, c: number): number {
