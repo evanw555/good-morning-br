@@ -1563,11 +1563,18 @@ const processCommands = async (msg: Message): Promise<void> => {
     if (msg.content.toLowerCase() === 'temp dungeon?') {
         await msg.reply('Populating members...');
         const members = (await guild.members.list({ limit: randInt(10, 20) })).toJSON();
+        // Add self if not already in the fetched members list
+        if (members.every(m => m.id !== msg.author.id)) {
+            members.push(await guild.members.fetch(msg.author.id));
+        }
         await msg.reply('Generating new game...');
         awaitingGameCommands = true;
         tempDungeon = DungeonCrawler.createBest(members, 20, 60);
         tempDungeon.addPoints(msg.author.id, 30);
         tempDungeon.beginTurn();
+        try { // TODO: refactor typing event to somewhere else?
+            await msg.channel.sendTyping();
+        } catch (err) {}
         const attachment = new MessageAttachment(await tempDungeon.renderState(), 'dungeon.png');
         await msg.channel.send({ content: `Map Fairness: ${tempDungeon.getMapFairness().description}`, files: [attachment] });
         return;
@@ -1583,6 +1590,9 @@ const processCommands = async (msg: Message): Promise<void> => {
         if (tempDungeon) {
             try {
                 const response = tempDungeon.addPlayerDecision(msg.author.id, msg.content);
+                try { // TODO: refactor typing event to somewhere else?
+                    await msg.channel.sendTyping();
+                } catch (err) {}
                 await msg.reply({
                     content: response,
                     files: [new MessageAttachment(await tempDungeon.renderState({ showPlayerDecision: msg.author.id }), 'confirmation.png')]
@@ -1596,6 +1606,9 @@ const processCommands = async (msg: Message): Promise<void> => {
             // Process decisions and render state
             while (true) {
                 const processingData = tempDungeon.processPlayerDecisions();
+                try { // TODO: refactor typing event to somewhere else?
+                    await msg.channel.sendTyping();
+                } catch (err) {}
                 const attachment = new MessageAttachment(await tempDungeon.renderState(), 'dungeon.png');
                 await msg.channel.send({ content: processingData.summary, files: [attachment] });
                 await sleep(5000);
@@ -1611,6 +1624,9 @@ const processCommands = async (msg: Message): Promise<void> => {
                 tempDungeon.addPoints(otherId, randInt(1, 5));
             }
             tempDungeon.beginTurn();
+            try { // TODO: refactor typing event to somewhere else?
+                await msg.channel.sendTyping();
+            } catch (err) {}
             const attachment = new MessageAttachment(await tempDungeon.renderState(), 'dungeon.png');
             await msg.channel.send({ content: 'Beginning of the next turn', files: [attachment] });
 
@@ -1767,6 +1783,9 @@ const processCommands = async (msg: Message): Promise<void> => {
         }
         else if (sanitizedText.includes('game')) {
             if (state.hasGame()) {
+                try { // TODO: refactor typing event to somewhere else?
+                    await msg.channel.sendTyping();
+                } catch (err) {}
                 await msg.channel.send({ content: 'Admin-view game state, decision-view state:', files: [
                     new MessageAttachment(await state.getGame().renderState({ admin: true }), 'game-test-admin.png'),
                     new MessageAttachment(await state.getGame().renderState({ showPlayerDecision: msg.author.id }), 'game-test-decision.png')
@@ -1775,11 +1794,14 @@ const processCommands = async (msg: Message): Promise<void> => {
                 await msg.reply('The game hasn\'t been created yet!');
             }
         }
-        // TODO: Remove this soon, testing
-        else if (sanitizedText.includes('serialize')) {
-            const dungeon = DungeonCrawler.create((await guild.members.list({ limit: randInt(1, 30) })).toJSON());
-            await messenger.sendLargeMonospaced(msg.channel, prettyPrint(dungeon.getState()));
-        }
+    }
+};
+
+const safeProcessCommands = async (msg: Message): Promise<void> => {
+    try {
+        await processCommands(msg);
+    } catch (err) {
+        await msg.reply(`Unhandled error while processing admin command: \`${err}\` ${(err as Error).stack}`);
     }
 };
 
@@ -2061,7 +2083,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             && msg.author.id === guildOwner.id
             && msg.content.endsWith('ADMIN?'))
         {
-            await processCommands(msg);
+            await safeProcessCommands(msg);
             return;
         }
         // Process game decisions via DM
@@ -2149,7 +2171,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
         }
         // Process admin commands without the override suffix
         else if (guildOwnerDmChannel && msg.channel.id === guildOwnerDmChannel.id && msg.author.id === guildOwner.id) {
-            await processCommands(msg);
+            await safeProcessCommands(msg);
         }
     }
 });

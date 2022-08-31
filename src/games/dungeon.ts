@@ -25,6 +25,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     private static readonly STYLE_SKY: string = 'hsl(217, 94%, 69%)';
     private static readonly STYLE_LIGHT_SKY: string = 'hsl(217, 85%, 75%)';
     private static readonly STYLE_CLOUD: string = 'rgba(222, 222, 222, 1)';
+    private static readonly STYLE_WARP_PATH: string = 'rgba(98, 11, 212, 0.25)';
 
     constructor(state: DungeonGameState) {
         super(state);
@@ -168,23 +169,21 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         context.drawImage(sunImage, (this.getGoalColumn() - .5) * DungeonCrawler.TILE_SIZE, (this.getGoalRow() - .5) * DungeonCrawler.TILE_SIZE, 2 * DungeonCrawler.TILE_SIZE, 2 * DungeonCrawler.TILE_SIZE);
 
         // Render all player "previous locations" before rendering the players themselves
-        context.strokeStyle = DungeonCrawler.STYLE_LIGHT_SKY;
-        context.lineWidth = 2;
         for (const userId of Object.keys(this.state.players)) {
             const player = this.state.players[userId];
-            // Render movement line
+            // Render movement line (or dashed warp line if warped)
             if (player.previousLocation) {
-                context.setLineDash([]);
+                if (player.warped) {
+                    context.lineWidth = 4;
+                    context.strokeStyle = DungeonCrawler.STYLE_WARP_PATH;
+                    context.setLineDash([Math.floor(DungeonCrawler.TILE_SIZE * 0.25), Math.floor(DungeonCrawler.TILE_SIZE * 0.25)]);
+                } else {
+                    context.lineWidth = 2;
+                    context.strokeStyle = DungeonCrawler.STYLE_LIGHT_SKY;
+                    context.setLineDash([]);
+                }
                 context.beginPath();
                 context.moveTo((player.previousLocation.c + .5) * DungeonCrawler.TILE_SIZE, (player.previousLocation.r + .5) * DungeonCrawler.TILE_SIZE);
-                context.lineTo((player.c + .5) * DungeonCrawler.TILE_SIZE, (player.r + .5) * DungeonCrawler.TILE_SIZE);
-                context.stroke();
-            }
-            // Render dashed warp line
-            if (player.warpedFrom) {
-                context.setLineDash([Math.floor(DungeonCrawler.TILE_SIZE * 0.5), Math.floor(DungeonCrawler.TILE_SIZE * 0.5)]);
-                context.beginPath();
-                context.moveTo((player.warpedFrom.c + .5) * DungeonCrawler.TILE_SIZE, (player.warpedFrom.r + .5) * DungeonCrawler.TILE_SIZE);
                 context.lineTo((player.c + .5) * DungeonCrawler.TILE_SIZE, (player.r + .5) * DungeonCrawler.TILE_SIZE);
                 context.stroke();
             }
@@ -233,6 +232,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 context.arc((location.c + .5) * DungeonCrawler.TILE_SIZE, (location.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE / 4, 0, Math.PI * 2, false);
                 context.stroke();
             }
+            context.setLineDash([]);
         }
 
         // Render all players
@@ -282,6 +282,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             if (player.knockedOut) {
                 context.strokeStyle = 'red';
                 context.lineWidth = 2;
+                context.setLineDash([]);
                 context.beginPath();
                 context.moveTo(player.c * DungeonCrawler.TILE_SIZE, player.r * DungeonCrawler.TILE_SIZE);
                 context.lineTo((player.c + 1) * DungeonCrawler.TILE_SIZE, (player.r + 1) * DungeonCrawler.TILE_SIZE);
@@ -439,9 +440,9 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             const player = this.state.players[userId];
             // Reset per-turn metadata and statuses
             delete player.previousLocation;
-            delete player.warpedFrom;
             player.originLocation = { r: player.r, c: player.c };
             delete player.knockedOut;
+            delete player.warped;
             // If the user has negative points, knock them out
             if (player.points < 0 && !this.hasPendingDecisions(userId)) {
                 player.knockedOut = true;
@@ -960,7 +961,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         for (const userId of this.getShuffledPlayers()) {
             const player = this.state.players[userId];
             delete player.previousLocation;
-            if (userId in this.state.decisions && this.state.decisions[userId].length > 0) {
+            if (this.hasPendingDecisions(userId)) {
                 let endTurn = false;
                 const processStep = (dr: number, dc: number): boolean => {
                     player.previousLocation = { r: player.r, c: player.c };
@@ -1086,13 +1087,14 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     },
                     'warp': () => {
                         const { r: newR, c: newC, userId: nearUserId } = this.getSpawnableLocationAroundPlayers(this.getOtherPlayers(userId));
-                        const isFirstWarp: boolean = !player.warpedFrom;
+                        const isFirstWarp: boolean = !player.warped;
                         const isCloser: boolean = this.getEuclideanDistanceToGoal(newR, newC) < this.getEuclideanDistanceToGoal(player.r, player.c);
                         // If it's the user's first warp of the turn or the warp is closer to the goal, do it and knock them out
                         if (isFirstWarp || isCloser) {
-                            player.warpedFrom = { r: player.r, c: player.c };
+                            player.previousLocation = { r: player.r, c: player.c };
                             player.r = newR;
                             player.c = newC;
+                            player.warped = true;
                             player.knockedOut = true;
                             pushNonStepStatement(`**${player.displayName}** warped to **${this.getDisplayName(nearUserId)}**`);
                         } else {
