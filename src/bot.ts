@@ -64,6 +64,17 @@ const fetchMember = async (userId: Snowflake): Promise<GuildMember> => {
     }
 }
 
+
+
+const fetchMembers = async (userIds: Snowflake[]): Promise<Record<Snowflake, GuildMember>> => {
+    const members = await guild.members.fetch({ user: userIds });
+    const result = {};
+    for (const [userId, member] of members.entries()) {
+        result[userId] = member;
+    }
+    return result;
+}
+
 const getBoldNames = (userIds: Snowflake[]): string => {
     return naturalJoin(userIds.map(userId => `**${state.getPlayerDisplayName(userId)}**`));
 }
@@ -557,25 +568,33 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         state.setAcceptingGameDecisions(true);
         // Add new players to the game and transfer all earned points into the game
         const addPlayerLogs: string[] = [];
+        const membersById = await fetchMembers(state.getPlayers());
         for (const userId of state.getOrderedPlayers()) {
-            // Add player to the game if they're new (for the first week, this should be handled by the logic above)
-            if (!state.getGame().hasPlayer(userId)) {
-                try {
-                    const member = await guild.members.fetch(userId);
+            // If the user was fetched, use that member data to update the game state
+            if (userId in membersById) {
+                const member = membersById[userId];
+                if (state.getGame().hasPlayer(userId)) {
+                    // If the player is already in the game, update their member info (e.g. avatar, display name)
+                    state.getGame().updatePlayer(member);
+                    state.setPlayerDisplayName(userId, member.displayName);
+                } else {
+                    // Add player to the game if they're new (for the first week, this should be handled by the logic above)
                     const addPlayerLog: string = state.getGame().addPlayer(member);
                     addPlayerLogs.push(addPlayerLog);
                     newlyAddedPlayers.push(member.id);
-                } catch (err) {
-                    await logger.log(`Failed to fetch member <@${userId}> when adding new players to game: \`${err}\``);
-                    continue;
                 }
+            } else {
+                await logger.log(`For some reason, <@${userId}> wasn't included in the bulk-fetch member results when updating players.`);
             }
-            // Transfer whole earned/lost points into the game
-            const points = state.getPlayerPoints(userId);
-            const roundedPoints = points > 0 ? Math.floor(points) : Math.ceil(points);
-            state.getGame().addPoints(userId, roundedPoints);
-            // Reset the standard GMBR points for this user to the remainder
-            state.setPlayerPoints(userId, points - roundedPoints);
+            // Update points (check that the player is in the game just in case the above fails)
+            if (state.getGame().hasPlayer(userId)) {
+                // Transfer whole earned/lost points into the game
+                const points = state.getPlayerPoints(userId);
+                const roundedPoints = points > 0 ? Math.floor(points) : Math.ceil(points);
+                state.getGame().addPoints(userId, roundedPoints);
+                // Reset the standard GMBR points for this user to the remainder
+                state.setPlayerPoints(userId, points - roundedPoints);
+            }
         }
         await logger.log(addPlayerLogs.join('\n') || 'No new players were added this week.');
         // Begin this week's turn
@@ -2022,9 +2041,6 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                         reactToMessage(msg, state.getGoodMorningEmoji());
                     }
                 }
-
-                // Very last thing to do is to update the player's displayName (only do this here since it may be expensive)
-                state.setPlayerDisplayName(userId, await getDisplayName(userId));
             } else if (saidMagicWord(msg)) {
                 // If this isn't the user's GM message yet they still said the magic word, let them know...
                 await logger.log(`**${state.getPlayerDisplayName(userId)}** just said the magic word _"${state.getMagicWord()}"_, though too late...`);
@@ -2089,6 +2105,10 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
         // Process game decisions via DM
         if (state.isAcceptingGameDecisions()) {
             if (state.hasGame()) {
+                if (!state.getGame().hasPlayer(userId)) {
+                    await msg.reply('You aren\'t in the game! Participate more if you want to play.');
+                    return;
+                }
                 // Handle help requests
                 if (msg.content.trim().toLowerCase() === 'help') {
                     await logger.log(`<@${userId}> asked for help!`);
@@ -2100,6 +2120,9 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     const response: string = state.getGame().addPlayerDecision(userId, msg.content);
                     // If it succeeds, dump the state and reply with the validation response
                     await dumpState();
+                    try { // TODO: refactor typing event to somewhere else?
+                        await msg.channel.sendTyping();
+                    } catch (err) {}
                     await msg.reply({
                         content: response,
                         files: [new MessageAttachment(await state.getGame().renderState({ showPlayerDecision: userId }), `game-turn${state.getGame().getTurn()}-confirmation.png`)]

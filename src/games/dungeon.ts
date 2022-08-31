@@ -97,6 +97,14 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return `Added player **${member.displayName}** ${locationText} with **${lateStarterPoints}** starter points`;
     }
 
+    updatePlayer(member: GuildMember): void {
+        if (this.hasPlayer(member.id)) {
+            const player = this.state.players[member.id];
+            player.displayName = member.displayName;
+            player.avatarUrl = member.user.displayAvatarURL({ size: 32, format: 'png' });
+        }
+    }
+
     async renderState(options?: { showPlayerDecision?: Snowflake, admin?: boolean }): Promise<Buffer> {
         const WIDTH: number = this.state.columns * DungeonCrawler.TILE_SIZE;
         const HEIGHT: number = this.state.rows * DungeonCrawler.TILE_SIZE;
