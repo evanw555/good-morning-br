@@ -1159,6 +1159,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     if (this.getTileAtUser(userId) === TileType.TRAP) {
                         player.r = player.originLocation.r;
                         player.c = player.originLocation.c;
+                        player.knockedOut = true;
+                        delete player.previousLocation;
                         const trapOwnerId = this.state.trapOwners[DungeonCrawler.getLocationString(player.r, player.c)];
                         if (trapRevealed) {
                             pushNonStepStatement(`was sent back to **${this.getPlayerLocationString(userId)}**`);
