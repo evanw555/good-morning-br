@@ -199,48 +199,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
 
         // Render the player's actions if enabled
         if (options?.showPlayerDecision) {
-            const player = this.state.players[options.showPlayerDecision];
-            const decisions: string[] = this.state.decisions[options.showPlayerDecision] ?? [];
-            const tempLocation = { r: player.r, c: player.c };
-            const locations = DungeonCrawler.getSequenceOfLocations(tempLocation, decisions as ActionName[]);
-            context.strokeStyle = 'red';
-            context.lineWidth = 2;
-            context.setLineDash([Math.floor(DungeonCrawler.TILE_SIZE * .25), Math.floor(DungeonCrawler.TILE_SIZE * .25)]);
-            for (let i = 1; i < locations.length; i++) {
-                const prev = locations[i - 1];
-                const curr = locations[i];
-                context.beginPath();
-                context.moveTo((prev.c + .5) * DungeonCrawler.TILE_SIZE, (prev.r + .5) * DungeonCrawler.TILE_SIZE);
-                context.lineTo((curr.c + .5) * DungeonCrawler.TILE_SIZE, (curr.r + .5) * DungeonCrawler.TILE_SIZE);
-                context.stroke();
-                // Show the final location
-                if (i === locations.length - 1) {
-                    context.setLineDash([]);
-                    context.beginPath();
-                    context.arc((curr.c + .5) * DungeonCrawler.TILE_SIZE, (curr.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE / 2 + 1, 0, Math.PI * 2, false);
-                    context.stroke();
-                }
-            }
-            // Show attempted traps
-            context.font = `${DungeonCrawler.TILE_SIZE * .5}px sans-serif`;
-            context.lineWidth = 1;
-            context.strokeStyle = 'red';
-            context.setLineDash([]);
-            for (const decision of decisions.filter(d => d.includes('trap:'))) {
-                const [ action, locationString ] = decision.split(':');
-                const location = this.parseLocationString(locationString);
-                context.strokeText('PLACE\nTRAP', location.c * DungeonCrawler.TILE_SIZE, (location.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE);
-            }
-            // Show placed traps
-            context.lineWidth = 1;
-            context.strokeStyle = 'black';
-            context.setLineDash([Math.floor(DungeonCrawler.TILE_SIZE * .1), Math.floor(DungeonCrawler.TILE_SIZE * .1)]);
-            for (const location of this.getHiddenTrapsForPlayer(options.showPlayerDecision)) {
-                context.beginPath();
-                context.arc((location.c + .5) * DungeonCrawler.TILE_SIZE, (location.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE / 4, 0, Math.PI * 2, false);
-                context.stroke();
-            }
-            context.setLineDash([]);
+            await this.renderPlayerDecision(context, options.showPlayerDecision);
         }
 
         // Render all players
@@ -307,30 +266,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 context.fillText(this.getDisplayName(this.state.trapOwners[locationString]), location.c * DungeonCrawler.TILE_SIZE, (location.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE);
             }
             // Render all player decisions
-            // TODO (2.0): Reuse decision rendering logic from above??
             for (const userId of Object.keys(this.state.players)) {
-                const player = this.state.players[userId];
-                const decisions: string[] = this.state.decisions[userId] ?? [];
-                const tempLocation = { r: player.r, c: player.c };
-                const locations = DungeonCrawler.getSequenceOfLocations(tempLocation, decisions as ActionName[]);
-                context.strokeStyle = 'red';
-                context.lineWidth = 2;
-                context.setLineDash([Math.floor(DungeonCrawler.TILE_SIZE * .25), Math.floor(DungeonCrawler.TILE_SIZE * .25)]);
-                for (let i = 1; i < locations.length; i++) {
-                    const prev = locations[i - 1];
-                    const curr = locations[i];
-                    context.beginPath();
-                    context.moveTo((prev.c + .5) * DungeonCrawler.TILE_SIZE, (prev.r + .5) * DungeonCrawler.TILE_SIZE);
-                    context.lineTo((curr.c + .5) * DungeonCrawler.TILE_SIZE, (curr.r + .5) * DungeonCrawler.TILE_SIZE);
-                    context.stroke();
-                    // Show the final location
-                    if (i === locations.length - 1) {
-                        context.setLineDash([]);
-                        context.beginPath();
-                        context.arc((curr.c + .5) * DungeonCrawler.TILE_SIZE, (curr.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE / 2 + 1, 0, Math.PI * 2, false);
-                        context.stroke();
-                    }
-                }
+                await this.renderPlayerDecision(context, userId);
             }
         }
 
@@ -414,6 +351,51 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         }
 
         return masterImage.toBuffer();
+    }
+
+    private async renderPlayerDecision(context: canvas.CanvasRenderingContext2D, userId: Snowflake) {
+        const player = this.state.players[userId];
+        const decisions: string[] = this.state.decisions[userId] ?? [];
+        const tempLocation = { r: player.r, c: player.c };
+        const locations = DungeonCrawler.getSequenceOfLocations(tempLocation, decisions as ActionName[]);
+        context.strokeStyle = 'red';
+        context.lineWidth = 2;
+        context.setLineDash([Math.floor(DungeonCrawler.TILE_SIZE * .25), Math.floor(DungeonCrawler.TILE_SIZE * .25)]);
+        for (let i = 1; i < locations.length; i++) {
+            const prev = locations[i - 1];
+            const curr = locations[i];
+            context.beginPath();
+            context.moveTo((prev.c + .5) * DungeonCrawler.TILE_SIZE, (prev.r + .5) * DungeonCrawler.TILE_SIZE);
+            context.lineTo((curr.c + .5) * DungeonCrawler.TILE_SIZE, (curr.r + .5) * DungeonCrawler.TILE_SIZE);
+            context.stroke();
+            // Show the final location
+            if (i === locations.length - 1) {
+                context.setLineDash([]);
+                context.beginPath();
+                context.arc((curr.c + .5) * DungeonCrawler.TILE_SIZE, (curr.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE / 2 + 1, 0, Math.PI * 2, false);
+                context.stroke();
+            }
+        }
+        // Show attempted traps
+        context.font = `${DungeonCrawler.TILE_SIZE * .5}px sans-serif`;
+        context.lineWidth = 1;
+        context.strokeStyle = 'red';
+        context.setLineDash([]);
+        for (const decision of decisions.filter(d => d.includes('trap:'))) {
+            const [ action, locationString ] = decision.split(':');
+            const location = this.parseLocationString(locationString);
+            context.strokeText('PLACE\nTRAP', location.c * DungeonCrawler.TILE_SIZE, (location.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE);
+        }
+        // Show placed traps
+        context.lineWidth = 1;
+        context.strokeStyle = 'black';
+        context.setLineDash([Math.floor(DungeonCrawler.TILE_SIZE * .1), Math.floor(DungeonCrawler.TILE_SIZE * .1)]);
+        for (const location of this.getHiddenTrapsForPlayer(userId)) {
+            context.beginPath();
+            context.arc((location.c + .5) * DungeonCrawler.TILE_SIZE, (location.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE / 4, 0, Math.PI * 2, false);
+            context.stroke();
+        }
+        context.setLineDash([]);
     }
 
     private getChoices(): Record<ActionName, { cost: number | string, description: string }> {
