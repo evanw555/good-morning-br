@@ -173,7 +173,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         }
 
         // Draw the sun at the center
-        const sunImage = await canvas.loadImage('assets/sun4.png');
+        const sunImage = await this.loadImage('assets/sun4.png');
         context.drawImage(sunImage, (this.getGoalColumn() - .5) * DungeonCrawler.TILE_SIZE, (this.getGoalRow() - .5) * DungeonCrawler.TILE_SIZE, 2 * DungeonCrawler.TILE_SIZE, 2 * DungeonCrawler.TILE_SIZE);
 
         // Render all player "previous locations" before rendering the players themselves
@@ -269,17 +269,14 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 context.clip();
     
                 // Draw the image at imageX, imageY
-                try {
-                    const avatarImage = await canvas.loadImage(player.avatarUrl);
-                    context.drawImage(avatarImage, player.c * DungeonCrawler.TILE_SIZE, player.r * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE);
-                } catch (err) {
-                    logger.log(`Failed to load/draw avatar for player **${player.displayName}**`);
-                }
+                const avatarImage = await this.loadImage(player.avatarUrl);
+                context.drawImage(avatarImage, player.c * DungeonCrawler.TILE_SIZE, player.r * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE);
     
                 // Restore context to undo the clipping
                 context.restore();
                 context.globalAlpha = 1;
             } else {
+                // If it's not a URL, assume it's a CSS style
                 context.fillStyle = player.avatarUrl;
                 context.beginPath();
                 context.arc((player.c + .5) * DungeonCrawler.TILE_SIZE, (player.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE / 2, 0, Math.PI * 2, false);
