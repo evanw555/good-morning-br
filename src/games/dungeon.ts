@@ -7,6 +7,7 @@ import AbstractGame from "./abstract-game";
 import logger from '../logger';
 
 enum TileType {
+    INVALID = -1,
     EMPTY = 0,
     WALL = 1,
     KEY_HOLE = 2,
@@ -694,6 +695,9 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
 
     private getTileAtUser(userId: Snowflake): TileType {
         const player = this.state.players[userId];
+        if (!this.isInBounds(player.r, player.c)) {
+            return TileType.INVALID;
+        }
         return this.state.map[player.r][player.c];
     }
 
