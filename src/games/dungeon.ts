@@ -433,6 +433,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             player.originLocation = { r: player.r, c: player.c };
             delete player.knockedOut;
             delete player.warped;
+            // If the user already finished, do nothing
+            if (player.finished) {
+                continue;
+            }
             // If the user has negative points, knock them out
             if (player.points < 0 && !this.hasPendingDecisions(userId)) {
                 player.knockedOut = true;
@@ -755,7 +759,9 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
 
     private getPlayerAtLocation(r: number, c: number): Snowflake | undefined {
         for (const userId of this.getOrderedPlayers()) {
-            if (this.state.players[userId].r === r && this.state.players[userId].c === c) {
+            const player = this.state.players[userId];
+            // Exclude players who've already finished (since they effectively don't have a location)
+            if (!player.finished && player.r === r && player.c === c) {
                 return userId;
             }
         }
@@ -1142,10 +1148,6 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 if (!player.finished && this.isGoal(player.r, player.c)) {
                     // Mark the player as finished
                     player.finished = true;
-                    // Hack to ensure this player doesn't get in the way of anything
-                    // TODO (2.0): Can we ensure it really won't get in the way?
-                    player.r = -1;
-                    player.c = -1;
                     // Add to list of finished players
                     this.addWinner(userId);
                     // Add to log and end the turn
@@ -1290,6 +1292,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         const offsets = [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, -1], [1, 0], [1, 1]];
         shuffle(offsets);
         const player = this.state.players[userId];
+        // If this player already finished, they effectively have no location
+        if (player.finished) {
+            return undefined;
+        }
         for (const [dr, dc] of offsets) {
             const nr = player.r + dr;
             const nc = player.c + dc;
