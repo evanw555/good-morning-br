@@ -10,6 +10,11 @@ export default abstract class AbstractGame<T extends GameState> {
     constructor(state: T) {
         this.state = state;
         this.imageCache = {};
+
+        // TODO (2.0): Temp logic to ensure the list exists after being loaded (remove this)
+        if (this.state.winners === undefined) {
+            this.state.winners = [];
+        }
     }
 
     abstract getIntroductionText(): string
@@ -17,7 +22,6 @@ export default abstract class AbstractGame<T extends GameState> {
     abstract hasPlayer(userId: Snowflake): boolean
     abstract addPlayer(member: GuildMember): string
     abstract updatePlayer(member: GuildMember): void
-    abstract isSeasonComplete(): boolean
     abstract renderState(options?: { showPlayerDecision?: Snowflake, admin?: boolean }): Promise<Buffer>
     abstract getTurn(): number
     abstract beginTurn(): void
@@ -28,6 +32,20 @@ export default abstract class AbstractGame<T extends GameState> {
 
     getState(): T {
         return this.state;
+    }
+
+    isSeasonComplete(): boolean {
+        return this.getWinners().length === 3;
+    }
+
+    getWinners(): Snowflake[] {
+        return this.state.winners.slice(0, 3);
+    }
+
+    protected addWinner(userId: Snowflake): void {
+        if (!this.state.winners.includes(userId)) {
+            this.state.winners.push(userId);
+        }
     }
 
     protected async loadImage(key: string): Promise<canvas.Image> {

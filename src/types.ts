@@ -122,6 +122,7 @@ export interface DungeonPlayerState {
     avatarUrl: string,
     displayName: string,
     points: number,
+    finished?: boolean,
     knockedOut?: boolean,
     previousLocation?: DungeonLocation,
     originLocation?: DungeonLocation,
@@ -132,6 +133,7 @@ export interface DungeonGameState {
     type: 'DUNGEON_GAME_STATE',
     decisions: Record<Snowflake, string[]>,
     turn: number,
+    winners: Snowflake[],
     action: number,
     rows: number,
     columns: number
@@ -144,7 +146,8 @@ export interface DungeonGameState {
 export interface DummyGameState {
     type: 'DUMMY_GAME_STATE',
     decisions: Record<Snowflake, string>,
-    turn: number
+    turn: number,
+    winners: Snowflake[]
 }
 
 export type GameState = DungeonGameState | DummyGameState;

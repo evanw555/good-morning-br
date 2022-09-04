@@ -1638,7 +1638,16 @@ const processCommands = async (msg: Message): Promise<void> => {
                     break;
                 }
             }
-            msg.reply('Turn is over!');
+            await msg.channel.send('Turn is over!');
+
+            // Notify and exit if the game is over
+            if (tempDungeon.isSeasonComplete()) {
+                await msg.channel.send(`The winners are: ${getJoinedMentions(tempDungeon.getWinners())} (GAME OVER)`);
+                tempDungeon = null;
+                awaitingGameCommands = false;
+                await msg.reply('Exiting temp dungeon mode...');
+                return;
+            }
 
             // Give everyone points then show the final state
             // TODO: Temp logic to move all other players

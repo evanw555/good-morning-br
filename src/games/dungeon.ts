@@ -1,7 +1,7 @@
 import canvas from 'canvas';
 import { GuildMember, Snowflake } from 'discord.js';
 import { AStarFinder } from 'astar-typescript';
-import { naturalJoin, randInt, shuffle, toLetterId } from 'evanw555.js';
+import { getRankString, naturalJoin, randInt, shuffle, toLetterId } from 'evanw555.js';
 import { DungeonGameState, DungeonPlayerState } from "../types";
 import AbstractGame from "./abstract-game";
 import logger from '../logger';
@@ -60,10 +60,6 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 + '8. If you end your turn on a trap, the trap can now be seen and you are sent back to where you started (points are still lost).\n'
                 + '9. If you warp, you will be KO\'ed so that others can walk past you.\n'
                 + '10. If you warp multiple times in one turn, all subsequent warps will only go through if it brings you closer to the goal.'
-    }
-
-    isSeasonComplete(): boolean {
-        return false;
     }
 
     hasPlayer(userId: Snowflake): boolean {
@@ -177,7 +173,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         context.drawImage(sunImage, (this.getGoalColumn() - .5) * DungeonCrawler.TILE_SIZE, (this.getGoalRow() - .5) * DungeonCrawler.TILE_SIZE, 2 * DungeonCrawler.TILE_SIZE, 2 * DungeonCrawler.TILE_SIZE);
 
         // Render all player "previous locations" before rendering the players themselves
-        for (const userId of Object.keys(this.state.players)) {
+        for (const userId of this.getUnfinishedPlayers()) {
             const player = this.state.players[userId];
             // Render movement line (or dashed warp line if warped)
             if (player.previousLocation) {
@@ -202,8 +198,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             await this.renderPlayerDecision(context, options.showPlayerDecision);
         }
 
-        // Render all players
-        for (const userId of Object.keys(this.state.players)) {
+        // Render all players (who haven't finished)
+        for (const userId of this.getUnfinishedPlayers()) {
             const player = this.state.players[userId];
 
             // Draw outline
@@ -311,7 +307,13 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         for (const userId of this.getOrderedPlayers()) {
             y++;
             const player = this.state.players[userId];
-            c2.fillStyle = player.knockedOut ? 'hsl(360,50%,55%)' : `hsl(360,0%,${y % 2 === 0 ? 85 : 55}%)`;
+            if (player.knockedOut) {
+                c2.fillStyle = 'hsl(360,50%,55%)';
+            } else if (player.finished) {
+                c2.fillStyle = 'yellow';
+            } else {
+                c2.fillStyle = `hsl(360,0%,${y % 2 === 0 ? 85 : 55}%)`;
+            }
             const textY = y * DungeonCrawler.TILE_SIZE;
             // Draw the location
             const leftTextWidth = 1.5 * DungeonCrawler.TILE_SIZE;
@@ -470,7 +472,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     }
 
     getOrderedPlayers(): Snowflake[] {
-        const getLocationRank = (userId) => {
+        const getLocationRank = (userId: Snowflake) => {
             return this.state.players[userId].r * this.state.columns + this.state.players[userId].c;
         }
         return Object.keys(this.state.players).sort((x, y) => getLocationRank(x) - getLocationRank(y));
@@ -486,6 +488,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
 
     getOtherPlayers(userId: Snowflake): Snowflake[] {
         return Object.keys(this.state.players).filter(id => id !== userId);
+    }
+
+    getUnfinishedPlayers(): Snowflake[] {
+        return Object.keys(this.state.players).filter(userId => !this.state.players[userId].finished);
     }
 
     getDisplayName(userId: Snowflake): string {
@@ -655,6 +661,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             type: 'DUNGEON_GAME_STATE',
             decisions: {},
             turn: 0,
+            winners: [],
             action: 0,
             rows: 41,
             columns: 41,
@@ -754,7 +761,9 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         const commands: string[] = text.replace(/\s+/g, ' ').trim().split(' ').map(c => c.toLowerCase());
         const newLocation = { r: this.state.players[userId].r, c: this.state.players[userId].c };
         const warnings: string[] = [];
-        const playerPoints: number = this.state.players[userId].points;
+
+        const player = this.state.players[userId];
+        const playerPoints: number = player.points;
         let cost: number = 0;
 
         // Abort if the user has negative points
@@ -770,6 +779,11 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         // Ensure that turns with warps only include only warps (delaying may give a better outcome)
         if (commands.includes('warp') && !commands.every(c => c === 'warp')) {
             throw new Error('If you warp this turn, ALL your actions must be warps');
+        }
+
+        // Ensure that finished players can only trap
+        if (player.finished && !commands.every(c => c.startsWith('trap'))) {
+            throw new Error('You\'ve already finished, the only action you can take now is to place traps')
         }
 
         for (const command of commands) {
@@ -860,7 +874,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         }
 
         if (cost > playerPoints) {
-            throw new Error(`You can't afford these actions. It would cost **${cost}** points, yet you only have **${this.state.players[userId].points}**.`);
+            throw new Error(`You can't afford these actions. It would cost **${cost}** points, yet you only have **${playerPoints}**.`);
         }
 
         this.state.decisions[userId] = commands;
@@ -1120,6 +1134,21 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     }
                 }
 
+                // Check if the player is at the goal
+                if (!player.finished && this.isGoal(player.r, player.c)) {
+                    // Mark the player as finished
+                    player.finished = true;
+                    // Hack to ensure this player doesn't get in the way of anything
+                    // TODO (2.0): Can we ensure it really won't get in the way?
+                    player.r = -1;
+                    player.c = -1;
+                    // Add to list of finished players
+                    this.addWinner(userId);
+                    // Add to log and end the turn
+                    pushNonStepStatement(`**${this.getDisplayName(userId)}** reached the goal for _${getRankString(this.state.winners.length)} place_`)
+                    endTurn = true;
+                }
+
                 // If this was a turn-ending action, delete the user's entire decision list
                 if (endTurn) {
                     delete this.state.decisions[userId];
@@ -1197,7 +1226,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
 
     searchToGoal(userId: Snowflake) {
         const player = this.state.players[userId];
-        return this.search({ x: player.c, y: player.r }, { x: Math.floor(this.state.rows / 2), y: Math.floor(this.state.columns / 2) });
+        return this.search({ x: player.c, y: player.r }, { x: this.getGoalColumn(), y: this.getGoalRow() });
     }
 
     search(start: { x: number, y: number }, end: { x: number, y: number }) {
@@ -1249,7 +1278,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     }
 
     /**
-     * In a 3x3 box around the given player, return a random location that a user may spawn in (is walkable and isn't occupied by another user).
+     * In a 3x3 box around the given player, return a random location that a user may spawn in (is walkable, isn't occupied by another user, and isn't the goal).
      * If no such tile exists, return nothing.
      */
     getSpawnableLocationAroundPlayer(userId: Snowflake): { r: number, c: number } | undefined {
@@ -1259,7 +1288,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         for (const [dr, dc] of offsets) {
             const nr = player.r + dr;
             const nc = player.c + dc;
-            if (this.isWalkable(nr, nc) && !this.getPlayerAtLocation(nr, nc)) {
+            if (this.isWalkable(nr, nc) && !this.getPlayerAtLocation(nr, nc) && !this.isGoal(nr, nc)) {
                 return { r: nr, c: nc };
             }
         }
