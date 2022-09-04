@@ -445,7 +445,9 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             // Otherwise if player has at least one point, choose a default sequence of actions for the user
             else if (player.points >= 1) {
                 const actions: string[] = this.getNextActionsTowardGoal(userId, Math.floor(player.points));
-                this.state.decisions[userId] = actions;
+                if (actions.length > 0) {
+                    this.state.decisions[userId] = actions;
+                }
             }
         }
     }
@@ -1192,6 +1194,9 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         pushNonStepStatement(`**${this.getDisplayName(trapOwnerId)}** earned **1** point for trapping`);
                     }
                 }
+            } else {
+                // Emergency fallback just in case the player has an empty decision list
+                delete this.state.decisions[userId];
             }
         }
 
@@ -1216,8 +1221,9 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     getNextActionsTowardGoal(userId: Snowflake, n: number = 1): string[] {
         const path = this.searchToGoal(userId);
         const result = [];
-        if (path && path.length > n) {
-            for (let i = 0; i < n; i++) {
+        if (path) {
+            // Get actions limited either by points or by length of path
+            for (let i = 0; i < n && i < path.length - 1; i++) {
                 const dr = path[i + 1][1] - path[i][1];
                 const dc = path[i + 1][0] - path[i][0];
                 if (dr === -1) {
