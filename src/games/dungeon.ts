@@ -425,6 +425,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         // Increment turn and reset action counter
         this.state.turn++;
         this.state.action = 0;
+        this.state.decisions = {};
 
         for (const userId of this.getOrderedPlayers()) {
             const player = this.state.players[userId];
@@ -1206,6 +1207,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
 
     hasPendingDecisions(userId: Snowflake): boolean {
         return userId in this.state.decisions && this.state.decisions[userId].length > 0;
+    }
+
+    getPendingDecisions(): Record<Snowflake, string[]> {
+        return this.state.decisions;
     }
 
     getNextActionsTowardGoal(userId: Snowflake, n: number = 1): string[] {

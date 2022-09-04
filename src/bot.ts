@@ -1619,6 +1619,7 @@ const processCommands = async (msg: Message): Promise<void> => {
                 } catch (err) {}
                 const attachment = new MessageAttachment(await tempDungeon.renderState(), 'dungeon.png');
                 await msg.channel.send({ content: responseTexts.join('\n'), files: [attachment] });
+                await messenger.sendLargeMonospaced(msg.channel, prettyPrint(tempDungeon.getPendingDecisions()));
                 await sleep(2500);
                 if (!processingData.continueProcessing) {
                     break;
