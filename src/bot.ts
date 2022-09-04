@@ -1639,7 +1639,7 @@ const processCommands = async (msg: Message): Promise<void> => {
             // Give everyone points then show the final state
             // TODO: Temp logic to move all other players
             for (const otherId of tempDungeon.getOrderedPlayers()) {
-                tempDungeon.addPoints(otherId, randInt(1, 5));
+                tempDungeon.addPoints(otherId, randInt(2, 10));
             }
             tempDungeon.beginTurn();
             try { // TODO: refactor typing event to somewhere else?

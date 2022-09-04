@@ -1166,10 +1166,11 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 if (turnIsOver) {
                     // Handle hidden traps
                     let trapRevealed = false;
+                    const locationString = DungeonCrawler.getLocationString(player.r, player.c);
                     if (this.getTileAtUser(userId) === TileType.HIDDEN_TRAP) {
                         this.state.map[player.r][player.c] = TileType.TRAP;
                         trapRevealed = true;
-                        const trapOwnerId = this.state.trapOwners[DungeonCrawler.getLocationString(player.r, player.c)];
+                        const trapOwnerId = this.state.trapOwners[locationString];
                         pushNonStepStatement(`**${player.displayName}** revealed a hidden trap placed by **${this.getDisplayName(trapOwnerId)}**`);
                     }
                     // Handle revealed traps (this will trigger if the above condition is triggered)
@@ -1178,7 +1179,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         player.c = player.originLocation.c;
                         player.knockedOut = true;
                         delete player.previousLocation;
-                        const trapOwnerId = this.state.trapOwners[DungeonCrawler.getLocationString(player.r, player.c)];
+                        const trapOwnerId = this.state.trapOwners[locationString];
+                        logger.log(`\`${userId}\` triggered trap by \`${trapOwnerId}\` at \`${locationString}\``);
                         if (trapRevealed) {
                             pushNonStepStatement(`was sent back to **${this.getPlayerLocationString(userId)}**`);
                         } else {
