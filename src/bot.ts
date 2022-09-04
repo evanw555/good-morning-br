@@ -1592,7 +1592,7 @@ const processCommands = async (msg: Message): Promise<void> => {
         }
         if (tempDungeon) {
             try {
-                const response = tempDungeon.addPlayerDecision(msg.author.id, msg.content);
+                const response = tempDungeon.addPlayerDecision(msg.author.id, msg.content.replace(/^\+/, ''));
                 try { // TODO: refactor typing event to somewhere else?
                     await msg.channel.sendTyping();
                 } catch (err) {}
@@ -2103,11 +2103,11 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             }
         }
     } else if (msg.channel instanceof DMChannel && !msg.author.bot) {
-        // Always process admin commands if using the "ADMIN?" suffix (only needed to override DM-based events)
+        // Always process admin commands if using a certain prefix (only needed to override DM-based events)
         if (guildOwnerDmChannel
             && msg.channel.id === guildOwnerDmChannel.id
             && msg.author.id === guildOwner.id
-            && msg.content.endsWith('ADMIN?'))
+            && msg.content[0] === '+')
         {
             await safeProcessCommands(msg);
             return;
