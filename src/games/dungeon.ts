@@ -944,7 +944,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return actionCosts[action]();
     }
 
-    processPlayerDecisions(): { summary: string, continueProcessing: boolean } {
+    processPlayerDecisions(): { summary: string, continueProcessing: boolean, continueImmediately: boolean } {
         this.state.action++;
         const summaryData = {
             consecutiveStepUsers: [],
@@ -1195,7 +1195,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         addStepStatements();
         return {
             summary: naturalJoin(summaryData.statements, 'then') || 'Dogs sat around with their hands in their pockets...',
-            continueProcessing: Object.keys(this.state.decisions).length > 0
+            continueProcessing: Object.keys(this.state.decisions).length > 0,
+            continueImmediately: summaryData.statements.length === 1
         };
     }
 

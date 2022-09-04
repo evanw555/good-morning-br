@@ -1607,17 +1607,23 @@ const processCommands = async (msg: Message): Promise<void> => {
             }
 
             // Process decisions and render state
+            let responseTexts = [];
             while (true) {
                 const processingData = tempDungeon.processPlayerDecisions();
+                responseTexts.push(processingData.summary);
+                if (processingData.continueProcessing && processingData.continueImmediately) {
+                    continue;
+                }
                 try { // TODO: refactor typing event to somewhere else?
                     await msg.channel.sendTyping();
                 } catch (err) {}
                 const attachment = new MessageAttachment(await tempDungeon.renderState(), 'dungeon.png');
-                await msg.channel.send({ content: processingData.summary, files: [attachment] });
+                await msg.channel.send({ content: responseTexts.join('\n'), files: [attachment] });
                 await sleep(5000);
                 if (!processingData.continueProcessing) {
                     break;
                 }
+                responseTexts = [];
             }
             await msg.channel.send('Turn is over!');
 
