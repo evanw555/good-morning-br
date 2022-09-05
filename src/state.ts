@@ -336,7 +336,7 @@ export default class GoodMorningState {
     }
 
     isSeasonGoalReached(): boolean {
-        return this.getTopScore() >= this.data.goal;
+        return this.hasGame() && this.getGame().isSeasonComplete();
     }
 
     /**
@@ -556,8 +556,7 @@ export default class GoodMorningState {
             season: this.data.season,
             startedOn: this.data.startedOn,
             finishedOn: getTodayDateString(),
-            points: this.toPointsMap(),
-            goal: this.data.goal
+            winners: this.getGame().getWinners()
         };
     }
 

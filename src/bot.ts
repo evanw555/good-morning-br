@@ -170,11 +170,11 @@ const advanceSeason = async (): Promise<{ gold?: Snowflake, silver?: Snowflake, 
     const newHistoryEntry: Season = state.toHistorySeasonEntry();
     history.seasons.push(newHistoryEntry);
     // Compute medals
-    const orderedUserIds = state.getOrderedPlayers();
+    const winnersList: Snowflake[] = state.getGame().getWinners();
     const winners = {
-        gold: orderedUserIds[0],
-        silver: orderedUserIds[1],
-        bronze: orderedUserIds[2]
+        gold: winnersList[0],
+        silver: winnersList[1],
+        bronze: winnersList[2]
         // TODO: Give out the skull award once penalties are counted
         // skull: orderedUserIds[orderedUserIds.length - 1]
     };
@@ -440,24 +440,25 @@ const sendGoodMorningMessage = async (): Promise<void> => {
 };
 
 const sendSeasonEndMessages = async (channel: TextBasedChannels, previousState: GoodMorningState): Promise<void> => {
-    const winner: Snowflake = previousState.getTopPlayer();
+    // TODO (2.0): We should do this a little more safely...
+    const winner: Snowflake = previousState.getGame().getWinners()[0];
     const newSeason: number = previousState.getSeasonNumber() + 1;
     await messenger.send(channel, `Well everyone, season **${previousState.getSeasonNumber()}** has finally come to an end!`);
     await messenger.send(channel, 'Thanks to all those who have participated. You have made these mornings bright and joyous for not just me, but for everyone here 🌞');
     await sleep(10000);
-    await messenger.send(channel, 'In a couple minutes, I\'ll reveal the winners and the final standings...');
-    await messenger.send(channel, 'In the meantime, please congratulate yourselves (penalties are disabled), take a deep breath, and appreciate the friends you\'ve made in this channel 🙂');
+    // await messenger.send(channel, 'In a couple minutes, I\'ll reveal the winners and the final standings...');
+    // await messenger.send(channel, 'In the meantime, please congratulate yourselves (penalties are disabled), take a deep breath, and appreciate the friends you\'ve made in this channel 🙂');
     // Send the "final results image"
-    await sleep(120000);
-    await messenger.send(channel, 'Alright, here are the final standings...');
-    try { // TODO: refactor image sending into the messenger class?
-        await channel.sendTyping();
-    } catch (err) {}
-    await sleep(5000);
-    const attachment = new MessageAttachment(await createSeasonResultsImage(previousState, history.medals), 'results.png');
-    await channel.send({ files: [attachment] });
-    await sleep(5000);
-    await messenger.send(channel, `Congrats, <@${winner}>!`);
+    // await sleep(120000);
+    // await messenger.send(channel, 'Alright, here are the final standings...');
+    // try { // TODO: refactor image sending into the messenger class?
+    //     await channel.sendTyping();
+    // } catch (err) {}
+    // await sleep(5000);
+    // const attachment = new MessageAttachment(await createSeasonResultsImage(previousState, history.medals), 'results.png');
+    // await channel.send({ files: [attachment] });
+    // await sleep(5000);
+    await messenger.send(channel, `Congrats to the winner of this season, <@${winner}>!`);
     // Send information about the season rewards
     await sleep(15000);
     await messenger.send(channel, `As a reward, <@${winner}> will get the following perks throughout season **${newSeason}**:`);
@@ -1067,9 +1068,8 @@ const TIMEOUT_CALLBACKS = {
             }
         }
 
-        // If anyone's score is above the season goal, then proceed to the next season
-        // TODO: Re-enable this?
-        if (false && state.isSeasonGoalReached()) {
+        // If the game is over, then proceed to the next season
+        if (state.isSeasonGoalReached()) {
             const previousState: GoodMorningState = state;
             const winners = await advanceSeason();
             await sendSeasonEndMessages(goodMorningChannel, previousState);

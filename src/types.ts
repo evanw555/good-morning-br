@@ -177,8 +177,7 @@ export interface Season {
     season: number,
     startedOn: FullDate
     finishedOn: FullDate,
-    points: Record<Snowflake, number>,
-    goal: number
+    winners: Snowflake[]
 }
 
 export interface Medals {
