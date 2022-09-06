@@ -147,7 +147,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     if (this.isTileType(r, c, TileType.KEY_HOLE)) {
                         // Draw key hole cost
                         context.fillStyle = DungeonCrawler.STYLE_LIGHT_SKY;
-                        context.font = `${DungeonCrawler.TILE_SIZE * .7}px sans-serif`;
+                        context.font = `${DungeonCrawler.TILE_SIZE * .6}px sans-serif`;
                         this.fillTextOnTile(context, this.state.keyHoleCosts[DungeonCrawler.getLocationString(r, c)].toString(), r, c);
                         // context.fillRect((c + .4) * DungeonCrawler.TILE_SIZE, (r + .3) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE * .2, DungeonCrawler.TILE_SIZE * .4);
                     } else if (this.isTileType(r, c, TileType.OPENED_KEY_HOLE)) {
@@ -160,7 +160,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         }
                         // Draw opened key hole cost
                         context.fillStyle = DungeonCrawler.STYLE_CLOUD;
-                        context.font = `${DungeonCrawler.TILE_SIZE * .7}px sans-serif`;
+                        context.font = `${DungeonCrawler.TILE_SIZE * .6}px sans-serif`;
                         this.fillTextOnTile(context, this.state.keyHoleCosts[DungeonCrawler.getLocationString(r, c)].toString(), r, c);
                     }
                 } else {
