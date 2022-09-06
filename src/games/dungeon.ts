@@ -363,7 +363,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         const ascent = context.measureText(text).actualBoundingBoxAscent;
         const baseY = r * DungeonCrawler.TILE_SIZE;
         const verticalMargin = (DungeonCrawler.TILE_SIZE - ascent) / 2;
-        context.fillText(text, baseX + horizontalMargin, baseY + verticalMargin);
+        context.fillText(text, baseX + horizontalMargin, baseY + verticalMargin + ascent);
     }
 
     private async renderPlayerDecision(context: canvas.CanvasRenderingContext2D, userId: Snowflake) {
