@@ -1,4 +1,4 @@
-import canvas from 'canvas';
+import canvas, { NodeCanvasRenderingContext2D } from 'canvas';
 import { GuildMember, Snowflake } from 'discord.js';
 import { AStarFinder } from 'astar-typescript';
 import { getRankString, naturalJoin, randInt, shuffle, toLetterId } from 'evanw555.js';
@@ -148,7 +148,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         // Draw key hole cost
                         context.fillStyle = DungeonCrawler.STYLE_LIGHT_SKY;
                         context.font = `${DungeonCrawler.TILE_SIZE * .7}px sans-serif`;
-                        context.fillText(this.state.keyHoleCosts[DungeonCrawler.getLocationString(r, c)].toString(), (c + .25) * DungeonCrawler.TILE_SIZE, (r + .75) * DungeonCrawler.TILE_SIZE);
+                        this.fillTextOnTile(context, this.state.keyHoleCosts[DungeonCrawler.getLocationString(r, c)].toString(), r, c);
                         // context.fillRect((c + .4) * DungeonCrawler.TILE_SIZE, (r + .3) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE * .2, DungeonCrawler.TILE_SIZE * .4);
                     } else if (this.isTileType(r, c, TileType.OPENED_KEY_HOLE)) {
                         context.fillStyle = DungeonCrawler.STYLE_SKY;
@@ -161,7 +161,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         // Draw opened key hole cost
                         context.fillStyle = DungeonCrawler.STYLE_CLOUD;
                         context.font = `${DungeonCrawler.TILE_SIZE * .7}px sans-serif`;
-                        context.fillText(this.state.keyHoleCosts[DungeonCrawler.getLocationString(r, c)].toString(), (c + .25) * DungeonCrawler.TILE_SIZE, (r + .75) * DungeonCrawler.TILE_SIZE);
+                        this.fillTextOnTile(context, this.state.keyHoleCosts[DungeonCrawler.getLocationString(r, c)].toString(), r, c);
                     }
                 } else {
                     context.fillStyle = 'black';
@@ -354,6 +354,16 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         }
 
         return masterImage.toBuffer();
+    }
+
+    private fillTextOnTile(context: NodeCanvasRenderingContext2D, text: string, r: number, c: number): void {
+        const width = context.measureText(text).width;
+        const baseX = c * DungeonCrawler.TILE_SIZE;
+        const horizontalMargin = (DungeonCrawler.TILE_SIZE - width) / 2;
+        const ascent = context.measureText(text).actualBoundingBoxAscent;
+        const baseY = r * DungeonCrawler.TILE_SIZE;
+        const verticalMargin = (DungeonCrawler.TILE_SIZE - ascent) / 2;
+        context.fillText(text, baseX + horizontalMargin, baseY + verticalMargin);
     }
 
     private async renderPlayerDecision(context: canvas.CanvasRenderingContext2D, userId: Snowflake) {
@@ -613,17 +623,17 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                             else if (distance < 7) {
                                 if (Math.random() < .3) {
                                     map[hnr][hnc] = TileType.KEY_HOLE;
-                                    keyHoleCosts[location] = Math.max(randInt(1, 10), randInt(1, 10));
+                                    keyHoleCosts[location] = Math.max(randInt(1, 16), randInt(1, 16));
                                 }
                             } else if (distance < 16) {
                                 if (Math.random() < .075) {
                                     map[hnr][hnc] = TileType.KEY_HOLE;
-                                    keyHoleCosts[location] = Math.floor((randInt(1, 10) + randInt(1, 10)) / 2);
+                                    keyHoleCosts[location] = randInt(1, 16, 2);
                                 }
                             } else {
                                 if (Math.random() < .25) {
                                     map[hnr][hnc] = TileType.KEY_HOLE;
-                                    keyHoleCosts[location] = Math.min(randInt(1, 10), randInt(1, 10));
+                                    keyHoleCosts[location] = Math.min(randInt(1, 16), randInt(1, 16));
                                 }
                             }
                         }
