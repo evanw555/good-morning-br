@@ -43,7 +43,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     getInstructionsText(): string {
         return 'Here are the possible actions you may take and their associated costs. Send me something like `up right unlock right pause right punch trap:b12 down`.\n'
                 + '`up`, `down`, `left`, `right`: move one step in such direction. Costs `1`\n'
-                + '`unlock`: open all doorways adjacent to you. Cost is denoted on each doorway\n'
+                + '`unlock`: open all doorways adjacent to you. Cost is denoted on each doorway, and is reduced with each unlock\n'
                 + '`lock`: close all doorways adjacent to you. Cost is denoted on each doorway\n'
                 + '`seal`: permanently close all doorways adjacent to you. Cost is **twice the value** denoted on each doorway\n'
                 + '`punch`: 75% chance of knocking out any player adjacent to you, ending their turn. Costs `2`\n'
@@ -860,16 +860,19 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     if (!this.isNextToDoorway(newLocation.r, newLocation.c)) {
                         throw new Error(`You can't use "unlock" at **${DungeonCrawler.getLocationString(newLocation.r, newLocation.c)}**, as there'd be no doorway near you to unlock!`);
                     }
+                    warnings.push(`Doorways are halved in cost when unlocked, so subsequent actions taken on a doorway you unlock will be cheaper.`);
                     break;
                 case 'lock':
                     if (!this.isNextToDoorway(newLocation.r, newLocation.c)) {
                         throw new Error(`You can't use "lock" at **${DungeonCrawler.getLocationString(newLocation.r, newLocation.c)}**, as there'd be no doorway near you to lock!`);
                     }
+                    warnings.push(`Doorways are halved in cost when unlocked, so you may end up spending fewer points than expected.`);
                     break;
                 case 'seal':
                     if (!this.isNextToDoorway(newLocation.r, newLocation.c)) {
                         throw new Error(`You can't use "seal" at **${DungeonCrawler.getLocationString(newLocation.r, newLocation.c)}**, as there'd be no doorway near you to seal!`);
                     }
+                    warnings.push(`Doorways are halved in cost when unlocked, so you may end up spending fewer points than expected.`);
                     break;
                 case 'trap':
                     const target = this.parseLocationString(arg);
@@ -1043,9 +1046,14 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     'unlock': () => {
                         let numDoorwaysUnlocked = 0;
                         for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
-                            if (this.isTileType(player.r + dr, player.c + dc, TileType.KEY_HOLE)) {
-                                this.state.map[player.r + dr][player.c + dc] = TileType.OPENED_KEY_HOLE;
+                            const nr = player.r + dr;
+                            const nc = player.c + dc;
+                            if (this.isTileType(nr, nc, TileType.KEY_HOLE)) {
+                                this.state.map[nr][nc] = TileType.OPENED_KEY_HOLE;
                                 numDoorwaysUnlocked++;
+                                // Halve the cost of the doorway (bottoms out at 1)
+                                const locationString = DungeonCrawler.getLocationString(nr, nc);
+                                this.state.keyHoleCosts[locationString] = Math.max(1, Math.floor(this.state.keyHoleCosts[locationString] / 2));
                             }
                         }
                         if (numDoorwaysUnlocked === 1) {
