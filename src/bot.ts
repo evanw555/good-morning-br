@@ -1820,7 +1820,7 @@ const processCommands = async (msg: Message): Promise<void> => {
             }
             await msg.reply('Generating new game...');
             awaitingGameCommands = true;
-            tempDungeon = DungeonCrawler.createBest(members, 20, 60);
+            tempDungeon = DungeonCrawler.createBest(members, 5, 60);
             tempDungeon.addPoints(msg.author.id, 100);
             tempDungeon.beginTurn();
             try { // TODO: refactor typing event to somewhere else?

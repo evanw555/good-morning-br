@@ -24,6 +24,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     private static readonly STARTER_POINTS: number = 3;
 
     private static readonly STYLE_SKY: string = 'hsl(217, 94%, 69%)';
+    private static readonly STYLE_DARK_SKY: string = 'hsl(217, 90%, 64%)';
     private static readonly STYLE_LIGHT_SKY: string = 'hsl(217, 85%, 75%)';
     private static readonly STYLE_CLOUD: string = 'rgba(222, 222, 222, 1)';
     private static readonly STYLE_WARP_PATH: string = 'rgba(98, 11, 212, 0.25)';
@@ -111,6 +112,16 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         // Fill the blue sky background
         context.fillStyle = DungeonCrawler.STYLE_SKY;
         context.fillRect(0, 0, WIDTH, HEIGHT);
+
+        // Draw the checkerboard pattern
+        for (let r = 0; r < this.state.rows; r++) {
+            for (let c = 0; c < this.state.columns; c++) {
+                if ((r + c) % 2 == 0) {
+                    context.fillStyle = DungeonCrawler.STYLE_DARK_SKY;
+                    context.fillRect(c * DungeonCrawler.TILE_SIZE, r * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE);
+                }
+            }
+        }
 
         // Draw all the tiles
         for (let r = 0; r < this.state.rows; r++) {
