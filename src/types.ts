@@ -138,6 +138,7 @@ export interface DungeonGameState {
     rows: number,
     columns: number
     map: number[][],
+    goal: DungeonLocation,
     keyHoleCosts: Record<string, number>,
     trapOwners: Record<string, Snowflake>,
     players: Record<Snowflake, DungeonPlayerState>

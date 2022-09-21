@@ -2,7 +2,7 @@ import canvas, { NodeCanvasRenderingContext2D } from 'canvas';
 import { GuildMember, Snowflake } from 'discord.js';
 import { AStarFinder } from 'astar-typescript';
 import { getRankString, naturalJoin, randInt, shuffle, toLetterId } from 'evanw555.js';
-import { DungeonGameState, DungeonPlayerState } from "../types";
+import { DungeonGameState, DungeonLocation, DungeonPlayerState } from "../types";
 import AbstractGame from "./abstract-game";
 import logger from '../logger';
 
@@ -695,6 +695,211 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             rows: 41,
             columns: 41,
             map,
+            goal: { r: 20, c: 20 },
+            keyHoleCosts,
+            trapOwners: {},
+            players
+        });
+        return dungeon;
+    }
+
+    private static createSection(rows: number, columns: number, entrance: DungeonLocation, exit: DungeonLocation): { map: TileType[][], keyHoleCosts: Record<string, number> } {
+        // Initialize the map
+        const map: number[][] = [];
+        for (let r = 0; r < rows; r++) {
+            map.push([]);
+            for (let c = 0; c < columns; c++) {
+                map[r][c] = TileType.WALL;
+            }
+        }
+        const keyHoleCosts = {};
+
+        const step = (r, c, prev: [number, number]) => {
+            map[r][c] = 0;
+            const l = shuffle([[-2, 0], [2, 0], [0, -2], [0, 2]]);
+            let pick = 0;
+            while (l.length > 0) {
+                const [dr, dc] = l.shift();
+                // If looking in the same direction we just came from, skip this direction and come to it last
+                if (prev[0] === dr && prev[1] === dc && Math.random() < 0.5) {
+                    l.push([dr, dc]);
+                    continue;
+                }
+                pick++;
+                const nr = r + dr;
+                const nc = c + dc;
+                const hnr = r + (dr / 2);
+                const hnc = c + (dc / 2);
+                // const dist = Math.sqrt(Math.pow(hnr - 20, 2) + Math.pow(hnc - 20, 2)) / 41;
+                if (nr >= 0 && nc >= 0 && nr < rows && nc < columns) {
+                    if (map[nr][nc] === TileType.WALL) {
+                        map[hnr][hnc] = TileType.EMPTY;
+                        step(nr, nc, [dr, dc]);
+                    } else if (map[hnr][hnc] === TileType.WALL) {
+                        // If there's a wall between here and the next spot...
+                        // if ((r === 0 || c === 0 || r === rows - 1 || c === columns - 1) && Math.random() < 0.25) {
+                        //     // If the current spot is on the edge, clear walls liberally
+                        //     map[hnr][hnc] = TileType.EMPTY;
+                        // } else
+                        if (Math.random() < .01) {
+                            // With an even smaller chance, clear this wall
+                            map[hnr][hnc] = TileType.EMPTY;
+                        } else {
+                            if (Math.random() < .2) {
+                                map[hnr][hnc] = TileType.KEY_HOLE;
+                                keyHoleCosts[`${hnr},${hnc}`] = Math.min(randInt(1, 16), randInt(1, 16));
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        step(entrance.r, entrance.c, [-1, -1]);
+
+        return { map, keyHoleCosts };
+    }
+
+    static createSectional(members: GuildMember[], options: { sectionSize: number, sectionsAcross: number }): DungeonCrawler {
+        const columns = (options.sectionSize + 1) * options.sectionsAcross - 1;
+        const rows = columns;
+
+        // Initialize the map
+        const map: number[][] = [];
+        for (let r = 0; r < rows; r++) {
+            map.push([]);
+            for (let c = 0; c < columns; c++) {
+                map[r][c] = TileType.WALL;
+            }
+        }
+        const keyHoleCosts = {};
+
+        const placeKeyHole = (_r: number, _c: number, cost: number) => {
+            map[_r][_c] = TileType.KEY_HOLE;
+            keyHoleCosts[DungeonCrawler.getLocationString(_r, _c)] = cost;
+        };
+
+        // Create the sections
+        let goal = { r: rows - 1, c: columns - 1 };
+        for (let sr = 0; sr < options.sectionsAcross; sr++) {
+            for (let sc = 0; sc < options.sectionsAcross; sc++) {
+                const section = DungeonCrawler.createSection(options.sectionSize,
+                    options.sectionSize,
+                    { r: 0, c: 0 },
+                    { r: options.sectionSize - 1, c: options.sectionSize - 1});
+                // Apply section to map
+                const baseR = (options.sectionSize + 1) * sr;
+                const baseC = (options.sectionSize + 1) * sc;
+                for (let r = 0; r < options.sectionSize; r++) {
+                    for (let c = 0; c < options.sectionSize; c++) {
+                        map[baseR + r][baseC + c] = section.map[r][c];
+                    }
+                }
+                // Transform and apply each keyhole cost
+                for (const keyHoleCoords of Object.keys(section.keyHoleCosts)) {
+                    const [ keyR, keyC ] = keyHoleCoords.split(',');
+                    const transformedLocation = DungeonCrawler.getLocationString(parseInt(keyR) + baseR, parseInt(keyC) + baseC);
+                    keyHoleCosts[transformedLocation] = section.keyHoleCosts[keyHoleCoords];
+                }
+                // Cut out walkways between each section
+                const evenRow = sr % 2 === 0;
+                const evenColumn = sc % 2 === 0;
+                const onLeft = sc === 0;
+                const onRight = sc === options.sectionsAcross - 1;
+                const goDown = evenRow ? onRight : onLeft;
+                const isLastSection = goDown && sr === options.sectionsAcross - 1;
+                if (goDown) {
+                    // If can't go down anymore, skip this step
+                    if (!isLastSection) {
+                        if (onRight) {
+                            map[baseR + options.sectionSize][columns - 1] = TileType.EMPTY;
+                        } else if (onLeft) {
+                            map[baseR + options.sectionSize][0] = TileType.EMPTY;
+                        }
+                    }
+                } else {
+                    const randomCost = randInt(options.sectionSize, options.sectionSize * 2, 3);
+                    if (evenRow) {
+                        if (evenColumn) {
+                            map[baseR + options.sectionSize - 1][baseC + options.sectionSize] = TileType.EMPTY;
+                            placeKeyHole(baseR, baseC + options.sectionSize, randomCost);
+                        } else {
+                            map[baseR][baseC + options.sectionSize] = TileType.EMPTY;
+                            placeKeyHole(baseR + options.sectionSize - 1, baseC + options.sectionSize, randomCost);
+                        }
+                    } else {
+                        if (evenColumn) {
+                            map[baseR + options.sectionSize - 1][baseC - 1] = TileType.EMPTY;
+                            placeKeyHole(baseR, baseC - 1, randomCost);
+                        } else {
+                            map[baseR][baseC - 1] = TileType.EMPTY;
+                            placeKeyHole(baseR + options.sectionSize - 1, baseC - 1, randomCost);
+                        }
+                    }
+                }
+
+                // If it's the last section, place the goal
+                if (isLastSection) {
+                    goal = { r: baseR + Math.floor(options.sectionSize / 2), c: baseC + Math.floor(options.sectionSize / 2) };
+                    for (let dr of [-1, 0, 1]) {
+                        for (let dc of [-1, 0, 1]) {
+                            map[goal.r + dr][goal.c + dc] = TileType.EMPTY;
+                        }
+                    }
+                }
+
+
+                // const adjacent = adjacents[sr][sc];
+                // if (adjacent) {
+                //     let ar = 0, ac = 0;
+                //     const randomAlong = 2 * randInt(0, Math.floor(options.sectionSize / 2));
+                //     switch (adjacent) {
+                //         case 'right':
+                //             ar = baseR + randomAlong;
+                //             ac = baseC + options.sectionSize;
+                //             break;
+                //         case 'left':
+                //             ar = baseR + randomAlong;
+                //             ac = baseC - 1;
+                //             break;
+                //         case 'up':
+                //             ar = baseR - 1;
+                //             ac = baseC + randomAlong;
+                //             break;
+                //         case 'down':
+                //             ar = baseR + options.sectionSize;
+                //             ac = baseC + randomAlong;
+                //             break;
+                //     }
+                //     map[ar][ac] = TileType.EMPTY;
+                // }
+            }
+        }
+
+        // Initialize players
+        const players: Record<Snowflake, DungeonPlayerState> = {};
+        for (let j = 0; j < members.length; j++) {
+            const member = members[j];
+            const [ r, c ] = DungeonCrawler.getInitialLocationV2(j, rows, columns);
+            players[member.id] = {
+                r,
+                c,
+                avatarUrl: member.user.displayAvatarURL({ size: 32, format: 'png' }),
+                displayName: member.displayName,
+                points: DungeonCrawler.STARTER_POINTS
+            };
+        }
+
+        const dungeon = new DungeonCrawler({
+            type: 'DUNGEON_GAME_STATE',
+            decisions: {},
+            turn: 0,
+            winners: [],
+            action: 0,
+            rows,
+            columns,
+            map,
+            goal,
             keyHoleCosts,
             trapOwners: {},
             players
@@ -1306,11 +1511,11 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     }
 
     getGoalRow(): number {
-        return Math.floor(this.state.rows / 2);
+        return this.state.goal.r;
     }
 
     getGoalColumn(): number {
-        return Math.floor(this.state.columns / 2);
+        return this.state.goal.c;
     }
 
     isGoal(r: number, c: number): boolean {
