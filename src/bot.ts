@@ -1813,7 +1813,7 @@ const processCommands = async (msg: Message): Promise<void> => {
             }
         } else if (sanitizedText.includes('temp dungeon')) {
             await msg.reply('Populating members...');
-            const members = (await guild.members.list({ limit: randInt(10, 20) })).toJSON();
+            const members = (await guild.members.list({ limit: randInt(1, 10) })).toJSON();
             // Add self if not already in the fetched members list
             if (members.every(m => m.id !== msg.author.id)) {
                 members.push(await guild.members.fetch(msg.author.id));

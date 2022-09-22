@@ -205,11 +205,6 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             }
         }
 
-        // Render the player's actions if enabled
-        if (options?.showPlayerDecision) {
-            await this.renderPlayerDecision(context, options.showPlayerDecision);
-        }
-
         // Render all players (who haven't finished)
         for (const userId of this.getUnfinishedPlayers()) {
             const player = this.state.players[userId];
@@ -262,6 +257,11 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 context.lineTo(player.c * DungeonCrawler.TILE_SIZE, (player.r + 1) * DungeonCrawler.TILE_SIZE);
                 context.stroke();
             }
+        }
+
+        // Render the player's actions if enabled
+        if (options?.showPlayerDecision) {
+            await this.renderPlayerDecision(context, options.showPlayerDecision);
         }
 
         // Render admin stuff
@@ -580,6 +580,37 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return [basePosition[0] + offsets[side][0] * magnitude * direction, basePosition[1] + offsets[side][1] * magnitude * direction];
     }
 
+    private static getInitialLocationSectional(seq: number, areaWidth: number): DungeonLocation {
+        let r = areaWidth - 1;
+        let c = areaWidth - 1;
+        let refC = r;
+        let counter = 0;
+
+        while (true) {
+            // Emergency abort if we run out of spaces
+            if (c < 0 && r < 0) {
+                return { r: 0, c: 0 };
+            }
+
+            if (c >= areaWidth) {
+                refC -= 2;
+                c = refC;
+                r = areaWidth - 1;
+            }
+
+            if (r >= 0 && c >= 0 && r < areaWidth && c < areaWidth) {
+                if (counter === seq) {
+                    return { r, c };
+                }
+                counter++;
+            }
+
+            r--;
+            c++;
+        }
+
+    }
+
     static create(members: GuildMember[]): DungeonCrawler {
         const map: number[][] = [];
         const keyHoleCosts: Record<string, number> = {};
@@ -847,32 +878,14 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         }
                     }
                 }
+            }
+        }
 
-
-                // const adjacent = adjacents[sr][sc];
-                // if (adjacent) {
-                //     let ar = 0, ac = 0;
-                //     const randomAlong = 2 * randInt(0, Math.floor(options.sectionSize / 2));
-                //     switch (adjacent) {
-                //         case 'right':
-                //             ar = baseR + randomAlong;
-                //             ac = baseC + options.sectionSize;
-                //             break;
-                //         case 'left':
-                //             ar = baseR + randomAlong;
-                //             ac = baseC - 1;
-                //             break;
-                //         case 'up':
-                //             ar = baseR - 1;
-                //             ac = baseC + randomAlong;
-                //             break;
-                //         case 'down':
-                //             ar = baseR + options.sectionSize;
-                //             ac = baseC + randomAlong;
-                //             break;
-                //     }
-                //     map[ar][ac] = TileType.EMPTY;
-                // }
+        // Clear spawn section
+        const spawnWidth = Math.ceil(Math.sqrt(2 * (members.length - 0.5)));
+        for (let r = 0; r < spawnWidth; r++) {
+            for (let c = 0; c < spawnWidth; c++) {
+                map[r][c] = TileType.EMPTY;
             }
         }
 
@@ -880,7 +893,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         const players: Record<Snowflake, DungeonPlayerState> = {};
         for (let j = 0; j < members.length; j++) {
             const member = members[j];
-            const [ r, c ] = DungeonCrawler.getInitialLocationV2(j, rows, columns);
+            const { r, c } = DungeonCrawler.getInitialLocationSectional(j, spawnWidth);
             players[member.id] = {
                 r,
                 c,
