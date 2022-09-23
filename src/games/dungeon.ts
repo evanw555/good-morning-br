@@ -137,8 +137,11 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     context.arc((c + .5) * DungeonCrawler.TILE_SIZE, (r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE / 4, 0, Math.PI * 2, false);
                     context.fill();
                 } else if (this.isTileType(r, c, TileType.BOULDER)) {
-                    context.fillStyle = 'gray';
-                    context.fillRect(c * DungeonCrawler.TILE_SIZE, r * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE);
+                    context.fillStyle = 'dimgray';
+                    context.strokeStyle = 'black';
+                    context.lineWidth = 2;
+                    context.setLineDash([]);
+                    this.drawRandomPolygonOnTile(context, r, c);
                 } else if (this.isCloudy(r, c)) {
                     context.fillStyle = DungeonCrawler.STYLE_CLOUD;
                     context.beginPath();
@@ -378,6 +381,41 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         const baseY = r * DungeonCrawler.TILE_SIZE;
         const verticalMargin = (DungeonCrawler.TILE_SIZE - ascent) / 2;
         context.fillText(text, baseX + horizontalMargin, baseY + verticalMargin + ascent);
+    }
+
+    private drawRandomPolygonOnTile(context: NodeCanvasRenderingContext2D, r: number, c: number): void {
+        // Randomly generate vertices
+        const vertices: { angle: number, radius: number }[] = [];
+        const numVertices = randInt(8, 16);
+        for (let i = 0; i < numVertices; i++) {
+            vertices.push({
+                angle: 2 * Math.PI * i / numVertices,
+                radius: randInt(Math.floor(DungeonCrawler.TILE_SIZE * 0.4), Math.floor(DungeonCrawler.TILE_SIZE * 0.55))
+            });
+        }
+
+        const baseX = (c + 0.5) * DungeonCrawler.TILE_SIZE;
+        const baseY = (r + 0.5) * DungeonCrawler.TILE_SIZE;
+
+        const getVertexCoords = (vertex: { angle: number, radius: number }): { x: number, y: number } => {
+            return {
+                x: baseX + Math.cos(vertex.angle) * vertex.radius,
+                y: baseY + Math.sin(vertex.angle) * vertex.radius
+            }
+        };
+
+        // Prime the path with the last vertex to make sure it connects
+        context.beginPath();
+        const { x: primeX, y: primeY } = getVertexCoords(vertices[vertices.length - 1]);
+        context.moveTo(primeX, primeY);
+
+        // Move to all remaining vertices then stroke and fill
+        for (const vertex of vertices) {
+            const { x, y } = getVertexCoords(vertex);
+            context.lineTo(x, y);
+        }
+        context.stroke();
+        context.fill();
     }
 
     private async renderPlayerDecision(context: canvas.CanvasRenderingContext2D, userId: Snowflake) {
