@@ -1658,7 +1658,7 @@ const processCommands = async (msg: Message): Promise<void> => {
             try { // TODO: refactor typing event to somewhere else?
                 await msg.channel.sendTyping();
             } catch (err) {}
-            const attachment = new MessageAttachment(await tempDungeon.renderState(), 'dungeon.png');
+            const attachment = new MessageAttachment(await tempDungeon.renderState({ admin: true }), 'dungeon.png');
             await msg.channel.send({ content: 'Beginning of the next turn', files: [attachment] });
 
         } else {
@@ -1826,14 +1826,14 @@ const processCommands = async (msg: Message): Promise<void> => {
             }
         } else if (sanitizedText.includes('temp dungeon')) {
             await msg.reply('Populating members...');
-            const members = (await guild.members.list({ limit: randInt(1, 10) })).toJSON();
+            const members = (await guild.members.list({ limit: randInt(10, 20) })).toJSON();
             // Add self if not already in the fetched members list
             if (members.every(m => m.id !== msg.author.id)) {
                 members.push(await guild.members.fetch(msg.author.id));
             }
             await msg.reply('Generating new game...');
             awaitingGameCommands = true;
-            // tempDungeon = DungeonCrawler.createBest(members, 5, 60);
+            // tempDungeon = DungeonCrawler.createBest(members, 20, 40);
             tempDungeon = DungeonCrawler.createSectional(members, { sectionSize: 11, sectionsAcross: 3 });
             tempDungeon.addPoints(msg.author.id, 100);
             tempDungeon.addPlayerItem(msg.author.id, 'trap', 3);

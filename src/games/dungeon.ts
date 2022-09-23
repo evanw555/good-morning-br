@@ -1,7 +1,6 @@
 import canvas, { NodeCanvasRenderingContext2D } from 'canvas';
 import { GuildMember, Snowflake } from 'discord.js';
-import { AStarFinder } from 'astar-typescript';
-import { getRankString, naturalJoin, randInt, shuffle, toLetterId } from 'evanw555.js';
+import { getRankString, naturalJoin, randInt, shuffle, toLetterId, AStarPathFinder } from 'evanw555.js';
 import { DungeonGameState, DungeonLocation, DungeonPlayerState } from "../types";
 import AbstractGame from "./abstract-game";
 import logger from '../logger';
@@ -573,11 +572,11 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
      * @returns List of all players ordered by number of steps to the goal ascending (i.e. best players first)
      */
     getPlayersClosestToGoal(): Snowflake[] {
-        const steps: Record<Snowflake, number> = {};
+        const costs: Record<Snowflake, number> = {};
         for (const userId of this.getOrderedPlayers()) {
-            steps[userId] = this.getNumStepsToGoalForPlayer(userId);
+            costs[userId] = this.approximateCostToGoalForPlayer(userId);
         }
-        return Object.keys(this.state.players).sort((x, y) => steps[x] - steps[y]);
+        return Object.keys(this.state.players).sort((x, y) => costs[x] - costs[y]);
     }
 
     getShuffledPlayers(): Snowflake[] {
@@ -1430,7 +1429,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     'warp': () => {
                         const { r: newR, c: newC, userId: nearUserId } = this.getSpawnableLocationAroundPlayers(this.getOtherPlayers(userId));
                         const isFirstWarp: boolean = !player.warped;
-                        const isCloser: boolean = this.getNumStepsToGoal(newR, newC) < this.getNumStepsToGoal(player.r, player.c);
+                        const isCloser: boolean = this.approximateCostToGoal(newR, newC) < this.approximateCostToGoal(player.r, player.c);
                         // If it's the user's first warp of the turn or the warp is closer to the goal, do it and knock them out
                         if (isFirstWarp || isCloser) {
                             player.previousLocation = { r: player.r, c: player.c };
@@ -1557,68 +1556,72 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return this.state.decisions;
     }
 
+    /**
+     * For a given player, returns a set of actions limited by what they can afford.
+     * The actions are determined using a naive search (ignore keyholes and other players).
+     */
     getNextActionsTowardGoal(userId: Snowflake, n: number = 1): string[] {
-        const path = this.searchToGoalFromPlayer(userId);
-        const result = [];
-        if (path) {
-            // Get actions limited either by points or by length of path
-            for (let i = 0; i < n && i < path.length - 1; i++) {
-                const dr = path[i + 1][1] - path[i][1];
-                const dc = path[i + 1][0] - path[i][0];
-                if (dr === -1) {
-                    result.push('up');
-                } else if (dr === 1) {
-                    result.push('down');
-                } else if (dc === -1) {
-                    result.push('left');
-                } else if (dc === 1) {
-                    result.push('right');
-                }
-            }
-        }
-        return result;
+        return this.searchToGoalFromPlayer(userId, true).semanticSteps.slice(0, n);
     }
 
-    getNumStepsToGoal(r: number, c: number): number {
-        return this.searchToGoal(r, c).length;
+    approximateCostToGoal(r: number, c: number): number {
+        return this.searchToGoal(r, c).cost;
     }
 
-    getNumStepsToGoalForPlayer(userId: Snowflake): number {
-        return this.searchToGoalFromPlayer(userId).length;
+    approximateCostToGoalForPlayer(userId: Snowflake): number {
+        return this.searchToGoalFromPlayer(userId).cost;
     }
 
-    searchToGoal(r: number, c: number) {
-        return this.search({ x: c, y: r }, { x: this.getGoalColumn(), y: this.getGoalRow() });
+    searchToGoal(r: number, c: number, naive: boolean = false) {
+        return this.search({ r, c }, { r: this.getGoalRow(), c: this.getGoalColumn() }, naive);
     }
 
-    searchToGoalFromPlayer(userId: Snowflake) {
+    searchToGoalFromPlayer(userId: Snowflake, naive: boolean = false) {
         const player = this.state.players[userId];
-        return this.searchToGoal(player.r, player.c);
+        return this.searchToGoal(player.r, player.c, naive);
     }
 
-    search(start: { x: number, y: number }, end: { x: number, y: number }) {
-        const finder = new AStarFinder({
-            grid: {
-                matrix: this.toCollisionMap()
-            },
-            diagonalAllowed: false,
-            heuristic: 'Manhattan'
+    search(start: DungeonLocation, goal: DungeonLocation, naive: boolean = false) {
+        const finder = new AStarPathFinder(this.toWeightMap(naive));
+        const result = finder.search({
+            start,
+            goal,
+            heuristic: 'manhattan',
+            randomize: true
         });
-        const result = finder.findPath(start, end);
         return result;
     }
 
-    private toCollisionMap(): number[][] {
-        return this.state.map.map(row => row.map(tile => this.isWalkableTileType(tile) ? 0 : 1));
+    private toWeightMap(naive: boolean = false): (number | null)[][] {
+        return this.state.map.map((row, r) => row.map((tile, c) => {
+            // If doing a naive search, only use walkable tiles
+            if (naive) {
+                return this.isWalkableTileType(tile) ? 1 : null;
+            }
+            // Else, do a more calculation of the realistic cost
+            const locationString = DungeonCrawler.getLocationString(r, c);
+            if (tile === TileType.KEY_HOLE && locationString in this.state.keyHoleCosts) {
+                // Multiply keyhole cost by 2 since it's risky
+                return this.state.keyHoleCosts[locationString] * 2;
+            }
+            if (this.isWalkableTileType(tile)) {
+                if (this.getPlayerAtLocation(r, c)) {
+                    // Treat player-occupied tiles at 3-cost because it's risky
+                    return 3;
+                }
+                return 1;
+            }
+            return null;
+        }));
     }
 
     getMapFairness(): { min: number, max: number, fairness: number, description: string } {
         let min = Number.MAX_SAFE_INTEGER;
         let max = -1;
         for (const userId of this.getOrderedPlayers()) {
-            const numSteps = this.getNumStepsToGoalForPlayer(userId);
-            max = Math.max(max, numSteps);
-            min = Math.min(min, numSteps);
+            const cost = this.approximateCostToGoalForPlayer(userId);
+            max = Math.max(max, cost);
+            min = Math.min(min, cost);
         }
         return { min, max, fairness: min / max, description: `[${min}, ${max}] = ${(100 * min / max).toFixed(1)}%` };
     }
