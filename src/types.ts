@@ -115,13 +115,16 @@ export interface DungeonLocation {
     r: number,
     c: number
 }
-
 export interface DungeonPlayerState {
     r: number,
     c: number,
     avatarUrl: string,
     displayName: string,
     points: number,
+    items?: {
+        trap?: number,
+        boulder?: number
+    },
     finished?: boolean,
     knockedOut?: boolean,
     previousLocation?: DungeonLocation,

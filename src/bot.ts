@@ -856,12 +856,14 @@ const finalizeAnonymousSubmissions = async () => {
         await sleep(12000);
         await messenger.send(goodMorningChannel, `Now, let us extend our solemn condolences to ${getJoinedMentions(zeroVoteUserIds)}, for they received no votes this fateful morning... 😬`);
     }
+    let winner: Snowflake | null = null;
     for (let i = validCodesSorted.length - 1; i >= 0; i--) {
         const code: string = validCodesSorted[i];
         const userId: Snowflake = submissionOwnersByCode[code];
         const rank: number = i + 1;
         const submission: string = submissions[userId];
         if (i === 0) {
+            winner = userId;
             await sleep(12000);
             await messenger.send(goodMorningChannel, `And in first place, with submission **${code}**...`);
             await sleep(6000);
@@ -895,7 +897,7 @@ const finalizeAnonymousSubmissions = async () => {
         }
     }
 
-    // Finally, send DMs to let each user know their ranking
+    // Send DMs to let each user know their ranking
     const numValidSubmissions: number = validCodesSorted.length;
     for (let i = 0; i < validCodesSorted.length; i++) {
         const code: string = validCodesSorted[i];
@@ -910,6 +912,20 @@ const finalizeAnonymousSubmissions = async () => {
                 + `Thanks for participating ${config.defaultGoodMorningEmoji}` + (forfeiters.includes(userId) ? ' (and sorry that you had to forfeit)' : ''));
         } catch (err) {
             await logger.log(`Unable to send results DM to **${state.getPlayerDisplayName(userId)}**: \`${err.toString()}\``);
+        }
+    }
+
+    // Award the winner with a game prize
+    if (winner && state.hasGame()) {
+        const prizeText: string = state.getGame().awardMajorPrize(winner);
+        await dumpState();
+        try {
+            // TODO: Can we add an option to disable typing delays in the messenger?
+            const dmChannel: DMChannel = await (await fetchMember(winner)).createDM();
+            await dmChannel.send(prizeText);
+            await logger.log(`Sent prize DM to **${state.getPlayerDisplayName(winner)}**`);
+        } catch (err) {
+            await logger.log(`Unable to send prize DM to **${state.getPlayerDisplayName(winner)}**: \`${err.toString()}\``);
         }
     }
 
@@ -1823,6 +1839,8 @@ const processCommands = async (msg: Message): Promise<void> => {
             // tempDungeon = DungeonCrawler.createBest(members, 5, 60);
             tempDungeon = DungeonCrawler.createSectional(members, { sectionSize: 11, sectionsAcross: 3 });
             tempDungeon.addPoints(msg.author.id, 100);
+            tempDungeon.addPlayerItem(msg.author.id, 'trap', 3);
+            tempDungeon.addPlayerItem(msg.author.id, 'boulder', 2);
             tempDungeon.beginTurn();
             try { // TODO: refactor typing event to somewhere else?
                 await msg.channel.sendTyping();

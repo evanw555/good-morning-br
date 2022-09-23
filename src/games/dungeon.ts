@@ -14,10 +14,11 @@ enum TileType {
     OPENED_KEY_HOLE = 3,
     CHEST = 4,
     HIDDEN_TRAP = 5,
-    TRAP = 6
+    TRAP = 6,
+    BOULDER = 7
 }
 
-type ActionName = 'up' | 'down' | 'left' | 'right' | 'pause' | 'unlock' | 'lock' | 'seal' | 'trap' | 'punch' | 'warp';
+type ActionName = 'up' | 'down' | 'left' | 'right' | 'pause' | 'unlock' | 'lock' | 'seal' | 'punch' | 'warp'| 'trap' | 'boulder';
 
 export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     private static readonly TILE_SIZE: number = 24;
@@ -36,7 +37,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     getIntroductionText(): string {
         return 'My dear dogs... Welcome to the Clouded Labyrinth of the Shining Idol! '
             + 'This season, you will all be traversing this silver-lined dungeon in search of bright mornings. '
-            + 'The first, second, and third pups to reach me at the center will be crowned victorious. '
+            + 'The first, second, and third pups to reach me at the end will be crowned victorious. '
             + 'Each Saturday, you will have all day to choose your moves, each costing some amount of points. '
             + 'The next day (Sunday), your moves will be performed one-by-one.';
     }
@@ -48,7 +49,6 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 + '`lock`: close all doorways adjacent to you. Cost is denoted on each doorway\n'
                 + '`seal`: permanently close all doorways adjacent to you. Cost is **twice the value** denoted on each doorway\n'
                 + '`punch`: 75% chance of knocking out any player adjacent to you, ending their turn. Costs `2`\n'
-                + '`trap:[LOCATION]`: place a hidden trap at the specified location (e.g. `trap:G9`). Costs `2`\n'
                 + '`warp`: warp to a random player. Costs `6`\n'
                 + '`pause`: do nothing. Free\n\n'
             + 'Misc Rules:\n'
@@ -59,9 +59,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 + '5. If you somehow walk into a wall, your turn is ended.\n'
                 + '6. If you walk into another player, your turn is ended if they have no more actions remaining.\n'
                 + '7. If your turn is ended early due to any of these reasons, you will only lose points for each action taken.\n'
-                + '8. If you end your turn on a trap, the trap can now be seen and you are sent back to where you started (points are still lost).\n'
-                + '9. If you warp, you will be KO\'ed so that others can walk past you.\n'
-                + '10. If you warp multiple times in one turn, all subsequent warps will only go through if it brings you closer to the goal.'
+                + '8. If you warp, you will be KO\'ed so that others can walk past you.\n'
+                + '9. If you warp multiple times in one turn, all subsequent warps will only go through if it brings you closer to the goal.'
     }
 
     hasPlayer(userId: Snowflake): boolean {
@@ -136,6 +135,9 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     context.beginPath();
                     context.arc((c + .5) * DungeonCrawler.TILE_SIZE, (r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE / 4, 0, Math.PI * 2, false);
                     context.fill();
+                } else if (this.isTileType(r, c, TileType.BOULDER)) {
+                    context.fillStyle = 'gray';
+                    context.fillRect(c * DungeonCrawler.TILE_SIZE, r * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE);
                 } else if (this.isCloudy(r, c)) {
                     context.fillStyle = DungeonCrawler.STYLE_CLOUD;
                     context.beginPath();
@@ -343,7 +345,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         // Write extra text on the sidebar
         y += 2;
         c2.fillStyle = 'white';
-        c2.fillText('Reach me in the center to win!\nDM me "help" for help', leftTextX, y * DungeonCrawler.TILE_SIZE, TOTAL_WIDTH - leftTextX);
+        c2.fillText('Reach me at the end to win!\nDM me "help" for help', leftTextX, y * DungeonCrawler.TILE_SIZE, TOTAL_WIDTH - leftTextX);
 
         // Draw potential actions
         y += 2;
@@ -405,10 +407,15 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         context.lineWidth = 1;
         context.strokeStyle = 'red';
         context.setLineDash([]);
-        for (const decision of decisions.filter(d => d.includes('trap:'))) {
+        for (const decision of decisions.filter(d => d.startsWith('trap:'))) {
             const [ action, locationString ] = decision.split(':');
             const location = this.parseLocationString(locationString);
             context.strokeText('PLACE\nTRAP', location.c * DungeonCrawler.TILE_SIZE, (location.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE);
+        }
+        for (const decision of decisions.filter(d => d.startsWith('boulder:'))) {
+            const [ action, locationString ] = decision.split(':');
+            const location = this.parseLocationString(locationString);
+            context.strokeText('PLACE\nBOULDER', location.c * DungeonCrawler.TILE_SIZE, (location.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE);
         }
         // Show placed traps
         context.lineWidth = 1;
@@ -422,7 +429,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         context.setLineDash([]);
     }
 
-    private getChoices(): Record<ActionName, { cost: number | string, description: string }> {
+    private getChoices(): Partial<Record<ActionName, { cost: number | string, description: string }>> {
         return {
             'up': { cost: 1, description: 'Move up 1 tile' },
             'down': { cost: 1, description: 'Move down 1 tile' },
@@ -433,7 +440,6 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             'lock': { cost: 'N', description: 'Close adjacent doorways' },
             'seal': { cost: '2N', description: 'Permanently close doorways' },
             'punch': { cost: 2, description: 'Try to KO adjacent players' },
-            'trap': { cost: 2, description: 'Place trap e.g. "trap:B12"' },
             'warp': { cost: 6, description: 'Warp to a random player' }
         };
     }
@@ -479,6 +485,23 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
 
     addPoints(userId: Snowflake, points: number): void {
         this.state.players[userId].points += points;
+    }
+
+    awardMajorPrize(userId: Snowflake): string {
+        this.addPlayerItem(userId, 'boulder');
+        const numBoulders = this.getPlayerItemCount(userId, 'boulder');
+        return `Congrats, you've just been awarded a **boulder**! Your inventory now contains **${numBoulders}**. `
+            + 'You can place this at a particular location as an action e.g. `boulder:b12`. '
+            + 'The boulder will act as a immovable barrier that cannot be destroyed, unless it causes players to become permanently trapped.';
+    }
+
+    awardMinorPrize(userId: Snowflake): string {
+        this.addPlayerItem(userId, 'trap');
+        const numTraps = this.getPlayerItemCount(userId, 'trap');
+        return `Congrats, you've just been awarded a **trap**! Your inventory now contains **${numTraps}**. `
+            + 'You can place this at a particular location as an action e.g. `trap:b12`. '
+            + 'If a player ends their turn on a trap, they will be sent back to their starting location for this week\'s turn. '
+            + 'Traps are invisible until triggered. You will be given **1** point each time this trap is triggered.';
     }
 
     parseLocationString(location: string): { r: number, c: number } | undefined {
@@ -1038,8 +1061,20 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             throw new Error('You\'ve already finished, the only action you can take now is to place traps')
         }
 
+        // Ensure that users have the correct number of items
+        const numTrapItems = this.getPlayerItemCount(userId, 'trap');
+        if (commands.filter(c => c.startsWith('trap')).length > numTrapItems) {
+            throw new Error(`You're trying to place more traps than you currently have! You have **${numTrapItems}**`);
+        }
+        const numBoulderItems = this.getPlayerItemCount(userId, 'boulder');
+        if (commands.filter(c => c.startsWith('boulder')).length > numBoulderItems) {
+            throw new Error(`You're trying to place more boulders than you currently have! You have **${numBoulderItems}**`);
+        }
+
+
         for (const command of commands) {
             const [c, arg] = command.split(':') as [ActionName, string];
+            const argLocation = this.parseLocationString(arg);
             cost += this.getActionCost(c, newLocation.r, newLocation.c);
             switch (c) {
                 case 'up':
@@ -1103,25 +1138,25 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     }
                     warnings.push(`Doorways are halved in cost when unlocked, so you may end up spending fewer points than expected.`);
                     break;
-                case 'trap':
-                    const target = this.parseLocationString(arg);
-                    if (!target) {
-                        throw new Error(`**${arg}** is not a valid location on the map!`);
-                    }
-                    if (this.isGoal(target.r, target.c)) {
-                        throw new Error('You can\'t place a trap on the goal!');
-                    }
-                    if (this.isTileType(target.r, target.c, TileType.EMPTY) || this.isTileType(target.r, target.c, TileType.HIDDEN_TRAP)) {
-                        // COOL
-                    } else {
-                        throw new Error(`Can't set a trap at **${arg}**, try a different spot.`);
-                    }
-                    break;
                 case 'punch':
                     // TODO: Do validation?
                     break;
                 case 'warp':
                     // TODO: Do validation?
+                    break;
+                case 'trap':
+                case 'boulder':
+                    if (!argLocation) {
+                        throw new Error(`**${arg}** is not a valid location on the map!`);
+                    }
+                    if (this.isGoal(argLocation.r, argLocation.c)) {
+                        throw new Error(`You can\'t place a ${c} on the goal!`);
+                    }
+                    if (this.isTileType(argLocation.r, argLocation.c, TileType.EMPTY) || this.isTileType(argLocation.r, argLocation.c, TileType.HIDDEN_TRAP)) {
+                        // COOL
+                    } else {
+                        throw new Error(`Can't place a ${c} at **${arg}**, try a different spot.`);
+                    }
                     break;
                 default:
                     throw new Error(`\`${command}\` is an invalid action!`);
@@ -1182,14 +1217,17 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 }
                 return cost;
             },
-            'trap': () => {
-                return 2;
-            },
             'punch': () => {
                 return 2;
             },
             'warp': () => {
                 return 6;
+            },
+            'trap': () => {
+                return 0;
+            },
+            'boulder': () => {
+                return 0;
             }
         };
         return actionCosts[action]();
@@ -1322,12 +1360,6 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         }
                         return true;
                     },
-                    'trap': (arg) => {
-                        const { r, c } = this.parseLocationString(arg);
-                        this.state.map[r][c] = TileType.HIDDEN_TRAP;
-                        this.state.trapOwners[arg.toUpperCase()] = userId;
-                        return true;
-                    },
                     'punch': () => {
                         let nearPlayer = false;
                         for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
@@ -1364,6 +1396,20 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         } else {
                             pushNonStepStatement(`**${player.displayName}** avoided warping to **${this.getDisplayName(nearUserId)}**`);
                         }
+                        return true;
+                    },
+                    'trap': (arg) => {
+                        const { r, c } = this.parseLocationString(arg);
+                        this.state.map[r][c] = TileType.HIDDEN_TRAP;
+                        this.state.trapOwners[arg.toUpperCase()] = userId;
+                        this.consumePlayerItem(userId, 'trap');
+                        return true;
+                    },
+                    'boulder': (arg) => {
+                        const { r, c } = this.parseLocationString(arg);
+                        this.state.map[r][c] = TileType.BOULDER;
+                        this.consumePlayerItem(userId, 'boulder');
+                        pushNonStepStatement(`**${player.displayName}** placed a boulder at **${DungeonCrawler.getLocationString(r, c)}**`);
                         return true;
                     }
                 };
@@ -1578,6 +1624,46 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             if (location) {
                 return { r: location.r, c: location.c, userId };
             }
+        }
+    }
+
+    playerHasAnyItem(userId: Snowflake): boolean {
+        return Object.values(this.state.players[userId].items ?? {}).length > 0;
+    }
+
+    playerHasItem(userId: Snowflake, item: 'trap' | 'boulder'): boolean {
+        return this.getPlayerItemCount(userId, item) > 0;
+    }
+
+    getPlayerItemCount(userId: Snowflake, item: 'trap' | 'boulder'): number {
+        return (this.state.players[userId].items ?? {})[item] ?? 0;
+    }
+
+    addPlayerItem(userId: Snowflake, item: 'trap' | 'boulder', num: number = 1): void {
+        const player = this.state.players[userId];
+
+        if (player.items === undefined) {
+            player.items = {};
+        }
+
+        player.items[item] = (player.items[item] ?? 0) + num;
+    }
+
+    consumePlayerItem(userId: Snowflake, item: 'trap' | 'boulder'): void {
+        const player = this.state.players[userId];
+
+        if (!this.playerHasItem(userId, item)) {
+            return;
+        }
+
+        player.items[item]--;
+
+        if (player.items[item] <= 0) {
+            delete player.items[item];
+        }
+
+        if (Object.keys(player.items).length === 0) {
+            delete player.items;
         }
     }
 }
