@@ -569,8 +569,15 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return Object.keys(this.state.players).sort((x, y) => getLocationRank(x) - getLocationRank(y));
     }
 
+    /**
+     * @returns List of all players ordered by number of steps to the goal ascending (i.e. best players first)
+     */
     getPlayersClosestToGoal(): Snowflake[] {
-        return Object.keys(this.state.players).sort((x, y) => this.getPlayerDistanceToGoal(x) - this.getPlayerDistanceToGoal(y));
+        const steps: Record<Snowflake, number> = {};
+        for (const userId of this.getOrderedPlayers()) {
+            steps[userId] = this.getNumStepsToGoalForPlayer(userId);
+        }
+        return Object.keys(this.state.players).sort((x, y) => steps[x] - steps[y]);
     }
 
     getShuffledPlayers(): Snowflake[] {
@@ -1423,7 +1430,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     'warp': () => {
                         const { r: newR, c: newC, userId: nearUserId } = this.getSpawnableLocationAroundPlayers(this.getOtherPlayers(userId));
                         const isFirstWarp: boolean = !player.warped;
-                        const isCloser: boolean = this.getEuclideanDistanceToGoal(newR, newC) < this.getEuclideanDistanceToGoal(player.r, player.c);
+                        const isCloser: boolean = this.getNumStepsToGoal(newR, newC) < this.getNumStepsToGoal(player.r, player.c);
                         // If it's the user's first warp of the turn or the warp is closer to the goal, do it and knock them out
                         if (isFirstWarp || isCloser) {
                             player.previousLocation = { r: player.r, c: player.c };
@@ -1551,7 +1558,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     }
 
     getNextActionsTowardGoal(userId: Snowflake, n: number = 1): string[] {
-        const path = this.searchToGoal(userId);
+        const path = this.searchToGoalFromPlayer(userId);
         const result = [];
         if (path) {
             // Get actions limited either by points or by length of path
@@ -1572,13 +1579,21 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return result;
     }
 
-    getNumStepsToGoal(userId: Snowflake): number {
-        return this.searchToGoal(userId).length;
+    getNumStepsToGoal(r: number, c: number): number {
+        return this.searchToGoal(r, c).length;
     }
 
-    searchToGoal(userId: Snowflake) {
+    getNumStepsToGoalForPlayer(userId: Snowflake): number {
+        return this.searchToGoalFromPlayer(userId).length;
+    }
+
+    searchToGoal(r: number, c: number) {
+        return this.search({ x: c, y: r }, { x: this.getGoalColumn(), y: this.getGoalRow() });
+    }
+
+    searchToGoalFromPlayer(userId: Snowflake) {
         const player = this.state.players[userId];
-        return this.search({ x: player.c, y: player.r }, { x: this.getGoalColumn(), y: this.getGoalRow() });
+        return this.searchToGoal(player.r, player.c);
     }
 
     search(start: { x: number, y: number }, end: { x: number, y: number }) {
@@ -1601,7 +1616,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         let min = Number.MAX_SAFE_INTEGER;
         let max = -1;
         for (const userId of this.getOrderedPlayers()) {
-            const numSteps = this.getNumStepsToGoal(userId);
+            const numSteps = this.getNumStepsToGoalForPlayer(userId);
             max = Math.max(max, numSteps);
             min = Math.min(min, numSteps);
         }
@@ -1622,11 +1637,6 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
 
     getEuclideanDistanceToGoal(r: number, c: number): number {
         return Math.sqrt(Math.pow(this.getGoalRow() - r, 2) + Math.pow(this.getGoalColumn() - c, 2));
-    }
-
-    getPlayerDistanceToGoal(userId: Snowflake):  number {
-        const player = this.state.players[userId];
-        return this.getEuclideanDistanceToGoal(player.r, player.c);
     }
 
     /**
