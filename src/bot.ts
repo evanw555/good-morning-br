@@ -1,7 +1,7 @@
 import { Client, DMChannel, Intents, MessageAttachment, TextChannel } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'discord.js';
 import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, HomeStretchSurprise } from './types';
-import { createHomeStretchImage, createMidSeasonUpdateImage, createSeasonResultsImage } from './graphics';
+import { createHomeStretchImage, createMidSeasonUpdateImage } from './graphics';
 import { hasVideo, validateConfig, reactToMessage, getOrderingUpsets } from './util';
 import GoodMorningState from './state';
 import logger from './logger';
@@ -904,12 +904,11 @@ const finalizeAnonymousSubmissions = async () => {
         const userId: Snowflake = submissionOwnersByCode[code];
         const rank: number = i + 1;
         try {
-            // We circumvent the messenger utility because we don't want to delay between each message
-            // TODO: Can we add an option to disable typing delays in the messenger?
-            const dmChannel: DMChannel = await (await fetchMember(userId)).createDM();
-            await dmChannel.send(`Your ${state.getEvent().submissionType} placed **${getRankString(rank)}** of **${numValidSubmissions}**, `
-                + `receiving **${breakdown[code][0]}** gold votes, **${breakdown[code][1]}** silver votes, and **${breakdown[code][2]}** bronze votes. `
-                + `Thanks for participating ${config.defaultGoodMorningEmoji}` + (forfeiters.includes(userId) ? ' (and sorry that you had to forfeit)' : ''));
+            await messenger.dm(await fetchMember(userId),
+                `Your ${state.getEvent().submissionType} placed **${getRankString(rank)}** of **${numValidSubmissions}**, `
+                    + `receiving **${breakdown[code][0]}** gold votes, **${breakdown[code][1]}** silver votes, and **${breakdown[code][2]}** bronze votes. `
+                    + `Thanks for participating ${config.defaultGoodMorningEmoji}` + (forfeiters.includes(userId) ? ' (and sorry that you had to forfeit)' : ''),
+                { immediate: true });
         } catch (err) {
             await logger.log(`Unable to send results DM to **${state.getPlayerDisplayName(userId)}**: \`${err.toString()}\``);
         }
@@ -920,9 +919,7 @@ const finalizeAnonymousSubmissions = async () => {
         const prizeText: string = state.getGame().awardMajorPrize(winner);
         await dumpState();
         try {
-            // TODO: Can we add an option to disable typing delays in the messenger?
-            const dmChannel: DMChannel = await (await fetchMember(winner)).createDM();
-            await dmChannel.send(prizeText);
+            await messenger.dm(await fetchMember(winner), prizeText, { immediate: true });
             await logger.log(`Sent prize DM to **${state.getPlayerDisplayName(winner)}**`);
         } catch (err) {
             await logger.log(`Unable to send prize DM to **${state.getPlayerDisplayName(winner)}**: \`${err.toString()}\``);

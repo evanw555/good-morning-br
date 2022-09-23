@@ -18,7 +18,8 @@ enum TileType {
     BOULDER = 7
 }
 
-type ActionName = 'up' | 'down' | 'left' | 'right' | 'pause' | 'unlock' | 'lock' | 'seal' | 'punch' | 'warp'| 'trap' | 'boulder';
+type ItemName = 'trap' | 'boulder';
+type ActionName = 'up' | 'down' | 'left' | 'right' | 'pause' | 'unlock' | 'lock' | 'seal' | 'punch' | 'warp'| ItemName;
 
 export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     private static readonly TILE_SIZE: number = 24;
@@ -1631,15 +1632,15 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return Object.values(this.state.players[userId].items ?? {}).length > 0;
     }
 
-    playerHasItem(userId: Snowflake, item: 'trap' | 'boulder'): boolean {
+    playerHasItem(userId: Snowflake, item: ItemName): boolean {
         return this.getPlayerItemCount(userId, item) > 0;
     }
 
-    getPlayerItemCount(userId: Snowflake, item: 'trap' | 'boulder'): number {
+    getPlayerItemCount(userId: Snowflake, item: ItemName): number {
         return (this.state.players[userId].items ?? {})[item] ?? 0;
     }
 
-    addPlayerItem(userId: Snowflake, item: 'trap' | 'boulder', num: number = 1): void {
+    addPlayerItem(userId: Snowflake, item: ItemName, num: number = 1): void {
         const player = this.state.players[userId];
 
         if (player.items === undefined) {
@@ -1649,7 +1650,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         player.items[item] = (player.items[item] ?? 0) + num;
     }
 
-    consumePlayerItem(userId: Snowflake, item: 'trap' | 'boulder'): void {
+    consumePlayerItem(userId: Snowflake, item: ItemName): void {
         const player = this.state.players[userId];
 
         if (!this.playerHasItem(userId, item)) {
