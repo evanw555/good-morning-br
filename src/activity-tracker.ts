@@ -20,6 +20,10 @@ export default class ActivityTracker {
         return this.data.replace(/^(x*).*$/, '$1').length;
     }
 
+    hasFullStreak(): boolean {
+        return this.getStreak() === ActivityTracker.CAPACITY;
+    }
+
     getRating(): number {
         if (!this.data) {
             return 0;

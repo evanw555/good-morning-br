@@ -725,7 +725,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     // TODO (2.0): Do we want this?
     if (false && state.getSeasonCompletion() > 0.2) {
         // Threshold is 2 top awards below the top score
-        const nerfThreshold: number = toFixed(state.getTopScore() - (2 * config.awardsByRank[1]));
+        const nerfThreshold: number = toFixed(state.getTopScore() - (2 * config.bonusAward));
         state.setNerfThreshold(nerfThreshold);
         dailyVolatileLog.push([new Date(), `Set nerf threshold to ${nerfThreshold}`]);
     }
@@ -1059,6 +1059,12 @@ const TIMEOUT_CALLBACKS = {
 
         // Update player activity counters
         state.incrementPlayerActivities();
+        // Award minor prizes to all players with full streaks (with 50% odds)
+        for (const userId of state.getPlayers()) {
+            if (state.getPlayerActivity(userId).hasFullStreak() && Math.random() < 0.5) {
+                await awardMinorPrize(userId);
+            }
+        }
 
         // Dump state and R9K hashes
         await dumpState();
@@ -1314,7 +1320,7 @@ const TIMEOUT_CALLBACKS = {
                     await messenger.send(goodMorningChannel, 'It\'s time to announce the winner of the _longest combo_ bonus! This user was first to say good morning the most days in a row...');
                     await sleep(10000);
                     // Award points and dump state
-                    const pointsAwarded: number = state.awardPoints(maxCombo.user, config.awardsByRank[1]);
+                    const pointsAwarded: number = state.awardPoints(maxCombo.user, config.bonusAward);
                     await dumpState();
                     // Notify channel
                     await messenger.send(goodMorningChannel, `The winner is <@${maxCombo.user}>, with a streak lasting **${maxCombo.days}** days! This bonus is worth **${state.getNormalizedPoints(pointsAwarded)}%** karma ${config.defaultGoodMorningEmoji}`);
@@ -1328,7 +1334,7 @@ const TIMEOUT_CALLBACKS = {
                     await messenger.send(goodMorningChannel, 'Now to announce the winner of the _combo breaker_ bonus! This user broke the most Good Morning combos...');
                     await sleep(10000);
                     // Award points and dump state
-                    const pointsAwarded: number = state.awardPoints(maxBreaker, config.awardsByRank[1]);
+                    const pointsAwarded: number = state.awardPoints(maxBreaker, config.bonusAward);
                     await dumpState();
                     // Notify channel
                     await messenger.send(goodMorningChannel, `The winner is <@${maxBreaker}>, who broke **${maxTimesBroken}** streaks! This bonus is worth **${state.getNormalizedPoints(pointsAwarded)}%** karma ${config.defaultGoodMorningEmoji}`);
@@ -2014,7 +2020,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
 
                 // If the player said the magic word, reward them and let them know privately
                 if (saidMagicWord(msg)) {
-                    state.awardPoints(userId, config.awardsByRank[1]);
+                    state.awardPoints(userId, config.bonusAward);
                     await messenger.dm(msg.member, `You said _"${state.getMagicWord()}"_, the magic word of the day! Nice 😉`);
                     logStory += `said the magic word "${state.getMagicWord()}", `;
                 }
@@ -2028,7 +2034,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 // Compute beckoning bonus and reset the state beckoning property if needed
                 const wasBeckoned: boolean = state.getEventType() === DailyEventType.Beckoning && msg.author.id === state.getEvent().user;
                 if (wasBeckoned) {
-                    state.awardPoints(userId, config.awardsByRank[1]);
+                    state.awardPoints(userId, config.bonusAward);
                     logStory += 'replied to a beckon, ';
                 }
 

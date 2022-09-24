@@ -33,6 +33,7 @@ export interface GoodMorningConfig {
     awardsByRank: Record<string, number>,
     largeAwardsByRank: Record<string, number>,
     defaultAward: number,
+    bonusAward: number,
     minimumComboDays: number,
     goodMorningMessageOverrides: Record<CalendarDate, string>,
     defaultGoodMorningEmoji: string,
