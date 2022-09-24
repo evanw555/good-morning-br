@@ -1116,6 +1116,16 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             throw new Error(`You're trying to place more boulders than you currently have! You have **${numBoulderItems}**`);
         }
 
+        // If using boulders, ensure placing them doesn't block anyone
+        if (commands.some(c => c.startsWith('boulder:'))) {
+            const boulderLocations = commands.filter(c => c.startsWith('boulder:'))
+                .map(c => c.split(':')[1])
+                .map(l => this.parseLocationString(l));
+            const simulatedWeightMap = this.toWeightMap({ obstacles: boulderLocations });
+            if (!this.canAllPlayersReachGoal(simulatedWeightMap)) {
+                throw new Error('You can\'t place a boulder in a location that would permanently trap players! Please pick another location...');
+            }
+        }
 
         for (const command of commands) {
             const [c, arg] = command.split(':') as [ActionName, string];
@@ -1582,7 +1592,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     }
 
     search(start: DungeonLocation, goal: DungeonLocation, naive: boolean = false) {
-        const finder = new AStarPathFinder(this.toWeightMap(naive));
+        const finder = new AStarPathFinder(this.toWeightMap({ naive }));
         const result = finder.search({
             start,
             goal,
@@ -1592,10 +1602,14 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return result;
     }
 
-    private toWeightMap(naive: boolean = false): (number | null)[][] {
+    private toWeightMap(options: { naive?: boolean, obstacles?: DungeonLocation[] }): (number | null)[][] {
         return this.state.map.map((row, r) => row.map((tile, c) => {
+            // If simulating an obstacle at this location, treat this location as unwalkable
+            if (options.obstacles && options.obstacles.some(o => r === o.r && c === o.c)) {
+                return null;
+            }
             // If doing a naive search, only use walkable tiles
-            if (naive) {
+            if (options.naive) {
                 return this.isWalkableTileType(tile) ? 1 : null;
             }
             // Else, do a more calculation of the realistic cost
@@ -1624,6 +1638,23 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             min = Math.min(min, cost);
         }
         return { min, max, fairness: min / max, description: `[${min}, ${max}] = ${(100 * min / max).toFixed(1)}%` };
+    }
+
+    canAllPlayersReachGoal(weightMap: (number | null)[][]): boolean {
+        const finder = new AStarPathFinder(weightMap);
+        for (const userId of this.getOrderedPlayers()) {
+            // TOOD: can we somehow reuse the existing APIs but add more options?
+            const player = this.state.players[userId];
+            const result = finder.search({
+                start: { r: player.r, c: player.c },
+                goal: { r: this.getGoalRow(), c: this.getGoalColumn() },
+                heuristic: 'manhattan'
+            });
+            if (!result.success) {
+                return false;
+            }
+        }
+        return true;
     }
 
     getGoalRow(): number {
