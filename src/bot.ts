@@ -326,6 +326,36 @@ const chooseEvent = (date: Date): DailyEvent | undefined => {
     }
 };
 
+const awardMajorPrize = async (userId: Snowflake): Promise<void> => {
+    if (state.hasGame()) {
+        const prizeText: string = state.getGame().awardMajorPrize(userId);
+        await dumpState();
+        try {
+            await messenger.dm(await fetchMember(userId), prizeText, { immediate: true });
+            await logger.log(`Sent _major_ prize DM to **${state.getPlayerDisplayName(userId)}**`);
+        } catch (err) {
+            await logger.log(`Unable to send _major_ prize DM to **${state.getPlayerDisplayName(userId)}**: \`${err.toString()}\``);
+        }
+    } else {
+        await logger.log(`Aborting _major_ prize award for **${state.getPlayerDisplayName(userId)}**, as the game hasn't started!`);
+    }
+};
+
+const awardMinorPrize = async (userId: Snowflake): Promise<void> => {
+    if (state.hasGame()) {
+        const prizeText: string = state.getGame().awardMinorPrize(userId);
+        await dumpState();
+        try {
+            await messenger.dm(await fetchMember(userId), prizeText, { immediate: true });
+            await logger.log(`Sent _minor_ prize DM to **${state.getPlayerDisplayName(userId)}**`);
+        } catch (err) {
+            await logger.log(`Unable to send _minor_ prize DM to **${state.getPlayerDisplayName(userId)}**: \`${err.toString()}\``);
+        }
+    } else {
+        await logger.log(`Aborting _minor_ prize award for **${state.getPlayerDisplayName(userId)}**, as the game hasn't started!`);
+    }
+};
+
 const chooseMagicWord = async (): Promise<string> => {
     try {
         const words: string[] = await loadJson('config/words.json');
@@ -856,14 +886,12 @@ const finalizeAnonymousSubmissions = async () => {
         await sleep(12000);
         await messenger.send(goodMorningChannel, `Now, let us extend our solemn condolences to ${getJoinedMentions(zeroVoteUserIds)}, for they received no votes this fateful morning... 😬`);
     }
-    let winner: Snowflake | null = null;
     for (let i = validCodesSorted.length - 1; i >= 0; i--) {
         const code: string = validCodesSorted[i];
         const userId: Snowflake = submissionOwnersByCode[code];
         const rank: number = i + 1;
         const submission: string = submissions[userId];
         if (i === 0) {
-            winner = userId;
             await sleep(12000);
             await messenger.send(goodMorningChannel, `And in first place, with submission **${code}**...`);
             await sleep(6000);
@@ -914,15 +942,14 @@ const finalizeAnonymousSubmissions = async () => {
         }
     }
 
-    // Award the winner with a game prize
-    if (winner && state.hasGame()) {
-        const prizeText: string = state.getGame().awardMajorPrize(winner);
-        await dumpState();
-        try {
-            await messenger.dm(await fetchMember(winner), prizeText, { immediate: true });
-            await logger.log(`Sent prize DM to **${state.getPlayerDisplayName(winner)}**`);
-        } catch (err) {
-            await logger.log(`Unable to send prize DM to **${state.getPlayerDisplayName(winner)}**: \`${err.toString()}\``);
+    // Award special prizes and notify via DM
+    for (let i = 0; i < validCodesSorted.length && i < 3; i++) {
+        const code: string = validCodesSorted[i];
+        const userId: Snowflake = submissionOwnersByCode[code];
+        if (i === 0) {
+            await awardMajorPrize(userId);
+        } else {
+            await awardMinorPrize(userId);
         }
     }
 
