@@ -57,6 +57,8 @@ export interface Combo {
     days: number
 }
 
+export type PrizeType = 'submissions1' | 'submissions2' | 'submissions3' | 'streak' | 'nightmare';
+
 export interface PlayerState {
     displayName: string,
     points: number,
@@ -124,7 +126,8 @@ export interface DungeonPlayerState {
     points: number,
     items?: {
         trap?: number,
-        boulder?: number
+        boulder?: number,
+        seal?: number
     },
     finished?: boolean,
     knockedOut?: boolean,

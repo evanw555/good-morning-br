@@ -1,7 +1,7 @@
 import canvas, { NodeCanvasRenderingContext2D } from 'canvas';
 import { GuildMember, Snowflake } from 'discord.js';
 import { getRankString, naturalJoin, randInt, shuffle, toLetterId, AStarPathFinder } from 'evanw555.js';
-import { DungeonGameState, DungeonLocation, DungeonPlayerState } from "../types";
+import { DungeonGameState, DungeonLocation, DungeonPlayerState, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 import logger from '../logger';
 
@@ -17,8 +17,8 @@ enum TileType {
     BOULDER = 7
 }
 
-type ItemName = 'trap' | 'boulder';
-type ActionName = 'up' | 'down' | 'left' | 'right' | 'pause' | 'unlock' | 'lock' | 'seal' | 'punch' | 'warp'| ItemName;
+type ItemName = 'trap' | 'boulder' | 'seal';
+type ActionName = 'up' | 'down' | 'left' | 'right' | 'pause' | 'unlock' | 'lock' | 'punch' | 'warp' | ItemName;
 
 export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     private static readonly TILE_SIZE: number = 24;
@@ -39,7 +39,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             + 'This season, you will all be traversing this silver-lined dungeon in search of bright mornings. '
             + 'The first, second, and third pups to reach me at the end will be crowned victorious. '
             + 'Each Saturday, you will have all day to choose your moves, each costing some amount of points. '
-            + 'The next day (Sunday), your moves will be performed one-by-one.';
+            + 'Some moves are secret and can only be performed once unlocked. '
+            + 'The next day (Sunday), your moves will be performed one-by-one. ';
     }
 
     getInstructionsText(): string {
@@ -47,7 +48,6 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 + '`up`, `down`, `left`, `right`: move one step in such direction. Costs `1`\n'
                 + '`unlock`: open all doorways adjacent to you. Cost is denoted on each doorway, and is reduced with each unlock\n'
                 + '`lock`: close all doorways adjacent to you. Cost is denoted on each doorway\n'
-                + '`seal`: permanently close all doorways adjacent to you. Cost is **twice the value** denoted on each doorway\n'
                 + '`punch`: 75% chance of knocking out any player adjacent to you, ending their turn. Costs `2`\n'
                 + '`warp`: warp to a random player. Costs `6`\n'
                 + '`pause`: do nothing. Free\n\n'
@@ -320,7 +320,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         let y = 2;
         c2.fillStyle = 'white';
         const leftTextX = WIDTH + DungeonCrawler.TILE_SIZE + MARGIN;
-        c2.fillText(`Turn ${this.state.turn}, Action ${this.state.action}`, leftTextX, DungeonCrawler.TILE_SIZE);
+        c2.fillText(`Week ${this.state.turn}, Action ${this.state.action}`, leftTextX, DungeonCrawler.TILE_SIZE);
         for (const userId of this.getOrderedPlayers()) {
             y++;
             const player = this.state.players[userId];
@@ -476,7 +476,6 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             'pause': { cost: 0, description: 'Do nothing' },
             'unlock': { cost: 'N', description: 'Open adjacent doorways' },
             'lock': { cost: 'N', description: 'Close adjacent doorways' },
-            'seal': { cost: '2N', description: 'Permanently close doorways' },
             'punch': { cost: 2, description: 'Try to KO adjacent players' },
             'warp': { cost: 6, description: 'Warp to a random player' }
         };
@@ -525,21 +524,30 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         this.state.players[userId].points += points;
     }
 
-    awardMajorPrize(userId: Snowflake): string {
-        this.addPlayerItem(userId, 'boulder');
-        const numBoulders = this.getPlayerItemCount(userId, 'boulder');
-        return `Congrats, you've just been awarded a **boulder**! Your inventory now contains **${numBoulders}**. `
-            + 'You can place this at a particular location as an action e.g. `boulder:b12`. '
-            + 'The boulder will act as a immovable barrier that cannot be destroyed, unless it causes players to become permanently trapped.';
-    }
-
-    awardMinorPrize(userId: Snowflake): string {
-        this.addPlayerItem(userId, 'trap');
-        const numTraps = this.getPlayerItemCount(userId, 'trap');
-        return `Congrats, you've just been awarded a **trap**! Your inventory now contains **${numTraps}**. `
-            + 'You can place this at a particular location as an action e.g. `trap:b12`. '
-            + 'If a player ends their turn on a trap, they will be sent back to their starting location for this week\'s turn. '
-            + 'Traps are invisible until triggered. You will be given **1** point each time this trap is triggered.';
+    awardPrize(userId: Snowflake, type: PrizeType, intro: string): string {
+        switch (type) {
+            case 'submissions1':
+                this.addPlayerItem(userId, 'boulder');
+                const numBoulders = this.getPlayerItemCount(userId, 'boulder');
+                return `${intro}, you've just been awarded a **boulder**! Your inventory now contains **${numBoulders}**. `
+                    + 'You can place this at a particular location as an action e.g. `boulder:b12`. '
+                    + 'The boulder will act as a immovable barrier that cannot be destroyed, unless it causes players to become permanently trapped.';
+            case 'submissions2':
+                this.addPlayerItem(userId, 'seal');
+                const numSeals = this.getPlayerItemCount(userId, 'seal');
+                return `${intro}, you've just been awarded a **seal**! Your inventory now contains **${numSeals}**. `
+                    + 'You can use `seal` as an action to permanently seal any locked/unlocked doorway in the 4 squares adjacent to you. '
+                    + 'Once a doorway is sealed, it is effectively a wall and cannot be unlocked.';
+            case 'submissions3':
+            case 'streak':
+            case 'nightmare':
+                this.addPlayerItem(userId, 'trap');
+                const numTraps = this.getPlayerItemCount(userId, 'trap');
+                return `${intro}, you've just been awarded a **trap**! Your inventory now contains **${numTraps}**. `
+                    + 'You can place this at a particular location as an action e.g. `trap:b12`. '
+                    + 'If a player ends their turn on a trap, they will be sent back to where they started that week\'s turn. '
+                    + 'Traps are invisible until triggered. You will be given **1** point each time this trap is triggered.';
+        }
     }
 
     parseLocationString(location: string): { r: number, c: number } | undefined {
@@ -1115,6 +1123,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         if (commands.filter(c => c.startsWith('boulder')).length > numBoulderItems) {
             throw new Error(`You're trying to place more boulders than you currently have! You have **${numBoulderItems}**`);
         }
+        const numSealItems = this.getPlayerItemCount(userId, 'seal');
+        if (commands.filter(c => c === 'seal').length > numSealItems) {
+            throw new Error(`You're trying to use the seal move too many times! You only have **${numSealItems}** seal(s)`);
+        }
 
         // If using boulders, ensure placing them doesn't block anyone
         if (commands.some(c => c.startsWith('boulder:'))) {
@@ -1191,7 +1203,6 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     if (!this.isNextToDoorway(newLocation.r, newLocation.c)) {
                         throw new Error(`You can't use "seal" at **${DungeonCrawler.getLocationString(newLocation.r, newLocation.c)}**, as there'd be no doorway near you to seal!`);
                     }
-                    warnings.push(`Doorways are halved in cost when unlocked, so you may end up spending fewer points than expected.`);
                     break;
                 case 'punch':
                     // TODO: Do validation?
@@ -1263,15 +1274,6 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 }
                 return cost;
             },
-            'seal': () => {
-                let cost = 0;
-                for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
-                    if (this.isSealable(r + dr, c + dc)) {
-                        cost += 2 * this.state.keyHoleCosts[DungeonCrawler.getLocationString(r + dr, c + dc)];
-                    }
-                }
-                return cost;
-            },
             'punch': () => {
                 return 2;
             },
@@ -1282,6 +1284,9 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 return 0;
             },
             'boulder': () => {
+                return 0;
+            },
+            'seal': () => {
                 return 0;
             }
         };
@@ -1400,21 +1405,6 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         }
                         return true;
                     },
-                    'seal': () => {
-                        let numDoorwaysSealed = 0;
-                        for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
-                            if (this.isSealable(player.r + dr, player.c + dc)) {
-                                this.state.map[player.r + dr][player.c + dc] = TileType.WALL;
-                                numDoorwaysSealed++;
-                            }
-                        }
-                        if (numDoorwaysSealed === 1) {
-                            pushNonStepStatement(`**${player.displayName}** sealed a doorway`);
-                        } else {
-                            pushNonStepStatement(`**${player.displayName}** sealed **${numDoorwaysSealed}** doorways`);
-                        }
-                        return true;
-                    },
                     'punch': () => {
                         let nearPlayer = false;
                         for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
@@ -1465,6 +1455,21 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         this.state.map[r][c] = TileType.BOULDER;
                         this.consumePlayerItem(userId, 'boulder');
                         pushNonStepStatement(`**${player.displayName}** placed a boulder at **${DungeonCrawler.getLocationString(r, c)}**`);
+                        return true;
+                    },
+                    'seal': () => {
+                        let numDoorwaysSealed = 0;
+                        for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+                            if (this.isSealable(player.r + dr, player.c + dc)) {
+                                this.state.map[player.r + dr][player.c + dc] = TileType.WALL;
+                                numDoorwaysSealed++;
+                            }
+                        }
+                        if (numDoorwaysSealed === 1) {
+                            pushNonStepStatement(`**${player.displayName}** sealed a doorway`);
+                        } else {
+                            pushNonStepStatement(`**${player.displayName}** sealed **${numDoorwaysSealed}** doorways`);
+                        }
                         return true;
                     }
                 };
