@@ -23,6 +23,10 @@ export default class GoodMorningState {
                     break;
             }
         }
+        // Temp logic to add/remove certain properties
+        if (rawState['goal']) {
+            delete rawState['goal'];
+        }
     }
 
     isMorning(): boolean {
@@ -331,26 +335,8 @@ export default class GoodMorningState {
         return Math.min(...Object.values(this.data.players).map(player => player.points));
     }
 
-    getSeasonGoal(): number {
-        return this.data.goal;
-    }
-
     isSeasonGoalReached(): boolean {
         return this.hasGame() && this.getGame().isSeasonComplete();
-    }
-
-    /**
-     * @returns A number in the range [0, 1] representing the percentage completion of the current season (e.g. 0.5 means 50% complete)
-     */
-    getSeasonCompletion(): number {
-        return this.getTopScore() / this.getSeasonGoal();
-    }
-
-    /**
-     * @returns A number in the range [0, 1] representing the precentage completion of a particular player (e.g. 0.5 means 50% of the way to the goal)
-     */
-    getPlayerCompletion(userId: Snowflake): number {
-        return Math.max(0, this.getPlayerPoints(userId)) / this.getSeasonGoal();
     }
 
     /**
@@ -360,13 +346,6 @@ export default class GoodMorningState {
      */
     getPlayerRelativeCompletion(userId: Snowflake): number {
         return this.getPlayerPoints(userId) / this.getTopScore();
-    }
-
-    /**
-     * @returns The amount of points normalized to a season goal of 100
-     */
-    getNormalizedPoints(points: number): number {
-        return 100 * points / this.getSeasonGoal();
     }
 
     getDailyStatus(userId: Snowflake): DailyPlayerState | undefined {

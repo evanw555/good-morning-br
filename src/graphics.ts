@@ -30,7 +30,9 @@ const _createImage = async (state: GoodMorningState, medals: Record<Snowflake, M
     const BAR_PADDING = 3;
     const INNER_BAR_WIDTH = BAR_WIDTH - (BAR_PADDING * 2);
     const BAR_SPACING = BAR_PADDING * 1.5;
-    const PIXELS_PER_POINT = INNER_BAR_WIDTH / state.getSeasonGoal();
+    // TODO (2.0): This isn't really relevant anymore because there's no longer a season goal
+    const SEASON_GOAL = 100;
+    const PIXELS_PER_POINT = INNER_BAR_WIDTH / SEASON_GOAL;
     const LOWEST_SCORE = state.getLowestScore();
     const MARGIN = Math.max(BAR_HEIGHT / 2, BAR_PADDING + PIXELS_PER_POINT * Math.abs(Math.min(LOWEST_SCORE, 0)));
     const WIDTH = BAR_WIDTH + 2 * MARGIN;
@@ -82,7 +84,7 @@ const _createImage = async (state: GoodMorningState, medals: Record<Snowflake, M
         const baseY = HEADER_HEIGHT + i * (BAR_HEIGHT + BAR_SPACING);
 
         // Determine the bar's actual rendered width (may be negative, but clip to prevent it from being too large)
-        const actualBarWidth = Math.min(state.getPlayerPoints(userId), state.getSeasonGoal()) * PIXELS_PER_POINT;
+        const actualBarWidth = Math.min(state.getPlayerPoints(userId), SEASON_GOAL) * PIXELS_PER_POINT;
 
         // Draw the bar container
         context.fillStyle = 'rgb(221,231,239)';

@@ -26,7 +26,6 @@ export type FullDate = string
 
 export interface GoodMorningConfig {
     goodMorningChannelId: Snowflake,
-    seasonGoal: number,
     goodMorningMessageProbability: number,
     replyViaReactionProbability: number,
     goodMorningReplyCount: number,
@@ -162,7 +161,6 @@ export type GameState = DungeonGameState | DummyGameState;
 
 export interface RawGoodMorningState {
     season: number,
-    goal: number,
     startedOn: FullDate,
     isMorning: boolean,
     isGracePeriod?: boolean,

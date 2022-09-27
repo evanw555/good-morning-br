@@ -7,10 +7,6 @@ export function validateConfig(config: GoodMorningConfig): void {
         console.log('No goodMorningChannelId is set in the config, aborting...');
         process.exit(1);
     }
-    if (config.seasonGoal === undefined) {
-        console.log('No seasonGoal is set in the config, aborting...');
-        process.exit(1);
-    }
     if (config.goodMorningMessageProbability === undefined) {
         config.goodMorningMessageProbability = 1;
     }

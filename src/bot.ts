@@ -206,7 +206,6 @@ const advanceSeason = async (): Promise<{ gold?: Snowflake, silver?: Snowflake, 
     const nextSeason: number = state.getSeasonNumber() + 1;
     state = new GoodMorningState({
         season: nextSeason,
-        goal: config.seasonGoal,
         startedOn: getTodayDateString(),
         isMorning: false,
         isGracePeriod: true,
@@ -268,12 +267,12 @@ const chooseEvent = (date: Date): DailyEvent | undefined => {
     }
     // Begin home stretch if we're far enough along and not currently in the home stretch (this will be delayed if an above event needs to happen instead e.g. MF)
     // TODO (2.0): Re-enable this?
-    if (false && state.getSeasonCompletion() >= 0.85 && !state.isHomeStretch()) {
-        return {
-            type: DailyEventType.BeginHomeStretch,
-            homeStretchSurprises: [HomeStretchSurprise.Multipliers, HomeStretchSurprise.LongestComboBonus, HomeStretchSurprise.ComboBreakerBonus]
-        };
-    }
+    // if (state.getSeasonCompletion() >= 0.85 && !state.isHomeStretch()) {
+    //     return {
+    //         type: DailyEventType.BeginHomeStretch,
+    //         homeStretchSurprises: [HomeStretchSurprise.Multipliers, HomeStretchSurprise.LongestComboBonus, HomeStretchSurprise.ComboBreakerBonus]
+    //     };
+    // }
     // High chance of a random event 2/3 days, low chance 1/3 days
     const eventChance: number = (date.getDate() % 3 === 0) ? 0.2 : 0.8;
     if (Math.random() < eventChance) {
@@ -717,12 +716,12 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
 
     // If we're 20% of the way through the season, determine the nerf threshold for today
     // TODO (2.0): Do we want this?
-    if (false && state.getSeasonCompletion() > 0.2) {
-        // Threshold is 2 top awards below the top score
-        const nerfThreshold: number = toFixed(state.getTopScore() - (2 * config.bonusAward));
-        state.setNerfThreshold(nerfThreshold);
-        dailyVolatileLog.push([new Date(), `Set nerf threshold to ${nerfThreshold}`]);
-    }
+    // if (state.getSeasonCompletion() > 0.2) {
+    //     // Threshold is 2 top awards below the top score
+    //     const nerfThreshold: number = toFixed(state.getTopScore() - (2 * config.bonusAward));
+    //     state.setNerfThreshold(nerfThreshold);
+    //     dailyVolatileLog.push([new Date(), `Set nerf threshold to ${nerfThreshold}`]);
+    // }
 
     // If it's a Recap Sunday, then process weekly changes
     if (state.getEventType() === DailyEventType.RecapSunday) {
@@ -1288,19 +1287,20 @@ const TIMEOUT_CALLBACKS = {
                 const orderedPlayers: Snowflake[] = state.getOrderedPlayers();
                 // Update player multipliers and dump state
                 orderedPlayers.forEach(userId => {
-                    if (state.getPlayerPoints(userId) <= 0) {
-                        state.setPlayerMultiplier(userId, 0.5);
-                    } else if (state.getPlayerCompletion(userId) >= 0.8) {
-                        x1players.push(userId);
-                    } else if (state.getPlayerCompletion(userId) >= 0.7) {
-                        x1_5players.push(userId);
-                        state.setPlayerMultiplier(userId, 1.5);
-                    } else if (state.getPlayerCompletion(userId) >= 0.5) {
-                        x2players.push(userId);
-                        state.setPlayerMultiplier(userId, 2);
-                    } else {
-                        state.setPlayerMultiplier(userId, 3);
-                    }
+                    // TODO (2.0): Re-enable this using some accurate form of completion?
+                    // if (state.getPlayerPoints(userId) <= 0) {
+                    //     state.setPlayerMultiplier(userId, 0.5);
+                    // } else if (state.getPlayerCompletion(userId) >= 0.8) {
+                    //     x1players.push(userId);
+                    // } else if (state.getPlayerCompletion(userId) >= 0.7) {
+                    //     x1_5players.push(userId);
+                    //     state.setPlayerMultiplier(userId, 1.5);
+                    // } else if (state.getPlayerCompletion(userId) >= 0.5) {
+                    //     x2players.push(userId);
+                    //     state.setPlayerMultiplier(userId, 2);
+                    // } else {
+                    //     state.setPlayerMultiplier(userId, 3);
+                    // }
                 });
                 await dumpState();
                 // Notify the channel
@@ -1324,7 +1324,7 @@ const TIMEOUT_CALLBACKS = {
                     const pointsAwarded: number = state.awardPoints(maxCombo.user, config.bonusAward);
                     await dumpState();
                     // Notify channel
-                    await messenger.send(goodMorningChannel, `The winner is <@${maxCombo.user}>, with a streak lasting **${maxCombo.days}** days! This bonus is worth **${state.getNormalizedPoints(pointsAwarded)}%** karma ${config.defaultGoodMorningEmoji}`);
+                    await messenger.send(goodMorningChannel, `The winner is <@${maxCombo.user}>, with a streak lasting **${maxCombo.days}** days! This bonus is worth **${pointsAwarded}%** karma ${config.defaultGoodMorningEmoji}`);
                 }
                 break;
             case HomeStretchSurprise.ComboBreakerBonus:
@@ -1338,7 +1338,7 @@ const TIMEOUT_CALLBACKS = {
                     const pointsAwarded: number = state.awardPoints(maxBreaker, config.bonusAward);
                     await dumpState();
                     // Notify channel
-                    await messenger.send(goodMorningChannel, `The winner is <@${maxBreaker}>, who broke **${maxTimesBroken}** streaks! This bonus is worth **${state.getNormalizedPoints(pointsAwarded)}%** karma ${config.defaultGoodMorningEmoji}`);
+                    await messenger.send(goodMorningChannel, `The winner is <@${maxBreaker}>, who broke **${maxTimesBroken}** streaks! This bonus is worth **${pointsAwarded}%** karma ${config.defaultGoodMorningEmoji}`);
                 }
                 break;
             }
@@ -1404,7 +1404,6 @@ const loadState = async (): Promise<void> => {
             await logger.log('Existing state file not found, creating a fresh state...');
             state = new GoodMorningState({
                 season: 1,
-                goal: config.seasonGoal,
                 startedOn: getTodayDateString(),
                 isMorning: false,
                 isGracePeriod: true,
@@ -1779,7 +1778,7 @@ const processCommands = async (msg: Message): Promise<void> => {
         }
         // Asking about the season
         else if (sanitizedText.includes('season')) {
-            messenger.reply(msg, `It\'s season **${state.getSeasonNumber()}**, and we're **${Math.floor(100 * state.getSeasonCompletion())}%** complete!`);
+            messenger.reply(msg, `It\'s season **${state.getSeasonNumber()}**!`);
         }
         // Canvas stuff
         else if (sanitizedText.includes('canvas')) {
