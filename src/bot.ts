@@ -2058,7 +2058,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                         logStory += `and was awarded \`max(${rankedPoints}, ${activityPoints})\``;
                     }
                 } else {
-                    state.awardPoints(userId, config.defaultAward);
+                    state.awardPoints(userId, config.defaultAward / 2);
                     logStory += 'and sent an unoriginal GM message';
                 }
                 dailyVolatileLog.push([new Date(), logStory]);
