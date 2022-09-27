@@ -105,6 +105,13 @@ const revokeGMChannelAccess = async (userIds: Snowflake[]): Promise<void> => {
     }
 }
 
+/**
+ * For a given user, return how many seasons are remaining in their sungazer term (or 0 if not on the council).
+ */
+const getSungazerTerm = (userId: Snowflake): number => {
+    return history.sungazers[userId] ?? 0;
+}
+
 const updateSungazer = async (userId: Snowflake, terms: number): Promise<void> => {
     if (history.sungazers[userId] === undefined) {
         history.sungazers[userId] = terms;
@@ -828,25 +835,28 @@ const finalizeAnonymousSubmissions = async () => {
     const scores: Record<string, number> = {}; // Map (submission code : points)
     const breakdown: Record<string, number[]> = {};
     // Prime both maps (some submissions may get no votes)
-    allCodes.forEach(code => {
-        scores[code] = 0;
+    const GAZER_TERM_BONUS: number = 0.001;
+    for (const code of allCodes) {
+        const userId: Snowflake = submissionOwnersByCode[code];
+        // Prime with a base score to ultimately break ties based on previous GMBR wins
+        scores[code] = getSungazerTerm(userId) * GAZER_TERM_BONUS;
         breakdown[code] = [0, 0, 0];
-    });
+    }
     // Now tally the actual scores and breakdowns
     // Add 0.1 to break ties using total number of votes, 0.01 to ultimately break ties with golds
-    const voteValues: number[] = [3.11, 2.1, 1.1];
-    Object.values(votes).forEach(codes => {
+    const VOTE_VALUES: number[] = [3.11, 2.1, 1.1];
+    for (const codes of Object.values(votes)) {
         codes.forEach((code, i) => {
-            scores[code] = toFixed(scores[code] + (voteValues[i] ?? 0));
+            scores[code] = toFixed(scores[code] + (VOTE_VALUES[i] ?? 0), 3);
             // Take note of the breakdown
             breakdown[code][i]++;
         });
-    });
+    }
 
     // Penalize the submitters who didn't vote (but didn't forfeit)
-    deadbeats.forEach(userId => {
+    for (const userId of deadbeats) {
         state.deductPoints(userId, config.defaultAward);
-    });
+    }
 
     // Then, assign points based on rank in score (excluding those who didn't vote or forfeit)
     const validCodesSorted: string[] = allCodes.filter(code => !deadbeatSet.has(submissionOwnersByCode[code]));
@@ -959,6 +969,8 @@ const finalizeAnonymousSubmissions = async () => {
             }
         }).join('\n');
         await messenger.send(sungazersChannel, scoringDetails);
+        // Let them know how the score is calculated
+        await messenger.send(sungazersChannel, `(\`score = ${VOTE_VALUES[0]}🥇 + ${VOTE_VALUES[1]}🥈 + ${VOTE_VALUES[3]}🥉 + ${GAZER_TERM_BONUS}🌞\`)`);
     } catch (err) {
         await messenger.send(sungazersChannel, 'Nvm, my brain is melting');
         await logger.log(`Failed to compute and send voting/scoring log: \`${err}\``);
