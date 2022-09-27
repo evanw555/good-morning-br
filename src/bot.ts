@@ -1858,8 +1858,9 @@ const processCommands = async (msg: Message): Promise<void> => {
             // tempDungeon = DungeonCrawler.createBest(members, 20, 40);
             tempDungeon = DungeonCrawler.createSectional(members, { sectionSize: 11, sectionsAcross: 3 });
             tempDungeon.addPoints(msg.author.id, 100);
-            tempDungeon.addPlayerItem(msg.author.id, 'trap', 3);
-            tempDungeon.addPlayerItem(msg.author.id, 'boulder', 10);
+            tempDungeon.addPlayerItem(msg.author.id, 'trap', 5);
+            tempDungeon.addPlayerItem(msg.author.id, 'boulder', 3);
+            tempDungeon.addPlayerItem(msg.author.id, 'seal', 3);
             tempDungeon.beginTurn();
             try { // TODO: refactor typing event to somewhere else?
                 await msg.channel.sendTyping();
