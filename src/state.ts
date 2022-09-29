@@ -530,6 +530,22 @@ export default class GoodMorningState {
         this.data.maxCombo = combo;
     }
 
+    getMostRecentBaiter(): Snowflake | undefined {
+        return this.data.mostRecentBaiter;
+    }
+
+    setMostRecentBaiter(userId: Snowflake): void {
+        if (userId) {
+            this.data.mostRecentBaiter = userId;
+        } else {
+            delete this.data.mostRecentBaiter;
+        }
+    }
+
+    clearMostRecentBaiter(): void {
+        this.setMostRecentBaiter(undefined);
+    }
+
     toHistorySeasonEntry(): Season {
         return {
             season: this.data.season,

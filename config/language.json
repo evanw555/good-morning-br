@@ -244,15 +244,6 @@
             "It's never a complete morning without {!you chiming in|your radiant presence|your kind words}! Although I was hoping you'd say something a little more {adjectives.novel?}...",
             "Good morning! Though something tells me I've heard this before...",
             "Each morning I await your {adjectives.positive?} {!greeting|words} {!oh so eagerly|with bated breath|with such anticipation}, {!but|yet} this morning's greeting {!feels|seems|felt} a little forgettable"
-        ],
-        "1159": [
-            "MAD LAD!",
-            "Buddy!",
-            "Dear dog!",
-            "We got a mad lad {!over|right} here...",
-            "My {!dear dog|friend}, you are quite the mad lad...",
-            "What a morning to be living {!on the edge|dangerously}",
-            "Your life is full of {nouns.positive?1-2}, {!do not|please don't} {!throw it away|waste it|squander it}"
         ]
     },
     "beckoning": {
@@ -288,6 +279,19 @@
         "summonSuffix": [
             "{$player}, I'll let you start the Good Morning {!train|ritual} tomorrow. Go ahead and say good morning whenever you'd like, I'll wake up when I see your message",
             "I'd like {$player} to take my place tomorrow morning. Please send a {!truly|wonderfully} {adjectives.novel?} good morning message to the server to kick off the day! Don't wait for me"
+        ]
+    },
+    "bait": {
+        "setup": [
+            "{!Nice|Solid} {!bait|baiting}, let's see {!if it pays off|how it pans out|what happens|if someone falls for it}...",
+            "Let's see if {!someone|anyone|some fool} takes the bait, {!good play|devious moves|you schemer}..."
+        ],
+        "reply": [
+            "{$player} get a load of this {!guy|dude|dog}...",
+            "{$player} check out this {!chump|fool|sucker|sucka|buffoon|dunce}",
+            "What a {!chump|fool|sucker|sucka}, isn't that right {$player}?",
+            "Oh {!naw|nah|hell nah} {$player} he really {!done goofed|fumbled|did it|messed up} 😭",
+            "My {!dear dog|sweet pup}, {!you have|you've} been {!played|clowned} by {$player}"
         ]
     }
 }

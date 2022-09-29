@@ -711,6 +711,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     state.setMorning(true);
     state.setGracePeriod(false);
     state.resetDailyState();
+    state.clearMostRecentBaiter();
     dailyVolatileLog = [];
     dailyVolatileLog.push([new Date(), 'GMBR has arisen.']);
 
@@ -1064,6 +1065,14 @@ const TIMEOUT_CALLBACKS = {
             if (state.getPlayerActivity(userId).hasFullStreak() && Math.random() < 0.5) {
                 await awardPrize(userId, 'streak', 'Nice job maintaining your GM streak');
             }
+        }
+
+        // If someone baited, then award the most recent baiter
+        const baiter: Snowflake | undefined = state.getMostRecentBaiter();
+        if (baiter) {
+            state.awardPoints(baiter, config.defaultAward / 2);
+            await messenger.dm((await fetchMember(baiter)), languageGenerator.generate('{bait.setup?}'), { immediate: true });
+            await logger.log(`Awarded **${state.getPlayerDisplayName(baiter)}** for setting up bait.`);
         }
 
         // Dump state and R9K hashes
@@ -1916,6 +1925,12 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
         }
 
         if (state.isMorning()) {
+            // No matter what the event is, always update 11:59 baiters
+            if (is1159 && userId !== state.getMostRecentBaiter()) {
+                state.setMostRecentBaiter(userId);
+                await dumpState();
+            }
+
             // If the event is an anonymous submission day, then completely ignore the message
             if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
                 return;
@@ -2026,12 +2041,6 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     logStory += `said the magic word "${state.getMagicWord()}", `;
                 }
 
-                // If the player said GM at the last possible moment, reward them
-                if (is1159) {
-                    state.awardPoints(userId, config.defaultAward / 2);
-                    logStory == 'was at the last minute, ';
-                }
-
                 // Compute beckoning bonus and reset the state beckoning property if needed
                 const wasBeckoned: boolean = state.getEventType() === DailyEventType.Beckoning && msg.author.id === state.getEvent().user;
                 if (wasBeckoned) {
@@ -2092,10 +2101,6 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     else if (priorPoints < 0) {
                         messenger.reply(msg, languageGenerator.generate('{goodMorningReply.negative?}'));
                     }
-                    // If the user said GM at the last moment, reply specially
-                    else if (is1159) {
-                        messenger.reply(msg, languageGenerator.generate('{goodMorningReply.1159?}'));
-                    }
                     // Reply (or react) to the user based on their rank (and chance)
                     else if (rank <= config.goodMorningReplyCount) {
                         if (Math.random() < config.replyViaReactionProbability) {
@@ -2132,31 +2137,44 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             if (state.getEventType() === DailyEventType.ReverseGoodMorning && isAm) {
                 if (state.getEvent().reverseGMRanks[userId] === undefined) {
                     state.getEvent().reverseGMRanks[userId] = new Date().getTime();
-                    reactToMessage(msg, state.getGoodMorningEmoji());
-                    dumpState();
+                    await reactToMessage(msg, state.getGoodMorningEmoji());
+                    await dumpState();
                 }
                 return;
             }
 
             // It's not morning, so punish the player accordingly...
-            if (state.wasPlayerPenalizedToday(userId)) {
-                // Deduct a half point for repeat offenses
-                state.deductPoints(userId, 0.5);
+            const isRepeatOffense: boolean = state.wasPlayerPenalizedToday(userId);
+            if (isRepeatOffense) {
+                // Deduct a half default award for repeat offenses
+                state.deductPoints(userId, config.defaultAward / 2);
             } else {
-                // If this is the user's first penalty since last morning, react to the message and deduct one
-                state.deductPoints(userId, 1);
+                // If this is the user's first penalty since last morning, react to the message and deduct a default award
+                state.deductPoints(userId, config.defaultAward);
                 if (isAm) {
-                    reactToMessage(msg, '😴');
+                    await reactToMessage(msg, '😴');
                 } else {
-                    reactToMessage(msg, ['😡', '😬', '😒', '😐', '🤫']);
+                    await reactToMessage(msg, ['😡', '😬', '😒', '😐', '🤫']);
                 }
             }
-            dumpState();
+            // If someone baited and it's the afternoon, award and notify via DM
+            const baiter: Snowflake | undefined = state.getMostRecentBaiter();
+            if (!isAm && baiter) {
+                state.awardPoints(baiter, config.defaultAward / 2);
+                await logger.log(`Awarded **${state.getPlayerDisplayName(baiter)}** for baiting successfully.`);
+                // If it's the baited's first offense, then reply with some chance
+                if (!isRepeatOffense && Math.random() < 0.5) {
+                    await messenger.reply(msg, languageGenerator.generate('{bait.reply?}', { player: `<@${baiter}>` }));
+                } else {
+                    await messenger.dm((await fetchMember(baiter)), 'Bait successful.', { immediate: true });
+                }
+            }
+            await dumpState();
             // Reply if the user has hit a certain threshold
             if (state.getPlayerPoints(userId) === -2) {
-                messenger.reply(msg, 'Why are you still talking?');
+                await messenger.reply(msg, 'Why are you still talking?');
             } else if (state.getPlayerPoints(userId) === -5) {
-                messenger.reply(msg, 'You have brought great dishonor to this server...');
+                await messenger.reply(msg, 'You have brought great dishonor to this server...');
             }
         }
     } else if (msg.channel instanceof DMChannel && !msg.author.bot) {

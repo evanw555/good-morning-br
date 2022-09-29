@@ -171,6 +171,7 @@ export interface RawGoodMorningState {
     currentLeader?: Snowflake,
     combo?: Combo,
     maxCombo?: Combo,
+    mostRecentBaiter?: Snowflake,
     event?: DailyEvent,
     nextEvent?: DailyEvent,
     dailyStatus: Record<Snowflake, DailyPlayerState>,
