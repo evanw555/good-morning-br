@@ -2119,7 +2119,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             }
 
             // Regardless of whether it's their first message or not, react to the magic word with a small probability
-            if (saidMagicWord(msg) && Math.random() < 0.25) {
+            if (saidMagicWord(msg) && Math.random() < config.magicWordReactionProbability) {
                 await reactToMessage(msg, ['😉', '😏', '😜', '😛']);
             }
         } else {

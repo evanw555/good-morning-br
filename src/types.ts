@@ -28,6 +28,7 @@ export interface GoodMorningConfig {
     goodMorningChannelId: Snowflake,
     goodMorningMessageProbability: number,
     replyViaReactionProbability: number,
+    magicWordReactionProbability: number,
     goodMorningReplyCount: number,
     awardsByRank: Record<string, number>,
     largeAwardsByRank: Record<string, number>,

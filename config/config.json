@@ -2,6 +2,7 @@
     "goodMorningChannelId": "565538626339995653",
     "goodMorningMessageProbability": 1.0,
     "replyViaReactionProbability": 0.25,
+    "magicWordReactionProbability": 0.35,
     "goodMorningReplyCount": 3,
     "awardsByRank": {
         "1": 1.3,
