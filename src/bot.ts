@@ -253,8 +253,8 @@ const chooseEvent = (date: Date): DailyEvent | undefined => {
             // Otherwise, do attachment submissions
             return {
                 type: DailyEventType.AnonymousSubmissions,
-                // TODO: Add back ones such as "cursed image", "dummy stupid pic", "pic that goes adorable", randChoice("pic that goes ruh", "pic that goes buh") once this has happened a couple times
-                submissionType: randChoice("pic that goes hard"),
+                // TODO: Add new ones?
+                submissionType: randChoice("pic that goes hard", "cursed image", "dummy stupid pic", "pic that goes adorable", randChoice("pic that goes ruh", "pic that goes buh")),
                 isAttachmentSubmission: true,
                 submissions: {}
             };
@@ -1100,7 +1100,15 @@ const TIMEOUT_CALLBACKS = {
             }
             // Notify the sungazers about tomorrow's event (if applicable)
             if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
-                await sungazersChannel.send(`FYI gazers: tomorrow, everyone will be sending me a _${state.getEvent().submissionType}_ ${config.defaultGoodMorningEmoji}`);
+                const fyiText: string = `FYI gazers: tomorrow, everyone will be sending me a _${state.getEvent().submissionType}_. `
+                    + 'If you have another idea, reply to this message with an alternative '
+                    + `_${state.getEvent().isAttachmentSubmission ? 'image' : 'text'} submission_ prompt ${config.defaultGoodMorningEmoji}`;
+                const fyiMessage = await sungazersChannel.send(fyiText);
+                // In an hour, fetch replies to this message and start a poll for the submission type
+                const pollStartDate = new Date();
+                pollStartDate.setHours(pollStartDate.getHours() + 1);
+                // Use the delete strategy because it's not required and we want to ensure it's before the morning date
+                await timeoutManager.registerTimeout(TimeoutType.AnonymousSubmissionTypePollStart, pollStartDate, { arg: fyiMessage.id, pastStrategy: PastTimeoutStrategy.Delete });
             }
         }
 
@@ -1261,6 +1269,114 @@ const TIMEOUT_CALLBACKS = {
                 });
             }
         }
+    },
+    [TimeoutType.AnonymousSubmissionTypePollStart]: async (messageId: Snowflake): Promise<void> => {
+        if (!messageId) {
+            await logger.log('Aborting anonymous submission type poll start, as there\'s no message ID somehow...');
+            return;
+        }
+        if (!sungazersChannel) {
+            await logger.log('Aborting anonymous submission type poll start, as there\'s no sungazers channel...');
+            return;
+        }
+        if (state.getEventType() !== DailyEventType.AnonymousSubmissions) {
+            await logger.log(`Aborting anonymous submission type poll start, as the current event type is \`${state.getEventType()}\``);
+            return;
+        }
+
+        // Construct the set of proposed submission types by fetching replies to the original FYI message
+        let proposalSet: Set<string> = new Set();
+        const messages = await sungazersChannel.messages.fetch({ after: messageId });
+        for (const message of messages.toJSON()) {
+            if (message.reference?.messageId === messageId) {
+                proposalSet.add(message.content.trim().toLowerCase());
+            }
+        }
+
+        // If there are no proposed alternatives, abort...
+        if (proposalSet.size === 0) {
+            await logger.log('Aborting anonymous submission type poll start, there were no proposals...');
+            return;
+        }
+
+        // If there are too many, trim it down to 5
+        const maxAlternatives: number = 5;
+        if (proposalSet.size > maxAlternatives) {
+            await logger.log(`Too many anonymous submission type proposals, truncating from **${proposalSet.size}** to **${maxAlternatives}**`);
+            proposalSet = new Set(Array.from(proposalSet).slice(0, maxAlternatives));
+        }
+
+        // Add the original proposed type
+        proposalSet.add(state.getEvent().submissionType);
+        // TODO: Can we refactor this to the common utility library?
+        const proposedTypes: string[] = Array.from(proposalSet);
+        const choiceKeys: string[] = ['🔴', '🟠', '🟡', '🟢', '🔵', '🟣'].slice(0, proposedTypes.length);
+
+        // Construct the poll data
+        const choices: Record<string, string> = {};
+        for (let i = 0; i < proposedTypes.length; i++) {
+            choices[choiceKeys[i]] = proposedTypes[i];
+        }
+
+        // Send the poll message and prime the choices
+        const pollMessage = await sungazersChannel.send('What should people submit tomorrow?\n' + Object.entries(choices).map(([key, value]) => `${key} _${value}_`).join('\n'));
+        for (const emoji of choiceKeys) {
+            try {
+                await sleep(500);
+                await pollMessage.react(emoji);
+            } catch (err) {
+                await logger.log(`Failed to react to poll message with ${emoji}: \`${err}\``);
+            }
+        }
+
+        // Schedule the end of the poll
+        const pollEndDate = new Date();
+        pollEndDate.setHours(pollEndDate.getHours() + 5);
+        const arg = {
+            messageId: pollMessage.id,
+            choices
+        }
+        // Use the delete strategy because it's not required and we want to ensure it's before the morning date
+        await timeoutManager.registerTimeout(TimeoutType.AnonymousSubmissionTypePollEnd, pollEndDate, { arg, pastStrategy: PastTimeoutStrategy.Delete });
+    },
+    [TimeoutType.AnonymousSubmissionTypePollEnd]: async (arg: { messageId: Snowflake, choices: Record<string, string> }): Promise<void> => {
+        if (!arg || !arg.messageId || !arg.choices) {
+            await logger.log('Aborting anonymous submission type poll end, as there\'s no timeout arg...');
+            return;
+        }
+        if (!sungazersChannel) {
+            await logger.log('Aborting anonymous submission type poll end, as there\'s no sungazers channel...');
+            return;
+        }
+        if (state.getEventType() !== DailyEventType.AnonymousSubmissions) {
+            await logger.log(`Aborting anonymous submission type poll end, as the current event type is \`${state.getEventType()}\``);
+            return;
+        }
+
+        // Fetch the poll message
+        const pollMessage = await sungazersChannel.messages.fetch(arg.messageId);
+
+        // Determine the winner(s) of the poll
+        // TODO: Can we refactor the poll logic to the common util library?
+        let maxVotes: number = -1;
+        let winningChoices: string[] = [];
+        for (const key of Object.keys(arg.choices)) {
+            const choice: string = arg.choices[key];
+            const votes: number = pollMessage.reactions.cache.get(key)?.count ?? 0;
+            if (votes > maxVotes) {
+                maxVotes = votes;
+                winningChoices = [choice];
+            } else if (votes == maxVotes) {
+                winningChoices.push(choice);
+            }
+        }
+
+        // Update the submission type in the state
+        state.getEvent().submissionType = randChoice(...winningChoices);
+        await dumpState();
+
+        // Notify the channel
+        await pollMessage.reply(`The results are in, everyone will be sending me a _${state.getEvent().submissionType}_ ${config.defaultGoodMorningEmoji}`);
     },
     [TimeoutType.Nightmare]: async (): Promise<void> => {
         if (state.getEventType() !== DailyEventType.Nightmare) {

@@ -8,6 +8,8 @@ export enum TimeoutType{
     GuestReveilleFallback = 'GUEST_REVEILLE_FALLBACK',
     AnonymousSubmissionReveal = 'ANONYMOUS_SUBMISSION_REVEAL',
     AnonymousSubmissionVotingReminder = 'ANONYMOUS_SUBMISSION_VOTING_REMINDER',
+    AnonymousSubmissionTypePollStart = 'ANONYMOUS_SUBMISSION_TYPE_POLL_START',
+    AnonymousSubmissionTypePollEnd = 'ANONYMOUS_SUBMISSION_TYPE_POLL_END',
     Nightmare = 'NIGHTMARE',
     HomeStretchSurprise = 'HOME_STRETCH_SURPRISE',
     // GMBR 2.0 events
