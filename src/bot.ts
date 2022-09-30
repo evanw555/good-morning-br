@@ -581,20 +581,18 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         }
         // Create the dungeon using these initial members
         // TODO (2.0): Eventually, this should be more generic for other game types
-        const dungeon = DungeonCrawler.createBest(members, 20, 60);
+        const dungeon = DungeonCrawler.createSectional(members, { sectionSize: 11, sectionsAcross: 3 });
         state.setGame(dungeon);
     }
 
     // If today is a decision day
     const newlyAddedPlayers: Snowflake[] = [];
     if (state.getEventType() === DailyEventType.GameDecision) {
-        // Start accepting game decisions
-        state.setAcceptingGameDecisions(true);
         // Add new players to the game and transfer all earned points into the game
         const addPlayerLogs: string[] = [];
         const membersById = await fetchMembers(state.getPlayers());
         for (const userId of state.getOrderedPlayers()) {
-            // If the user was fetched, use that member data to update the game state
+            // If the user was fetched, either add them to the game or update their member data
             if (userId in membersById) {
                 const member = membersById[userId];
                 if (state.getGame().hasPlayer(userId)) {
@@ -602,7 +600,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
                     state.getGame().updatePlayer(member);
                     state.setPlayerDisplayName(userId, member.displayName);
                 } else {
-                    // Add player to the game if they're new (for the first week, this should be handled by the logic above)
+                    // Add player to the game if they're new (for the first week, this should be handled by the dungeon initialization logic above)
                     const addPlayerLog: string = state.getGame().addPlayer(member);
                     addPlayerLogs.push(addPlayerLog);
                     newlyAddedPlayers.push(member.id);
@@ -623,6 +621,8 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         await logger.log(addPlayerLogs.join('\n') || 'No new players were added this week.');
         // Begin this week's turn
         state.getGame().beginTurn();
+        // Start accepting game decisions
+        state.setAcceptingGameDecisions(true);
     } else {
         // For all other morning types, stop accepting game decisions
         state.setAcceptingGameDecisions(false);
@@ -1937,9 +1937,12 @@ const processCommands = async (msg: Message): Promise<void> => {
             }
             await messenger.sendLargeMonospaced(msg.channel, message);
         }
-        // Return the max score
-        else if (sanitizedText.includes('max')) {
-            await msg.reply(`The top score is \`${state.getTopScore()}\``);
+        // Test the percentile querying logic
+        else if (sanitizedText.includes('percentile')) {
+            const from: number = parseInt(sanitizedText.split(' ')[1] || '0');
+            const to: number = parseInt(sanitizedText.split(' ')[2] || '1');
+            await msg.reply(`Querying ordered players from P \`${from}\` to \`${to}\`:\n`
+                + state.queryOrderedPlayers({ abovePercentile: from, belowPercentile: to }).map((userId, i) => `**${i}. ${state.getPlayerDisplayName(userId)}**`).join('\n'));
         }
         // Choose a magic word and show potential recipients
         else if (sanitizedText.includes('magic word')) {

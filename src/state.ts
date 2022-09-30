@@ -24,9 +24,7 @@ export default class GoodMorningState {
             }
         }
         // Temp logic to add/remove certain properties
-        if (rawState['goal']) {
-            delete rawState['goal'];
-        }
+        // ...
     }
 
     isMorning(): boolean {
@@ -196,18 +194,22 @@ export default class GoodMorningState {
     }
 
     /**
-     * Returns an ordered list of user IDs sorted by points, then days since last good morning, then penalties.
-     * @param players map of player state objects
+     * Returns an ordered list of user IDs sorted by their rank in the game.
+     * If there is no game yet then sort by points, then days since last good morning, then penalties.
      * @returns sorted list of user IDs
      */
     getOrderedPlayers(): Snowflake[] {
-        return this.getPlayers().sort((x, y) =>
-            // Points descending
-            this.getPlayerPoints(y) - this.getPlayerPoints(x)
-            // Days since last GM ascending
-            || this.getPlayerDaysSinceLGM(x) - this.getPlayerDaysSinceLGM(y)
-            // Deductions ascending
-            || this.getPlayerDeductions(x) - this.getPlayerDeductions(y));
+        if (this.hasGame()) {
+            return this.getGame().getOrderedPlayers();
+        } else {
+            return this.getPlayers().sort((x, y) =>
+                // Points descending
+                this.getPlayerPoints(y) - this.getPlayerPoints(x)
+                // Days since last GM ascending
+                || this.getPlayerDaysSinceLGM(x) - this.getPlayerDaysSinceLGM(y)
+                // Deductions ascending
+                || this.getPlayerDeductions(x) - this.getPlayerDeductions(y));
+        }
     }
 
     getTopPlayer(): Snowflake {
@@ -254,34 +256,38 @@ export default class GoodMorningState {
      * @returns List of user IDs for players who may serve as a potential reveiller
      */
     getPotentialReveillers(): Snowflake[] {
-        // Only players who aren't the leader, yet have earned at least half as much as the leader, and have said GM today
-        return this.queryOrderedPlayers({ skipPlayers: 1, minRelativeCompletion: 0.5, maxDays: 0 });
+        // Only players who aren't the leader, yet are in the top 50%, and have said GM today
+        return this.queryOrderedPlayers({ skipPlayers: 1, abovePercentile: 0.5, maxDays: 0 });
     }
     /**
      * @returns List of user IDs for players who are suitable to receive the magic word hint
      */
     getPotentialMagicWordRecipients(): Snowflake[] {
-        return this.queryOrderedPlayers({ maxRelativeCompletion: 0.5, minPoints: 1 });
+        return this.queryOrderedPlayers({ belowPercentile: 0.5, maxRelativePoints: 0.5, maxDays: 2 });
     }
 
     /**
      * Query the ordered (by score) list of players, but with the following parameters...
      * @param options parameters map
      * @param options.skipPlayers omit the top N players (e.g. 2 means omit the first-place and second-place players)
+     * @param options.abovePercentile only include players above percentile P in terms of player ordering (after skipPlayers is applied)
+     * @param options.belowPercentile only include players below percentile P in terms of player ordering (after skipPlayers is applied)
      * @param options.maxDays only include players who've said GM in the last N days
      * @param options.minDays only include players who haven't said GM in the last N-1 days
-     * @param options.maxRelativeCompletion only include players with at most this relative completion
-     * @param options.minRelativeCompletion only include players with at least this relative completion
+     * @param options.maxRelativePoints only include players with at most this relative points
+     * @param options.minRelativePoints only include players with at least this relative points
      * @param options.minPoints only include player with at least so many points
      * @param options.n only return the first N players (after the previous filters have been applied)
      * @returns ordered and filtered list of user IDs
      */
     queryOrderedPlayers(options: {
         skipPlayers?: number,
+        abovePercentile?: number,
+        belowPercentile?: number,
         maxDays?: number,
         minDays?: number,
-        maxRelativeCompletion?: number,
-        minRelativeCompletion?: number,
+        maxRelativePoints?: number,
+        minRelativePoints?: number,
         minPoints?: number,
         n?: number
     }): Snowflake[]{
@@ -289,6 +295,12 @@ export default class GoodMorningState {
 
         if (options.skipPlayers !== undefined) {
             result = result.slice(options.skipPlayers);
+        }
+
+        if (options.abovePercentile !== undefined || options.belowPercentile !== undefined) {
+            const startIndex = Math.floor((options.abovePercentile ?? 0) * result.length);
+            const endIndex = Math.floor((options.belowPercentile ?? 1) * result.length);
+            result = result.slice(startIndex, endIndex);
         }
 
         if (options.maxDays !== undefined) {
@@ -299,12 +311,12 @@ export default class GoodMorningState {
             result = result.filter(userId => this.getPlayerDaysSinceLGM(userId) >= options.minDays)
         }
 
-        if (options.maxRelativeCompletion !== undefined) {
-            result = result.filter(userId => this.getPlayerRelativeCompletion(userId) <= options.maxRelativeCompletion);
+        if (options.maxRelativePoints !== undefined) {
+            result = result.filter(userId => this.getPlayerRelativePoints(userId) <= options.maxRelativePoints);
         }
 
-        if (options.minRelativeCompletion !== undefined) {
-            result = result.filter(userId => this.getPlayerRelativeCompletion(userId) >= options.minRelativeCompletion);
+        if (options.minRelativePoints !== undefined) {
+            result = result.filter(userId => this.getPlayerRelativePoints(userId) >= options.minRelativePoints);
         }
 
         if (options.minPoints !== undefined) {
@@ -319,16 +331,19 @@ export default class GoodMorningState {
     }
 
     /**
-     * @returns The max total point score of all players currently in play
+     * @returns The max total points of all players currently in play
      */
-    getTopScore(): number {
+    getMaxPoints(): number {
         if (this.getNumPlayers() === 0) {
             return 0;
         }
         return Math.max(...Object.values(this.data.players).map(player => player.points));
     }
 
-    getLowestScore(): number {
+    /**
+     * @returns The min total points of all players currently in play
+     */
+    getMinPoints(): number {
         if (this.getNumPlayers() === 0) {
             return 0;
         }
@@ -340,12 +355,12 @@ export default class GoodMorningState {
     }
 
     /**
-     * Returns a number in the range [0, 1] representing the percentage completion of a particular player relative to
-     * the player with the highest completion (e.g. 0.75 means 75% of the max player's score).
-     * @returns The player's relative completion
+     * Returns a number in the range [0, 1] representing the points of a particular player relative to
+     * the player with the highest points (e.g. 0.75 means 75% of the max points).
+     * @returns The player's relative points
      */
-    getPlayerRelativeCompletion(userId: Snowflake): number {
-        return this.getPlayerPoints(userId) / this.getTopScore();
+    getPlayerRelativePoints(userId: Snowflake): number {
+        return this.getPlayerPoints(userId) / this.getMaxPoints();
     }
 
     getDailyStatus(userId: Snowflake): DailyPlayerState | undefined {

@@ -19,6 +19,7 @@ export default abstract class AbstractGame<T extends GameState> {
 
     abstract getIntroductionText(): string
     abstract getInstructionsText(): string
+    abstract getOrderedPlayers(): Snowflake[]
     abstract hasPlayer(userId: Snowflake): boolean
     abstract addPlayer(member: GuildMember): string
     abstract updatePlayer(member: GuildMember): void

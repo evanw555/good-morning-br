@@ -63,6 +63,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 + '9. If you warp multiple times in one turn, all subsequent warps will only go through if it brings you closer to the goal.'
     }
 
+    getOrderedPlayers(): Snowflake[] {
+        return Object.keys(this.state.players).sort((x, y) => this.state.players[x].rank - this.state.players[y].rank);
+    }
+
     hasPlayer(userId: Snowflake): boolean {
         return userId in this.state.players;
     }
@@ -73,7 +77,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             return;
         }
         // Get the worst 33% of players based on location
-        const playersClosestToGoal: Snowflake[] = this.getPlayersClosestToGoal();
+        const playersClosestToGoal: Snowflake[] = this.getUnfinishedPlayersClosestToGoal();
         const worstPlayers = playersClosestToGoal.slice(-Math.floor(playersClosestToGoal.length / 3));
         // Choose a random vacant spawn location around any of these players
         const spawnLocation = this.getSpawnableLocationAroundPlayers(worstPlayers);
@@ -86,10 +90,14 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         this.state.players[member.id] = {
             r: spawnR,
             c: spawnC,
+            rank: this.getNumPlayers() + 1,
             points: lateStarterPoints,
             displayName: member.displayName,
             avatarUrl: member.user.displayAvatarURL({ size: 32, format: 'png' })
         };
+        // Refresh all player ranks
+        this.refreshPlayerRanks();
+        // Return log text describing this player being added
         const locationText: string = spawnLocation ? `near **${this.getDisplayName(spawnLocation.userId)}**` : `at \`${DungeonCrawler.getLocationString(spawnR, spawnC)}\``;
         return `Added player **${member.displayName}** ${locationText} with **${lateStarterPoints}** starter points`;
     }
@@ -321,7 +329,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         c2.fillStyle = 'white';
         const leftTextX = WIDTH + DungeonCrawler.TILE_SIZE + MARGIN;
         c2.fillText(`Week ${this.state.turn}, Action ${this.state.action}`, leftTextX, DungeonCrawler.TILE_SIZE);
-        for (const userId of this.getOrderedPlayers()) {
+        for (const userId of this.getOrganizedPlayers()) {
             y++;
             const player = this.state.players[userId];
             if (player.knockedOut) {
@@ -491,7 +499,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         this.state.action = 0;
         this.state.decisions = {};
 
-        for (const userId of this.getOrderedPlayers()) {
+        // Refresh all player ranks
+        this.refreshPlayerRanks();
+
+        for (const userId of this.getPlayers()) {
             const player = this.state.players[userId];
             // Reset per-turn metadata and statuses
             delete player.previousLocation;
@@ -569,7 +580,49 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return DungeonCrawler.getLocationString(this.state.players[userId].r, this.state.players[userId].c);
     }
 
-    getOrderedPlayers(): Snowflake[] {
+    private refreshPlayerRanks(): void {
+        let i = 0;
+        // For each winner (including those beyond the top 3), assign rank based on finish order
+        // TODO: Should we change the winner field to be "finishers" to reduce ambiguity?
+        for (const userId of this.state.winners) {
+            this.state.players[userId].rank = ++i;
+        }
+        // For the remaining players, approximate the cost to goal
+        const remainingPlayers: Snowflake[] = this.getUnfinishedPlayers();
+        const costs: Record<Snowflake, number> = {};
+        for (const userId of remainingPlayers) {
+            costs[userId] = this.approximateCostToGoalForPlayer(userId);
+        }
+        // Sort first based on remaining cost to goal, then break ties using points
+        remainingPlayers.sort((x, y) => (costs[x] - costs[y]) || (this.getPoints(y) - this.getPoints(x)));
+        // Assign rank based on this sorting
+        for (const userId of remainingPlayers) {
+            this.state.players[userId].rank = ++i;
+        }
+    }
+
+    getNumPlayers(): number {
+        return Object.keys(this.state.players).length;
+    }
+
+    /**
+     * @returns all players in no particular order
+     */
+    getPlayers(): Snowflake[] {
+        return Object.keys(this.state.players);
+    }
+
+    /**
+     * @returns all unfinished players in no particular order
+     */
+    getUnfinishedPlayers(): Snowflake[] {
+        return Object.keys(this.state.players).filter(userId => !this.state.players[userId].finished);
+    }
+
+    /**
+     * @returns all players sorted in row-column order
+     */
+    getOrganizedPlayers(): Snowflake[] {
         const getLocationRank = (userId: Snowflake) => {
             return this.state.players[userId].r * this.state.columns + this.state.players[userId].c;
         }
@@ -577,26 +630,28 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     }
 
     /**
-     * @returns List of all players ordered by number of steps to the goal ascending (i.e. best players first)
+     * @returns all unfinished players ordered by number of steps to the goal ascending (i.e. best players first)
      */
-    getPlayersClosestToGoal(): Snowflake[] {
+    getUnfinishedPlayersClosestToGoal(): Snowflake[] {
         const costs: Record<Snowflake, number> = {};
-        for (const userId of this.getOrderedPlayers()) {
+        for (const userId of this.getUnfinishedPlayers()) {
             costs[userId] = this.approximateCostToGoalForPlayer(userId);
         }
         return Object.keys(this.state.players).sort((x, y) => costs[x] - costs[y]);
     }
 
+    /**
+     * @returns all players in random order
+     */
     getShuffledPlayers(): Snowflake[] {
         return shuffle(Object.keys(this.state.players));
     }
 
+    /**
+     * @returns all players other than the one provided in no particular order
+     */
     getOtherPlayers(userId: Snowflake): Snowflake[] {
         return Object.keys(this.state.players).filter(id => id !== userId);
-    }
-
-    getUnfinishedPlayers(): Snowflake[] {
-        return Object.keys(this.state.players).filter(userId => !this.state.players[userId].finished);
     }
 
     getDisplayName(userId: Snowflake): string {
@@ -788,6 +843,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             players[member.id] = {
                 r,
                 c,
+                rank: j + 1,
                 avatarUrl: member.user.displayAvatarURL({ size: 32, format: 'png' }),
                 displayName: member.displayName,
                 points: DungeonCrawler.STARTER_POINTS
@@ -807,6 +863,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             trapOwners: {},
             players
         });
+        dungeon.refreshPlayerRanks();
+
         return dungeon;
     }
 
@@ -973,6 +1031,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             players[member.id] = {
                 r,
                 c,
+                rank: j + 1,
                 avatarUrl: member.user.displayAvatarURL({ size: 32, format: 'png' }),
                 displayName: member.displayName,
                 points: DungeonCrawler.STARTER_POINTS
@@ -993,6 +1052,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             trapOwners: {},
             players
         });
+        dungeon.refreshPlayerRanks();
+
         return dungeon;
     }
 
@@ -1075,11 +1136,14 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return locations;
     }
 
+    /**
+     * @returns an unfinished player at the given location, else undefined if no player exists at this location
+     */
     private getPlayerAtLocation(r: number, c: number): Snowflake | undefined {
-        for (const userId of this.getOrderedPlayers()) {
+        // Exclude players who've already finished (since they effectively don't have a location)
+        for (const userId of this.getUnfinishedPlayers()) {
             const player = this.state.players[userId];
-            // Exclude players who've already finished (since they effectively don't have a location)
-            if (!player.finished && player.r === r && player.c === c) {
+            if (player.r === r && player.c === c) {
                 return userId;
             }
         }
@@ -1553,9 +1617,13 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             }
         }
 
+        // Turn is over, flush all remaining step statements into the statement log
+        addStepStatements();
+
+        // Refresh all player ranks
+        this.refreshPlayerRanks();
 
         // If there are no decisions left, end the turn
-        addStepStatements();
         return {
             summary: naturalJoin(summaryData.statements, 'then') || 'Dogs sat around with their hands in their pockets...',
             continueProcessing: Object.keys(this.state.decisions).length > 0,
@@ -1637,7 +1705,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     getMapFairness(): { min: number, max: number, fairness: number, description: string } {
         let min = Number.MAX_SAFE_INTEGER;
         let max = -1;
-        for (const userId of this.getOrderedPlayers()) {
+        for (const userId of this.getPlayers()) {
             const cost = this.approximateCostToGoalForPlayer(userId);
             max = Math.max(max, cost);
             min = Math.min(min, cost);
@@ -1647,7 +1715,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
 
     canAllPlayersReachGoal(weightMap: (number | null)[][]): boolean {
         const finder = new AStarPathFinder(weightMap);
-        for (const userId of this.getOrderedPlayers()) {
+        for (const userId of this.getUnfinishedPlayers()) {
             // TOOD: can we somehow reuse the existing APIs but add more options?
             const player = this.state.players[userId];
             const result = finder.search({

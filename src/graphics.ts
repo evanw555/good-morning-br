@@ -33,7 +33,7 @@ const _createImage = async (state: GoodMorningState, medals: Record<Snowflake, M
     // TODO (2.0): This isn't really relevant anymore because there's no longer a season goal
     const SEASON_GOAL = 100;
     const PIXELS_PER_POINT = INNER_BAR_WIDTH / SEASON_GOAL;
-    const LOWEST_SCORE = state.getLowestScore();
+    const LOWEST_SCORE = state.getMinPoints();
     const MARGIN = Math.max(BAR_HEIGHT / 2, BAR_PADDING + PIXELS_PER_POINT * Math.abs(Math.min(LOWEST_SCORE, 0)));
     const WIDTH = BAR_WIDTH + 2 * MARGIN;
     const HEIGHT = HEADER_HEIGHT + state.getNumPlayers() * (BAR_HEIGHT + BAR_SPACING) + MARGIN - BAR_SPACING;

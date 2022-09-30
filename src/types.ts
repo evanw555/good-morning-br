@@ -123,6 +123,11 @@ export interface DungeonLocation {
 export interface DungeonPlayerState {
     r: number,
     c: number,
+    /**
+     * Integer value representing the rank of this player.
+     * Each player should have a unique value, and all values should be consecutive beginning at 1.
+     */
+    rank: number,
     avatarUrl: string,
     displayName: string,
     points: number,
