@@ -1939,8 +1939,8 @@ const processCommands = async (msg: Message): Promise<void> => {
         }
         // Test the percentile querying logic
         else if (sanitizedText.includes('percentile')) {
-            const from: number = parseInt(sanitizedText.split(' ')[1] || '0');
-            const to: number = parseInt(sanitizedText.split(' ')[2] || '1');
+            const from: number = parseFloat(sanitizedText.split(' ')[1] ?? '0');
+            const to: number = parseFloat(sanitizedText.split(' ')[2] ?? '1');
             await msg.reply(`Querying ordered players from P \`${from}\` to \`${to}\`:\n`
                 + state.queryOrderedPlayers({ abovePercentile: from, belowPercentile: to }).map((userId, i) => `**${i}. ${state.getPlayerDisplayName(userId)}**`).join('\n'));
         }
