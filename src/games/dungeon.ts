@@ -1354,7 +1354,11 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 return 0;
             }
         };
-        return actionCosts[action]();
+        if (action in actionCosts) {
+            return actionCosts[action]();
+        }
+        // Emergency fallback, invalid actions should be handled elsewhere
+        return 0;
     }
 
     processPlayerDecisions(): { summary: string, continueProcessing: boolean, continueImmediately: boolean } {
