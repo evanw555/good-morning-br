@@ -298,8 +298,8 @@ export default class GoodMorningState {
         }
 
         if (options.abovePercentile !== undefined || options.belowPercentile !== undefined) {
-            const startIndex = Math.floor((options.abovePercentile ?? 0) * result.length);
-            const endIndex = Math.floor((options.belowPercentile ?? 1) * result.length);
+            const startIndex = result.length - Math.floor((options.belowPercentile ?? 1) * result.length);
+            const endIndex = result.length - Math.floor((options.abovePercentile ?? 0) * result.length);
             result = result.slice(startIndex, endIndex);
         }
 
