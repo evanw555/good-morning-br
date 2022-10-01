@@ -177,10 +177,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     } else if (this.isTileType(r, c, TileType.OPENED_KEY_HOLE)) {
                         context.fillStyle = DungeonCrawler.STYLE_SKY;
                         if (this.isWalkable(r - 1, c) || this.isWalkable(r + 1, c)) {
-                            context.fillRect((c + .1) * DungeonCrawler.TILE_SIZE, (r - .1) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE * .8, DungeonCrawler.TILE_SIZE * 1.2);
+                            context.fillRect((c + .1) * DungeonCrawler.TILE_SIZE, r * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE * .8, DungeonCrawler.TILE_SIZE);
                         }
                         if (this.isWalkable(r, c - 1) || this.isWalkable(r, c + 1)) {
-                            context.fillRect((c - .1) * DungeonCrawler.TILE_SIZE, (r + .1) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE * 1.2, DungeonCrawler.TILE_SIZE * .8);
+                            context.fillRect(c * DungeonCrawler.TILE_SIZE, (r + .1) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE * .8);
                         }
                         // Draw opened key hole cost
                         context.fillStyle = DungeonCrawler.STYLE_CLOUD;
