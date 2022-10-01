@@ -231,6 +231,13 @@
             "Good morning! To be honest, I was feeling a little {!sleepy|snoozy|me-tired} until I saw your video, gave me a hearty laugh and a bright smile!",
             "Good morning! This is a {adjectives.positive?} video! Who else agrees with me?"
         ],
+        "unoriginalVideo": [
+            "I {!have a|get the} feeling {!I've|we've} already seen {!this|this one} before...",
+            "{!Hmm|Hmmmm|Erm|Uhhhh} this video {!feels way too|seems} familiar...",
+            "It's called Monkey Friday, not Repost Friday!",
+            "My {!dear dog|prodigal pup|horrid hound}! What is this???",
+            "Oh {!dear|deer}, {!sorry to say|my apologies} but {!I've seen this one already|this is a repost}..."
+        ],
         "unoriginal": [
             "Good morning! Not the most {adjectives.novel?} greeting, but thanks {!anyway|regardless}",
             "Good morning! I feel like I've heard this before, {!though|however}",

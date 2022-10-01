@@ -2,7 +2,7 @@ import { Client, DMChannel, Intents, MessageAttachment, TextChannel } from 'disc
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'discord.js';
 import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, HomeStretchSurprise, PrizeType } from './types';
 import { createHomeStretchImage, createMidSeasonUpdateImage } from './graphics';
-import { hasVideo, validateConfig, reactToMessage, getOrderingUpsets } from './util';
+import { hasVideo, validateConfig, reactToMessage, getOrderingUpsets, extractYouTubeId } from './util';
 import GoodMorningState from './state';
 import logger from './logger';
 
@@ -18,6 +18,7 @@ languageGenerator.setLogger((message) => {
     logger.log(message);
 });
 const r9k = new R9KTextBank();
+const knownYouTubeIds: Set<string> = new Set();
 const messenger = new Messenger();
 messenger.setLogger((message) => {
     logger.log(message);
@@ -1078,6 +1079,7 @@ const TIMEOUT_CALLBACKS = {
         // Dump state and R9K hashes
         await dumpState();
         await dumpR9KHashes();
+        await dumpYouTubeIds();
 
         // If the season is still going...
         if (!state.isSeasonGoalReached()) {
@@ -1610,6 +1612,27 @@ const dumpR9KHashes = async (): Promise<void> => {
     await storage.write('r9k.json', JSON.stringify(r9k.getAllEntries(), null, 2));
 };
 
+const loadYouTubeIds = async (): Promise<void> => {
+    try {
+        const existingYouTubeIds: string[] = await storage.readJson('youtube.json');
+        for (const ytid of existingYouTubeIds) {
+            knownYouTubeIds.add(ytid);
+        }
+    } catch (err) {
+        // Specifically check for file-not-found errors to make sure we don't overwrite anything
+        if (err.code === 'ENOENT') {
+            await logger.log('Existing YouTube IDs file not found, starting with a fresh set...');
+            await dumpYouTubeIds();
+        } else {
+            logger.log(`Unhandled exception while loading YouTube IDs file:\n\`\`\`${err.message}\`\`\``);
+        }
+    }
+}
+
+const dumpYouTubeIds = async (): Promise<void> => {
+    await storage.write('youtube.json', JSON.stringify(Array.from(knownYouTubeIds).sort(), null, 2));
+};
+
 const logTimeouts = async (): Promise<void> => {
     await guildOwnerDmChannel.send(timeoutManager.toStrings().map(entry => `- ${entry}`).join('\n') || '_No timeouts._');
 };
@@ -1654,6 +1677,7 @@ client.on('ready', async (): Promise<void> => {
     await loadState();
     await loadHistory();
     await loadR9KHashes();
+    await loadYouTubeIds();
     await timeoutManager.loadTimeouts();
 
     if (guildOwner && goodMorningChannel) {
@@ -1970,6 +1994,21 @@ const processCommands = async (msg: Message): Promise<void> => {
             await dumpState();
             await msg.reply('Refreshed all player display names!');
         }
+        // Test YouTube ID extraction
+        else if (sanitizedText.includes('youtube')) {
+            const extractedYouTubeId: string | undefined = extractYouTubeId(msg.content);
+            if (extractedYouTubeId) {
+                if (knownYouTubeIds.has(extractedYouTubeId)) {
+                    await msg.reply('This is a **KNOWN** YouTube ID!');
+                } else {
+                    knownYouTubeIds.add(extractedYouTubeId);
+                    await dumpYouTubeIds();
+                    await msg.reply(`This is _not_ a known YouTube ID, added to the set of now **${knownYouTubeIds.size}** known IDs)`);
+                }
+            } else {
+                await msg.reply('Could not extract YouTube ID!');
+            }
+        }
         else if (sanitizedText.includes('log')) {
             await msg.channel.send(dailyVolatileLog.map(entry => `**[${entry[0].toLocaleTimeString('en-US')}]:** ${entry[1]}`).join('\n') || 'Log is empty.');
         }
@@ -2074,8 +2113,20 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             if (triggerMonkeyFriday && !state.hasDailyVideoRank(userId)) {
                 const videoRank: number = state.getNextDailyVideoRank();
                 state.setDailyVideoRank(userId, videoRank);
-                // Award points then reply (or react) to the message depending on the video rank
-                if (videoRank === 1) {
+                // Determine if the video provided is novel
+                // TODO: Can we do this for attachments too?
+                const extractedYouTubeId: string | undefined = extractYouTubeId(msg.content);
+                const isNovelVideo: boolean = !extractedYouTubeId || !knownYouTubeIds.has(extractedYouTubeId);
+                // If a YouTube ID was extracted, add it to the list of known YouTube IDs
+                if (extractedYouTubeId) {
+                    knownYouTubeIds.add(extractedYouTubeId);
+                }
+                // Award no points and always reply if the video is unoriginal
+                if (!isNovelVideo) {
+                    messenger.reply(msg, languageGenerator.generate('{goodMorningReply.unoriginalVideo?} 🌚'));
+                }
+                // If original, award points then reply (or react) to the message depending on the video rank
+                else if (videoRank === 1) {
                     state.awardPoints(userId, config.defaultAward);
                     messenger.reply(msg, languageGenerator.generate('{goodMorningReply.video?} 🐒'));
                 } else {

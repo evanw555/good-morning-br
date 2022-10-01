@@ -16,6 +16,21 @@ export function validateConfig(config: GoodMorningConfig): void {
 }
 
 /**
+ * @returns YouTube video ID from the given text (may contain more text than just a URL), or undefined if no ID detected
+ */
+export function extractYouTubeId(text?: string): string | undefined {
+    if (!text) {
+        return undefined;
+    }
+    const url = text.split(/(vi\/|v=|\/v\/|youtu\.be\/|\/embed\/|\/shorts\/)/);
+    const result = (url[2] !== undefined) ? url[2].split(/[^0-9a-z_\-]/i)[0] : url[0];
+    if (result && result.match(/^[a-zA-Z0-9_-]+$/)) {
+        return result;
+    }
+    return undefined;
+  }
+
+/**
  * Returns true if the given message contains a video or (potentially animated) GIF.
  */
 export function hasVideo(msg: Message): boolean {
