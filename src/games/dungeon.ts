@@ -1,7 +1,7 @@
 import canvas, { NodeCanvasRenderingContext2D } from 'canvas';
 import { GuildMember, Snowflake } from 'discord.js';
 import { getRankString, naturalJoin, randInt, shuffle, toLetterId, AStarPathFinder } from 'evanw555.js';
-import { DungeonGameState, DungeonLocation, DungeonPlayerState, PrizeType } from "../types";
+import { DungeonGameState, DungeonItemName, DungeonLocation, DungeonPlayerState, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 import logger from '../logger';
 
@@ -17,8 +17,16 @@ enum TileType {
     BOULDER = 7
 }
 
-type ItemName = 'trap' | 'boulder' | 'seal';
-type ActionName = 'up' | 'down' | 'left' | 'right' | 'pause' | 'unlock' | 'lock' | 'punch' | 'warp' | ItemName;
+type BasicActionName = 'up' | 'down' | 'left' | 'right' | 'pause' | 'unlock' | 'lock' | 'punch' | 'warp';
+type ActionName = BasicActionName | DungeonItemName;
+
+const ITEM_NAME_RECORD: Record<DungeonItemName, boolean> = {
+    'boulder': true,
+    'seal': true,
+    'trap': true,
+    'star': true
+};
+const ITEM_NAMES: DungeonItemName[] = Object.keys(ITEM_NAME_RECORD) as DungeonItemName[];
 
 export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     private static readonly TILE_SIZE: number = 24;
@@ -222,11 +230,27 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         for (const userId of this.getUnfinishedPlayers()) {
             const player = this.state.players[userId];
 
-            // Draw outline
-            context.fillStyle = 'black';
-            context.beginPath();
-            context.arc((player.c + .5) * DungeonCrawler.TILE_SIZE, (player.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE / 2 + 1, 0, Math.PI * 2, false);
-            context.fill();
+            // Draw outline (rainbow if invincible, black otherwise)
+            const outlineX = (player.c + .5) * DungeonCrawler.TILE_SIZE;
+            const outlineY = (player.r + .5) * DungeonCrawler.TILE_SIZE;
+            const outlineRadius = DungeonCrawler.TILE_SIZE / 2 + 1;
+            if (player.invincible) {
+                const n = 16;
+                const rotationOffset = randInt(0, n);
+                context.lineWidth = 2;
+                context.setLineDash([]);
+                for (let i = 0; i < n; i++) {
+                    context.strokeStyle = `hsl(${Math.floor((i + rotationOffset) * 360 / n)},100%,50%)`;
+                    context.beginPath();
+                    context.arc(outlineX, outlineY, outlineRadius, (i * 2 / n) * Math.PI, ((i + 1) * 2 / n) * Math.PI);
+                    context.stroke();
+                }
+            } else {
+                context.fillStyle = 'black';
+                context.beginPath();
+                context.arc(outlineX, outlineY, outlineRadius, 0, Math.PI * 2, false);
+                context.fill();
+            }
 
             // Draw inner stuff
             if (player.avatarUrl.startsWith('http')) {
@@ -508,6 +532,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             delete player.previousLocation;
             player.originLocation = { r: player.r, c: player.c };
             delete player.knockedOut;
+            delete player.invincible;
             delete player.warped;
             // If the user already finished, do nothing
             if (player.finished) {
@@ -1178,18 +1203,12 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             throw new Error('You\'ve already finished, the only action you can take now is to place traps')
         }
 
-        // Ensure that users have the correct number of items
-        const numTrapItems = this.getPlayerItemCount(userId, 'trap');
-        if (commands.filter(c => c.startsWith('trap')).length > numTrapItems) {
-            throw new Error(`You're trying to place more traps than you currently have! You have **${numTrapItems}**`);
-        }
-        const numBoulderItems = this.getPlayerItemCount(userId, 'boulder');
-        if (commands.filter(c => c.startsWith('boulder')).length > numBoulderItems) {
-            throw new Error(`You're trying to place more boulders than you currently have! You have **${numBoulderItems}**`);
-        }
-        const numSealItems = this.getPlayerItemCount(userId, 'seal');
-        if (commands.filter(c => c === 'seal').length > numSealItems) {
-            throw new Error(`You're trying to use the seal move too many times! You only have **${numSealItems}** seal(s)`);
+        // For each known item type, ensure the player isn't using more than they currently own
+        for (const itemName of ITEM_NAMES) {
+            const numAvailable: number = this.getPlayerItemCount(userId, itemName);
+            if (commands.filter(c => c.split(':')[0] === itemName).length > numAvailable) {
+                throw new Error(`You're trying to use more **${itemName}** items than you currently have! You only have **${numAvailable}**`);
+            }
         }
 
         // If using boulders, ensure placing them doesn't block anyone
@@ -1288,6 +1307,9 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         throw new Error(`Can't place a ${c} at **${arg}**, try a different spot.`);
                     }
                     break;
+                case 'star':
+                    // TODO: Do validation?
+                    break;
                 default:
                     throw new Error(`\`${command}\` is an invalid action!`);
             }
@@ -1304,7 +1326,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     }
 
     private getActionCost(action: ActionName, r: number, c: number): number {
-        const actionCosts: Record<ActionName, () => number> = {
+        const actionCosts: Record<BasicActionName, () => number> = {
             'up': () => {
                 return 1;
             },
@@ -1343,15 +1365,6 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             },
             'warp': () => {
                 return 6;
-            },
-            'trap': () => {
-                return 0;
-            },
-            'boulder': () => {
-                return 0;
-            },
-            'seal': () => {
-                return 0;
             }
         };
         if (action in actionCosts) {
@@ -1392,26 +1405,37 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     player.previousLocation = { r: player.r, c: player.c };
                     const nr = player.r + dr;
                     const nc = player.c + dc;
+                    // Handle situations where another user is standing in the way
                     const blockingUserId: Snowflake = this.getPlayerAtLocation(nr, nc);
                     if (blockingUserId) {
                         const blockingUser = this.state.players[blockingUserId];
-                        bumpers[userId] = blockingUserId;
-                        if (bumpers[blockingUserId] === userId) {
-                            // If the other user previously bumped into this user, then allow him to pass by
-                            pushNonStepStatement(`**${player.displayName}** walked past **${blockingUser.displayName}**`);
-                        } else if (blockingUser.knockedOut) {
-                            // If the other user is knocked out, walk past him
-                            pushNonStepStatement(`**${player.displayName}** stepped over the knocked-out body of **${blockingUser.displayName}**`);
+                        if (player.invincible) {
+                            // If the current user is invincible, knock out the blocking user and continue walking
+                            blockingUser.knockedOut = true;
+                            delete this.state.decisions[blockingUserId];
+                            pushNonStepStatement(`**${player.displayName}** trampled **${blockingUser.displayName}**`)
                         } else {
-                            if (this.hasPendingDecisions(blockingUserId)) {
-                                pushNonStepStatement(`**${player.displayName}** bumped into **${blockingUser.displayName}**`);
+                            // Otherwise, handle the blocking user as normal
+                            bumpers[userId] = blockingUserId;
+                            if (bumpers[blockingUserId] === userId) {
+                                // If the other user previously bumped into this user, then allow him to pass by
+                                pushNonStepStatement(`**${player.displayName}** walked past **${blockingUser.displayName}**`);
+                            } else if (blockingUser.knockedOut) {
+                                // If the other user is knocked out, walk past him
+                                pushNonStepStatement(`**${player.displayName}** stepped over the knocked-out body of **${blockingUser.displayName}**`);
                             } else {
-                                pushNonStepStatement(`**${player.displayName}** bumped into **${blockingUser.displayName}** and gave up`);
-                                endTurn = true;
+                                // Otherwise, refuse to move
+                                if (this.hasPendingDecisions(blockingUserId)) {
+                                    pushNonStepStatement(`**${player.displayName}** bumped into **${blockingUser.displayName}**`);
+                                } else {
+                                    pushNonStepStatement(`**${player.displayName}** bumped into **${blockingUser.displayName}** and gave up`);
+                                    endTurn = true;
+                                }
+                                return false;
                             }
-                            return false;
                         }
                     }
+                    // If the logic hasn't returned by now, then attempt to walk to the new location
                     if (this.isWalkable(nr, nc)) {
                         player.r += dr;
                         player.c += dc;
@@ -1480,7 +1504,9 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                             if (otherPlayerId) {
                                 nearPlayer = true;
                                 const otherPlayer = this.state.players[otherPlayerId];
-                                if (Math.random() < 0.75) {
+                                if (otherPlayer.invincible) {
+                                    pushNonStepStatement(`**${player.displayName}** threw fists at the invincible **${otherPlayer.displayName}** to no avail`);
+                                } else if (Math.random() < 0.75) {
                                     otherPlayer.knockedOut = true;
                                     delete this.state.decisions[otherPlayerId];
                                     pushNonStepStatement(`**${player.displayName}** knocked out **${otherPlayer.displayName}**`);
@@ -1539,6 +1565,11 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                             pushNonStepStatement(`**${player.displayName}** sealed **${numDoorwaysSealed}** doorways`);
                         }
                         return true;
+                    },
+                    'star': () => {
+                        player.invincible = true;
+                        pushNonStepStatement(`**${player.displayName}** used a star to become invincible`);
+                        return true;
                     }
                 };
                 // Get the next action for this user
@@ -1588,31 +1619,33 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 
                 // Process end-of-turn events
                 if (turnIsOver) {
-                    // Handle hidden traps
-                    let trapRevealed = false;
-                    const locationString = DungeonCrawler.getLocationString(player.r, player.c);
-                    if (this.getTileAtUser(userId) === TileType.HIDDEN_TRAP) {
-                        this.state.map[player.r][player.c] = TileType.TRAP;
-                        trapRevealed = true;
-                        const trapOwnerId = this.state.trapOwners[locationString];
-                        pushNonStepStatement(`**${player.displayName}** revealed a hidden trap placed by **${this.getDisplayName(trapOwnerId)}**`);
-                    }
-                    // Handle revealed traps (this will trigger if the above condition is triggered)
-                    if (this.getTileAtUser(userId) === TileType.TRAP) {
-                        player.r = player.originLocation.r;
-                        player.c = player.originLocation.c;
-                        player.knockedOut = true;
-                        delete player.previousLocation;
-                        const trapOwnerId = this.state.trapOwners[locationString];
-                        logger.log(`\`${userId}\` triggered trap by \`${trapOwnerId}\` at \`${locationString}\``);
-                        if (trapRevealed) {
-                            pushNonStepStatement(`was sent back to **${this.getPlayerLocationString(userId)}**`);
-                        } else {
-                            pushNonStepStatement(`**${player.displayName}** stepped on **${this.getDisplayName(trapOwnerId)}'s** trap and was sent back to **${this.getPlayerLocationString(userId)}**`);
+                    // Handle hidden traps if not invincible
+                    if (!player.invincible) {
+                        let trapRevealed = false;
+                        const locationString = DungeonCrawler.getLocationString(player.r, player.c);
+                        if (this.getTileAtUser(userId) === TileType.HIDDEN_TRAP) {
+                            this.state.map[player.r][player.c] = TileType.TRAP;
+                            trapRevealed = true;
+                            const trapOwnerId = this.state.trapOwners[locationString];
+                            pushNonStepStatement(`**${player.displayName}** revealed a hidden trap placed by **${this.getDisplayName(trapOwnerId)}**`);
                         }
-                        // Reward the trap's owner
-                        this.state.players[trapOwnerId].points++;
-                        pushNonStepStatement(`**${this.getDisplayName(trapOwnerId)}** earned **1** point for trapping`);
+                        // Handle revealed traps (this will trigger if the above condition is triggered)
+                        if (this.getTileAtUser(userId) === TileType.TRAP) {
+                            player.r = player.originLocation.r;
+                            player.c = player.originLocation.c;
+                            player.knockedOut = true;
+                            delete player.previousLocation;
+                            const trapOwnerId = this.state.trapOwners[locationString];
+                            logger.log(`\`${userId}\` triggered trap by \`${trapOwnerId}\` at \`${locationString}\``);
+                            if (trapRevealed) {
+                                pushNonStepStatement(`was sent back to **${this.getPlayerLocationString(userId)}**`);
+                            } else {
+                                pushNonStepStatement(`**${player.displayName}** stepped on **${this.getDisplayName(trapOwnerId)}'s** trap and was sent back to **${this.getPlayerLocationString(userId)}**`);
+                            }
+                            // Reward the trap's owner
+                            this.state.players[trapOwnerId].points++;
+                            pushNonStepStatement(`**${this.getDisplayName(trapOwnerId)}** earned **1** point for trapping`);
+                        }
                     }
                 }
             } else {
@@ -1791,15 +1824,15 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return Object.values(this.state.players[userId].items ?? {}).length > 0;
     }
 
-    playerHasItem(userId: Snowflake, item: ItemName): boolean {
+    playerHasItem(userId: Snowflake, item: DungeonItemName): boolean {
         return this.getPlayerItemCount(userId, item) > 0;
     }
 
-    getPlayerItemCount(userId: Snowflake, item: ItemName): number {
+    getPlayerItemCount(userId: Snowflake, item: DungeonItemName): number {
         return (this.state.players[userId].items ?? {})[item] ?? 0;
     }
 
-    addPlayerItem(userId: Snowflake, item: ItemName, num: number = 1): void {
+    addPlayerItem(userId: Snowflake, item: DungeonItemName, num: number = 1): void {
         const player = this.state.players[userId];
 
         if (player.items === undefined) {
@@ -1809,7 +1842,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         player.items[item] = (player.items[item] ?? 0) + num;
     }
 
-    consumePlayerItem(userId: Snowflake, item: ItemName): void {
+    consumePlayerItem(userId: Snowflake, item: DungeonItemName): void {
         const player = this.state.players[userId];
 
         if (!this.playerHasItem(userId, item)) {

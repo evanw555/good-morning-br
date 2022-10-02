@@ -120,6 +120,9 @@ export interface DungeonLocation {
     r: number,
     c: number
 }
+
+export type DungeonItemName = 'trap' | 'boulder' | 'seal' | 'star';
+
 export interface DungeonPlayerState {
     r: number,
     c: number,
@@ -131,13 +134,10 @@ export interface DungeonPlayerState {
     avatarUrl: string,
     displayName: string,
     points: number,
-    items?: {
-        trap?: number,
-        boulder?: number,
-        seal?: number
-    },
+    items?: Partial<Record<DungeonItemName, number>>,
     finished?: boolean,
     knockedOut?: boolean,
+    invincible?: boolean,
     previousLocation?: DungeonLocation,
     originLocation?: DungeonLocation,
     warped?: boolean

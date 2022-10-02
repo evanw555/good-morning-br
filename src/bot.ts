@@ -2039,6 +2039,7 @@ const processCommands = async (msg: Message): Promise<void> => {
             tempDungeon.addPlayerItem(msg.author.id, 'trap', 5);
             tempDungeon.addPlayerItem(msg.author.id, 'boulder', 3);
             tempDungeon.addPlayerItem(msg.author.id, 'seal', 3);
+            tempDungeon.addPlayerItem(msg.author.id, 'star', 1);
             tempDungeon.beginTurn();
             try { // TODO: refactor typing event to somewhere else?
                 await msg.channel.sendTyping();
