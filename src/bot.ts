@@ -1779,7 +1779,7 @@ let awaitingGameCommands = false;
 const processCommands = async (msg: Message): Promise<void> => {
     if (awaitingGameCommands) {
         // Emergency abort temp dungeon
-        if (msg.content.toLowerCase() === 'exit') {
+        if (msg.content.replace(/^\+/, '').toLowerCase() === 'exit') {
             tempDungeon = null;
             awaitingGameCommands = false;
             await msg.reply('Exiting temp dungeon mode...');

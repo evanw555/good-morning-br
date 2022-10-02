@@ -235,9 +235,9 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             const outlineY = (player.r + .5) * DungeonCrawler.TILE_SIZE;
             const outlineRadius = DungeonCrawler.TILE_SIZE / 2 + 1;
             if (player.invincible) {
-                const n = 16;
+                const n = 32;
                 const rotationOffset = randInt(0, n);
-                context.lineWidth = 2;
+                context.lineWidth = 3;
                 context.setLineDash([]);
                 for (let i = 0; i < n; i++) {
                     context.strokeStyle = `hsl(${Math.floor((i + rotationOffset) * 360 / n)},100%,50%)`;
@@ -1564,10 +1564,12 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         } else {
                             pushNonStepStatement(`**${player.displayName}** sealed **${numDoorwaysSealed}** doorways`);
                         }
+                        this.consumePlayerItem(userId, 'seal');
                         return true;
                     },
                     'star': () => {
                         player.invincible = true;
+                        this.consumePlayerItem(userId, 'star');
                         pushNonStepStatement(`**${player.displayName}** used a star to become invincible`);
                         return true;
                     }
