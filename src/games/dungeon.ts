@@ -1,6 +1,6 @@
 import canvas, { NodeCanvasRenderingContext2D } from 'canvas';
 import { GuildMember, Snowflake } from 'discord.js';
-import { getRankString, naturalJoin, randInt, shuffle, toLetterId, AStarPathFinder } from 'evanw555.js';
+import { getRankString, naturalJoin, randInt, shuffle, toLetterId, fromLetterId, AStarPathFinder } from 'evanw555.js';
 import { DungeonGameState, DungeonItemName, DungeonLocation, DungeonPlayerState, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 import logger from '../logger';
@@ -307,7 +307,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             context.font = `${DungeonCrawler.TILE_SIZE * .35}px sans-serif`;
             context.fillStyle = 'black';
             for (const locationString of Object.keys(this.state.trapOwners)) {
-                const location = this.parseLocationString(locationString);
+                const location = DungeonCrawler.parseLocationString(locationString);
                 context.fillText(this.getDisplayName(this.state.trapOwners[locationString]), location.c * DungeonCrawler.TILE_SIZE, (location.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE);
             }
             // Render all player decisions
@@ -479,12 +479,12 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         context.setLineDash([]);
         for (const decision of decisions.filter(d => d.startsWith('trap:'))) {
             const [ action, locationString ] = decision.split(':');
-            const location = this.parseLocationString(locationString);
+            const location = DungeonCrawler.parseLocationString(locationString);
             context.strokeText('PLACE\nTRAP', location.c * DungeonCrawler.TILE_SIZE, (location.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE);
         }
         for (const decision of decisions.filter(d => d.startsWith('boulder:'))) {
             const [ action, locationString ] = decision.split(':');
-            const location = this.parseLocationString(locationString);
+            const location = DungeonCrawler.parseLocationString(locationString);
             context.strokeText('PLACE\nBOULDER', location.c * DungeonCrawler.TILE_SIZE, (location.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE);
         }
         // Show placed traps
@@ -592,19 +592,18 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         }
     }
 
-    parseLocationString(location: string): { r: number, c: number } | undefined {
-        // TODO: Horrible brute-force method, too lazy to reverse the letter stuff
-        for (let r = 0; r < this.state.rows; r++) {
-            for (let c = 0; c < this.state.columns; c++) {
-                if (location && location.toUpperCase() === DungeonCrawler.getLocationString(r, c)) {
-                    return { r, c };
-                }
-            }
-        }
-    }
-
     private static getLocationString(r: number, c: number): string {
         return `${toLetterId(r)}${c + 1}`;
+    }
+
+    private static parseLocationString(location: string): { r: number, c: number } | undefined {
+        const match = location.match(/^([a-zA-Z]+)([0-9]+)$/);
+        if (match) {
+            return {
+                r: fromLetterId(match[1]),
+                c: parseInt(match[2])
+            }
+        }
     }
 
     private getPlayerLocationString(userId: string): string {
@@ -943,7 +942,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         } else {
                             if (Math.random() < .2) {
                                 map[hnr][hnc] = TileType.KEY_HOLE;
-                                keyHoleCosts[`${hnr},${hnc}`] = Math.min(randInt(1, 16), randInt(1, 16));
+                                keyHoleCosts[DungeonCrawler.getLocationString(hnr, hnc)] = Math.min(randInt(1, 16), randInt(1, 16));
                             }
                         }
                     }
@@ -992,10 +991,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     }
                 }
                 // Transform and apply each keyhole cost
-                for (const keyHoleCoords of Object.keys(section.keyHoleCosts)) {
-                    const [ keyR, keyC ] = keyHoleCoords.split(',');
-                    const transformedLocation = DungeonCrawler.getLocationString(parseInt(keyR) + baseR, parseInt(keyC) + baseC);
-                    keyHoleCosts[transformedLocation] = section.keyHoleCosts[keyHoleCoords];
+                for (const keyHoleLocation of Object.keys(section.keyHoleCosts)) {
+                    const { r: keyR, c: keyC } = DungeonCrawler.parseLocationString(keyHoleLocation);
+                    const transformedLocation = DungeonCrawler.getLocationString(keyR + baseR, keyC + baseC);
+                    keyHoleCosts[transformedLocation] = section.keyHoleCosts[keyHoleLocation];
                 }
                 // Cut out walkways between each section
                 const evenRow = sr % 2 === 0;
@@ -1158,7 +1157,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         const locations = [];
         for (const [locationString, ownerId] of Object.entries(this.state.trapOwners)) {
             if (ownerId === userId) {
-                const location = this.parseLocationString(locationString);
+                const location = DungeonCrawler.parseLocationString(locationString);
                 if (this.isTileType(location.r, location.c, TileType.HIDDEN_TRAP)) {
                     locations.push(location);
                 }
@@ -1221,7 +1220,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         if (commands.some(c => c.startsWith('boulder:'))) {
             const boulderLocations = commands.filter(c => c.startsWith('boulder:'))
                 .map(c => c.split(':')[1])
-                .map(l => this.parseLocationString(l));
+                .map(l => DungeonCrawler.parseLocationString(l));
             if (!this.canAllPlayersReachGoal(boulderLocations)) {
                 throw new Error('You can\'t place a boulder in a location that would permanently trap players! Please pick another location...');
             }
@@ -1229,7 +1228,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
 
         for (const command of commands) {
             const [c, arg] = command.split(':') as [ActionName, string];
-            const argLocation = this.parseLocationString(arg);
+            const argLocation = DungeonCrawler.parseLocationString(arg);
             cost += this.getActionCost(c, newLocation);
             switch (c) {
                 case 'up':
@@ -1549,14 +1548,14 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         return true;
                     },
                     'trap': (arg) => {
-                        const { r, c } = this.parseLocationString(arg);
+                        const { r, c } = DungeonCrawler.parseLocationString(arg);
                         this.state.map[r][c] = TileType.HIDDEN_TRAP;
                         this.state.trapOwners[arg.toUpperCase()] = userId;
                         this.consumePlayerItem(userId, 'trap');
                         return true;
                     },
                     'boulder': (arg) => {
-                        const { r, c } = this.parseLocationString(arg);
+                        const { r, c } = DungeonCrawler.parseLocationString(arg);
                         // If doing this will softlock the game, knock out the player
                         if (!this.canAllPlayersReachGoal([{ r, c }])) {
                             this.knockPlayerOut(userId);
