@@ -1409,8 +1409,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     const blockingUserId: Snowflake = this.getPlayerAtLocation(nr, nc);
                     if (blockingUserId) {
                         const blockingUser = this.state.players[blockingUserId];
-                        if (player.invincible) {
-                            // If the current user is invincible, knock out the blocking user and continue walking
+                        if (player.invincible && !blockingUser.invincible) {
+                            // If this player is invincible and the other isn't, knock them out and continue walking
                             blockingUser.knockedOut = true;
                             delete this.state.decisions[blockingUserId];
                             pushNonStepStatement(`**${player.displayName}** trampled **${blockingUser.displayName}**`)
