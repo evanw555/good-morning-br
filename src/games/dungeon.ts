@@ -601,7 +601,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         if (match) {
             return {
                 r: fromLetterId(match[1]),
-                c: parseInt(match[2])
+                c: parseInt(match[2]) - 1
             }
         }
     }
