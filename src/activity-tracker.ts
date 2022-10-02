@@ -1,5 +1,5 @@
 export default class ActivityTracker {
-    private static CAPACITY: number = 10;
+    public static CAPACITY: number = 10;
     private data: string;
 
     constructor(data: string | undefined) {
@@ -31,8 +31,16 @@ export default class ActivityTracker {
         return Math.max(this.getActivityLevel() / 2, this.getStreak() / ActivityTracker.CAPACITY);
     }
 
-    add(active: boolean): void {
+    /**
+     * Update the activity tracker by adding an activity value.
+     * @param active the activity value to add (true if there was activity)
+     * @returns true if this operation changed the state from an incomplete streak to a full streak
+     */
+    add(active: boolean): boolean {
+        const fullBefore: boolean = this.hasFullStreak();
         this.data = ((active ? 'x' : '.') + this.data).substring(0, ActivityTracker.CAPACITY);
+        const fullAfter: boolean = this.hasFullStreak();
+        return !fullBefore && fullAfter;
     }
 
     dump(): string {

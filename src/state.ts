@@ -149,20 +149,36 @@ export default class GoodMorningState {
         return new ActivityTracker(this.getPlayer(userId)?.activity);
     }
 
-    addPlayerActivity(userId: Snowflake, active: boolean): void {
+    /**
+     * Add a daily activity value for some user.
+     * @param userId user ID for whom to add an activity value
+     * @param active the activity value
+     * @returns true if the user just achieved a full streak with this operation
+     */
+    addPlayerActivity(userId: Snowflake, active: boolean): boolean {
         const tracker: ActivityTracker = new ActivityTracker(this.getOrCreatePlayer(userId)?.activity);
-        tracker.add(active);
+        const result: boolean = tracker.add(active);
         if (tracker.getActivityLevel() === 0) {
             delete this.getPlayer(userId).activity;
         } else {
             this.getPlayer(userId).activity = tracker.dump();
         }
+        return result;
     }
 
-    incrementPlayerActivities(): void {
+    /**
+     * Update all player activity trackers based on today's activity.
+     * @returns list of all players who just achieved a full streak with this update
+     */
+    incrementPlayerActivities(): Snowflake[] {
+        const newStreakUsers: Snowflake[] = [];
         this.getPlayers().forEach(userId => {
-            this.addPlayerActivity(userId, this.getPointsEarnedToday(userId) > 0);
+            const newStreak: boolean = this.addPlayerActivity(userId, this.getPointsEarnedToday(userId) > 0);
+            if (newStreak) {
+                newStreakUsers.push(userId);
+            }
         });
+        return newStreakUsers;
     }
 
     getPlayerMultiplier(userId: Snowflake): number {

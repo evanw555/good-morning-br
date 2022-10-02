@@ -8,6 +8,7 @@ import logger from './logger';
 
 import { FileStorage, generateKMeansClusters, getClockTime, getRandomDateBetween, getRankString, getRelativeDateTimeString, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger, naturalJoin, PastTimeoutStrategy, prettyPrint, R9KTextBank, randChoice, randInt, shuffle, sleep, TimeoutManager, toCalendarDate, toFixed, toLetterId } from 'evanw555.js';
 import DungeonCrawler from './games/dungeon';
+import ActivityTracker from './activity-tracker';
 const auth = loadJson('config/auth.json');
 const config: GoodMorningConfig = loadJson('config/config.json');
 
@@ -64,8 +65,6 @@ const fetchMember = async (userId: Snowflake): Promise<GuildMember> => {
         return undefined;
     }
 }
-
-
 
 const fetchMembers = async (userIds: Snowflake[]): Promise<Record<Snowflake, GuildMember>> => {
     const members = await guild.members.fetch({ user: userIds });
@@ -1060,12 +1059,10 @@ const TIMEOUT_CALLBACKS = {
         }
 
         // Update player activity counters
-        state.incrementPlayerActivities();
-        // Award minor prizes to all players with full streaks (with 50% odds)
-        for (const userId of state.getPlayers()) {
-            if (state.getPlayerActivity(userId).hasFullStreak() && Math.random() < 0.5) {
-                await awardPrize(userId, 'streak', 'Nice job maintaining your GM streak');
-            }
+        const newStreakUsers: Snowflake[] = state.incrementPlayerActivities();
+        // Award prizes to all players who just achieved full streaks
+        for (const userId of newStreakUsers) {
+            await awardPrize(userId, 'streak', `Thank you for bringing us Good Morning cheer for **${ActivityTracker.CAPACITY}** consecutive days`);
         }
 
         // If someone baited, then award the most recent baiter
