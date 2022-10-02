@@ -569,20 +569,26 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     + 'You can place this at a particular location as an action e.g. `boulder:b12`. '
                     + 'The boulder will act as a immovable barrier that cannot be destroyed, unless it causes players to become permanently trapped.';
             case 'submissions2':
-                this.addPlayerItem(userId, 'seal');
-                const numSeals = this.getPlayerItemCount(userId, 'seal');
-                return `${intro}, you've just been awarded a **seal**! Your inventory now contains **${numSeals}**. `
-                    + 'You can use `seal` as an action to permanently seal any locked/unlocked doorway in the 4 squares adjacent to you. '
-                    + 'Once a doorway is sealed, it is effectively a wall and cannot be unlocked.';
+                this.addPlayerItem(userId, 'star');
+                const numStars = this.getPlayerItemCount(userId, 'star');
+                return `${intro}, you've just been awarded a **star**! Your inventory now contains **${numStars}**. `
+                    + 'You can use `star` as an action to make yourself invincible for the remainder of the week\'s turn. '
+                    + 'While invincible, walking into other players will knock them out (you won\'t bump into them). '
+                    + 'Also, you cannot be punched and you cannot fall into traps.';
             case 'submissions3':
             case 'streak':
-            case 'nightmare':
                 this.addPlayerItem(userId, 'trap');
                 const numTraps = this.getPlayerItemCount(userId, 'trap');
                 return `${intro}, you've just been awarded a **trap**! Your inventory now contains **${numTraps}**. `
                     + 'You can place this at a particular location as an action e.g. `trap:b12`. '
                     + 'If a player ends their turn on a trap, they will be sent back to where they started that week\'s turn. '
                     + 'Traps are invisible until triggered. You will be given **1** point each time this trap is triggered.';
+            case 'nightmare':
+                this.addPlayerItem(userId, 'seal');
+                const numSeals = this.getPlayerItemCount(userId, 'seal');
+                return `${intro}, you've just been awarded a **seal**! Your inventory now contains **${numSeals}**. `
+                    + 'You can use `seal` as an action to permanently seal any locked/unlocked doorway in the 4 squares adjacent to you. '
+                    + 'Once a doorway is sealed, it is effectively a wall and cannot be unlocked.';
         }
     }
 
