@@ -1207,7 +1207,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         }
 
         // Ensure that turns with warps only include only warps (delaying may give a better outcome)
-        if (commands.includes('warp') && !commands.every(c => c === 'warp')) {
+        const isWarping: boolean = commands.includes('warp');
+        if (isWarping && !commands.every(c => c === 'warp')) {
             throw new Error('If you warp this turn, ALL your actions must be warps');
         }
 
@@ -1342,7 +1343,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         }
 
         this.state.decisions[userId] = commands;
-        return `Valid actions, your new location will be **${DungeonCrawler.getLocationString(newLocation.r, newLocation.c)}**. `
+        return `Valid actions, your new location will be **${isWarping ? '???' : DungeonCrawler.getLocationString(newLocation.r, newLocation.c)}**. `
             + `This will consume **${cost}** of your **${playerPoints}** points if successful. `
             + (warnings.length > 0 ? ' BUT PLEASE NOTE THE FOLLOWING WARNINGS:\n' + warnings.join('\n') : '');
     }
@@ -1447,7 +1448,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                             } else {
                                 // Otherwise, refuse to move
                                 if (this.hasPendingDecisions(blockingUserId)) {
-                                    pushNonStepStatement(`**${player.displayName}** bumped into **${blockingUser.displayName}**`);
+                                    pushNonStepStatement(`**${player.displayName}** bumped into someone`);
                                 } else {
                                     pushNonStepStatement(`**${player.displayName}** bumped into **${blockingUser.displayName}** and gave up`);
                                     endTurn = true;
