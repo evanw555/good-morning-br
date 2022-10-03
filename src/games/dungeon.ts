@@ -603,11 +603,13 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     }
 
     private static parseLocationString(location: string): { r: number, c: number } | undefined {
-        const match = location.match(/^([a-zA-Z]+)([0-9]+)$/);
-        if (match) {
-            return {
-                r: fromLetterId(match[1]),
-                c: parseInt(match[2]) - 1
+        if (location) {
+            const match = location.match(/^([a-zA-Z]+)([0-9]+)$/);
+            if (match) {
+                return {
+                    r: fromLetterId(match[1]),
+                    c: parseInt(match[2]) - 1
+                }
             }
         }
     }
