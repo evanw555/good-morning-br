@@ -520,7 +520,8 @@ const chooseGoodMorningTime = (eventType: DailyEventType | undefined): Date => {
     const MAX_HOURS: Record<string, [number, number]> = {
         [DailyEventType.SleepyMorning]: [11, 30],
         [DailyEventType.ReverseGoodMorning]: [11, 15],
-        [DailyEventType.AnonymousSubmissions]: [8, 0]
+        [DailyEventType.AnonymousSubmissions]: [8, 0],
+        [DailyEventType.GameUpdate]: [9, 0]
     };
     const MIN_HOUR: [number, number] = MIN_HOURS[eventType] ?? [6, 0];
     const MAX_HOUR_EXCLUSIVE: [number, number] = MAX_HOURS[eventType] ?? [10, 45];
@@ -1506,7 +1507,7 @@ const TIMEOUT_CALLBACKS = {
         if (processingResult.continueProcessing) {
             // If there are more decisions to be processed, schedule the next processing timeout
             const nextProcessDate: Date = new Date();
-            nextProcessDate.setMinutes(nextProcessDate.getMinutes() + randInt(3, 7));
+            nextProcessDate.setMinutes(nextProcessDate.getMinutes() + randInt(5, 15));
             await timeoutManager.registerTimeout(TimeoutType.ProcessGameDecisions, nextProcessDate, { pastStrategy: PastTimeoutStrategy.Invoke });
         } else {
             // Otherwise, let the people know that the turn is over
