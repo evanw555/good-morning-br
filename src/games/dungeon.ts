@@ -28,6 +28,12 @@ const ITEM_NAME_RECORD: Record<DungeonItemName, boolean> = {
 };
 const ITEM_NAMES: DungeonItemName[] = Object.keys(ITEM_NAME_RECORD) as DungeonItemName[];
 
+interface PathingOptions {
+    useDoorways?: boolean,
+    avoidPlayers?: boolean,
+    obstacles?: DungeonLocation[]
+}
+
 export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     private static readonly TILE_SIZE: number = 24;
     private static readonly STARTER_POINTS: number = 3;
@@ -1715,28 +1721,28 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
      * The actions are determined using a naive search (ignore keyholes and other players).
      */
     getNextActionsTowardGoal(userId: Snowflake, n: number = 1): string[] {
-        return this.searchToGoalFromPlayer(userId, true).semanticSteps.slice(0, n);
+        return this.searchToGoalFromPlayer(userId, { avoidPlayers: true }).semanticSteps.slice(0, n);
     }
 
     approximateCostToGoal(r: number, c: number): number {
-        return this.searchToGoal(r, c).cost;
+        return this.searchToGoal(r, c, { useDoorways: true, avoidPlayers: true }).cost;
     }
 
     approximateCostToGoalForPlayer(userId: Snowflake): number {
-        return this.searchToGoalFromPlayer(userId).cost;
+        return this.searchToGoalFromPlayer(userId, { useDoorways: true, avoidPlayers: true }).cost;
     }
 
-    searchToGoal(r: number, c: number, naive: boolean = false) {
-        return this.search({ r, c }, { r: this.getGoalRow(), c: this.getGoalColumn() }, naive);
+    searchToGoal(r: number, c: number, options?: PathingOptions) {
+        return this.search({ r, c }, { r: this.getGoalRow(), c: this.getGoalColumn() }, options);
     }
 
-    searchToGoalFromPlayer(userId: Snowflake, naive: boolean = false) {
+    searchToGoalFromPlayer(userId: Snowflake, options?: PathingOptions) {
         const player = this.state.players[userId];
-        return this.searchToGoal(player.r, player.c, naive);
+        return this.searchToGoal(player.r, player.c, options);
     }
 
-    search(start: DungeonLocation, goal: DungeonLocation, naive: boolean = false) {
-        const finder = new AStarPathFinder(this.toWeightMap({ naive }));
+    search(start: DungeonLocation, goal: DungeonLocation, options?: PathingOptions) {
+        const finder = new AStarPathFinder(this.toWeightMap(options));
         const result = finder.search({
             start,
             goal,
@@ -1746,24 +1752,20 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return result;
     }
 
-    private toWeightMap(options: { naive?: boolean, obstacles?: DungeonLocation[] }): (number | null)[][] {
+    private toWeightMap(options?: PathingOptions): (number | null)[][] {
         return this.state.map.map((row, r) => row.map((tile, c) => {
             // If simulating an obstacle at this location, treat this location as unwalkable
-            if (options.obstacles && options.obstacles.some(o => r === o.r && c === o.c)) {
+            if (options?.obstacles && options.obstacles.some(o => r === o.r && c === o.c)) {
                 return null;
-            }
-            // If doing a naive search, only use walkable tiles
-            if (options.naive) {
-                return this.isWalkableTileType(tile) ? 1 : null;
             }
             // Else, do a more calculation of the realistic cost
             const locationString = DungeonCrawler.getLocationString(r, c);
-            if (tile === TileType.KEY_HOLE && locationString in this.state.keyHoleCosts) {
+            if (options?.useDoorways && tile === TileType.KEY_HOLE && locationString in this.state.keyHoleCosts) {
                 // Multiply keyhole cost by 2 since it's risky
                 return this.state.keyHoleCosts[locationString] * 2;
             }
             if (this.isWalkableTileType(tile)) {
-                if (this.getPlayerAtLocation(r, c)) {
+                if (options?.avoidPlayers && this.getPlayerAtLocation(r, c)) {
                     // Treat player-occupied tiles at 3-cost because it's risky
                     return 3;
                 }
