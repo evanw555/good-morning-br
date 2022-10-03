@@ -6,7 +6,7 @@ import { hasVideo, validateConfig, reactToMessage, getOrderingUpsets, extractYou
 import GoodMorningState from './state';
 import logger from './logger';
 
-import { FileStorage, generateKMeansClusters, getClockTime, getRandomDateBetween, getRankString, getRelativeDateTimeString, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger, naturalJoin, PastTimeoutStrategy, prettyPrint, R9KTextBank, randChoice, randInt, shuffle, sleep, TimeoutManager, toCalendarDate, toFixed, toLetterId } from 'evanw555.js';
+import { addReactsSync, FileStorage, generateKMeansClusters, getClockTime, getPollChoiceKeys, getRandomDateBetween, getRankString, getRelativeDateTimeString, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger, naturalJoin, PastTimeoutStrategy, prettyPrint, R9KTextBank, randChoice, randInt, shuffle, sleep, TimeoutManager, toCalendarDate, toFixed, toLetterId } from 'evanw555.js';
 import DungeonCrawler from './games/dungeon';
 import ActivityTracker from './activity-tracker';
 const auth = loadJson('config/auth.json');
@@ -1310,7 +1310,7 @@ const TIMEOUT_CALLBACKS = {
         proposalSet.add(state.getEvent().submissionType);
         // TODO: Can we refactor this to the common utility library?
         const proposedTypes: string[] = Array.from(proposalSet);
-        const choiceKeys: string[] = ['🔴', '🟠', '🟡', '🟢', '🔵', '🟣'].slice(0, proposedTypes.length);
+        const choiceKeys: string[] = getPollChoiceKeys(proposedTypes);
 
         // Construct the poll data
         const choices: Record<string, string> = {};
@@ -1320,14 +1320,7 @@ const TIMEOUT_CALLBACKS = {
 
         // Send the poll message and prime the choices
         const pollMessage = await sungazersChannel.send('What should people submit tomorrow?\n' + Object.entries(choices).map(([key, value]) => `${key} _${value}_`).join('\n'));
-        for (const emoji of choiceKeys) {
-            try {
-                await sleep(500);
-                await pollMessage.react(emoji);
-            } catch (err) {
-                await logger.log(`Failed to react to poll message with ${emoji}: \`${err}\``);
-            }
-        }
+        await addReactsSync(pollMessage, choiceKeys, { delay: 500 });
 
         // Schedule the end of the poll
         const pollEndDate = new Date();
