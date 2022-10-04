@@ -371,6 +371,18 @@ export default class GoodMorningState {
     }
 
     /**
+     * Returns a number in the range [0, 1] representing the approximate completion of the game.
+     * If the season is complete, then the value should always be 1.
+     * If there is no game, then the value should always be 0.
+     */
+    getSeasonCompletion(): number {
+        if (this.hasGame()) {
+            return this.getGame().getSeasonCompletion();
+        }
+        return 0;
+    }
+
+    /**
      * Returns a number in the range [0, 1] representing the points of a particular player relative to
      * the player with the highest points (e.g. 0.75 means 75% of the max points).
      * @returns The player's relative points

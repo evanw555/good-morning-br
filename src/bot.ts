@@ -1918,7 +1918,7 @@ const processCommands = async (msg: Message): Promise<void> => {
         }
         // Asking about the season
         else if (sanitizedText.includes('season')) {
-            messenger.reply(msg, `It\'s season **${state.getSeasonNumber()}**!`);
+            await messenger.reply(msg, `It\'s season **${state.getSeasonNumber()}** and we're **${toFixed(state.getSeasonCompletion() * 100)}%** complete!`);
         }
         // Canvas stuff
         else if (sanitizedText.includes('canvas')) {

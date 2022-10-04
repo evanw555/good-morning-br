@@ -77,6 +77,24 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 + '9. If you warp multiple times in one turn, all subsequent warps will only go through if it brings you closer to the goal.'
     }
 
+    getSeasonCompletion(): number {
+        if (this.isSeasonComplete()) {
+            return 1;
+        }
+
+        // Assume the unfinished player with the best rank has the lowest cost to goal
+        const leadingUserId: Snowflake = this.getOrderedUnfinishedPlayers()[0];
+        if (!leadingUserId) {
+            return 0;
+        }
+
+        // TODO: Should we store the "spawn" point in the state rather than assuming?
+        const spawnCost: number = this.approximateCostToGoal(0, 0);
+        const lowestCost: number = this.approximateCostToGoalForPlayer(leadingUserId);
+
+        return 1 - (lowestCost / spawnCost);
+    }
+
     getOrderedPlayers(): Snowflake[] {
         return Object.keys(this.state.players).sort((x, y) => this.state.players[x].rank - this.state.players[y].rank);
     }
@@ -655,6 +673,13 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
      */
     getUnfinishedPlayers(): Snowflake[] {
         return Object.keys(this.state.players).filter(userId => !this.state.players[userId].finished);
+    }
+
+    /**
+     * @returns all unfinished players ordered by rank
+     */
+    getOrderedUnfinishedPlayers(): Snowflake[] {
+        return this.getOrderedPlayers().filter(userId => !this.state.players[userId].finished);
     }
 
     /**
