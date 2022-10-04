@@ -678,6 +678,11 @@ export default class GoodMorningState {
     }
 
     toSpecialJson(): string {
-        return prettyPrint(this.data);
+        return prettyPrint(this.data, {
+            overrides: {
+                'game': 'Game not printed',
+                'dailyStatus': 'Daily status map'
+            }
+        });
     }
 }
