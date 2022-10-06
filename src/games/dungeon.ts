@@ -537,10 +537,6 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         };
     }
 
-    getTurn(): number {
-        return this.state.turn;
-    }
-
     beginTurn(): void {
         // Increment turn and reset action counter
         this.state.turn++;

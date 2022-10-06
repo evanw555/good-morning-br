@@ -1,7 +1,6 @@
 import { Client, DMChannel, Intents, MessageAttachment, TextChannel } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'discord.js';
 import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, HomeStretchSurprise, PrizeType } from './types';
-import { createHomeStretchImage, createMidSeasonUpdateImage } from './graphics';
 import { hasVideo, validateConfig, reactToMessage, getOrderingUpsets, extractYouTubeId } from './util';
 import GoodMorningState from './state';
 import logger from './logger';
@@ -373,17 +372,18 @@ const sendGoodMorningMessage = async (): Promise<void> => {
             const second: Snowflake = orderedPlayers[1];
             await goodMorningChannel.send({
                 content: languageGenerator.generate(overriddenMessage ?? '{weeklyUpdate}', { season: state.getSeasonNumber().toString(), top: `<@${top}>`, second: `<@${second}>` }),
-                files: [new MessageAttachment(await createMidSeasonUpdateImage(state, history.medals), 'sunday-recap.png')]
+                files: [] // TODO (2.0): Should we just delete this?
             });
             break;
         case DailyEventType.MonkeyFriday:
             await messenger.send(goodMorningChannel, languageGenerator.generate(overriddenMessage ?? '{happyFriday}'));
             break;
         case DailyEventType.BeginHomeStretch:
+            // TODO (2.0): If we enable home stretch again, fix this
             await goodMorningChannel.send({
                 content: `WAKE UP MY DEAR FRIENDS! For we are now in the home stretch of season **${state.getSeasonNumber()}**! `
                     + 'There are some surprises which I will reveal in a short while, though in the meantime, please take a look at the current standings...',
-                files: [new MessageAttachment(await createHomeStretchImage(state, history.medals), 'home-stretch.png')]
+                files: [] // TODO (2.0): Should we just delete this?
             });
             break;
         case DailyEventType.Beckoning:
@@ -1387,6 +1387,7 @@ const TIMEOUT_CALLBACKS = {
         await messenger.send(goodMorningChannel, 'Just woke up from a scary nightmare, anyone awake to cheer me up?');
     },
     [TimeoutType.HomeStretchSurprise]: async (): Promise<void> => {
+        // TODO (2.0): If we enable home stretch again, fix this
         const surprises: HomeStretchSurprise[] = state.getEvent()?.homeStretchSurprises;
         if (surprises && surprises.length > 0) {
             // Get the next surprise and dump state
@@ -1463,7 +1464,7 @@ const TIMEOUT_CALLBACKS = {
         } else {
             await goodMorningChannel.send({
                 content: 'Well that\'s all for now! Here are the updated standings, good luck everyone!',
-                files: [new MessageAttachment(await createHomeStretchImage(state, history.medals), 'home-stretch2.png')]
+                files: [] // TODO (2.0): Should we just delete this?
             });
         }
     },
@@ -1923,14 +1924,6 @@ const processCommands = async (msg: Message): Promise<void> => {
         // Asking about the season
         else if (sanitizedText.includes('season')) {
             await messenger.reply(msg, `It\'s season **${state.getSeasonNumber()}** and we're **${toFixed(state.getSeasonCompletion() * 100)}%** complete!`);
-        }
-        // Canvas stuff
-        else if (sanitizedText.includes('canvas')) {
-            try { // TODO: refactor image sending into the messenger class?
-                await msg.channel.sendTyping();
-            } catch (err) {}
-            const attachment = new MessageAttachment(await createMidSeasonUpdateImage(state, {}), 'results.png');
-            msg.reply({ files: [attachment] });
         }
         // Test reaction
         else if (sanitizedText.includes('react')) {

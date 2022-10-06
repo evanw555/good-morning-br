@@ -148,6 +148,7 @@ export interface DungeonGameState {
     decisions: Record<Snowflake, string[]>,
     turn: number,
     winners: Snowflake[],
+    // Custom properties below
     action: number,
     rows: number,
     columns: number
@@ -158,14 +159,18 @@ export interface DungeonGameState {
     players: Record<Snowflake, DungeonPlayerState>
 }
 
-export interface DummyGameState {
-    type: 'DUMMY_GAME_STATE',
+export interface BasicGameState {
+    type: 'BASIC_GAME_STATE',
     decisions: Record<Snowflake, string>,
     turn: number,
-    winners: Snowflake[]
+    winners: Snowflake[],
+    // Custom properties below
+    goal: number,
+    points: Record<Snowflake, number>,
+    names: Record<Snowflake, string>
 }
 
-export type GameState = DungeonGameState | DummyGameState;
+export type GameState = DungeonGameState | BasicGameState;
 
 export interface RawGoodMorningState {
     season: number,

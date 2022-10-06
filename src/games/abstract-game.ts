@@ -29,7 +29,6 @@ export default abstract class AbstractGame<T extends GameState> {
     abstract addPlayer(member: GuildMember): string
     abstract updatePlayer(member: GuildMember): void
     abstract renderState(options?: { showPlayerDecision?: Snowflake, admin?: boolean }): Promise<Buffer>
-    abstract getTurn(): number
     abstract beginTurn(): void
     abstract getPoints(userId: Snowflake): number
     abstract addPoints(userId: Snowflake, points: number): void
@@ -39,6 +38,10 @@ export default abstract class AbstractGame<T extends GameState> {
 
     getState(): T {
         return this.state;
+    }
+
+    getTurn(): number {
+        return this.state.turn;
     }
 
     isSeasonComplete(): boolean {
