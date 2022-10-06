@@ -1872,6 +1872,7 @@ const processCommands = async (msg: Message): Promise<void> => {
             msg.reply(state.getOrderedPlayers()
                 .map((key) => {
                     return `- <@${key}>: **${state.getPlayerPoints(key)}**`
+                        + (state.isPlayerInGame(key) ? '' : ' _(NEW)_')
                         + (state.getPlayerDaysSinceLGM(key) ? ` ${state.getPlayerDaysSinceLGM(key)}d` : '')
                         + (state.getPlayerDeductions(key) ? (' -' + state.getPlayerDeductions(key)) : '');
                 })
@@ -1881,7 +1882,10 @@ const processCommands = async (msg: Message): Promise<void> => {
         else if (sanitizedText.includes('daily')) {
             msg.reply(state.getOrderedDailyPlayers()
                 .map((key) => {
-                    return `- **${getRankString(state.getDailyRank(key) ?? 0)}** <@${key}>: **${state.getPlayerActivity(key).getRating()}** ar, **${state.getPointsEarnedToday(key)}** earned` + (state.getPointsLostToday(key) ? `, **${state.getPointsLostToday(key)}** lost` : '');
+                    return `- **${getRankString(state.getDailyRank(key) ?? 0)}** <@${key}>: **${state.getPlayerActivity(key).getRating()}** ar`
+                        + (state.getPointsEarnedToday(key) ? `, **${state.getPointsEarnedToday(key)}** earned` : '')
+                        + (state.getPointsLostToday(key) ? `, **${state.getPointsLostToday(key)}** lost` : '')
+                        + (state.isPlayerInGame(key) ? '' : ' _(NEW)_');
                 })
                 .join('\n') || 'None.');
         }

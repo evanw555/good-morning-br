@@ -16,7 +16,6 @@ export default class GoodMorningState {
             switch(rawState.game.type) {
                 case 'DUMMY_GAME_STATE':
                     // TODO: Handle this
-                    this.game = null;
                     break;
                 case 'DUNGEON_GAME_STATE':
                     this.game = new DungeonCrawler(rawState.game);
@@ -88,6 +87,27 @@ export default class GoodMorningState {
 
     getPlayers(): Snowflake[] {
         return Object.keys(this.data.players);
+    }
+
+    /**
+     * Returns an ordered list of user IDs sorted by their rank in the game.
+     * For every player NOT in game, add them at the end ordered by points, then days since last good morning, then penalties.
+     * @returns sorted list of user IDs
+     */
+    getOrderedPlayers(): Snowflake[] {
+        const gameOrderedPlayers: Snowflake[] = this.getGame()?.getOrderedPlayers() ?? [];
+
+        // The base ordering is purely based on points and participation (doesn't take the game into account)
+        const baseOrderedPlayers: Snowflake[] = this.getPlayers().sort((x, y) =>
+            // Points descending
+            this.getPlayerPoints(y) - this.getPlayerPoints(x)
+            // Days since last GM ascending
+            || this.getPlayerDaysSinceLGM(x) - this.getPlayerDaysSinceLGM(y)
+            // Deductions ascending
+            || this.getPlayerDeductions(x) - this.getPlayerDeductions(y));
+
+        // Else, use the game ordering and concat all players NOT in game at the end using the base ordering
+        return gameOrderedPlayers.concat(baseOrderedPlayers.filter(userId => !gameOrderedPlayers.includes(userId)));
     }
 
     /**
@@ -207,25 +227,6 @@ export default class GoodMorningState {
 
     incrementPlayerCombosBroken(userId: Snowflake): void {
         this.getOrCreatePlayer(userId).combosBroken = this.getPlayerCombosBroken(userId) + 1;
-    }
-
-    /**
-     * Returns an ordered list of user IDs sorted by their rank in the game.
-     * If there is no game yet then sort by points, then days since last good morning, then penalties.
-     * @returns sorted list of user IDs
-     */
-    getOrderedPlayers(): Snowflake[] {
-        if (this.hasGame()) {
-            return this.getGame().getOrderedPlayers();
-        } else {
-            return this.getPlayers().sort((x, y) =>
-                // Points descending
-                this.getPlayerPoints(y) - this.getPlayerPoints(x)
-                // Days since last GM ascending
-                || this.getPlayerDaysSinceLGM(x) - this.getPlayerDaysSinceLGM(y)
-                // Deductions ascending
-                || this.getPlayerDeductions(x) - this.getPlayerDeductions(y));
-        }
     }
 
     getTopPlayer(): Snowflake {
@@ -653,7 +654,7 @@ export default class GoodMorningState {
             .filter(userId => !this.getEvent().votes[userId]);
     }
 
-    getGame(): AbstractGame<GameState> {
+    getGame(): AbstractGame<GameState> | undefined {
         return this.game;
     }
 
@@ -667,10 +668,10 @@ export default class GoodMorningState {
     }
 
     /**
-     * @returns True if the game has started and the user hasn't joined yet
+     * @returns True if the game has started and the user has joined
      */
-    isPlayerNewToGame(userId: Snowflake): boolean {
-       return this.hasGame() && !this.getGame().hasPlayer(userId);
+    isPlayerInGame(userId: Snowflake): boolean {
+        return this.hasGame() && this.getGame().hasPlayer(userId);
     }
 
     isAcceptingGameDecisions(): boolean {
