@@ -1858,7 +1858,7 @@ const processCommands = async (msg: Message): Promise<void> => {
     // Handle sanitized commands
     const sanitizedText: string = msg.content.trim().toLowerCase();
     if (hasVideo(msg)) {
-        messenger.reply(msg, 'This message has video!');
+        await msg.react('🎥');
     }
     if (sanitizedText.includes('?')) {
         // Test the experimental clusters logic
@@ -1990,14 +1990,14 @@ const processCommands = async (msg: Message): Promise<void> => {
             const extractedYouTubeId: string | undefined = extractYouTubeId(msg.content);
             if (extractedYouTubeId) {
                 if (knownYouTubeIds.has(extractedYouTubeId)) {
-                    await msg.reply('This is a **KNOWN** YouTube ID!');
+                    await msg.reply(`\`${extractedYouTubeId}\` is a **KNOWN** YouTube ID! (**${knownYouTubeIds.size}**)`);
                 } else {
                     knownYouTubeIds.add(extractedYouTubeId);
                     await dumpYouTubeIds();
-                    await msg.reply(`This is _not_ a known YouTube ID, added to the set of now **${knownYouTubeIds.size}** known IDs)`);
+                    await msg.reply(`\`${extractedYouTubeId}\` is _not_ a known YouTube ID, added! (**${knownYouTubeIds.size}**)`);
                 }
             } else {
-                await msg.reply('Could not extract YouTube ID!');
+                await msg.reply(`Could not extract YouTube ID! (**${knownYouTubeIds.size}**)`);
             }
         }
         else if (sanitizedText.includes('log')) {
