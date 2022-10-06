@@ -2317,7 +2317,10 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             } else {
                 // If this is the user's first penalty since last morning, react to the message and deduct a default award
                 state.deductPoints(userId, config.defaultAward);
-                if (isAm) {
+                // Reply if the player is new, else react
+                if (isPlayerNew) {
+                    await messenger.reply(msg, 'Who the hell are you?');
+                } else if (isAm) {
                     await reactToMessage(msg, '😴');
                 } else {
                     await reactToMessage(msg, ['😡', '😬', '😒', '😐', '🤫']);
