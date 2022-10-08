@@ -58,10 +58,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     }
 
     getInstructionsText(): string {
-        return 'Here are the possible actions you may take and their associated costs. Send me something like `up right unlock right pause right punch trap:b12 down`.\n'
+        return 'Here are the possible actions you may take and their associated costs:\n'
                 + '`up`, `down`, `left`, `right`: move one step in such direction. Costs `1`\n'
-                + '`unlock`: open all doorways adjacent to you. Cost is denoted on each doorway, and is reduced with each unlock\n'
-                + '`lock`: close all doorways adjacent to you. Cost is denoted on each doorway\n'
+                + '`unlock`: open all doorways adjacent to you (or just one e.g. `unlock:b12`). Cost is denoted on each doorway, and is reduced with each unlock\n'
+                + '`lock`: close all doorways adjacent to you (or just one e.g. `lock:b12`). Cost is denoted on each doorway\n'
                 + '`punch`: 75% chance of knocking out any player adjacent to you, ending their turn. Costs `2`\n'
                 + '`warp`: warp to a random player. Costs `6`\n'
                 + '`pause`: do nothing. Free\n\n'
@@ -74,7 +74,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 + '6. If you walk into another player, your turn is ended if they have no more actions remaining.\n'
                 + '7. If your turn is ended early due to any of these reasons, you will only lose points for each action taken.\n'
                 + '8. If you warp, you will be KO\'ed so that others can walk past you.\n'
-                + '9. If you warp multiple times in one turn, all subsequent warps will only go through if it brings you closer to the goal.'
+                + '9. If you warp multiple times in one turn, all subsequent warps will only go through if it brings you closer to the goal.\n\n'
+            + 'Send me a DM with your chosen actions e.g. `up right unlock right pause right punch lock:b12 down`';
     }
 
     getSeasonCompletion(): number {
@@ -608,7 +609,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 const numSeals = this.getPlayerItemCount(userId, 'seal');
                 return `${intro}, you've just been awarded a **seal**! Your inventory now contains **${numSeals}**. `
                     + 'You can use `seal` as an action to permanently seal any locked/unlocked doorway in the 4 squares adjacent to you. '
-                    + 'Once a doorway is sealed, it is effectively a wall and cannot be unlocked.';
+                    + 'Once a doorway is sealed, it is effectively a wall and cannot be unlocked. Optionally, seal one specific location e.g. `seal:b12`';
         }
     }
 
@@ -1167,7 +1168,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     }
 
     /**
-     * @returns True if this location is adjacent to a locked doorway, unlocked doorway, or a sealed doorway.
+     * @returns True if this location is adjacent to a locked doorway, an unlocked doorway, or a sealed doorway.
      */
     private isNextToDoorway(location: DungeonLocation): boolean {
         for (const { r, c } of this.getAdjacentLocations(location)) {
@@ -1176,6 +1177,13 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             }
         }
         return false;
+    }
+
+    /**
+     * @returns True if this location is a locked doorway, an unlocked doorway, or a sealed doorway.
+     */
+    private isDoorway(location: DungeonLocation): boolean {
+        return this.isInBounds(location.r, location.c) && (DungeonCrawler.getLocationString(location.r, location.c) in this.state.keyHoleCosts);
     }
 
     private isCloudy(r: number, c: number): boolean {
@@ -1256,15 +1264,34 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             }
         }
 
+        const validateDoorwayAction = (targetLocation: DungeonLocation, action: ActionName) => {
+            const newLocationString: string = DungeonCrawler.getLocationString(newLocation.r, newLocation.c);
+            // If there's a target location, validate that the target is a doorway and that it's adjacent to the current location
+            if (targetLocation) {
+                const targetLocationString: string = DungeonCrawler.getLocationString(targetLocation.r, targetLocation.c);
+                if (!this.isDoorway(targetLocation)) {
+                    throw new Error(`You can't ${action} **${targetLocationString}**, as it's not a doorway!`);
+                }
+                if (!this.isAdjacent(newLocation, targetLocation)) {
+                    throw new Error(`You can't ${action} **${targetLocationString}** from **${newLocationString}**, as those locations aren't adjacent!`);
+                }
+            }
+            // In all cases, validate that there's at least one adjacent doorway
+            if (!this.isNextToDoorway(newLocation)) {
+                throw new Error(`You can't use "${action}" at **${newLocationString}**, as there'd be no doorway near you to ${action}!`);
+            }
+        };
+
         for (const command of commands) {
             const [c, arg] = command.split(':') as [ActionName, string];
-            const argLocation = DungeonCrawler.parseLocationString(arg);
-            cost += this.getActionCost(c, newLocation);
+            const argLocation: DungeonLocation = DungeonCrawler.parseLocationString(arg);
+            const newLocationString: string = DungeonCrawler.getLocationString(newLocation.r, newLocation.c);
+            cost += this.getActionCost(c, newLocation, arg);
             switch (c) {
                 case 'up':
                     if (this.isTileType(newLocation.r - 1, newLocation.c, TileType.KEY_HOLE)) {
                         newLocation.r--;
-                        warnings.push(`Doorway at **${DungeonCrawler.getLocationString(newLocation.r, newLocation.c)}** must be unlocked, whether by you or someone else.`);
+                        warnings.push(`Doorway at **${newLocationString}** must be unlocked, whether by you or someone else.`);
                     } else if (this.isWalkable(newLocation.r - 1, newLocation.c)) {
                         newLocation.r--;
                     } else {
@@ -1274,7 +1301,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 case 'down':
                     if (this.isTileType(newLocation.r + 1, newLocation.c, TileType.KEY_HOLE)) {
                         newLocation.r++
-                        warnings.push(`Doorway at **${DungeonCrawler.getLocationString(newLocation.r, newLocation.c)}** must be unlocked, whether by you or someone else.`);
+                        warnings.push(`Doorway at **${newLocationString}** must be unlocked, whether by you or someone else.`);
                     } else if (this.isWalkable(newLocation.r + 1, newLocation.c)) {
                         newLocation.r++;
                     } else {
@@ -1284,7 +1311,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 case 'left':
                     if (this.isTileType(newLocation.r, newLocation.c - 1, TileType.KEY_HOLE)) {
                         newLocation.c--
-                        warnings.push(`Doorway at **${DungeonCrawler.getLocationString(newLocation.r, newLocation.c)}** must be unlocked, whether by you or someone else.`);
+                        warnings.push(`Doorway at **${newLocationString}** must be unlocked, whether by you or someone else.`);
                     } else if (this.isWalkable(newLocation.r, newLocation.c - 1)) {
                         newLocation.c--;
                     } else {
@@ -1294,7 +1321,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 case 'right':
                     if (this.isTileType(newLocation.r, newLocation.c + 1, TileType.KEY_HOLE)) {
                         newLocation.c++
-                        warnings.push(`Doorway at **${DungeonCrawler.getLocationString(newLocation.r, newLocation.c)}** must be unlocked, whether by you or someone else.`);
+                        warnings.push(`Doorway at **${newLocationString}** must be unlocked, whether by you or someone else.`);
                     } else if (this.isWalkable(newLocation.r, newLocation.c + 1)) {
                         newLocation.c++;
                     } else {
@@ -1305,29 +1332,23 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     // TODO: Do validation?
                     break;
                 case 'unlock':
-                    if (!this.isNextToDoorway(newLocation)) {
-                        throw new Error(`You can't use "unlock" at **${DungeonCrawler.getLocationString(newLocation.r, newLocation.c)}**, as there'd be no doorway near you to unlock!`);
-                    }
+                    validateDoorwayAction(argLocation, 'unlock');
                     warnings.push(`Doorways are halved in cost when unlocked, so subsequent actions taken on a doorway you unlock will be cheaper.`);
                     break;
                 case 'lock':
-                    if (!this.isNextToDoorway(newLocation)) {
-                        throw new Error(`You can't use "lock" at **${DungeonCrawler.getLocationString(newLocation.r, newLocation.c)}**, as there'd be no doorway near you to lock!`);
-                    }
+                    validateDoorwayAction(argLocation, 'lock');
                     warnings.push(`Doorways are halved in cost when unlocked, so you may end up spending fewer points than expected.`);
                     break;
                 case 'seal':
-                    if (!this.isNextToDoorway(newLocation)) {
-                        throw new Error(`You can't use "seal" at **${DungeonCrawler.getLocationString(newLocation.r, newLocation.c)}**, as there'd be no doorway near you to seal!`);
-                    }
+                    validateDoorwayAction(argLocation, 'seal');
                     // Ensure this action wouldn't softlock anyone
-                    for (const { r, c } of this.getAdjacentLocations(newLocation)) {
+                    for (const { r, c } of this.getAdjacentLocationsOrOverride(newLocation, argLocation)) {
                         const sealableLocations: DungeonLocation[] = [];
                         if (this.isSealable(r, c)) {
                             sealableLocations.push({ r, c })
                         }
                         if (!this.canAllPlayersReachGoal(sealableLocations)) {
-                            throw new Error(`Using "seal" at **${DungeonCrawler.getLocationString(newLocation.r, newLocation.c)}** would cause some players to become permanently trapped!`);
+                            throw new Error(`Using "seal" at **${newLocationString}** would cause some players to become permanently trapped!`);
                         }
                     }
                     break;
@@ -1369,7 +1390,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             + (warnings.length > 0 ? ' BUT PLEASE NOTE THE FOLLOWING WARNINGS:\n' + warnings.join('\n') : '');
     }
 
-    private getActionCost(action: ActionName, location: DungeonLocation): number {
+    private getActionCost(action: ActionName, location: DungeonLocation, arg: string): number {
+        const argLocation: DungeonLocation = DungeonCrawler.parseLocationString(arg);
         const actionCosts: Record<BasicActionName, () => number> = {
             'up': () => {
                 return 1;
@@ -1388,7 +1410,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             },
             'unlock': () => {
                 let cost = 0;
-                for (const { r, c } of this.getAdjacentLocations(location)) {
+                for (const { r, c } of this.getAdjacentLocationsOrOverride(location, argLocation)) {
                     if (this.isTileType(r, c, TileType.KEY_HOLE)) {
                         cost += this.state.keyHoleCosts[DungeonCrawler.getLocationString(r, c)];
                     }
@@ -1397,7 +1419,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             },
             'lock': () => {
                 let cost = 0;
-                for (const { r, c } of this.getAdjacentLocations(location)) {
+                for (const { r, c } of this.getAdjacentLocationsOrOverride(location, argLocation)) {
                     if (this.isTileType(r, c, TileType.OPENED_KEY_HOLE)) {
                         cost += this.state.keyHoleCosts[DungeonCrawler.getLocationString(r, c)];
                     }
@@ -1506,8 +1528,9 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         return true;
                     },
                     'unlock': () => {
+                        const argLocation: DungeonLocation = DungeonCrawler.parseLocationString(arg);
                         let numDoorwaysUnlocked = 0;
-                        for (const { r, c } of this.getAdjacentLocations({ r: player.r, c: player.c })) {
+                        for (const { r, c } of this.getAdjacentLocationsOrOverride({ r: player.r, c: player.c }, argLocation)) {
                             if (this.isTileType(r, c, TileType.KEY_HOLE)) {
                                 this.state.map[r][c] = TileType.OPENED_KEY_HOLE;
                                 numDoorwaysUnlocked++;
@@ -1524,8 +1547,9 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         return true;
                     },
                     'lock': () => {
+                        const argLocation: DungeonLocation = DungeonCrawler.parseLocationString(arg);
                         let numDoorwaysLocked = 0;
-                        for (const { r, c } of this.getAdjacentLocations({ r: player.r, c: player.c })) {
+                        for (const { r, c } of this.getAdjacentLocationsOrOverride({ r: player.r, c: player.c }, argLocation)) {
                             if (this.isTileType(r, c, TileType.OPENED_KEY_HOLE)) {
                                 this.state.map[r][c] = TileType.KEY_HOLE;
                                 numDoorwaysLocked++;
@@ -1600,7 +1624,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         return true;
                     },
                     'seal': () => {
-                        const sealableLocations = this.getAdjacentLocations({ r: player.r, c: player.c }).filter(l => this.isSealable(l.r, l.c));
+                        const argLocation: DungeonLocation = DungeonCrawler.parseLocationString(arg);
+                        const sealableLocations = this.getAdjacentLocationsOrOverride({ r: player.r, c: player.c }, argLocation).filter(l => this.isSealable(l.r, l.c));
                         // If doing this will softlock the game, knock out the player
                         if (!this.canAllPlayersReachGoal(sealableLocations)) {
                             this.knockPlayerOut(userId);
@@ -1634,7 +1659,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 const [actionName, arg] = nextAction.toLowerCase().split(':') as [ActionName, string];
 
                 // If the player can't afford this action, delete all their decisions (ending their turn)
-                const actionCost: number = this.getActionCost(actionName, { r: player.r, c: player.c });
+                const actionCost: number = this.getActionCost(actionName, { r: player.r, c: player.c }, arg);
                 if (actionCost > player.points) {
                     delete this.state.decisions[userId];
                     pushNonStepStatement(`**${player.displayName}** ran out of action points`);
@@ -1816,6 +1841,20 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             }
         }
         return result;
+    }
+
+    /**
+     * @returns a list containing just the override location, if it exists; else all in-bound locations adjacent to the given location
+     */
+    private getAdjacentLocationsOrOverride(location: DungeonLocation, override: DungeonLocation | undefined): DungeonLocation[] {
+        if (override) {
+            return [override];
+        }
+        return this.getAdjacentLocations(location);
+    }
+
+    private isAdjacent(l1: DungeonLocation, l2: DungeonLocation): boolean {
+        return this.getAdjacentLocations(l1).some(la => la.r === l2.r && la.c === l2.c);
     }
 
     getMapFairness(): { min: number, max: number, fairness: number, description: string } {
