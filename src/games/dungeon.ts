@@ -76,7 +76,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 + '`pause`: do nothing. Free\n\n'
             + 'Misc Rules:\n'
                 + '1. If you do not choose your actions, actions will be chosen for you (use `pause` to do nothing instead).\n'
-                + '2. In a given turn, one action is processed from each player in a _random_ order until all players have no actions left.\n'
+                + '2. In a given turn, one action is processed from each player in a _semi-random_ order until all players have no actions left '
+                + '("semi-random" = random, but your action is guaranteed to be after another player\'s if you\'re walking into them).\n'
                 + '3. You cannot walk over/past other players unless they are KO\'ed or you are walking into each other head-on.\n'
                 + '4. Players starting their turn with negative points are KO\'ed the entire turn.\n'
                 + '5. If you somehow walk into a wall, your turn is ended.\n'
@@ -1316,51 +1317,32 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             }
         };
 
+        const validateMovementAction = (direction: Direction) => {
+            const [ dr, dc ] = OFFSETS_BY_DIRECTION[direction];
+            const nr = newLocation.r + dr;
+            const nc = newLocation.c + dc;
+            if (this.isTileType(nr, nc, TileType.KEY_HOLE)) {
+                newLocation.r += dr;
+                newLocation.c += dc;
+                warnings.push(`Doorway at **${DungeonCrawler.getLocationString(nr, nc)}** must be unlocked, whether by you or someone else.`);
+            } else if (this.isWalkable(nr, nc)) {
+                newLocation.r += dr;
+                newLocation.c += dc;
+            } else {
+                throw new Error('You cannot move there!');
+            }
+        };
+
         for (const command of commands) {
             const [c, arg] = command.split(':') as [ActionName, string];
             const argLocation: DungeonLocation = DungeonCrawler.parseLocationString(arg);
-            const newLocationString: string = DungeonCrawler.getLocationString(newLocation.r, newLocation.c);
             cost += this.getActionCost(c, newLocation, arg);
             switch (c) {
                 case 'up':
-                    if (this.isTileType(newLocation.r - 1, newLocation.c, TileType.KEY_HOLE)) {
-                        newLocation.r--;
-                        warnings.push(`Doorway at **${newLocationString}** must be unlocked, whether by you or someone else.`);
-                    } else if (this.isWalkable(newLocation.r - 1, newLocation.c)) {
-                        newLocation.r--;
-                    } else {
-                        throw new Error('You cannot move there!');
-                    }
-                    break;
                 case 'down':
-                    if (this.isTileType(newLocation.r + 1, newLocation.c, TileType.KEY_HOLE)) {
-                        newLocation.r++
-                        warnings.push(`Doorway at **${newLocationString}** must be unlocked, whether by you or someone else.`);
-                    } else if (this.isWalkable(newLocation.r + 1, newLocation.c)) {
-                        newLocation.r++;
-                    } else {
-                        throw new Error('You cannot move there!');
-                    }
-                    break;
                 case 'left':
-                    if (this.isTileType(newLocation.r, newLocation.c - 1, TileType.KEY_HOLE)) {
-                        newLocation.c--
-                        warnings.push(`Doorway at **${newLocationString}** must be unlocked, whether by you or someone else.`);
-                    } else if (this.isWalkable(newLocation.r, newLocation.c - 1)) {
-                        newLocation.c--;
-                    } else {
-                        throw new Error('You cannot move there!');
-                    }
-                    break;
                 case 'right':
-                    if (this.isTileType(newLocation.r, newLocation.c + 1, TileType.KEY_HOLE)) {
-                        newLocation.c++
-                        warnings.push(`Doorway at **${newLocationString}** must be unlocked, whether by you or someone else.`);
-                    } else if (this.isWalkable(newLocation.r, newLocation.c + 1)) {
-                        newLocation.c++;
-                    } else {
-                        throw new Error('You cannot move there!');
-                    }
+                    validateMovementAction(c);
                     break;
                 case 'pause':
                     // TODO: Do validation?
@@ -1382,7 +1364,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                             sealableLocations.push({ r, c })
                         }
                         if (!this.canAllPlayersReachGoal(sealableLocations)) {
-                            throw new Error(`Using "seal" at **${newLocationString}** would cause some players to become permanently trapped!`);
+                            throw new Error(`Using "seal" at **${DungeonCrawler.getLocationString(newLocation.r, newLocation.c)}** would cause some players to become permanently trapped!`);
                         }
                     }
                     break;
