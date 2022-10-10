@@ -1494,7 +1494,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             // Flush bump goner statements, if any
             if (summaryData.consecutiveBumpGoners.length > 0) {
                 // TODO: Can we refactor the bold joining as an option of naturalJoin?
-                summaryData.statements.push(`**${summaryData.consecutiveBumpGoners.map(userId => `**${this.getDisplayName(userId)}**`).join(', ')}** bumped into someone and gave up`);
+                summaryData.statements.push(`${naturalJoin(summaryData.consecutiveBumpGoners.map(userId => `**${this.getDisplayName(userId)}**`))} bumped into someone and gave up`);
                 summaryData.consecutiveBumpGoners = [];
             }
 
@@ -1534,7 +1534,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                             } else {
                                 // Otherwise, refuse to move
                                 if (this.hasPendingDecisions(blockingUserId)) {
-                                    pushNonCollapsableStatement(`**${player.displayName}** bumped into **${blockingUser.displayName}**`);
+                                    pushNonCollapsableStatement(`**${player.displayName}** bumped into someone`);
                                 } else {
                                     summaryData.consecutiveBumpGoners.push(userId);
                                     endTurn = true;
