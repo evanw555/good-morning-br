@@ -732,7 +732,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 // Check if there's a player blocking that direction...
                 const blockingUserId: Snowflake = this.getPlayerAtLocation(player.r + dr, player.c + dc);
                 // If there's a blocking player, then the blocking player must be earlier in the list than this player
-                if (blockingUserId) {
+                // Also, only add this dependency if it doesn't create a cycle
+                if (blockingUserId && dependencies[blockingUserId] !== userId) {
                     dependencies[userId] = blockingUserId;
                 }
             }
