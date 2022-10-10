@@ -1912,7 +1912,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     }
 
     canAllPlayersReachGoal(obstacles: DungeonLocation[] = []): boolean {
-        const simulatedWeightMap = this.toWeightMap({ obstacles });
+        const simulatedWeightMap = this.toWeightMap({ obstacles, useDoorways: true });
         const finder = new AStarPathFinder(simulatedWeightMap);
         for (const userId of this.getUnfinishedPlayers()) {
             // TOOD: can we somehow reuse the existing APIs but add more options?
