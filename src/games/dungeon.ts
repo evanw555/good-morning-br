@@ -243,17 +243,11 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         // Render all player "previous locations" before rendering the players themselves
         for (const userId of this.getUnfinishedPlayers()) {
             const player = this.state.players[userId];
-            // Render movement line (or dashed warp line if warped)
-            if (player.previousLocation) {
-                if (player.warped) {
-                    context.lineWidth = 4;
-                    context.strokeStyle = DungeonCrawler.STYLE_WARP_PATH;
-                    context.setLineDash([Math.floor(DungeonCrawler.TILE_SIZE * 0.25), Math.floor(DungeonCrawler.TILE_SIZE * 0.25)]);
-                } else {
-                    context.lineWidth = 2;
-                    context.strokeStyle = DungeonCrawler.STYLE_LIGHT_SKY;
-                    context.setLineDash([]);
-                }
+            // Render movement line if not warped
+            if (player.previousLocation && !player.warped) {
+                context.lineWidth = 2;
+                context.strokeStyle = DungeonCrawler.STYLE_LIGHT_SKY;
+                context.setLineDash([]);
                 context.beginPath();
                 context.moveTo((player.previousLocation.c + .5) * DungeonCrawler.TILE_SIZE, (player.previousLocation.r + .5) * DungeonCrawler.TILE_SIZE);
                 context.lineTo((player.c + .5) * DungeonCrawler.TILE_SIZE, (player.r + .5) * DungeonCrawler.TILE_SIZE);
@@ -327,6 +321,21 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 context.lineTo((player.c + 1) * DungeonCrawler.TILE_SIZE, (player.r + 1) * DungeonCrawler.TILE_SIZE);
                 context.moveTo((player.c + 1) * DungeonCrawler.TILE_SIZE, player.r * DungeonCrawler.TILE_SIZE);
                 context.lineTo(player.c * DungeonCrawler.TILE_SIZE, (player.r + 1) * DungeonCrawler.TILE_SIZE);
+                context.stroke();
+            }
+        }
+
+        // Render all player warp lines after rendering the players themselves
+        for (const userId of this.getUnfinishedPlayers()) {
+            const player = this.state.players[userId];
+            // Render dashed warp line if warped
+            if (player.previousLocation && player.warped) {
+                context.lineWidth = 4;
+                context.strokeStyle = DungeonCrawler.STYLE_WARP_PATH;
+                context.setLineDash([Math.floor(DungeonCrawler.TILE_SIZE * 0.25), Math.floor(DungeonCrawler.TILE_SIZE * 0.25)]);
+                context.beginPath();
+                context.moveTo((player.previousLocation.c + .5) * DungeonCrawler.TILE_SIZE, (player.previousLocation.r + .5) * DungeonCrawler.TILE_SIZE);
+                context.lineTo((player.c + .5) * DungeonCrawler.TILE_SIZE, (player.r + .5) * DungeonCrawler.TILE_SIZE);
                 context.stroke();
             }
         }
