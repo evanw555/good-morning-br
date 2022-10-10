@@ -1785,7 +1785,7 @@ const processCommands = async (msg: Message): Promise<void> => {
                 } catch (err) {}
                 const randomOrdering: Snowflake[] = tempDungeon.getDecisionShuffledPlayers();
                 await msg.reply({
-                    content: response + `\nHere's a sample random ordering: ${getJoinedMentions(randomOrdering)}`,
+                    content: response + `\nHere's a sample random ordering: ${randomOrdering.map(x => tempDungeon.getDisplayName(x)).join(', ')}`,
                     files: [new MessageAttachment(await tempDungeon.renderState({ showPlayerDecision: msg.author.id }), 'confirmation.png')]
                 });
                 await sleep(5000);
