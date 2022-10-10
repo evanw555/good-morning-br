@@ -1478,9 +1478,11 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         this.state.action++;
         const summaryData = {
             consecutiveStepUsers: [],
+            consecutiveBumpGoners: [],
             statements: []
         };
-        const addStepStatements = () => {
+        const flushCollapsableStatements = () => {
+            // Flush step statements, if any
             if (summaryData.consecutiveStepUsers.length > 0) {
                 if (summaryData.consecutiveStepUsers.length === 1) {
                     summaryData.statements.push(`**${summaryData.consecutiveStepUsers[0]}** took a step`);
@@ -1489,9 +1491,16 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 }
                 summaryData.consecutiveStepUsers = [];
             }
-        };
-        const pushNonStepStatement = (s) => {
-            addStepStatements();
+            // Flush bump goner statements, if any
+            if (summaryData.consecutiveBumpGoners.length > 0) {
+                // TODO: Can we refactor the bold joining as an option of naturalJoin?
+                summaryData.statements.push(`**${summaryData.consecutiveBumpGoners.map(userId => `**${this.getDisplayName(userId)}**`).join(', ')}** bumped into someone and gave up`);
+                summaryData.consecutiveBumpGoners = [];
+            }
+
+        }
+        const pushNonCollapsableStatement = (s) => {
+            flushCollapsableStatements();
             summaryData.statements.push(s);
         };
         const bumpers: Record<Snowflake, Snowflake> = {};
@@ -1512,22 +1521,22 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         if (player.invincible && !blockingUser.invincible) {
                             // If this player is invincible and the other isn't, knock them out and continue walking
                             this.knockPlayerOut(blockingUserId);
-                            pushNonStepStatement(`**${player.displayName}** trampled **${blockingUser.displayName}**`)
+                            pushNonCollapsableStatement(`**${player.displayName}** trampled **${blockingUser.displayName}**`)
                         } else {
                             // Otherwise, handle the blocking user as normal
                             bumpers[userId] = blockingUserId;
                             if (bumpers[blockingUserId] === userId) {
                                 // If the other user previously bumped into this user, then allow him to pass by
-                                pushNonStepStatement(`**${player.displayName}** walked past **${blockingUser.displayName}**`);
+                                pushNonCollapsableStatement(`**${player.displayName}** walked past **${blockingUser.displayName}**`);
                             } else if (blockingUser.knockedOut) {
                                 // If the other user is knocked out, walk past him
-                                pushNonStepStatement(`**${player.displayName}** stepped over the knocked-out body of **${blockingUser.displayName}**`);
+                                pushNonCollapsableStatement(`**${player.displayName}** stepped over the knocked-out body of **${blockingUser.displayName}**`);
                             } else {
                                 // Otherwise, refuse to move
                                 if (this.hasPendingDecisions(blockingUserId)) {
-                                    pushNonStepStatement(`**${player.displayName}** bumped into someone`);
+                                    pushNonCollapsableStatement(`**${player.displayName}** bumped into **${blockingUser.displayName}**`);
                                 } else {
-                                    pushNonStepStatement(`**${player.displayName}** bumped into **${blockingUser.displayName}** and gave up`);
+                                    summaryData.consecutiveBumpGoners.push(userId);
                                     endTurn = true;
                                 }
                                 return false;
@@ -1541,7 +1550,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         summaryData.consecutiveStepUsers.push(player.displayName);
                         return true;
                     }
-                    pushNonStepStatement(`**${player.displayName}** walked into a wall and gave up`);
+                    pushNonCollapsableStatement(`**${player.displayName}** walked into a wall and gave up`);
                     endTurn = true;
                     return false;
                 };
@@ -1574,9 +1583,9 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                             }
                         }
                         if (numDoorwaysUnlocked === 1) {
-                            pushNonStepStatement(`**${player.displayName}** unlocked a doorway`);
+                            pushNonCollapsableStatement(`**${player.displayName}** unlocked a doorway`);
                         } else {
-                            pushNonStepStatement(`**${player.displayName}** unlocked **${numDoorwaysUnlocked}** doorways`);
+                            pushNonCollapsableStatement(`**${player.displayName}** unlocked **${numDoorwaysUnlocked}** doorways`);
                         }
                         return true;
                     },
@@ -1590,9 +1599,9 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                             }
                         }
                         if (numDoorwaysLocked === 1) {
-                            pushNonStepStatement(`**${player.displayName}** locked a doorway`);
+                            pushNonCollapsableStatement(`**${player.displayName}** locked a doorway`);
                         } else {
-                            pushNonStepStatement(`**${player.displayName}** locked **${numDoorwaysLocked}** doorways`);
+                            pushNonCollapsableStatement(`**${player.displayName}** locked **${numDoorwaysLocked}** doorways`);
                         }
                         return true;
                     },
@@ -1604,17 +1613,17 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                                 nearPlayer = true;
                                 const otherPlayer = this.state.players[otherPlayerId];
                                 if (otherPlayer.invincible) {
-                                    pushNonStepStatement(`**${player.displayName}** threw fists at the invincible **${otherPlayer.displayName}** to no avail`);
+                                    pushNonCollapsableStatement(`**${player.displayName}** threw fists at the invincible **${otherPlayer.displayName}** to no avail`);
                                 } else if (Math.random() < 0.75) {
                                     this.knockPlayerOut(otherPlayerId);
-                                    pushNonStepStatement(`**${player.displayName}** knocked out **${otherPlayer.displayName}**`);
+                                    pushNonCollapsableStatement(`**${player.displayName}** knocked out **${otherPlayer.displayName}**`);
                                 } else {
-                                    pushNonStepStatement(`**${player.displayName}** tried to punch **${otherPlayer.displayName}** and missed`);
+                                    pushNonCollapsableStatement(`**${player.displayName}** tried to punch **${otherPlayer.displayName}** and missed`);
                                 }
                             }
                         }
                         if (!nearPlayer) {
-                            pushNonStepStatement(`**${player.displayName}** swung at the air`);
+                            pushNonCollapsableStatement(`**${player.displayName}** swung at the air`);
                         }
                         return true;
                     },
@@ -1629,9 +1638,9 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                             player.c = newC;
                             player.warped = true;
                             player.knockedOut = true;
-                            pushNonStepStatement(`**${player.displayName}** warped to **${this.getDisplayName(nearUserId)}**`);
+                            pushNonCollapsableStatement(`**${player.displayName}** warped to **${this.getDisplayName(nearUserId)}**`);
                         } else {
-                            pushNonStepStatement(`**${player.displayName}** avoided warping to **${this.getDisplayName(nearUserId)}**`);
+                            pushNonCollapsableStatement(`**${player.displayName}** avoided warping to **${this.getDisplayName(nearUserId)}**`);
                         }
                         return true;
                     },
@@ -1648,13 +1657,13 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         if (!this.canAllPlayersReachGoal([{ r, c }])) {
                             this.knockPlayerOut(userId);
                             endTurn = true;
-                            pushNonStepStatement(`**${player.displayName}** got knocked out trying to softlock the game (tried to place boulder at **${DungeonCrawler.getLocationString(r, c)}**)`);
+                            pushNonCollapsableStatement(`**${player.displayName}** got knocked out trying to softlock the game (tried to place boulder at **${DungeonCrawler.getLocationString(r, c)}**)`);
                             return false;
                         }
                         // Otherwise, place the boulder
                         this.state.map[r][c] = TileType.BOULDER;
                         this.consumePlayerItem(userId, 'boulder');
-                        pushNonStepStatement(`**${player.displayName}** placed a boulder at **${DungeonCrawler.getLocationString(r, c)}**`);
+                        pushNonCollapsableStatement(`**${player.displayName}** placed a boulder at **${DungeonCrawler.getLocationString(r, c)}**`);
                         return true;
                     },
                     'seal': () => {
@@ -1664,7 +1673,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         if (!this.canAllPlayersReachGoal(sealableLocations)) {
                             this.knockPlayerOut(userId);
                             endTurn = true;
-                            pushNonStepStatement(`**${player.displayName}** got knocked out trying to softlock the game (tried to permanently seal doorways)`);
+                            pushNonCollapsableStatement(`**${player.displayName}** got knocked out trying to softlock the game (tried to permanently seal doorways)`);
                             return false;
                         }
                         // Otherwise, seal all the adjacent doorways
@@ -1674,9 +1683,9 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                             numDoorwaysSealed++;
                         }
                         if (numDoorwaysSealed === 1) {
-                            pushNonStepStatement(`**${player.displayName}** sealed a doorway`);
+                            pushNonCollapsableStatement(`**${player.displayName}** sealed a doorway`);
                         } else {
-                            pushNonStepStatement(`**${player.displayName}** sealed **${numDoorwaysSealed}** doorways`);
+                            pushNonCollapsableStatement(`**${player.displayName}** sealed **${numDoorwaysSealed}** doorways`);
                         }
                         this.consumePlayerItem(userId, 'seal');
                         return true;
@@ -1684,7 +1693,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     'star': () => {
                         player.invincible = true;
                         this.consumePlayerItem(userId, 'star');
-                        pushNonStepStatement(`**${player.displayName}** used a star to become invincible`);
+                        pushNonCollapsableStatement(`**${player.displayName}** used a star to become invincible`);
                         return true;
                     }
                 };
@@ -1696,7 +1705,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 const actionCost: number = this.getActionCost(actionName, { r: player.r, c: player.c }, arg);
                 if (actionCost > player.points) {
                     delete this.state.decisions[userId];
-                    pushNonStepStatement(`**${player.displayName}** ran out of action points`);
+                    pushNonCollapsableStatement(`**${player.displayName}** ran out of action points`);
                     continue;
                 }
 
@@ -1722,7 +1731,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     // Add to list of finished players
                     this.addWinner(userId);
                     // Add to log and end the turn
-                    pushNonStepStatement(`**${this.getDisplayName(userId)}** reached the goal for _${getRankString(this.state.winners.length)} place_`)
+                    pushNonCollapsableStatement(`**${this.getDisplayName(userId)}** reached the goal for _${getRankString(this.state.winners.length)} place_`)
                     endTurn = true;
                 }
 
@@ -1743,7 +1752,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                             this.state.map[player.r][player.c] = TileType.TRAP;
                             trapRevealed = true;
                             const trapOwnerId = this.state.trapOwners[locationString];
-                            pushNonStepStatement(`**${player.displayName}** revealed a hidden trap placed by **${this.getDisplayName(trapOwnerId)}**`);
+                            pushNonCollapsableStatement(`**${player.displayName}** revealed a hidden trap placed by **${this.getDisplayName(trapOwnerId)}**`);
                         }
                         // Handle revealed traps (this will trigger if the above condition is triggered)
                         if (this.getTileAtUser(userId) === TileType.TRAP) {
@@ -1754,13 +1763,13 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                             const trapOwnerId = this.state.trapOwners[locationString];
                             logger.log(`\`${userId}\` triggered trap by \`${trapOwnerId}\` at \`${locationString}\``);
                             if (trapRevealed) {
-                                pushNonStepStatement(`was sent back to **${this.getPlayerLocationString(userId)}**`);
+                                pushNonCollapsableStatement(`was sent back to **${this.getPlayerLocationString(userId)}**`);
                             } else {
-                                pushNonStepStatement(`**${player.displayName}** stepped on **${this.getDisplayName(trapOwnerId)}'s** trap and was sent back to **${this.getPlayerLocationString(userId)}**`);
+                                pushNonCollapsableStatement(`**${player.displayName}** stepped on **${this.getDisplayName(trapOwnerId)}'s** trap and was sent back to **${this.getPlayerLocationString(userId)}**`);
                             }
                             // Reward the trap's owner
                             this.state.players[trapOwnerId].points++;
-                            pushNonStepStatement(`**${this.getDisplayName(trapOwnerId)}** earned **1** point for trapping`);
+                            pushNonCollapsableStatement(`**${this.getDisplayName(trapOwnerId)}** earned **1** point for trapping`);
                         }
                     }
                 }
@@ -1771,7 +1780,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         }
 
         // Turn is over, flush all remaining step statements into the statement log
-        addStepStatements();
+        flushCollapsableStatements();
 
         // Refresh all player ranks
         this.refreshPlayerRanks();
@@ -1780,7 +1789,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return {
             summary: naturalJoin(summaryData.statements, 'then') || 'Dogs sat around with their hands in their pockets...',
             continueProcessing: Object.keys(this.state.decisions).length > 0,
-            continueImmediately: summaryData.statements.length === 1
+            // TODO: Before using this in production, refine it to be if exactly one player takes a step
+            continueImmediately: summaryData.statements.length === 1 && summaryData.statements[0].includes('took a step')
         };
     }
 
