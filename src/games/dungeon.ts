@@ -1,6 +1,6 @@
 import canvas, { NodeCanvasRenderingContext2D } from 'canvas';
 import { GuildMember, Snowflake } from 'discord.js';
-import { getRankString, naturalJoin, randInt, shuffle, toLetterId, fromLetterId, AStarPathFinder } from 'evanw555.js';
+import { getRankString, naturalJoin, randInt, shuffle, toLetterId, fromLetterId, AStarPathFinder, shuffleWithDependencies } from 'evanw555.js';
 import { DungeonGameState, DungeonItemName, DungeonLocation, DungeonPlayerState, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 import logger from '../logger';
@@ -17,7 +17,16 @@ enum TileType {
     BOULDER = 7
 }
 
-type BasicActionName = 'up' | 'down' | 'left' | 'right' | 'pause' | 'unlock' | 'lock' | 'punch' | 'warp';
+type Direction = 'up' | 'down' | 'left' | 'right';
+
+const OFFSETS_BY_DIRECTION: Record<Direction, [number, number]> = {
+    'up': [-1, 0],
+    'down': [1, 0],
+    'left': [0, -1],
+    'right': [0, 1]
+};
+
+type BasicActionName = Direction | 'pause' | 'unlock' | 'lock' | 'punch' | 'warp';
 type ActionName = BasicActionName | DungeonItemName;
 
 const ITEM_NAME_RECORD: Record<DungeonItemName, boolean> = {
@@ -705,6 +714,30 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
      */
     getShuffledPlayers(): Snowflake[] {
         return shuffle(Object.keys(this.state.players));
+    }
+
+    /**
+     * @returns all players in a semi-random order, guaranteeing that a player following another will always go after that player
+     */
+    getDecisionShuffledPlayers(): Snowflake[] {
+        // Compute player step dependency map
+        const dependencies: Record<Snowflake, Snowflake> = {};
+        // For each player...
+        for (const userId of this.getPlayers()) {
+            const nextDecision: string = this.getNextDecidedAction(userId);
+            // If the next action is moving in a particular direction...
+            if (nextDecision in OFFSETS_BY_DIRECTION) {
+                const [ dr, dc ] = OFFSETS_BY_DIRECTION[nextDecision];
+                const player = this.state.players[userId];
+                // Check if there's a player blocking that direction...
+                const blockingUserId: Snowflake = this.getPlayerAtLocation(player.r + dr, player.c + dc);
+                // If there's a blocking player, then the blocking player must be earlier in the list than this player
+                if (blockingUserId) {
+                    dependencies[userId] = blockingUserId;
+                }
+            }
+        }
+        return shuffleWithDependencies(this.getPlayers(), dependencies);
     }
 
     /**
@@ -1462,7 +1495,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         };
         const bumpers: Record<Snowflake, Snowflake> = {};
         // Process one decision from each player
-        for (const userId of this.getShuffledPlayers()) {
+        for (const userId of this.getDecisionShuffledPlayers()) {
             const player = this.state.players[userId];
             delete player.previousLocation;
             if (this.hasPendingDecisions(userId)) {
@@ -1763,6 +1796,16 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
 
     getPendingDecisions(): Record<Snowflake, string[]> {
         return this.state.decisions;
+    }
+
+    /**
+     * @returns The next action in some player's decision list if it exists, else undefined.
+     */
+    getNextDecidedAction(userId: Snowflake): string | undefined {
+        if (this.state.decisions && userId in this.state.decisions && this.state.decisions[userId].length > 0) {
+            return this.state.decisions[userId][0];
+        }
+        return undefined;
     }
 
     /**
