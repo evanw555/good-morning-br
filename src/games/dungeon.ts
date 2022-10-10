@@ -83,7 +83,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 + '5. If you somehow walk into a wall, your turn is ended.\n'
                 + '6. If you walk into another player, your turn is ended if they have no more actions remaining.\n'
                 + '7. If your turn is ended early due to any of these reasons, you will only lose points for each action taken.\n'
-                + '8. If you warp, you will be KO\'ed so that others can walk past you.\n'
+                + '8. If you warp, you will be KO\'ed at the end of your turn so that others can walk past you.\n'
                 + '9. If you warp multiple times in one turn, all subsequent warps will only go through if it brings you closer to the goal.\n\n'
             + 'Send me a DM with your chosen actions e.g. `up right unlock right pause right punch lock:b12 down`';
     }
@@ -1613,13 +1613,12 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         const { r: newR, c: newC, userId: nearUserId } = this.getSpawnableLocationAroundPlayers(this.getOtherPlayers(userId));
                         const isFirstWarp: boolean = !player.warped;
                         const isCloser: boolean = this.approximateCostToGoal(newR, newC) < this.approximateCostToGoal(player.r, player.c);
-                        // If it's the user's first warp of the turn or the warp is closer to the goal, do it and knock them out
+                        // If it's the user's first warp of the turn or the warp is closer to the goal, do it
                         if (isFirstWarp || isCloser) {
                             player.previousLocation = { r: player.r, c: player.c };
                             player.r = newR;
                             player.c = newC;
                             player.warped = true;
-                            player.knockedOut = true;
                             pushNonCollapsableStatement(`**${player.displayName}** warped to **${this.getDisplayName(nearUserId)}**`);
                         } else {
                             pushNonCollapsableStatement(`**${player.displayName}** avoided warping to **${this.getDisplayName(nearUserId)}**`);
@@ -1726,6 +1725,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 
                 // Process end-of-turn events
                 if (turnIsOver) {
+                    // If the user warped, knock them out
+                    if (player.warped) {
+                        player.knockedOut = true;
+                    }
                     // Handle hidden traps if not invincible
                     if (!player.invincible) {
                         let trapRevealed = false;
