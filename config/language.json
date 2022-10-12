@@ -192,11 +192,22 @@
             "Good morning!",
             "Good morning, {!my|dear} {!friend|dog}",
             "Good morning to you as well!",
-            "Good morning to you too!",
+            "Good morning to you {!too|as well}!",
             "A very {adjectives.positive?} morning to you!",
             "{!Glad|Happy|Pleasure} to hear from you this morning!",
-            "Hello there!",
-            "{!🌞|😊|😌}"
+            "{!Hello|Hi} there!",
+            "{!🌞|😊|😌}",
+            "{!Salutations|Greetings}, my {adjectives.beautiful?} {!friend|buddy|dog|pal|morning-time colleague}!",
+            "Good morning, how are you {!feeling|faring} {!today|this morning}?",
+            "Good morning, any plans for today?"
+        ],
+        "question": [
+            "Good question!",
+            "Hmmmmm I'm not sure",
+            "Yes, {!absolutely|definitely}!",
+            "I {!think|believe} so!",
+            "I don't {!think|believe} so",
+            "Most certainly not!"
         ],
         "new": [
             "Good morning, {!glad|happy} to {!hear from you|see you around here}!",
@@ -210,7 +221,7 @@
             "Good morning, {!didn't expect|wasn't expecting} to hear from you",
             "You may be a {!naughty|bad} {!boy|dog|man}, but good morning to you!",
             "Well, well, well... look who's up!",
-            "Uhhhhhhh hey."
+            "Uhhhhhhh {!hey|hi}."
         ],
         "comboBreaker": [
             "Good morning! A {$days}-day Good Morning {!combo|streak} has been broken, what a sight to see!",
@@ -281,11 +292,14 @@
         "summonPrefix": [
             "As this morning comes to a close, I'd like to recognize {$player}'s efforts in making our mornings {!shine bright|special}.",
             "This morning was {!truly|quite} {adjectives.positive?}, but I'm exhausted... I don't think I'll {!be able to wake myself up tomorrow|set my alarm}.",
-            "Saying good morning to {!you all|my friends} is {!an honor that I truly cherish|a privilege that I enjoy deeply|the highlight of each day}, but I think I'll {!pass the torch for tomorrow|let someone else give it a shot}!"
+            "Saying good morning to {!you all|my friends} is {!an honor that I truly cherish|a privilege that I enjoy deeply|the highlight of each day}, but I think I'll {!pass the torch for tomorrow|let someone else give it a shot}!",
+            "{!Thank you|Thanks} {!all|everyone|guys} for a {adjectives.positive?} morning, but tomorrow I'd like to {!mix it up|change things up|try something different}."
         ],
         "summonSuffix": [
             "{$player}, I'll let you start the Good Morning {!train|ritual} tomorrow. Go ahead and say good morning whenever you'd like, I'll wake up when I see your message",
-            "I'd like {$player} to take my place tomorrow morning. Please send a {!truly|wonderfully} {adjectives.novel?} good morning message to the server to kick off the day! Don't wait for me"
+            "I'd like {$player} to take my place tomorrow morning. Please send a {!truly|wonderfully} {adjectives.novel?} good morning message to the server to kick off the day! Don't wait for me",
+            "I'd like to call on {$player} to say Good Morning tomorrow in my place",
+            "I hereby {!invite|summon} {$player} to start us off tomorrow"
         ]
     },
     "bait": {
@@ -298,7 +312,9 @@
             "{$player} check out this {!chump|fool|sucker|sucka|buffoon|dunce}",
             "What a {!chump|fool|sucker|sucka}, isn't that right {$player}?",
             "Oh {!naw|nah|hell nah} {$player} he really {!done goofed|fumbled|did it|messed up} 😭",
-            "My {!dear dog|sweet pup}, {!you have|you've} been {!played|clowned} by {$player}"
+            "My {!dear dog|sweet pup}, {!you have|you've} been {!played|clowned} by {$player}",
+            "Oh {!dear|deer|my}... {$player} {!got|did|clowned} you good",
+            "{$player}, I think you're gonna {!wanna|want to} see this..."
         ]
     }
 }

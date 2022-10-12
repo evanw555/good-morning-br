@@ -2057,6 +2057,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
         const isAm: boolean = new Date().getHours() < 12;
         const is1159: boolean = getClockTime() === '11:59';
         const isPlayerNew: boolean = !state.hasPlayer(userId);
+        const isQuestion: boolean = msg.content && msg.content.trim().endsWith('?');
 
         // If the grace period is active, then completely ignore all messages
         if (state.isGracePeriod()) {
@@ -2265,6 +2266,9 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     else if (rank <= config.goodMorningReplyCount) {
                         if (Math.random() < config.replyViaReactionProbability) {
                             reactToMessage(msg, state.getGoodMorningEmoji());
+                        } else if (isQuestion) {
+                            // TODO: Can we more intelligently determine what type of question it is?
+                            messenger.reply(msg, languageGenerator.generate('{goodMorningReply.question?}'));
                         } else {
                             messenger.reply(msg, languageGenerator.generate('{goodMorningReply.standard?}'));
                         }
