@@ -414,7 +414,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             // Draw the points
             const middleTextX = leftTextX + leftTextWidth + MARGIN;
             const middleTextWidth = 1.25 * DungeonCrawler.TILE_SIZE;
-            c2.fillText(`$${player.points}`, middleTextX, textY, middleTextWidth);
+            c2.fillText(`$${Math.floor(player.points)}`, middleTextX, textY, middleTextWidth);
             // Draw the username
             const rightTextX = middleTextX + middleTextWidth + MARGIN;
             const rightTextWidth = TOTAL_WIDTH - rightTextX;
@@ -1406,12 +1406,12 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         }
 
         if (cost > playerPoints) {
-            throw new Error(`You can't afford these actions. It would cost **${cost}** points, yet you only have **${playerPoints}**.`);
+            throw new Error(`You can't afford these actions. It would cost **${cost}** points, yet you only have **${Math.floor(playerPoints)}**.`);
         }
 
         this.state.decisions[userId] = commands;
         return `Valid actions, your new location will be **${isWarping ? '???' : DungeonCrawler.getLocationString(newLocation.r, newLocation.c)}**. `
-            + `This will consume **${cost}** of your **${playerPoints}** points if successful. `
+            + `This will consume **${cost}** of your **${Math.floor(playerPoints)}** points if successful. `
             + (warnings.length > 0 ? ' BUT PLEASE NOTE THE FOLLOWING WARNINGS:\n' + warnings.join('\n') : '');
     }
 

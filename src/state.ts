@@ -25,6 +25,28 @@ export default class GoodMorningState {
         }
         // Temp logic to add/remove certain properties
         // ...
+        for (const userId of Object.keys(rawState.players)) {
+            if ('points' in rawState.players[userId]) {
+                if (this.hasGame()) {
+                    if (this.getGame().hasPlayer(userId)) {
+                        this.getGame().addPoints(userId, rawState.players[userId]['points']);
+                        delete rawState.players[userId]['points'];
+                    }
+                }
+            }
+            if (rawState.players[userId].cumulativePoints === undefined) {
+                if (this.game instanceof DungeonCrawler) {
+                    if (this.getGame().hasPlayer(userId)) {
+                        rawState.players[userId].cumulativePoints = toFixed(this.game.getPoints(userId) + this.game.approximateCostToGoal(0, 0) - this.game.approximateCostToGoalForPlayer(userId));
+                    } else {
+                        rawState.players[userId].cumulativePoints = rawState.players[userId]['points'] ?? 0;
+                        delete rawState.players[userId]['points'];
+                    }
+                } else {
+                    rawState.players[userId].cumulativePoints = 0;
+                }
+            }
+        }
     }
 
     isMorning(): boolean {
@@ -135,7 +157,7 @@ export default class GoodMorningState {
         if (this.data.players[userId] === undefined) {
             this.data.players[userId] = {
                 displayName: `User ${userId}`,
-                points: 0
+                cumulativePoints: 0
             }
         }
 
@@ -163,7 +185,7 @@ export default class GoodMorningState {
     }
 
     getPlayerPoints(userId: Snowflake): number {
-        return this.getPlayer(userId)?.points ?? 0;
+        return this.getPlayer(userId)?.cumulativePoints ?? 0;
     }
 
     getPlayerActivity(userId: Snowflake): ActivityTracker {
@@ -349,23 +371,23 @@ export default class GoodMorningState {
     }
 
     /**
-     * @returns The max total points of all players currently in play
+     * @returns The max total cumulative points of all players currently in play
      */
     getMaxPoints(): number {
         if (this.getNumPlayers() === 0) {
             return 0;
         }
-        return Math.max(...Object.values(this.data.players).map(player => player.points));
+        return Math.max(...Object.values(this.data.players).map(player => player.cumulativePoints));
     }
 
     /**
-     * @returns The min total points of all players currently in play
+     * @returns The min total cumulative points of all players currently in play
      */
     getMinPoints(): number {
         if (this.getNumPlayers() === 0) {
             return 0;
         }
-        return Math.min(...Object.values(this.data.players).map(player => player.points));
+        return Math.min(...Object.values(this.data.players).map(player => player.cumulativePoints));
     }
 
     isSeasonGoalReached(): boolean {
@@ -386,7 +408,7 @@ export default class GoodMorningState {
 
     /**
      * Returns a number in the range [0, 1] representing the points of a particular player relative to
-     * the player with the highest points (e.g. 0.75 means 75% of the max points).
+     * the player with the highest cumulative points (e.g. 0.75 means 75% of the max points).
      * @returns The player's relative points
      */
     getPlayerRelativePoints(userId: Snowflake): number {
@@ -417,7 +439,11 @@ export default class GoodMorningState {
         }
         const actualPoints: number = points * this.getPlayerMultiplier(userId);
         this.getOrCreateDailyStatus(userId).pointsEarned = toFixed(this.getPointsEarnedToday(userId) + actualPoints);
-        this.getOrCreatePlayer(userId).points = toFixed(this.getPlayerPoints(userId) + actualPoints);
+        this.getOrCreatePlayer(userId).cumulativePoints = toFixed(this.getPlayerPoints(userId) + actualPoints);
+        // Add these points to the game, if the game exists and the player is in it
+        if (this.hasGame() && this.getGame().hasPlayer(userId)) {
+            this.getGame().addPoints(userId, points);
+        }
         return actualPoints;
     }
 
@@ -428,13 +454,13 @@ export default class GoodMorningState {
         // Update the daily "points lost" value
         this.getOrCreateDailyStatus(userId).pointsLost = toFixed(this.getPointsLostToday(userId) + points);
         // Deduct points from the player
-        this.getOrCreatePlayer(userId).points = toFixed(this.getPlayerPoints(userId) - points);;
+        this.getOrCreatePlayer(userId).cumulativePoints = toFixed(this.getPlayerPoints(userId) - points);
         // Update the season total deductions count
         this.getOrCreatePlayer(userId).deductions = toFixed(this.getPlayerDeductions(userId) + points);
-    }
-
-    setPlayerPoints(userId: Snowflake, points: number): void {
-        this.getOrCreatePlayer(userId).points = toFixed(points);
+        // Deduct these points from the game, if the game exists and the player is in it
+        if (this.hasGame() && this.getGame().hasPlayer(userId)) {
+            this.getGame().addPoints(userId, -points);
+        }
     }
 
     getPointsEarnedToday(userId: Snowflake): number {

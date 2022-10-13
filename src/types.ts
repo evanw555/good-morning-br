@@ -63,7 +63,7 @@ export type PrizeType = 'submissions1' | 'submissions2' | 'submissions3' | 'stre
 
 export interface PlayerState {
     displayName: string,
-    points: number,
+    cumulativePoints: number,
     activity?: string,
     multiplier?: number,
     deductions?: number,

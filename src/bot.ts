@@ -584,6 +584,10 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         // TODO (2.0): Eventually, this should be more generic for other game types
         const dungeon = DungeonCrawler.createSectional(members, { sectionSize: 11, sectionsAcross: 3 });
         state.setGame(dungeon);
+        // For all starting players, add the points they earned before the game was instantiated
+        for (const userId of participatingUserIds) {
+            state.getGame().addPoints(userId, state.getPlayerPoints(userId));
+        }
     }
 
     // If today is a decision day
@@ -605,18 +609,11 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
                     const addPlayerLog: string = state.getGame().addPlayer(member);
                     addPlayerLogs.push(addPlayerLog);
                     newlyAddedPlayers.push(member.id);
+                    // Add all points earned before this player was added to the game
+                    state.getGame().addPoints(userId, state.getPlayerPoints(userId));
                 }
             } else {
                 await logger.log(`For some reason, <@${userId}> wasn't included in the bulk-fetch member results when updating players.`);
-            }
-            // Update points (check that the player is in the game just in case the above fails)
-            if (state.getGame().hasPlayer(userId)) {
-                // Transfer whole earned/lost points into the game
-                const points = state.getPlayerPoints(userId);
-                const roundedPoints = points > 0 ? Math.floor(points) : Math.ceil(points);
-                state.getGame().addPoints(userId, roundedPoints);
-                // Reset the standard GMBR points for this user to the remainder
-                state.setPlayerPoints(userId, points - roundedPoints);
             }
         }
         await logger.log(addPlayerLogs.join('\n') || 'No new players were added this week.');
@@ -1873,7 +1870,8 @@ const processCommands = async (msg: Message): Promise<void> => {
         else if (sanitizedText.includes('order') || sanitizedText.includes('rank') || sanitizedText.includes('winning') || sanitizedText.includes('standings')) {
             msg.reply(state.getOrderedPlayers()
                 .map((key) => {
-                    return `- <@${key}>: **${state.getPlayerPoints(key)}**`
+                    const gamePoints = state.getGame()?.getPoints(key) ?? '???';
+                    return `- <@${key}>: **${gamePoints}/${state.getPlayerPoints(key)}**`
                         + (state.isPlayerInGame(key) ? '' : ' _(NEW)_')
                         + (state.getPlayerDaysSinceLGM(key) ? ` ${state.getPlayerDaysSinceLGM(key)}d` : '')
                         + (state.getPlayerDeductions(key) ? (' -' + state.getPlayerDeductions(key)) : '');
