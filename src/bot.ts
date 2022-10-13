@@ -82,6 +82,25 @@ const getJoinedMentions = (userIds: Snowflake[]): string => {
     return naturalJoin(userIds.map(userId => `<@${userId}>`));
 }
 
+/**
+ * For each player currently in the state, fetch their current member info and update it everywhere in the state (e.g. display name, avatar).
+ */
+const refreshStateMemberInfo = async (): Promise<void> => {
+    try {
+        const members = await fetchMembers(state.getPlayers());
+        for (const [userId, member] of Object.entries(members)) {
+            state.setPlayerDisplayName(userId, member.displayName);
+            if (state.hasGame() && state.getGame().hasPlayer(userId)) {
+                state.getGame().updatePlayer(member);
+            }
+        }
+        await dumpState();
+        await logger.log(`Refreshed state member info for **${Object.keys(members).length}** players`);
+    } catch (err) {
+        await logger.log(`Unable to refresh state member info: \`${err}\``);
+    }
+}
+
 const grantGMChannelAccess = async (userIds: Snowflake[]): Promise<void> => {
     for (let userId of userIds) {
         try {
@@ -592,29 +611,20 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
 
     // If today is a decision day
     const newlyAddedPlayers: Snowflake[] = [];
-    if (state.getEventType() === DailyEventType.GameDecision) {
-        // Add new players to the game and transfer all earned points into the game
+    if (state.getEventType() === DailyEventType.GameDecision && state.hasGame()) {
+        // First, attempt to refresh state member info
+        await refreshStateMemberInfo();
+        // Add new players to the game
         const addPlayerLogs: string[] = [];
-        const membersById = await fetchMembers(state.getPlayers());
-        for (const userId of state.getOrderedPlayers()) {
-            // If the user was fetched, either add them to the game or update their member data
-            if (userId in membersById) {
-                const member = membersById[userId];
-                if (state.getGame().hasPlayer(userId)) {
-                    // If the player is already in the game, update their member info (e.g. avatar, display name)
-                    state.getGame().updatePlayer(member);
-                    state.setPlayerDisplayName(userId, member.displayName);
-                } else {
-                    // Add player to the game if they're new (for the first week, this should be handled by the dungeon initialization logic above)
-                    const addPlayerLog: string = state.getGame().addPlayer(member);
-                    addPlayerLogs.push(addPlayerLog);
-                    newlyAddedPlayers.push(member.id);
-                    // Add all points earned before this player was added to the game
-                    state.getGame().addPoints(userId, state.getPlayerPoints(userId));
-                }
-            } else {
-                await logger.log(`For some reason, <@${userId}> wasn't included in the bulk-fetch member results when updating players.`);
-            }
+        const newPlayers: Snowflake[] = state.getPlayers().filter(userId => !state.getGame().hasPlayer(userId));
+        const newMembersById = await fetchMembers(newPlayers);
+        for (const [userId, member] of Object.entries(newMembersById)) {
+            // Add player to the game (for the first week, this should be handled by the dungeon initialization logic above)
+            const addPlayerLog: string = state.getGame().addPlayer(member);
+            addPlayerLogs.push(addPlayerLog);
+            newlyAddedPlayers.push(userId);
+            // Add all points earned before this player was added to the game
+            state.getGame().addPoints(userId, state.getPlayerPoints(userId));
         }
         await logger.log(addPlayerLogs.join('\n') || 'No new players were added this week.');
         // Begin this week's turn
@@ -1674,6 +1684,9 @@ client.on('ready', async (): Promise<void> => {
         dailyVolatileLog.push([new Date(), 'Bot rebooting...']);
     }
     await logTimeouts();
+
+    // Attempt to refresh state member info
+    await refreshStateMemberInfo();
 
     // Update the bot's status
     await setStatus(state.isMorning());
