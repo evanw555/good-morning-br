@@ -593,7 +593,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     }
 
     getPoints(userId: Snowflake): number {
-        return this.state.players[userId].points;
+        return this.state.players[userId]?.points ?? 0;
     }
 
     addPoints(userId: Snowflake, points: number): void {

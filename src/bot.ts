@@ -1870,7 +1870,7 @@ const processCommands = async (msg: Message): Promise<void> => {
         else if (sanitizedText.includes('order') || sanitizedText.includes('rank') || sanitizedText.includes('winning') || sanitizedText.includes('standings')) {
             msg.reply(state.getOrderedPlayers()
                 .map((key) => {
-                    const gamePoints = state.getGame()?.getPoints(key) ?? '???';
+                    const gamePoints = (state.hasGame() && state.getGame().hasPlayer(key)) ? state.getGame().getPoints(key) : '???';
                     return `- <@${key}>: **${gamePoints}/${state.getPlayerPoints(key)}**`
                         + (state.isPlayerInGame(key) ? '' : ' _(NEW)_')
                         + (state.getPlayerDaysSinceLGM(key) ? ` ${state.getPlayerDaysSinceLGM(key)}d` : '')
