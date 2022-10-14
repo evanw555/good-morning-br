@@ -23,6 +23,9 @@ const messenger = new Messenger();
 messenger.setLogger((message) => {
     logger.log(message);
 });
+messenger.setMemberResolver(async (id) => {
+    return await guild.members.fetch(id);
+});
 
 const client = new Client({
     intents: [
@@ -356,7 +359,7 @@ const awardPrize = async (userId: Snowflake, type: PrizeType, intro: string): Pr
         await dumpState();
         if (prizeText) {
             try {
-                await messenger.dm(await fetchMember(userId), prizeText, { immediate: true });
+                await messenger.dm(userId, prizeText, { immediate: true });
                 await logger.log(`Sent _${type}_ prize DM to **${state.getPlayerDisplayName(userId)}**`);
             } catch (err) {
                 await logger.log(`Unable to send _${type}_ prize DM to **${state.getPlayerDisplayName(userId)}**: \`${err.toString()}\``);
@@ -652,7 +655,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         // If yes, then give out the hint to one randomly selected suitable recipient
         if (shouldGiveHint) {
             const magicWordRecipient: Snowflake = randChoice(...potentialMagicWordRecipients);
-            await messenger.dm(await fetchMember(magicWordRecipient), `Psssst.... the magic word of the day is _"${state.getMagicWord()}"_`);
+            await messenger.dm(magicWordRecipient, `Psssst.... the magic word of the day is _"${state.getMagicWord()}"_`);
             if (magicWordRecipient !== guildOwner.id) {
                 await logger.log(`Magic word _"${state.getMagicWord()}"_ was sent to **${state.getPlayerDisplayName(magicWordRecipient)}**`);
             }
@@ -939,7 +942,7 @@ const finalizeAnonymousSubmissions = async () => {
         const userId: Snowflake = submissionOwnersByCode[code];
         const rank: number = i + 1;
         try {
-            await messenger.dm(await fetchMember(userId),
+            await messenger.dm(userId,
                 `Your ${state.getEvent().submissionType} placed **${getRankString(rank)}** of **${numValidSubmissions}**, `
                     + `receiving **${breakdown[code][0]}** gold votes, **${breakdown[code][1]}** silver votes, and **${breakdown[code][2]}** bronze votes. `
                     + `Thanks for participating ${config.defaultGoodMorningEmoji}` + (forfeiters.includes(userId) ? ' (and sorry that you had to forfeit)' : ''),
@@ -1077,7 +1080,7 @@ const TIMEOUT_CALLBACKS = {
         const baiter: Snowflake | undefined = state.getMostRecentBaiter();
         if (baiter) {
             state.awardPoints(baiter, config.defaultAward / 2);
-            await messenger.dm((await fetchMember(baiter)), languageGenerator.generate('{bait.setup?}'), { immediate: true });
+            await messenger.dm(baiter, languageGenerator.generate('{bait.setup?}'), { immediate: true });
             await logger.log(`Awarded **${state.getPlayerDisplayName(baiter)}** for setting up bait.`);
         }
 
@@ -1129,7 +1132,7 @@ const TIMEOUT_CALLBACKS = {
         // If the event for tomorrow is writer's block, then send a message to the guest writer asking them to submit a GM message
         if (!state.isSeasonGoalReached() && state.getEventType() === DailyEventType.WritersBlock) {
             try {
-                await messenger.dm(await fetchMember(state.getEvent().user),
+                await messenger.dm(state.getEvent().user,
                     "Hey, I've been experiencing a little writer's block lately and can't think of a solid greeting for tomorrow. "
                     + "What do you think I should say? Send me something and I'll use it as my Good Morning greeting tomorrow as-is 🤔");
                 await logger.log(`Sent writer's block invite to **${state.getPlayerDisplayName(state.getEvent().user)}**`);
@@ -1268,7 +1271,7 @@ const TIMEOUT_CALLBACKS = {
                 await logger.log(`Sending voting reminder DM to ${getBoldNames(delinquents)}...`);
                 delinquents.forEach(async (userId) => {
                     try {
-                        await messenger.dm(await fetchMember(userId),
+                        await messenger.dm(userId,
                             `You still haven\'t voted! You and your ${state.getEvent().submissionType} will be disqualified if you don't vote by noon. You can vote with the \`/vote\` command.`);
                     } catch (err) {
                         await logger.log(`Unable to send voting reminder DM to **${state.getPlayerDisplayName(userId)}**: \`${err.toString()}\``);
@@ -2344,7 +2347,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 if (!isRepeatOffense && Math.random() < 0.5) {
                     await messenger.reply(msg, languageGenerator.generate('{bait.reply?}', { player: `<@${baiter}>` }));
                 } else {
-                    await messenger.dm((await fetchMember(baiter)), 'Bait successful.', { immediate: true });
+                    await messenger.dm(baiter, 'Bait successful.', { immediate: true });
                 }
             }
             await dumpState();
