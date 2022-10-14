@@ -2,8 +2,10 @@
     "nouns": {
         "positive": [
             "affection",
+            "beauty",
             "bliss",
             "compassion",
+            "clarity",
             "creativity",
             "curiosity",
             "delight",
@@ -21,7 +23,8 @@
             "serenity",
             "serendipity",
             "strength",
-            "tranquility"
+            "tranquility",
+            "wisdom"
         ],
         "treasure": [
             "good fortune",
@@ -32,6 +35,26 @@
             "deep feelings of {nouns.positive?}",
             "special moments",
             "pleasant surprises"
+        ],
+        "quest": [
+            "adventure",
+            "escapade",
+            "journey",
+            "odyssey",
+            "quest",
+            "trek",
+            "voyager",
+            "tale for the ages"
+        ],
+        "alliterativeTitle": [
+            "dear dog",
+            "grape ape",
+            "fine friend",
+            "{!heartwarming|heaven-bound|horrid|haggard} hound",
+            "{!lovely|laborious} {!laid-back|lemon-lime} {!lion|ladybug|lemming}",
+            "swagger-laden sweetheart",
+            "sweet pup",
+            "{!precious|prodigal} pup"
         ]
     },
     "adjectives": {
@@ -67,6 +90,14 @@
             "radiant",
             "stunning",
             "unforgettable"
+        ],
+        "negative": [
+            "dastardly",
+            "devious",
+            "naughty",
+            "nefarious",
+            "scheming",
+            "unwise"
         ]
     },
     "phrases": {
@@ -78,7 +109,10 @@
             "Wishing you a {adjectives.positive?} morning today",
             "Good morning to you",
             "Yet another good morning",
-            "Another blessed morning is upon us"
+            "Another blessed morning is upon us",
+            "We have been graced with another {adjectives.positive?} morning",
+            "Awaken! Awaken!",
+            "Wake up!"
         ],
         "sleepyMorningIntro": [
             "{!Yawnnnnnn|Yawn}......",
@@ -118,7 +152,9 @@
             "A new day has come with so many new opportunities for you. Grab them all and make the best out of your day",
             "The darkness of night has ended. {!A new|Today's} sun is up there to guide you towards life so bright and blissful",
             "The {phrases.passing?} and the {phrases.passing?}, more reasons to stop and appreciate the beauty of this precious world we live in",
-            "Count all your blessings, you {!may|surely} have {!more|many more|a lot more} than you {!realize|think}"
+            "The {phrases.passing?}, the {phrases.passing?}, and {!you|YOU} my {nouns.alliterativeTitle?}s are starting a new and exciting day!",
+            "Count all your blessings, you {!may|surely} have {!more|many more|a lot more} than you {!realize|think}",
+            "Count all your {nouns.positive?} friendships and {!be thankful|be grateful|show gratitude} for them, for many of {!them|these dogs|these fellows} share the same first name"
         ],
         "seasonUpdate": [
             "We are {!deep|well} into season **{$season}**, and {$top} is in the lead with {$second} {!not far behind|on his tail}!",
@@ -155,7 +191,22 @@
             "roosters are roosting",
             "trees are swaying",
             "world is turning",
-            "eagles are soaring"
+            "eagles are soaring",
+            "geese are honking",
+            "cats are purring",
+            "dogs are barking",
+            "tails are wagging",
+            "butterflies are fluttering",
+            "strollers are strolling",
+            "universe is expanding",
+            "trees are swaying",
+            "fires are crackling",
+            "children are playing",
+            "crops are growing",
+            "skillers are skilling",
+            "painters are painting",
+            "ships are sailing",
+            "cows are grazing"
         ]
     },
     "goodMorning": "{phrases.morningIntro?}! {phrases.wellWish?}",
@@ -199,12 +250,15 @@
             "{!🌞|😊|😌}",
             "{!Salutations|Greetings}, my {adjectives.beautiful?} {!friend|buddy|dog|pal|morning-time colleague}!",
             "Good morning, how are you {!feeling|faring} {!today|this morning}?",
-            "Good morning, any plans for today?"
+            "Good morning, any plans for today?",
+            "Good morning, such a pleasure hearing from you today, my {nouns.alliterativeTitle?}"
         ],
         "question": [
             "Good question!",
-            "Hmmmmm I'm not sure",
+            "Interesting question... what {!does everyone else|you all} think?",
+            "Hmmmmm {!I'm not sure|hard to say}",
             "Yes, {!absolutely|definitely}!",
+            "Yes! Yes! Yes!",
             "I {!think|believe} so!",
             "I don't {!think|believe} so",
             "Most certainly not!"
@@ -221,7 +275,10 @@
             "Good morning, {!didn't expect|wasn't expecting} to hear from you",
             "You may be a {!naughty|bad} {!boy|dog|man}, but good morning to you!",
             "Well, well, well... look who's up!",
-            "Uhhhhhhh {!hey|hi}."
+            "Uhhhhhhh {!hey|hi}.",
+            "We are all {!given|afforded} the {!chance|opportunity} to redeem ourselves, I respect your {!humility|bravery}",
+            "We've all made mistakes {!in the past|before}, it's up to us to {!do right by those we've wronged|seek forgiveness}. Good morning!",
+            "Looks like someone learned what morning {!is|means}!"
         ],
         "comboBreaker": [
             "Good morning! A {$days}-day Good Morning {!combo|streak} has been broken, what a sight to see!",
@@ -240,13 +297,14 @@
             "Quite the humorous {!video|post}, my friend. You always know how to make us feel better on mornings like this!",
             "Good morning! This {!video|post} will surely make it a good one for all of us",
             "Good morning! To be honest, I was feeling a little {!sleepy|snoozy|me-tired} until I saw your video, gave me a hearty laugh and a bright smile!",
-            "Good morning! This is a {adjectives.positive?} video! Who else agrees with me?"
+            "Good morning! This is a {adjectives.positive?} video! Who else agrees with me?",
+            "Interesting {!video|post}, my friend"
         ],
         "unoriginalVideo": [
             "I {!have a|get the} feeling {!I've|we've} already seen {!this|this one} before...",
             "{!Hmm|Hmmmm|Erm|Uhhhh} this video {!feels way too|seems} familiar...",
             "It's called Monkey Friday, not Repost Friday!",
-            "My {!dear dog|prodigal pup|horrid hound}! What is this???",
+            "My {nouns.alliterativeTitle?}! What is this???",
             "Oh {!dear|deer}, {!sorry to say|my apologies} but {!I've seen this one already|this is a repost}..."
         ],
         "unoriginal": [
@@ -263,6 +321,26 @@
             "Good morning! Though something tells me I've heard this before...",
             "Each morning I await your {adjectives.positive?} {!greeting|words} {!oh so eagerly|with bated breath|with such anticipation}, {!but|yet} this morning's greeting {!feels|seems|felt} a little forgettable"
         ]
+    },
+    "penaltyReply": {
+        "new": {
+            "early": [
+                "Begone, you {adjectives.negative?} unfamiliar, for {!I am fast asleep|I have not awoken} 😴",
+                "I don't {!know you|know who you are|believe we've met}, but please let me be 😴",
+                "I {!was expecting|expected} to be disturbed by a dear friend, not you... 😴",
+                "{!I'm sorry|My apologies}... it {!seems|appears} you haven't {!gotten|received} the memo, but I'm not ready yet 😴",
+                "Alas, I {!weep|shed a tear}... for your {!first|very first} Good Morning could've been {!filled with|defined by} {nouns.treasure?1-2}, {!but|yet} here we are... 😴",
+                "The {phrases.passing?}, the {phrases.passing?}, and {adjectives.negative?} strangers are {!ripping|pulling|yanking} the {!sheets|covers} off my bed while I am sound asleep... 😴"
+            ],
+            "late": [
+                "Who the hell are you?",
+                "A stranger stumbles into the {!chamber|hall} of the Good Morning {!king|prince}... in the afternoon...",
+                "If you haven't {!gotten|received} the memo yet, it is currently after-hours",
+                "You're new {!here|around here}, so please have your fellow morningtime {!chaps|pals|dogs} explain {!the rules of the game|how this works}",
+                "Alas, what a {!shame|pity}... for you've {!only just|just|just now} {!joined us on|joined us for|tagged along for} this Good Morning {nouns.quest?} and you're already {!in the red|slipping|falling behind}",
+                "The {phrases.passing?}, the {phrases.passing?}, and strangers are rapping on my chamber door well after noon..."
+            ]
+        }
     },
     "beckoning": {
         "goodMorning": [
@@ -312,7 +390,7 @@
             "{$player} check out this {!chump|fool|sucker|sucka|buffoon|dunce}",
             "What a {!chump|fool|sucker|sucka}, isn't that right {$player}?",
             "Oh {!naw|nah|hell nah} {$player} he really {!done goofed|fumbled|did it|messed up} 😭",
-            "My {!dear dog|sweet pup}, {!you have|you've} been {!played|clowned} by {$player}",
+            "My {nouns.alliterativeTitle?}, {!you have|you've} been {!played|clowned} by {$player}",
             "Oh {!dear|deer|my}... {$player} {!got|did|clowned} you good",
             "{$player}, I think you're gonna {!wanna|want to} see this..."
         ]

@@ -2331,7 +2331,11 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 state.deductPoints(userId, config.defaultAward);
                 // Reply if the player is new, else react
                 if (isPlayerNew) {
-                    await messenger.reply(msg, 'Who the hell are you?');
+                    if (isAm) {
+                        await messenger.reply(msg, languageGenerator.generate('{penaltyReply.new.early?}'));
+                    } else {
+                        await messenger.reply(msg, languageGenerator.generate('{penaltyReply.new.late?}'));
+                    }
                 } else if (isAm) {
                     await reactToMessage(msg, '😴');
                 } else {
