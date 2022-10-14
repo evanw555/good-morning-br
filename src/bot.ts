@@ -1688,9 +1688,6 @@ client.on('ready', async (): Promise<void> => {
     // Attempt to refresh state member info
     await refreshStateMemberInfo();
 
-    // TODO: Remove this once point data has been migrated
-    await dumpState();
-
     // Update the bot's status
     await setStatus(state.isMorning());
 });

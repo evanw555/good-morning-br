@@ -25,28 +25,6 @@ export default class GoodMorningState {
         }
         // Temp logic to add/remove certain properties
         // ...
-        for (const userId of Object.keys(rawState.players)) {
-            if ('points' in rawState.players[userId]) {
-                if (this.hasGame()) {
-                    if (this.getGame().hasPlayer(userId)) {
-                        this.getGame().addPoints(userId, rawState.players[userId]['points']);
-                        delete rawState.players[userId]['points'];
-                    }
-                }
-            }
-            if (rawState.players[userId].cumulativePoints === undefined) {
-                if (this.game instanceof DungeonCrawler) {
-                    if (this.getGame().hasPlayer(userId)) {
-                        rawState.players[userId].cumulativePoints = toFixed(this.game.getPoints(userId) + this.game.approximateCostToGoal(0, 0) - this.game.approximateCostToGoalForPlayer(userId));
-                    } else {
-                        rawState.players[userId].cumulativePoints = rawState.players[userId]['points'] ?? 0;
-                        delete rawState.players[userId]['points'];
-                    }
-                } else {
-                    rawState.players[userId].cumulativePoints = 0;
-                }
-            }
-        }
     }
 
     isMorning(): boolean {
