@@ -88,7 +88,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 + '`unlock`: open all doorways adjacent to you (or just one e.g. `unlock:b12`). Cost is denoted on each doorway, and is reduced with each unlock\n'
                 + '`lock`: close all doorways adjacent to you (or just one e.g. `lock:b12`). Cost is denoted on each doorway\n'
                 + '`punch`: 75% chance of knocking out any player adjacent to you, ending their turn. Costs `2`\n'
-                + '`warp`: warp to a random player. Costs `6`\n'
+                + '`warp`: warp to a random player. Costs `2` for each week that has elapsed\n'
                 + '`pause`: do nothing. Free\n\n'
             + 'Misc Rules:\n'
                 + '1. If you do not choose your actions, actions will be chosen for you (use `pause` to do nothing instead).\n'
@@ -577,7 +577,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             'unlock': { cost: 'N', description: 'Open adjacent doorways' },
             'lock': { cost: 'N', description: 'Close adjacent doorways' },
             'punch': { cost: 2, description: 'Try to KO adjacent players' },
-            'warp': { cost: 6, description: 'Warp to a random player' }
+            'warp': { cost: this.getTurn() * 2, description: 'Warp to a random player' }
         };
     }
 
@@ -1479,7 +1479,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 return 2;
             },
             'warp': () => {
-                return 6;
+                return this.getTurn() * 2;
             }
         };
         if (action in actionCosts) {
