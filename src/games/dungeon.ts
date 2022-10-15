@@ -43,8 +43,8 @@ const ACTION_SYMBOLS: Record<ActionName, string> = {
     'left': '⬅️',
     'right': '➡️',
     'pause': '⏸️',
-    'unlock': '🔒',
-    'lock': '🔓',
+    'unlock': '🔓',
+    'lock': '🔒',
     'punch': '🥊',
     'warp': '🎱',
     'boulder': '🪨',
@@ -1535,7 +1535,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         const blockingUser = this.state.players[blockingUserId];
                         if (player.invincible && !blockingUser.invincible) {
                             // If this player is invincible and the other isn't, knock them out and continue walking
-                            this.knockPlayerOut(blockingUserId);
+                            blockingUser.knockedOut = true;
                             pushNonCollapsableStatement(`**${player.displayName}** trampled **${blockingUser.displayName}**`)
                         } else {
                             // Otherwise, handle the blocking user as normal
@@ -1585,7 +1585,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     'pause': () => {
                         return true;
                     },
-                    'unlock': () => {
+                    'unlock': (arg) => {
                         const argLocation: DungeonLocation = DungeonCrawler.parseLocationString(arg);
                         let numDoorwaysUnlocked = 0;
                         for (const { r, c } of this.getAdjacentLocationsOrOverride({ r: player.r, c: player.c }, argLocation)) {
@@ -1604,7 +1604,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         }
                         return true;
                     },
-                    'lock': () => {
+                    'lock': (arg) => {
                         const argLocation: DungeonLocation = DungeonCrawler.parseLocationString(arg);
                         let numDoorwaysLocked = 0;
                         for (const { r, c } of this.getAdjacentLocationsOrOverride({ r: player.r, c: player.c }, argLocation)) {
@@ -1630,7 +1630,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                                 if (otherPlayer.invincible) {
                                     pushNonCollapsableStatement(`**${player.displayName}** threw fists at the invincible **${otherPlayer.displayName}** to no avail`);
                                 } else if (Math.random() < 0.75) {
-                                    this.knockPlayerOut(otherPlayerId);
+                                    otherPlayer.knockedOut = true;
                                     pushNonCollapsableStatement(`**${player.displayName}** knocked out **${otherPlayer.displayName}**`);
                                 } else {
                                     pushNonCollapsableStatement(`**${player.displayName}** tried to punch **${otherPlayer.displayName}** and missed`);
@@ -1669,7 +1669,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         const { r, c } = DungeonCrawler.parseLocationString(arg);
                         // If doing this will softlock the game, knock out the player
                         if (!this.canAllPlayersReachGoal([{ r, c }])) {
-                            this.knockPlayerOut(userId);
+                            player.knockedOut = true;
                             endTurn = true;
                             pushNonCollapsableStatement(`**${player.displayName}** got knocked out trying to softlock the game (tried to place boulder at **${DungeonCrawler.getLocationString(r, c)}**)`);
                             return false;
@@ -1680,12 +1680,12 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         pushNonCollapsableStatement(`**${player.displayName}** placed a boulder at **${DungeonCrawler.getLocationString(r, c)}**`);
                         return true;
                     },
-                    'seal': () => {
+                    'seal': (arg) => {
                         const argLocation: DungeonLocation = DungeonCrawler.parseLocationString(arg);
                         const sealableLocations = this.getAdjacentLocationsOrOverride({ r: player.r, c: player.c }, argLocation).filter(l => this.isSealable(l.r, l.c));
                         // If doing this will softlock the game, knock out the player
                         if (!this.canAllPlayersReachGoal(sealableLocations)) {
-                            this.knockPlayerOut(userId);
+                            player.knockedOut = true;
                             endTurn = true;
                             pushNonCollapsableStatement(`**${player.displayName}** got knocked out trying to softlock the game (tried to permanently seal doorways)`);
                             return false;
@@ -1711,42 +1711,52 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         return true;
                     }
                 };
-                // Get the next action for this user
-                const nextAction = this.state.decisions[userId][0];
-                const [actionName, arg] = nextAction.toLowerCase().split(':') as [ActionName, string];
 
-                // If the player can't afford this action, delete all their decisions (ending their turn)
-                const actionCost: number = this.getActionCost(actionName, { r: player.r, c: player.c }, arg);
-                if (actionCost > player.points) {
-                    delete this.state.decisions[userId];
-                    pushNonCollapsableStatement(`**${player.displayName}** ran out of action points`);
-                    continue;
-                }
-
-                // Execute the action
-                const consumeAction: boolean = commandActions[actionName](arg);
-
-                // If the action was successful, remove this decision from the queue so any following ones can be processed
-                if (consumeAction) {
-                    // Consume points
-                    this.addPoints(userId, -actionCost);
-                    // Remove the action
-                    this.state.decisions[userId].shift();
-                    // Delete the decision list if it's been exhausted
-                    if (!this.hasPendingDecisions(userId)) {
-                        delete this.state.decisions[userId];
-                    }
-                }
-
-                // Check if the player is at the goal
-                if (!player.finished && this.isGoal(player.r, player.c)) {
-                    // Mark the player as finished
-                    player.finished = true;
-                    // Add to list of finished players
-                    this.addWinner(userId);
-                    // Add to log and end the turn
-                    pushNonCollapsableStatement(`**${this.getDisplayName(userId)}** reached the goal for _${getRankString(this.state.winners.length)} place_`)
+                // This player is knocked out yet still has pending decisions (likely knocked out by another player), thus we need to end their turn.
+                // We can't let players wipe the decisions of other players because we need to process turn-end logic for all players (e.g. punching another player, then letting them trigger a trap)
+                if (player.knockedOut) {
                     endTurn = true;
+                }
+
+                // Unless this player's turn should end, process their next action
+                if (!endTurn) {
+                    // Get the next action for this user
+                    const nextAction = this.state.decisions[userId][0];
+                    const [actionName, actionArg] = nextAction.toLowerCase().split(':') as [ActionName, string];
+
+                    // If the player can't afford this action, delete all their decisions (ending their turn)
+                    const actionCost: number = this.getActionCost(actionName, { r: player.r, c: player.c }, actionArg);
+                    if (actionCost > player.points) {
+                        delete this.state.decisions[userId];
+                        pushNonCollapsableStatement(`**${player.displayName}** ran out of action points`);
+                        continue;
+                    }
+
+                    // Execute the action
+                    const consumeAction: boolean = commandActions[actionName](actionArg);
+
+                    // If the action was successful, remove this decision from the queue so any following ones can be processed
+                    if (consumeAction) {
+                        // Consume points
+                        this.addPoints(userId, -actionCost);
+                        // Remove the action
+                        this.state.decisions[userId].shift();
+                        // Delete the decision list if it's been exhausted
+                        if (!this.hasPendingDecisions(userId)) {
+                            delete this.state.decisions[userId];
+                        }
+                    }
+
+                    // Check if the player is at the goal
+                    if (!player.finished && this.isGoal(player.r, player.c)) {
+                        // Mark the player as finished
+                        player.finished = true;
+                        // Add to list of finished players
+                        this.addWinner(userId);
+                        // Add to log and end the turn
+                        pushNonCollapsableStatement(`**${this.getDisplayName(userId)}** reached the goal for _${getRankString(this.state.winners.length)} place_`)
+                        endTurn = true;
+                    }
                 }
 
                 // If this was a turn-ending action, delete the user's entire decision list
@@ -1810,13 +1820,6 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             // TODO: Before using this in production, refine it to be if exactly one player takes a step
             continueImmediately: summaryData.statements.length === 1 && summaryData.statements[0].includes('took a step')
         };
-    }
-
-    knockPlayerOut(userId: Snowflake): void {
-        if (this.hasPlayer(userId)) {
-            this.state.players[userId].knockedOut = true;
-        }
-        delete this.state.decisions[userId];
     }
 
     hasPendingDecisions(userId: Snowflake): boolean {

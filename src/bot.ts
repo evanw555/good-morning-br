@@ -2396,7 +2396,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                         content: response,
                         files: [new MessageAttachment(await state.getGame().renderState({ showPlayerDecision: userId }), `game-turn${state.getGame().getTurn()}-confirmation.png`)]
                     });
-                    await logger.log(`<@${userId}> made a valid decision!`);
+                    await logger.log(`**${state.getPlayerDisplayName(userId)}** made a valid decision!`);
                 } catch (err) {
                     // Validation failed, notify the user why it failed
                     await messenger.reply(msg, err.toString());
