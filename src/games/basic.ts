@@ -17,6 +17,10 @@ export default class BasicGame extends AbstractGame<BasicGameState> {
         return 'Just say Good Morning and have a fun time!';
     }
 
+    getDebugText(): string {
+        return 'Basic Game';
+    }
+
     getSeasonCompletion(): number {
         return Math.max(...Object.values(this.state.points)) / this.state.goal;
     }

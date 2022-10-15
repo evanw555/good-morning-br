@@ -1,6 +1,6 @@
 import canvas, { NodeCanvasRenderingContext2D } from 'canvas';
 import { GuildMember, Snowflake } from 'discord.js';
-import { getRankString, naturalJoin, randInt, shuffle, toLetterId, fromLetterId, AStarPathFinder, shuffleWithDependencies } from 'evanw555.js';
+import { getRankString, naturalJoin, randInt, shuffle, toLetterId, fromLetterId, AStarPathFinder, shuffleWithDependencies, toFixed } from 'evanw555.js';
 import { DungeonGameState, DungeonItemName, DungeonLocation, DungeonPlayerState, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 import logger from '../logger';
@@ -36,6 +36,22 @@ const ITEM_NAME_RECORD: Record<DungeonItemName, boolean> = {
     'star': true
 };
 const ITEM_NAMES: DungeonItemName[] = Object.keys(ITEM_NAME_RECORD) as DungeonItemName[];
+
+const ACTION_SYMBOLS: Record<ActionName, string> = {
+    'up': '⬆️',
+    'down': '⬇️',
+    'left': '⬅️',
+    'right': '➡️',
+    'pause': '⏸️',
+    'unlock': '🔒',
+    'lock': '🔓',
+    'punch': '🥊',
+    'warp': '🎱',
+    'boulder': '🪨',
+    'seal': '🦭',
+    'trap': '🕳️',
+    'star': '⭐'
+};
 
 interface PathingOptions {
     useDoorways?: boolean,
@@ -86,6 +102,14 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 + '8. If you warp, you will be KO\'ed at the end of your turn so that others can walk past you.\n'
                 + '9. If you warp multiple times in one turn, all subsequent warps will only go through if it brings you closer to the goal.\n\n'
             + 'Send me a DM with your chosen actions e.g. `up right unlock right pause right punch lock:b12 down`';
+    }
+
+    getDebugText(): string {
+        return `Week ${this.getTurn()}, Action ${this.state.action}, ${toFixed(this.getSeasonCompletion() * 100)}% Complete\n`
+            + this.getOrderedPlayers()
+                .filter(userId => userId in this.state.decisions)
+                .map(userId => `**${this.getDisplayName(userId)}**: \`` + this.state.decisions[userId].map(decision => ACTION_SYMBOLS[decision.split(':')[0]]).join('') + '`')
+                .join('\n')
     }
 
     getSeasonCompletion(): number {
@@ -597,7 +621,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     }
 
     addPoints(userId: Snowflake, points: number): void {
-        this.state.players[userId].points += points;
+        this.state.players[userId].points = toFixed(this.getPoints(userId) + points);
     }
 
     awardPrize(userId: Snowflake, type: PrizeType, intro: string): string {
@@ -1705,7 +1729,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 // If the action was successful, remove this decision from the queue so any following ones can be processed
                 if (consumeAction) {
                     // Consume points
-                    player.points -= actionCost;
+                    this.addPoints(userId, -actionCost);
                     // Remove the action
                     this.state.decisions[userId].shift();
                     // Delete the decision list if it's been exhausted
@@ -1762,7 +1786,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                                 pushNonCollapsableStatement(`**${player.displayName}** stepped on **${this.getDisplayName(trapOwnerId)}'s** trap and was sent back to **${this.getPlayerLocationString(userId)}**`);
                             }
                             // Reward the trap's owner
-                            this.state.players[trapOwnerId].points++;
+                            this.addPoints(trapOwnerId, 1);
                             pushNonCollapsableStatement(`**${this.getDisplayName(trapOwnerId)}** earned **1** point for trapping`);
                         }
                     }

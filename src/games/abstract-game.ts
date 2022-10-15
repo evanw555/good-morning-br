@@ -19,6 +19,7 @@ export default abstract class AbstractGame<T extends GameState> {
 
     abstract getIntroductionText(): string
     abstract getInstructionsText(): string
+    abstract getDebugText(): string
     /**
      * Returns a number in the range [0, 1] representing the approximate completion of this game.
      * If the season is complete, then the value should always be 1.

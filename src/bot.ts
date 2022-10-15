@@ -2020,9 +2020,8 @@ const processCommands = async (msg: Message): Promise<void> => {
                 try { // TODO: refactor typing event to somewhere else?
                     await msg.channel.sendTyping();
                 } catch (err) {}
-                await msg.channel.send({ content: 'Admin-view game state, decision-view state:', files: [
-                    new MessageAttachment(await state.getGame().renderState({ admin: true }), 'game-test-admin.png'),
-                    new MessageAttachment(await state.getGame().renderState({ showPlayerDecision: msg.author.id }), 'game-test-decision.png')
+                await msg.channel.send({ content: state.getGame().getDebugText() || 'No Debug Text.', files: [
+                    new MessageAttachment(await state.getGame().renderState({ admin: true }), 'game-test-admin.png')
                 ]});
             } else {
                 await msg.reply('The game hasn\'t been created yet!');
