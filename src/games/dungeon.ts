@@ -1,7 +1,7 @@
 import canvas, { NodeCanvasRenderingContext2D } from 'canvas';
 import { GuildMember, Snowflake } from 'discord.js';
 import { getRankString, naturalJoin, randInt, shuffle, toLetterId, fromLetterId, AStarPathFinder, shuffleWithDependencies, toFixed } from 'evanw555.js';
-import { DungeonGameState, DungeonItemName, DungeonLocation, DungeonPlayerState, PrizeType } from "../types";
+import { DecisionProcessingResult, DungeonGameState, DungeonItemName, DungeonLocation, DungeonPlayerState, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 import logger from '../logger';
 
@@ -1489,7 +1489,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return 0;
     }
 
-    processPlayerDecisions(): { summary: string, continueProcessing: boolean, numPlayersProcessed: number, continueImmediately: boolean } {
+    processPlayerDecisions(): DecisionProcessingResult {
         this.state.action++;
         const summaryData = {
             consecutiveStepUsers: [],
@@ -1820,8 +1820,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             summary: naturalJoin(summaryData.statements, 'then') || 'Dogs sat around with their hands in their pockets...',
             continueProcessing: Object.keys(this.state.decisions).length > 0,
             numPlayersProcessed,
-            // TODO: Before using this in production, refine it to be if exactly one player takes a step
-            continueImmediately: summaryData.statements.length === 1 && summaryData.statements[0].includes('took a step')
+            // TODO: Is there a better way to do this?
+            continueImmediately: numPlayersProcessed === 1 && summaryData.statements.length === 1 && summaryData.statements[0].includes('took a step')
         };
     }
 

@@ -143,6 +143,13 @@ export interface DungeonPlayerState {
     warped?: boolean
 }
 
+export interface DecisionProcessingResult {
+    summary: string,
+    continueProcessing: boolean,
+    continueImmediately: boolean,
+    numPlayersProcessed: number
+}
+
 export interface DungeonGameState {
     type: 'DUNGEON_GAME_STATE',
     decisions: Record<Snowflake, string[]>,

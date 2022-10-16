@@ -1,6 +1,6 @@
 import canvas from "canvas";
 import { GuildMember, Snowflake } from "discord.js";
-import { GameState, PrizeType } from "../types";
+import { DecisionProcessingResult, GameState, PrizeType } from "../types";
 
 export default abstract class AbstractGame<T extends GameState> {
     protected readonly state: T;
@@ -35,7 +35,7 @@ export default abstract class AbstractGame<T extends GameState> {
     abstract addPoints(userId: Snowflake, points: number): void
     abstract awardPrize(userId: Snowflake, type: PrizeType, intro: string): string
     abstract addPlayerDecision(userId: Snowflake, text: string): string
-    abstract processPlayerDecisions(): { summary: string, continueProcessing: boolean, numPlayersProcessed: number }
+    abstract processPlayerDecisions(): DecisionProcessingResult
 
     getState(): T {
         return this.state;

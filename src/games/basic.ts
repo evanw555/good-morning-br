@@ -1,6 +1,6 @@
 import canvas, { Image } from 'canvas';
 import { GuildMember, Snowflake } from "discord.js";
-import { BasicGameState, Medals, PrizeType } from "../types";
+import { BasicGameState, DecisionProcessingResult, Medals, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 
 export default class BasicGame extends AbstractGame<BasicGameState> {
@@ -67,7 +67,7 @@ export default class BasicGame extends AbstractGame<BasicGameState> {
         return 'There are no decisions in this game but cool!';
     }
 
-    processPlayerDecisions(): { summary: string, continueProcessing: boolean, numPlayersProcessed: number } {
+    processPlayerDecisions(): DecisionProcessingResult {
         for (const userId of this.getOrderedPlayers()) {
             // If this user's points exceed the goal, then add them as a winner
             if (this.getPoints(userId) >= this.state.goal) {
@@ -78,6 +78,7 @@ export default class BasicGame extends AbstractGame<BasicGameState> {
         return {
             summary: 'Wow! What a week!',
             continueProcessing: false,
+            continueImmediately: false,
             numPlayersProcessed: 1
         };
     }
