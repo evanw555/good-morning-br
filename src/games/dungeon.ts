@@ -1489,7 +1489,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return 0;
     }
 
-    processPlayerDecisions(): { summary: string, continueProcessing: boolean, continueImmediately: boolean } {
+    processPlayerDecisions(): { summary: string, continueProcessing: boolean, numPlayersProcessed: number, continueImmediately: boolean } {
         this.state.action++;
         const summaryData = {
             consecutiveStepUsers: [],
@@ -1520,10 +1520,12 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         };
         const bumpers: Record<Snowflake, Snowflake> = {};
         // Process one decision from each player
+        let numPlayersProcessed: number = 0;
         for (const userId of this.getDecisionShuffledPlayers()) {
             const player = this.state.players[userId];
             delete player.previousLocation;
             if (this.hasPendingDecisions(userId)) {
+                numPlayersProcessed++;
                 let endTurn = false;
                 const processStep = (dr: number, dc: number): boolean => {
                     player.previousLocation = { r: player.r, c: player.c };
@@ -1817,6 +1819,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return {
             summary: naturalJoin(summaryData.statements, 'then') || 'Dogs sat around with their hands in their pockets...',
             continueProcessing: Object.keys(this.state.decisions).length > 0,
+            numPlayersProcessed,
             // TODO: Before using this in production, refine it to be if exactly one player takes a step
             continueImmediately: summaryData.statements.length === 1 && summaryData.statements[0].includes('took a step')
         };

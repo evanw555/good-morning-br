@@ -1511,7 +1511,17 @@ const TIMEOUT_CALLBACKS = {
         if (processingResult.continueProcessing) {
             // If there are more decisions to be processed, schedule the next processing timeout
             const nextProcessDate: Date = new Date();
-            nextProcessDate.setMinutes(nextProcessDate.getMinutes() + randInt(5, 15));
+            let minuteDelay: number = randInt(5, 15);
+            if (new Date().getHours() >= 11) {
+                if (processingResult.numPlayersProcessed === 1) {
+                    minuteDelay = randInt(1, 4);
+                } else if (processingResult.numPlayersProcessed === 2) {
+                    minuteDelay = randInt(3, 6);
+                } else {
+                    minuteDelay = randInt(5, 8);
+                }
+            }
+            nextProcessDate.setMinutes(nextProcessDate.getMinutes() + minuteDelay);
             await timeoutManager.registerTimeout(TimeoutType.ProcessGameDecisions, nextProcessDate, { pastStrategy: PastTimeoutStrategy.Invoke });
         } else {
             // Otherwise, let the people know that the turn is over

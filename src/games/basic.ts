@@ -67,7 +67,7 @@ export default class BasicGame extends AbstractGame<BasicGameState> {
         return 'There are no decisions in this game but cool!';
     }
 
-    processPlayerDecisions(): { summary: string; continueProcessing: boolean; } {
+    processPlayerDecisions(): { summary: string, continueProcessing: boolean, numPlayersProcessed: number } {
         for (const userId of this.getOrderedPlayers()) {
             // If this user's points exceed the goal, then add them as a winner
             if (this.getPoints(userId) >= this.state.goal) {
@@ -77,7 +77,8 @@ export default class BasicGame extends AbstractGame<BasicGameState> {
 
         return {
             summary: 'Wow! What a week!',
-            continueProcessing: false
+            continueProcessing: false,
+            numPlayersProcessed: 1
         };
     }
 

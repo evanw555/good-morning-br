@@ -35,7 +35,7 @@ export default abstract class AbstractGame<T extends GameState> {
     abstract addPoints(userId: Snowflake, points: number): void
     abstract awardPrize(userId: Snowflake, type: PrizeType, intro: string): string
     abstract addPlayerDecision(userId: Snowflake, text: string): string
-    abstract processPlayerDecisions(): { summary: string, continueProcessing: boolean }
+    abstract processPlayerDecisions(): { summary: string, continueProcessing: boolean, numPlayersProcessed: number }
 
     getState(): T {
         return this.state;
