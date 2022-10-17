@@ -5,7 +5,7 @@ import { hasVideo, validateConfig, reactToMessage, getOrderingUpsets, extractYou
 import GoodMorningState from './state';
 import logger from './logger';
 
-import { addReactsSync, FileStorage, generateKMeansClusters, getClockTime, getPollChoiceKeys, getRandomDateBetween, getRankString, getRelativeDateTimeString, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger, naturalJoin, PastTimeoutStrategy, R9KTextBank, randChoice, randInt, shuffle, sleep, TimeoutManager, toCalendarDate, toFixed, toLetterId } from 'evanw555.js';
+import { addReactsSync, chance, FileStorage, generateKMeansClusters, getClockTime, getPollChoiceKeys, getRandomDateBetween, getRankString, getRelativeDateTimeString, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger, naturalJoin, PastTimeoutStrategy, R9KTextBank, randChoice, randInt, shuffle, sleep, TimeoutManager, toCalendarDate, toFixed, toLetterId } from 'evanw555.js';
 import DungeonCrawler from './games/dungeon';
 import ActivityTracker from './activity-tracker';
 
@@ -804,11 +804,11 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         }
     }
 
-    // Dump state
-    await dumpState();
-
     // Finally, re-grant access for all muted players
     await grantGMChannelAccess(state.getMutedPlayers());
+
+    // Dump state
+    await dumpState();
 };
 
 const finalizeAnonymousSubmissions = async () => {
@@ -1055,7 +1055,7 @@ const TIMEOUT_CALLBACKS = {
             return;
         }
 
-        // Revoke access for all players with negative points
+        // Revoke access for all players who should be muted (based on their track record / penalty history)
         await revokeGMChannelAccess(state.getDelinquentPlayers());
 
         // Update basic state properties
@@ -2344,6 +2344,11 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 } else {
                     await reactToMessage(msg, ['😡', '😬', '😒', '😐', '🤫']);
                 }
+            }
+            // If this player has more deductions than cumulative points, mute them immediately (hopefully this prevents abuse...)
+            if (!state.isPlayerMuted(userId) && state.getPlayerDeductions(userId) > state.getPlayerPoints(userId)) {
+                await revokeGMChannelAccess([userId]);
+                await logger.log(`Revoked GM channel access for **${msg.member.displayName}**`);
             }
             // If someone baited and it's the afternoon, award and notify via DM
             const baiter: Snowflake | undefined = state.getMostRecentBaiter();
