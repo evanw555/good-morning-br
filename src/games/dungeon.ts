@@ -88,7 +88,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 + '`unlock`: open all doorways adjacent to you (or just one e.g. `unlock:b12`). Cost is denoted on each doorway, and is reduced with each unlock\n'
                 + '`lock`: close all doorways adjacent to you (or just one e.g. `lock:b12`). Cost is denoted on each doorway\n'
                 + '`punch`: 75% chance of knocking out any player adjacent to you, ending their turn. Costs `2`\n'
-                + '`warp`: warp to a random player. Costs `2` for each week that has elapsed\n'
+                + '`warp`: warp to a random player. Costs `1` for each week that has elapsed\n'
                 + '`pause`: do nothing. Free\n\n'
             + 'Misc Rules:\n'
                 + '1. If you do not choose your actions, actions will be chosen for you (use `pause` to do nothing instead).\n'
@@ -583,7 +583,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             'unlock': { cost: 'N', description: 'Open adjacent doorways' },
             'lock': { cost: 'N', description: 'Close adjacent doorways' },
             'punch': { cost: 2, description: 'Try to KO adjacent players' },
-            'warp': { cost: this.getTurn() * 2, description: 'Warp to a random player' }
+            'warp': { cost: this.getActionCost('warp'), description: 'Warp to a random player' }
         };
     }
 
@@ -1318,8 +1318,17 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
 
         // Ensure that turns with warps only include only warps (delaying may give a better outcome)
         const isWarping: boolean = commands.includes('warp');
-        if (isWarping && !commands.every(c => c === 'warp')) {
-            throw new Error('If you warp this turn, ALL your actions must be warps');
+        if (isWarping) {
+            const MAX_WARPS: number = 3;
+            if (playerPoints > this.getActionCost('warp', newLocation) * (MAX_WARPS + 1)) {
+                throw new Error('Don\'t you think you\'re a little rich to be warping? When I was your age, I WALKED all the way to the goal...');
+            }
+            if (!commands.every(c => c === 'warp')) {
+                throw new Error('If you warp this turn, ALL your actions must be warps');
+            }
+            if (commands.length > MAX_WARPS) {
+                throw new Error(`You may only warp at most ${MAX_WARPS} times per turn`);
+            }
         }
 
         // Ensure that finished players can only trap
@@ -1452,7 +1461,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             + (warnings.length > 0 ? ' BUT PLEASE NOTE THE FOLLOWING WARNINGS:\n' + warnings.join('\n') : '');
     }
 
-    private getActionCost(action: ActionName, location: DungeonLocation, arg: string): number {
+    private getActionCost(action: ActionName, location?: DungeonLocation, arg?: string): number {
         const argLocation: DungeonLocation = DungeonCrawler.parseLocationString(arg);
         const actionCosts: Record<BasicActionName, () => number> = {
             'up': () => {
@@ -1492,7 +1501,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 return 2;
             },
             'warp': () => {
-                return this.getTurn() * 2;
+                return this.getTurn();
             }
         };
         if (action in actionCosts) {
@@ -1960,7 +1969,11 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     /**
      * @returns a list of all in-bound locations adjacent to the given location
      */
-    private getAdjacentLocations(location: DungeonLocation): DungeonLocation[] {
+    private getAdjacentLocations(location: DungeonLocation | undefined): DungeonLocation[] {
+        // Emergency fallback
+        if (!location) {
+            return [];
+        }
         const result: DungeonLocation[] = [];
         for (const [dr, dc] of DungeonCrawler.getCardinalOffsets()) {
             const nr = location.r + dr;
@@ -1975,7 +1988,11 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     /**
      * @returns a list containing just the override location, if it exists; else all in-bound locations adjacent to the given location
      */
-    private getAdjacentLocationsOrOverride(location: DungeonLocation, override: DungeonLocation | undefined): DungeonLocation[] {
+    private getAdjacentLocationsOrOverride(location: DungeonLocation | undefined, override: DungeonLocation | undefined): DungeonLocation[] {
+        // Emergency fallback
+        if (!location) {
+            return [];
+        }
         if (override) {
             return [override];
         }
