@@ -1,13 +1,14 @@
 import { Client, DMChannel, Intents, MessageAttachment, TextChannel } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'discord.js';
-import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, HomeStretchSurprise, PrizeType, DecisionProcessingResult } from './types';
+import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, HomeStretchSurprise, PrizeType } from './types';
 import { hasVideo, validateConfig, reactToMessage, getOrderingUpsets, extractYouTubeId } from './util';
 import GoodMorningState from './state';
 import logger from './logger';
 
-import { addReactsSync, FileStorage, generateKMeansClusters, getClockTime, getPollChoiceKeys, getRandomDateBetween, getRankString, getRelativeDateTimeString, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger, naturalJoin, PastTimeoutStrategy, prettyPrint, R9KTextBank, randChoice, randInt, shuffle, sleep, TimeoutManager, toCalendarDate, toFixed, toLetterId } from 'evanw555.js';
+import { addReactsSync, FileStorage, generateKMeansClusters, getClockTime, getPollChoiceKeys, getRandomDateBetween, getRankString, getRelativeDateTimeString, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger, naturalJoin, PastTimeoutStrategy, R9KTextBank, randChoice, randInt, shuffle, sleep, TimeoutManager, toCalendarDate, toFixed, toLetterId } from 'evanw555.js';
 import DungeonCrawler from './games/dungeon';
 import ActivityTracker from './activity-tracker';
+
 const auth = loadJson('config/auth.json');
 const config: GoodMorningConfig = loadJson('config/config.json');
 
@@ -1505,7 +1506,7 @@ const TIMEOUT_CALLBACKS = {
         }
 
         // Render the updated state and send it out
-        const attachment = new MessageAttachment(await game.renderState(), `game-turn${game.getTurn()}.png`);
+        const attachment = new MessageAttachment(await game.renderState(), `game-week${game.getTurn()}.png`);
         await goodMorningChannel.send({ content: processingResult.summary, files: [attachment] });
 
         if (processingResult.continueProcessing) {
@@ -1815,23 +1816,17 @@ const processCommands = async (msg: Message): Promise<void> => {
             }
 
             // Process decisions and render state
-            let responseTexts = [];
             while (true) {
                 const processingData = tempDungeon.processPlayerDecisions();
-                responseTexts.push(processingData.summary);
-                if (processingData.continueProcessing && processingData.continueImmediately) {
-                    continue;
-                }
                 try { // TODO: refactor typing event to somewhere else?
                     await msg.channel.sendTyping();
                 } catch (err) {}
                 const attachment = new MessageAttachment(await tempDungeon.renderState(), 'dungeon.png');
-                await msg.channel.send({ content: responseTexts.join('\n'), files: [attachment] });
+                await msg.channel.send({ content: processingData.summary, files: [attachment] });
                 await sleep(2500);
                 if (!processingData.continueProcessing) {
                     break;
                 }
-                responseTexts = [];
             }
             await msg.channel.send('Turn is over!');
 
@@ -1847,7 +1842,7 @@ const processCommands = async (msg: Message): Promise<void> => {
             // Give everyone points then show the final state
             // TODO: Temp logic to move all other players
             for (const otherId of tempDungeon.getOrderedPlayers()) {
-                tempDungeon.addPoints(otherId, randInt(2, 30));
+                tempDungeon.addPoints(otherId, randInt(0, 20));
             }
             tempDungeon.beginTurn();
             try { // TODO: refactor typing event to somewhere else?

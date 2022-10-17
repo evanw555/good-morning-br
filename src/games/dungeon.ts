@@ -1,6 +1,6 @@
 import canvas, { NodeCanvasRenderingContext2D } from 'canvas';
 import { GuildMember, Snowflake } from 'discord.js';
-import { getRankString, naturalJoin, randInt, shuffle, toLetterId, fromLetterId, AStarPathFinder, shuffleWithDependencies, toFixed } from 'evanw555.js';
+import { getRankString, naturalJoin, randInt, shuffle, toLetterId, fromLetterId, AStarPathFinder, shuffleWithDependencies, toFixed, collapseRedundantStrings } from 'evanw555.js';
 import { DecisionProcessingResult, DungeonGameState, DungeonItemName, DungeonLocation, DungeonPlayerState, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 import logger from '../logger';
@@ -67,7 +67,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     private static readonly STYLE_DARK_SKY: string = 'hsl(217, 90%, 64%)';
     private static readonly STYLE_LIGHT_SKY: string = 'hsl(217, 85%, 75%)';
     private static readonly STYLE_CLOUD: string = 'rgba(222, 222, 222, 1)';
-    private static readonly STYLE_WARP_PATH: string = 'rgba(98, 11, 212, 0.25)';
+    private static readonly STYLE_WARP_PATH: string = 'rgba(98, 11, 212, 0.35)';
 
     constructor(state: DungeonGameState) {
         super(state);
@@ -268,13 +268,16 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         for (const userId of this.getUnfinishedPlayers()) {
             const player = this.state.players[userId];
             // Render movement line if not warped
-            if (player.previousLocation && !player.warped) {
+            if (player.previousLocations && !player.warped) {
                 context.lineWidth = 2;
                 context.strokeStyle = DungeonCrawler.STYLE_LIGHT_SKY;
-                context.setLineDash([]);
+                context.setLineDash([Math.floor(DungeonCrawler.TILE_SIZE / 12), Math.floor(DungeonCrawler.TILE_SIZE / 12)]);
+                // TODO: Can this "draw path" logic be refactored?
                 context.beginPath();
-                context.moveTo((player.previousLocation.c + .5) * DungeonCrawler.TILE_SIZE, (player.previousLocation.r + .5) * DungeonCrawler.TILE_SIZE);
-                context.lineTo((player.c + .5) * DungeonCrawler.TILE_SIZE, (player.r + .5) * DungeonCrawler.TILE_SIZE);
+                context.moveTo((player.c + .5) * DungeonCrawler.TILE_SIZE, (player.r + .5) * DungeonCrawler.TILE_SIZE);
+                for (const previousLocation of player.previousLocations) {
+                    context.lineTo((previousLocation.c + .5) * DungeonCrawler.TILE_SIZE, (previousLocation.r + .5) * DungeonCrawler.TILE_SIZE);
+                }
                 context.stroke();
             }
         }
@@ -353,13 +356,16 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         for (const userId of this.getUnfinishedPlayers()) {
             const player = this.state.players[userId];
             // Render dashed warp line if warped
-            if (player.previousLocation && player.warped) {
+            if (player.previousLocations && player.warped) {
                 context.lineWidth = 4;
                 context.strokeStyle = DungeonCrawler.STYLE_WARP_PATH;
-                context.setLineDash([Math.floor(DungeonCrawler.TILE_SIZE * 0.25), Math.floor(DungeonCrawler.TILE_SIZE * 0.25)]);
+                context.setLineDash([Math.floor(DungeonCrawler.TILE_SIZE / 4), Math.floor(DungeonCrawler.TILE_SIZE / 4)]);
+                // TODO: Can this "draw path" logic be refactored?
                 context.beginPath();
-                context.moveTo((player.previousLocation.c + .5) * DungeonCrawler.TILE_SIZE, (player.previousLocation.r + .5) * DungeonCrawler.TILE_SIZE);
-                context.lineTo((player.c + .5) * DungeonCrawler.TILE_SIZE, (player.r + .5) * DungeonCrawler.TILE_SIZE);
+                context.moveTo((player.c + .5) * DungeonCrawler.TILE_SIZE, (player.r + .5) * DungeonCrawler.TILE_SIZE);
+                for (const previousLocation of player.previousLocations) {
+                    context.lineTo((previousLocation.c + .5) * DungeonCrawler.TILE_SIZE, (previousLocation.r + .5) * DungeonCrawler.TILE_SIZE);
+                }
                 context.stroke();
             }
         }
@@ -593,7 +599,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         for (const userId of this.getPlayers()) {
             const player = this.state.players[userId];
             // Reset per-turn metadata and statuses
-            delete player.previousLocation;
+            delete player.previousLocations;
             player.originLocation = { r: player.r, c: player.c };
             delete player.knockedOut;
             delete player.invincible;
@@ -787,6 +793,13 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             return this.state.players[userId].displayName;
         }
         return userId || 'Unknown Player';
+    }
+
+    private addPlayerPreviousLocation(userId: Snowflake, location: DungeonLocation): void {
+        if (userId in this.state.players) {
+            const player = this.state.players[userId];
+            player.previousLocations = [location, ...(player.previousLocations ?? [])];
+        }
     }
 
     private static getSequenceOfLocations(initialLocation: { r: number, c: number }, actions: ActionName[]): { r: number, c: number }[] {
@@ -1490,6 +1503,34 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     }
 
     processPlayerDecisions(): DecisionProcessingResult {
+        // Delete all previous locations (this is not done in the inner method since we want to show long paths for multiple consecutive actions)
+        for (const userId of this.getPlayers()) {
+            delete this.state.players[userId].previousLocations;
+        }
+
+        // Process one action for each player, and repeat so long as the inner method says it's ok
+        const summaries: string[] = [];
+        let processingResult: DecisionProcessingResult & { continueImmediately: boolean };
+        do {
+           processingResult = this.processPlayerDecisionsOnce();
+           summaries.push(processingResult.summary);
+        } while (processingResult.continueProcessing && processingResult.continueImmediately);
+
+        // If more than one action was processed for each player, collapse action summaries to reduce redundant messages (e.g. "___ took a step")
+        if (summaries.length === 1) {
+            return processingResult;
+        } else {
+            return {
+                summary: collapseRedundantStrings(summaries, (s, n) => n > 1 ? `${s} _(x${n})_` : s).join('\n'),
+                continueProcessing: processingResult.continueProcessing
+            };
+        }
+    }
+
+    /**
+     * Process exactly one action for each player. Return extra information about whether we can run this procedure again with no delay.
+     */
+    processPlayerDecisionsOnce(): DecisionProcessingResult & { continueImmediately: boolean } {
         this.state.action++;
         const summaryData = {
             consecutiveStepUsers: [],
@@ -1523,12 +1564,11 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         let numPlayersProcessed: number = 0;
         for (const userId of this.getDecisionShuffledPlayers()) {
             const player = this.state.players[userId];
-            delete player.previousLocation;
             if (this.hasPendingDecisions(userId)) {
                 numPlayersProcessed++;
                 let endTurn = false;
                 const processStep = (dr: number, dc: number): boolean => {
-                    player.previousLocation = { r: player.r, c: player.c };
+                    this.addPlayerPreviousLocation(userId, { r: player.r, c: player.c });
                     const nr = player.r + dr;
                     const nc = player.c + dc;
                     // Handle situations where another user is standing in the way
@@ -1650,7 +1690,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         const isCloser: boolean = this.approximateCostToGoal(newR, newC) < this.approximateCostToGoal(player.r, player.c);
                         // If it's the user's first warp of the turn or the warp is closer to the goal, do it
                         if (isFirstWarp || isCloser) {
-                            player.previousLocation = { r: player.r, c: player.c };
+                            this.addPlayerPreviousLocation(userId, { r: player.r, c: player.c });
                             player.r = newR;
                             player.c = newC;
                             player.warped = true;
@@ -1789,7 +1829,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                             player.r = player.originLocation.r;
                             player.c = player.originLocation.c;
                             player.knockedOut = true;
-                            delete player.previousLocation;
+                            delete player.previousLocations;
                             const trapOwnerId = this.state.trapOwners[locationString];
                             logger.log(`\`${userId}\` triggered trap by \`${trapOwnerId}\` at \`${locationString}\``);
                             if (trapRevealed) {
@@ -1815,13 +1855,24 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         // Refresh all player ranks
         this.refreshPlayerRanks();
 
+        // Only continue processing if there are no decisions left
+        const continueProcessing: boolean = Object.keys(this.state.decisions).length > 0;
+
+        // Only continue immediately if we should continue processing at all...
+        const continueImmediately: boolean = continueProcessing
+            // ...if 3 or fewer players were processed
+            && numPlayersProcessed <= 3
+            // ...if the summary text only has one statement which is for player(s) taking a step
+            && summaryData.statements.length === 1
+            && summaryData.statements[0].includes('took a step')
+            // ...and if the next decisions are basic step moves
+            && Object.values(this.state.decisions).every(actions => actions[0] in OFFSETS_BY_DIRECTION);
+
         // If there are no decisions left, end the turn
         return {
             summary: naturalJoin(summaryData.statements, 'then') || 'Dogs sat around with their hands in their pockets...',
-            continueProcessing: Object.keys(this.state.decisions).length > 0,
-            numPlayersProcessed,
-            // TODO: Is there a better way to do this?
-            continueImmediately: numPlayersProcessed === 1 && summaryData.statements.length === 1 && summaryData.statements[0].includes('took a step')
+            continueProcessing,
+            continueImmediately
         };
     }
 

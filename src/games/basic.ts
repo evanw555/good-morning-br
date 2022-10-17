@@ -77,9 +77,7 @@ export default class BasicGame extends AbstractGame<BasicGameState> {
 
         return {
             summary: 'Wow! What a week!',
-            continueProcessing: false,
-            continueImmediately: false,
-            numPlayersProcessed: 1
+            continueProcessing: false
         };
     }
 

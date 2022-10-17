@@ -138,16 +138,14 @@ export interface DungeonPlayerState {
     finished?: boolean,
     knockedOut?: boolean,
     invincible?: boolean,
-    previousLocation?: DungeonLocation,
+    previousLocations?: DungeonLocation[],
     originLocation?: DungeonLocation,
     warped?: boolean
 }
 
 export interface DecisionProcessingResult {
     summary: string,
-    continueProcessing: boolean,
-    continueImmediately: boolean,
-    numPlayersProcessed: number
+    continueProcessing: boolean
 }
 
 export interface DungeonGameState {
