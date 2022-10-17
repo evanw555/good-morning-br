@@ -1,6 +1,6 @@
 import canvas, { NodeCanvasRenderingContext2D } from 'canvas';
 import { GuildMember, Snowflake } from 'discord.js';
-import { getRankString, naturalJoin, randInt, shuffle, toLetterId, fromLetterId, AStarPathFinder, shuffleWithDependencies, toFixed, collapseRedundantStrings } from 'evanw555.js';
+import { getRankString, naturalJoin, randInt, shuffle, toLetterId, fromLetterId, AStarPathFinder, shuffleWithDependencies, toFixed, collapseRedundantStrings, chance } from 'evanw555.js';
 import { DecisionProcessingResult, DungeonGameState, DungeonItemName, DungeonLocation, DungeonPlayerState, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 import logger from '../logger';
@@ -33,6 +33,7 @@ const ITEM_NAME_RECORD: Record<DungeonItemName, boolean> = {
     'boulder': true,
     'seal': true,
     'trap': true,
+    'key': true,
     'star': true
 };
 const ITEM_NAMES: DungeonItemName[] = Object.keys(ITEM_NAME_RECORD) as DungeonItemName[];
@@ -50,6 +51,7 @@ const ACTION_SYMBOLS: Record<ActionName, string> = {
     'boulder': '🪨',
     'seal': '🦭',
     'trap': '🕳️',
+    'key': '🔑',
     'star': '⭐'
 };
 
@@ -633,32 +635,51 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     awardPrize(userId: Snowflake, type: PrizeType, intro: string): string {
         switch (type) {
             case 'submissions1':
-                this.addPlayerItem(userId, 'boulder');
-                const numBoulders = this.getPlayerItemCount(userId, 'boulder');
-                return `${intro}, you've just been awarded a **boulder**! Your inventory now contains **${numBoulders}**. `
-                    + 'You can place this at a particular location as an action e.g. `boulder:b12`. '
-                    + 'The boulder will act as a immovable barrier that cannot be destroyed, unless it causes players to become permanently trapped.';
+                if (chance(0.5)) {
+                    return this.awardItem(userId, 'boulder', intro);
+                } else {
+                    return this.awardItem(userId, 'key', intro);
+                }
             case 'submissions2':
-                this.addPlayerItem(userId, 'star');
-                const numStars = this.getPlayerItemCount(userId, 'star');
-                return `${intro}, you've just been awarded a **star**! Your inventory now contains **${numStars}**. `
-                    + 'You can use `star` as an action to make yourself invincible for the remainder of the week\'s turn. '
-                    + 'While invincible, walking into other players will knock them out (you won\'t bump into them). '
-                    + 'Also, you cannot be punched and you cannot fall into traps.';
+                if (chance(0.5)) {
+                    return this.awardItem(userId, 'star', intro);
+                } else {
+                    return this.awardItem(userId, 'seal', intro);
+                }
             case 'submissions3':
             case 'streak':
-                this.addPlayerItem(userId, 'trap');
-                const numTraps = this.getPlayerItemCount(userId, 'trap');
-                return `${intro}, you've just been awarded a **trap**! Your inventory now contains **${numTraps}**. `
+            case 'nightmare':
+                return this.awardItem(userId, 'trap', intro);
+        }
+    }
+
+    private awardItem(userId: Snowflake, item: DungeonItemName, intro: string): string {
+        this.addPlayerItem(userId, item);
+        const numItems = this.getPlayerItemCount(userId, item);
+        switch (item) {
+            case 'trap':
+                return `${intro}, you've just been awarded a **trap**! Your inventory now contains **${numItems}**. `
                     + 'You can place this at a particular location as an action e.g. `trap:b12`. '
                     + 'If a player ends their turn on a trap, they will be sent back to where they started that week\'s turn. '
                     + 'Traps are invisible until triggered. You will be given **1** point each time this trap is triggered.';
-            case 'nightmare':
-                this.addPlayerItem(userId, 'seal');
-                const numSeals = this.getPlayerItemCount(userId, 'seal');
-                return `${intro}, you've just been awarded a **seal**! Your inventory now contains **${numSeals}**. `
+            case 'boulder':
+                return `${intro}, you've just been awarded a **boulder**! Your inventory now contains **${numItems}**. `
+                    + 'You can place this at a particular location as an action e.g. `boulder:b12`. '
+                    + 'The boulder will act as a immovable barrier that cannot be destroyed, unless it causes players to become permanently trapped.';
+            case 'seal':
+                return `${intro}, you've just been awarded a **seal**! Your inventory now contains **${numItems}**. `
                     + 'You can use `seal` as an action to permanently seal any locked/unlocked doorway in the 4 squares adjacent to you. '
                     + 'Once a doorway is sealed, it is effectively a wall and cannot be unlocked. Optionally, seal one specific location e.g. `seal:b12`';
+            case 'star':
+                return `${intro}, you've just been awarded a **star**! Your inventory now contains **${numItems}**. `
+                    + 'You can use `star` as an action to make yourself invincible for the remainder of the week\'s turn. '
+                    + 'While invincible, walking into other players will knock them out (you won\'t bump into them). '
+                    + 'Also, you cannot be punched and you cannot fall into traps.';
+            case 'key':
+                return `${intro}, you've just been awarded a **key**! Your inventory now contains **${numItems}**. `
+                    + 'You can use `key` as an action to unlock all doorways in the 4 squares adjacent to you, or optionally one specific location e.g. `key:b12`. '
+                    + 'If you use the key but no doorways are opened (e.g. door was already opened by someone else), then it will not be consumed. '
+                    + 'Any doorway you unlock using the key will thereafter be halved in cost, as with the standard `unlock` move.';
         }
     }
 
@@ -1620,6 +1641,25 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     endTurn = true;
                     return false;
                 };
+                const doUnlock = (arg: string): number => {
+                    const argLocation: DungeonLocation = DungeonCrawler.parseLocationString(arg);
+                    let numDoorwaysUnlocked = 0;
+                    for (const { r, c } of this.getAdjacentLocationsOrOverride({ r: player.r, c: player.c }, argLocation)) {
+                        if (this.isTileType(r, c, TileType.KEY_HOLE)) {
+                            this.state.map[r][c] = TileType.OPENED_KEY_HOLE;
+                            numDoorwaysUnlocked++;
+                            // Halve the cost of the doorway (bottoms out at 1)
+                            const locationString = DungeonCrawler.getLocationString(r, c);
+                            this.state.keyHoleCosts[locationString] = Math.max(1, Math.floor(this.state.keyHoleCosts[locationString] / 2));
+                        }
+                    }
+                    if (numDoorwaysUnlocked === 1) {
+                        pushNonCollapsableStatement(`**${player.displayName}** unlocked a doorway`);
+                    } else {
+                        pushNonCollapsableStatement(`**${player.displayName}** unlocked **${numDoorwaysUnlocked}** doorways`);
+                    }
+                    return numDoorwaysUnlocked;
+                };
                 const commandActions: Record<ActionName, (arg: string) => boolean> = {
                     'up': () => {
                         return processStep(-1, 0);
@@ -1637,22 +1677,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         return true;
                     },
                     'unlock': (arg) => {
-                        const argLocation: DungeonLocation = DungeonCrawler.parseLocationString(arg);
-                        let numDoorwaysUnlocked = 0;
-                        for (const { r, c } of this.getAdjacentLocationsOrOverride({ r: player.r, c: player.c }, argLocation)) {
-                            if (this.isTileType(r, c, TileType.KEY_HOLE)) {
-                                this.state.map[r][c] = TileType.OPENED_KEY_HOLE;
-                                numDoorwaysUnlocked++;
-                                // Halve the cost of the doorway (bottoms out at 1)
-                                const locationString = DungeonCrawler.getLocationString(r, c);
-                                this.state.keyHoleCosts[locationString] = Math.max(1, Math.floor(this.state.keyHoleCosts[locationString] / 2));
-                            }
-                        }
-                        if (numDoorwaysUnlocked === 1) {
-                            pushNonCollapsableStatement(`**${player.displayName}** unlocked a doorway`);
-                        } else {
-                            pushNonCollapsableStatement(`**${player.displayName}** unlocked **${numDoorwaysUnlocked}** doorways`);
-                        }
+                        doUnlock(arg);
                         return true;
                     },
                     'lock': (arg) => {
@@ -1753,6 +1778,14 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                             pushNonCollapsableStatement(`**${player.displayName}** sealed **${numDoorwaysSealed}** doorways`);
                         }
                         this.consumePlayerItem(userId, 'seal');
+                        return true;
+                    },
+                    'key': (arg) => {
+                        const numDoorwaysUnlocked: number = doUnlock(arg);
+                        // Only consume the key if any doorways were unlocked
+                        if (numDoorwaysUnlocked > 0) {
+                            this.consumePlayerItem(userId, 'key');
+                        }
                         return true;
                     },
                     'star': () => {

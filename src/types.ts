@@ -121,7 +121,7 @@ export interface DungeonLocation {
     c: number
 }
 
-export type DungeonItemName = 'trap' | 'boulder' | 'seal' | 'star';
+export type DungeonItemName = 'trap' | 'boulder' | 'seal' | 'key' | 'star';
 
 export interface DungeonPlayerState {
     r: number,
