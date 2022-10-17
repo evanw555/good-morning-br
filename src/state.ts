@@ -118,6 +118,10 @@ export default class GoodMorningState {
         return this.getPlayers().filter(userId => this.getPlayerPoints(userId) < 0);
     }
 
+    getMutedPlayers(): Snowflake[] {
+        return this.getPlayers().filter(userId => this.isPlayerMuted(userId));
+    }
+
     getPlayerStates(): Record<Snowflake, PlayerState> {
         return this.data.players;
     }
@@ -200,6 +204,18 @@ export default class GoodMorningState {
             }
         });
         return newStreakUsers;
+    }
+
+    isPlayerMuted(userId: Snowflake): boolean {
+        return this.getPlayer(userId)?.muted ?? false;
+    }
+
+    setPlayerMute(userId: Snowflake, muted: boolean): void {
+        if (muted) {
+            this.getOrCreatePlayer(userId).muted = true;
+        } else {
+            delete this.getOrCreatePlayer(userId).muted;
+        }
     }
 
     getPlayerMultiplier(userId: Snowflake): number {

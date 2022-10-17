@@ -112,6 +112,7 @@ const grantGMChannelAccess = async (userIds: Snowflake[]): Promise<void> => {
         } catch (err) {
             await logger.log(`Unable to grant GM channel access for user <@${userId}>: \`${err.toString()}\``);
         }
+        state.setPlayerMute(userId, false);
     }
 }
 
@@ -124,6 +125,7 @@ const revokeGMChannelAccess = async (userIds: Snowflake[]): Promise<void> => {
         } catch (err) {
             await logger.log(`Unable to revoke GM channel access for user <@${userId}>: \`${err.toString()}\``);
         }
+        state.setPlayerMute(userId, true);
     }
 }
 
@@ -805,8 +807,8 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     // Dump state
     await dumpState();
 
-    // Finally, re-grant access for all players with negative points
-    await grantGMChannelAccess(state.getDelinquentPlayers());
+    // Finally, re-grant access for all muted players
+    await grantGMChannelAccess(state.getMutedPlayers());
 };
 
 const finalizeAnonymousSubmissions = async () => {
