@@ -988,7 +988,7 @@ const finalizeAnonymousSubmissions = async () => {
         }).join('\n');
         await messenger.send(sungazersChannel, scoringDetails);
         // Let them know how the score is calculated
-        await messenger.send(sungazersChannel, `(\`score = ${VOTE_VALUES[0]}🥇 + ${VOTE_VALUES[1]}🥈 + ${VOTE_VALUES[2]}🥉 + ${GAZER_TERM_BONUS}🌞\`)`);
+        await messenger.send(sungazersChannel, `(\`score = ${GOLD_VOTE_VALUE}🥇 + ${SILVER_VOTE_VALUE}🥈 + ${BRONZE_VOTE_VALUE}🥉 + ${GAZER_TERM_BONUS}🌞\`)`);
     } catch (err) {
         await messenger.send(sungazersChannel, 'Nvm, my brain is melting');
         await logger.log(`Failed to compute and send voting/scoring log: \`${err}\``);
@@ -1125,7 +1125,7 @@ const TIMEOUT_CALLBACKS = {
                 const fyiMessage = await sungazersChannel.send(fyiText);
                 // In an hour, fetch replies to this message and start a poll for the submission type
                 const pollStartDate = new Date();
-                pollStartDate.setHours(pollStartDate.getHours() + 1);
+                pollStartDate.setHours(pollStartDate.getHours() + 2);
                 // Use the delete strategy because it's not required and we want to ensure it's before the morning date
                 await timeoutManager.registerTimeout(TimeoutType.AnonymousSubmissionTypePollStart, pollStartDate, { arg: fyiMessage.id, pastStrategy: PastTimeoutStrategy.Delete });
             }
