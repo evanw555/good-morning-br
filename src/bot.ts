@@ -858,7 +858,10 @@ const finalizeAnonymousSubmissions = async () => {
     }
     // Now tally the actual scores and breakdowns
     // Add 0.1 to break ties using total number of votes, 0.01 to ultimately break ties with golds
-    const VOTE_VALUES: number[] = [3.11, 2.1, 1.1];
+    const GOLD_VOTE_VALUE = 3.11;
+    const SILVER_VOTE_VALUE = 2.1;
+    const BRONZE_VOTE_VALUE = 1.1;
+    const VOTE_VALUES: number[] = [GOLD_VOTE_VALUE, SILVER_VOTE_VALUE, BRONZE_VOTE_VALUE];
     for (const codes of Object.values(votes)) {
         codes.forEach((code, i) => {
             scores[code] = toFixed(scores[code] + (VOTE_VALUES[i] ?? 0), 3);
@@ -893,7 +896,7 @@ const finalizeAnonymousSubmissions = async () => {
         await sleep(10000);
         await messenger.send(goodMorningChannel, `Before anything else, say hello to the deadbeats who were disqualified for not voting! ${getJoinedMentions(deadbeats)} 👋`);
     }
-    const zeroVoteCodes: string[] = validCodesSorted.filter(code => scores[code] === 0);
+    const zeroVoteCodes: string[] = validCodesSorted.filter(code => scores[code] < BRONZE_VOTE_VALUE);
     if (zeroVoteCodes.length > 0) {
         const zeroVoteUserIds: Snowflake[] = zeroVoteCodes.map(code => submissionOwnersByCode[code]);
         await sleep(12000);
