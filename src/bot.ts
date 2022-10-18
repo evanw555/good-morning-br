@@ -357,19 +357,23 @@ const chooseEvent = (date: Date): DailyEvent | undefined => {
 };
 
 const awardPrize = async (userId: Snowflake, type: PrizeType, intro: string): Promise<void> => {
-    if (state.hasGame()) {
+    if (!state.hasGame()) {
+        await logger.log(`Aborting _${type}_ prize award for **${state.getPlayerDisplayName(userId)}**, as the game hasn't started!`);
+        return;
+    }
+    if (!state.getGame().hasPlayer(userId)) {
+        await logger.log(`Aborting _${type}_ prize award for **${state.getPlayerDisplayName(userId)}**, as this player isn't in the game yet!`);
+        return;
+    }
+    try {
         const prizeText: string = state.getGame().awardPrize(userId, type, intro);
         await dumpState();
         if (prizeText) {
-            try {
-                await messenger.dm(userId, prizeText, { immediate: true });
-                await logger.log(`Sent _${type}_ prize DM to **${state.getPlayerDisplayName(userId)}**`);
-            } catch (err) {
-                await logger.log(`Unable to send _${type}_ prize DM to **${state.getPlayerDisplayName(userId)}**: \`${err.toString()}\``);
-            }
+            await messenger.dm(userId, prizeText, { immediate: true });
+            await logger.log(`Sent _${type}_ prize DM to **${state.getPlayerDisplayName(userId)}**`);
         }
-    } else {
-        await logger.log(`Aborting _${type}_ prize award for **${state.getPlayerDisplayName(userId)}**, as the game hasn't started!`);
+    } catch (err) {
+        await logger.log(`Unable to award _${type}_ prize to **${state.getPlayerDisplayName(userId)}**: \`${err.toString()}\``);
     }
 };
 
@@ -835,7 +839,7 @@ const finalizeAnonymousSubmissions = async () => {
     delete event.submissions;
     delete event.submissionOwnersByCode;
     delete event.forfeiters;
-    await dumpState();
+    await dumpState(); // Just in case anything below fails
 
     // Disable voting and forfeiting by deleting commands
     const guildCommands = await guild.commands.fetch();
@@ -889,6 +893,7 @@ const finalizeAnonymousSubmissions = async () => {
         state.resetDaysSinceLGM(userId);
         winners.push(userId);
     }
+    await dumpState(); // Just in case anything below fails
 
     // Reveal the winners (and losers) to the channel
     await messenger.send(goodMorningChannel, 'Now, time to reveal the results...');
@@ -947,15 +952,11 @@ const finalizeAnonymousSubmissions = async () => {
         const code: string = validCodesSorted[i];
         const userId: Snowflake = submissionOwnersByCode[code];
         const rank: number = i + 1;
-        try {
-            await messenger.dm(userId,
-                `Your ${state.getEvent().submissionType} placed **${getRankString(rank)}** of **${numValidSubmissions}**, `
-                    + `receiving **${breakdown[code][0]}** gold votes, **${breakdown[code][1]}** silver votes, and **${breakdown[code][2]}** bronze votes. `
-                    + `Thanks for participating ${config.defaultGoodMorningEmoji}` + (forfeiters.includes(userId) ? ' (and sorry that you had to forfeit)' : ''),
-                { immediate: true });
-        } catch (err) {
-            await logger.log(`Unable to send results DM to **${state.getPlayerDisplayName(userId)}**: \`${err.toString()}\``);
-        }
+        await messenger.dm(userId,
+            `Your ${state.getEvent().submissionType} placed **${getRankString(rank)}** of **${numValidSubmissions}**, `
+                + `receiving **${breakdown[code][0]}** gold votes, **${breakdown[code][1]}** silver votes, and **${breakdown[code][2]}** bronze votes. `
+                + `Thanks for participating ${config.defaultGoodMorningEmoji}` + (forfeiters.includes(userId) ? ' (and sorry that you had to forfeit)' : ''),
+            { immediate: true });
     }
 
     // Award special prizes and notify via DM
@@ -992,6 +993,8 @@ const finalizeAnonymousSubmissions = async () => {
         await messenger.send(sungazersChannel, 'Nvm, my brain is melting');
         await logger.log(`Failed to compute and send voting/scoring log: \`${err}\``);
     }
+
+    await dumpState();
 };
 
 const TIMEOUT_CALLBACKS = {
@@ -2048,6 +2051,7 @@ const processCommands = async (msg: Message): Promise<void> => {
             tempDungeon.addPlayerItem(msg.author.id, 'trap', 5);
             tempDungeon.addPlayerItem(msg.author.id, 'boulder', 3);
             tempDungeon.addPlayerItem(msg.author.id, 'seal', 3);
+            tempDungeon.addPlayerItem(msg.author.id, 'key', 2);
             tempDungeon.addPlayerItem(msg.author.id, 'star', 1);
             tempDungeon.beginTurn();
             try { // TODO: refactor typing event to somewhere else?

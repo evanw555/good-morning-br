@@ -633,6 +633,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     }
 
     awardPrize(userId: Snowflake, type: PrizeType, intro: string): string {
+        // If player isn't in the game yet, do nothing
+        if (!this.hasPlayer(userId)) {
+            return '';
+        }
         switch (type) {
             case 'submissions1':
                 if (chance(0.5)) {
@@ -654,6 +658,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     }
 
     private awardItem(userId: Snowflake, item: DungeonItemName, intro: string): string {
+        // If player isn't in the game yet, do nothing
+        if (!this.hasPlayer(userId)) {
+            return '';
+        }
         this.addPlayerItem(userId, item);
         const numItems = this.getPlayerItemCount(userId, item);
         switch (item) {
