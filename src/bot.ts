@@ -1,6 +1,6 @@
 import { Client, DMChannel, Intents, MessageAttachment, TextChannel } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'discord.js';
-import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, HomeStretchSurprise, PrizeType } from './types';
+import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, HomeStretchSurprise, PrizeType, Bait } from './types';
 import { hasVideo, validateConfig, reactToMessage, getOrderingUpsets, extractYouTubeId } from './util';
 import GoodMorningState from './state';
 import logger from './logger';
@@ -19,6 +19,7 @@ languageGenerator.setLogger((message) => {
     logger.log(message);
 });
 const r9k = new R9KTextBank();
+const baitR9K = new R9KTextBank();
 const knownYouTubeIds: Set<string> = new Set();
 const messenger = new Messenger();
 messenger.setLogger((message) => {
@@ -84,6 +85,15 @@ const getBoldNames = (userIds: Snowflake[]): string => {
 
 const getJoinedMentions = (userIds: Snowflake[]): string => {
     return naturalJoin(userIds.map(userId => `<@${userId}>`));
+}
+
+const reactToMessageById = async (messageId: Snowflake, emoji: string | string[]): Promise<void> => {
+    try {
+        const message = await goodMorningChannel.messages.fetch(messageId);
+        await reactToMessage(message, emoji);
+    } catch (err) {
+        await logger.log(`Failed to react with ${emoji} to message with ID \`${messageId}\`: \`${err}\``);
+    }
 }
 
 /**
@@ -729,7 +739,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     state.setMorning(true);
     state.setGracePeriod(false);
     state.resetDailyState();
-    state.clearMostRecentBaiter();
+    state.clearBaiters();
     dailyVolatileLog = [];
     dailyVolatileLog.push([new Date(), 'GMBR has arisen.']);
 
@@ -1086,16 +1096,24 @@ const TIMEOUT_CALLBACKS = {
         }
 
         // If someone baited, then award the most recent baiter
-        const baiter: Snowflake | undefined = state.getMostRecentBaiter();
-        if (baiter) {
-            state.awardPoints(baiter, config.defaultAward / 2);
-            await messenger.dm(baiter, languageGenerator.generate('{bait.setup?}'), { immediate: true });
-            await logger.log(`Awarded **${state.getPlayerDisplayName(baiter)}** for setting up bait.`);
+        const bait: Bait | undefined = state.getMostRecentBait();
+        if (bait) {
+            state.awardPoints(bait.userId, config.defaultAward / 2);
+            await messenger.dm(bait.userId, languageGenerator.generate('{bait.setup?}'), { immediate: true });
+            await logger.log(`Awarded **${state.getPlayerDisplayName(bait.userId)}** for setting up bait.`);
+        }
+        // If someone was out-baited, penalize and react to their message
+        const previousBait: Bait | undefined = state.getPreviousBait();
+        if (previousBait) {
+            state.deductPoints(previousBait.userId, config.defaultAward / 2);
+            await reactToMessageById(previousBait.messageId, '🤡');
+            await logger.log(`Penalized **${state.getPlayerDisplayName(previousBait.userId)}** for being out-baited.`);
         }
 
         // Dump state and R9K hashes
         await dumpState();
         await dumpR9KHashes();
+        await dumpBaitR9KHashes();
         await dumpYouTubeIds();
 
         // If the season is still going...
@@ -1630,6 +1648,25 @@ const dumpR9KHashes = async (): Promise<void> => {
     await storage.write('r9k.json', JSON.stringify(r9k.getAllEntries(), null, 2));
 };
 
+const loadBaitR9KHashes = async (): Promise<void> => {
+    try {
+        const existingBaitR9KHashes: string[] = await storage.readJson('bait-r9k.json');
+        baitR9K.addRawHashes(existingBaitR9KHashes);
+    } catch (err) {
+        // Specifically check for file-not-found errors to make sure we don't overwrite anything
+        if (err.code === 'ENOENT') {
+            await logger.log('Existing Bait R9K hashes file not found, starting with a fresh text bank...');
+            await dumpBaitR9KHashes();
+        } else {
+            logger.log(`Unhandled exception while loading Bait R9K hashes file:\n\`\`\`${err.message}\`\`\``);
+        }
+    }
+}
+
+const dumpBaitR9KHashes = async (): Promise<void> => {
+    await storage.write('bait-r9k.json', JSON.stringify(baitR9K.getAllEntries(), null, 2));
+};
+
 const loadYouTubeIds = async (): Promise<void> => {
     try {
         const existingYouTubeIds: string[] = await storage.readJson('youtube.json');
@@ -1695,6 +1732,7 @@ client.on('ready', async (): Promise<void> => {
     await loadState();
     await loadHistory();
     await loadR9KHashes();
+    await loadBaitR9KHashes();
     await loadYouTubeIds();
     await timeoutManager.loadTimeouts();
 
@@ -2098,10 +2136,16 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
         }
 
         if (state.isMorning()) {
-            // No matter what the event is, always update 11:59 baiters
-            if (is1159 && userId !== state.getMostRecentBaiter()) {
-                state.setMostRecentBaiter(userId);
-                await dumpState();
+            // No matter what the event is, always update 11:59 bait (if user isn't the MRB and sent text)
+            if (is1159 && msg.content && userId !== state.getMostRecentBait()?.userId) {
+                // Count this as bait only if it's a novel message
+                if (baitR9K.contains(msg.content)) {
+                    reactToMessage(msg, '🌚');
+                } else {
+                    baitR9K.add(msg.content);
+                    state.setMostRecentBait(msg);
+                    await dumpState();
+                }
             }
 
             // If the event is an anonymous submission day, then completely ignore the message
@@ -2358,15 +2402,14 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 await logger.log(`Revoked GM channel access for **${msg.member.displayName}**`);
             }
             // If someone baited and it's the afternoon, award and notify via DM
-            const baiter: Snowflake | undefined = state.getMostRecentBaiter();
-            if (!isAm && baiter) {
-                state.awardPoints(baiter, config.defaultAward / 2);
-                await logger.log(`Awarded **${state.getPlayerDisplayName(baiter)}** for baiting successfully.`);
+            const bait: Bait | undefined = state.getMostRecentBait();
+            if (!isAm && bait) {
+                state.awardPoints(bait.userId, config.defaultAward / 2);
+                await logger.log(`Awarded **${state.getPlayerDisplayName(bait.userId)}** for baiting successfully.`);
+                await messenger.dm(bait.userId, 'Bait successful.', { immediate: true });
                 // If it's the baited's first offense, then reply with some chance
                 if (!isRepeatOffense && Math.random() < 0.5) {
-                    await messenger.reply(msg, languageGenerator.generate('{bait.reply?}', { player: `<@${baiter}>` }));
-                } else {
-                    await messenger.dm(baiter, 'Bait successful.', { immediate: true });
+                    await messenger.reply(msg, languageGenerator.generate('{bait.reply?}', { player: `<@${bait.userId}>` }));
                 }
             }
             await dumpState();

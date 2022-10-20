@@ -1,10 +1,11 @@
-import { Snowflake } from "discord.js";
+import { Message, Snowflake } from "discord.js";
 import { getTodayDateString, prettyPrint, toFixed } from "evanw555.js";
 import ActivityTracker from "./activity-tracker";
 import AbstractGame from "./games/abstract-game";
 import BasicGame from "./games/basic";
 import DungeonCrawler from "./games/dungeon";
-import { Combo, DailyEvent, DailyEventType, DailyPlayerState, FullDate, GameState, PlayerState, RawGoodMorningState, Season } from "./types";
+import logger from "./logger";
+import { Bait, Combo, DailyEvent, DailyEventType, DailyPlayerState, FullDate, GameState, PlayerState, RawGoodMorningState, Season } from "./types";
 
 export default class GoodMorningState {
     private data: RawGoodMorningState;
@@ -596,20 +597,33 @@ export default class GoodMorningState {
         this.data.maxCombo = combo;
     }
 
-    getMostRecentBaiter(): Snowflake | undefined {
-        return this.data.mostRecentBaiter;
+    getMostRecentBait(): Bait | undefined {
+        return this.data.mostRecentBait;
     }
 
-    setMostRecentBaiter(userId: Snowflake): void {
-        if (userId) {
-            this.data.mostRecentBaiter = userId;
-        } else {
-            delete this.data.mostRecentBaiter;
+    getPreviousBait(): Bait | undefined {
+        return this.data.previousBait;
+    }
+
+    setMostRecentBait(message: Message): void {
+        if (!message) {
+            logger.log('WARNING: Attempted to set mostRecentBait with a falsy message!');
+            return;
         }
+        // If there was an existing MRB, use it to set the previous bait
+        if (this.data.mostRecentBait) {
+            this.data.previousBait = this.data.mostRecentBait;
+        }
+        // Set the MRB
+        this.data.mostRecentBait = {
+            userId: message.author.id,
+            messageId: message.id
+        };
     }
 
-    clearMostRecentBaiter(): void {
-        this.setMostRecentBaiter(undefined);
+    clearBaiters(): void {
+        delete this.data.previousBait;
+        delete this.data.mostRecentBait;
     }
 
     toHistorySeasonEntry(): Season {

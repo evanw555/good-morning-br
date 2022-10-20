@@ -178,6 +178,11 @@ export interface BasicGameState {
 
 export type GameState = DungeonGameState | BasicGameState;
 
+export interface Bait {
+    userId: Snowflake,
+    messageId: Snowflake
+}
+
 export interface RawGoodMorningState {
     season: number,
     startedOn: FullDate,
@@ -190,7 +195,8 @@ export interface RawGoodMorningState {
     currentLeader?: Snowflake,
     combo?: Combo,
     maxCombo?: Combo,
-    mostRecentBaiter?: Snowflake,
+    mostRecentBait?: Bait,
+    previousBait?: Bait
     event?: DailyEvent,
     nextEvent?: DailyEvent,
     dailyStatus: Record<Snowflake, DailyPlayerState>,
