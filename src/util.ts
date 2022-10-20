@@ -60,6 +60,7 @@ export async function reactToMessage(msg: Message, emoji: string | string[]): Pr
     }
 }
 
+// TODO: Export to common util library
 export function getOrderingUpset(upsetter: Snowflake, before: Snowflake[], after: Snowflake[]): Snowflake[] {
     const beforeIndex: number = before.indexOf(upsetter);
     const afterIndex: number = after.indexOf(upsetter);
@@ -70,6 +71,7 @@ export function getOrderingUpset(upsetter: Snowflake, before: Snowflake[], after
     return afterInferiors.filter(x => !beforeInferiors.has(x) && beforeAll.has(x));
 }
 
+// TODO: Export to common util library
 export function getOrderingUpsets(before: Snowflake[], after: Snowflake[]): Record<Snowflake, Snowflake[]> {
     const results: Record<Snowflake, Snowflake[]> = {};
     after.forEach(x => {

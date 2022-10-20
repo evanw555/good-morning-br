@@ -1,11 +1,11 @@
 import { Client, DMChannel, Intents, MessageAttachment, TextChannel } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'discord.js';
 import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, HomeStretchSurprise, PrizeType, Bait } from './types';
-import { hasVideo, validateConfig, reactToMessage, getOrderingUpsets, extractYouTubeId } from './util';
+import { hasVideo, validateConfig, reactToMessage, extractYouTubeId } from './util';
 import GoodMorningState from './state';
 import logger from './logger';
 
-import { addReactsSync, chance, FileStorage, generateKMeansClusters, getClockTime, getPollChoiceKeys, getRandomDateBetween, getRankString, getRelativeDateTimeString, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger, naturalJoin, PastTimeoutStrategy, R9KTextBank, randChoice, randInt, shuffle, sleep, TimeoutManager, toCalendarDate, toFixed, toLetterId } from 'evanw555.js';
+import { addReactsSync, FileStorage, generateKMeansClusters, getClockTime, getPollChoiceKeys, getRandomDateBetween, getRankString, getRelativeDateTimeString, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger, naturalJoin, PastTimeoutStrategy, R9KTextBank, randChoice, randInt, shuffle, sleep, TimeoutManager, toCalendarDate, toFixed, toLetterId } from 'evanw555.js';
 import DungeonCrawler from './games/dungeon';
 import ActivityTracker from './activity-tracker';
 
@@ -751,51 +751,6 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     //     state.setNerfThreshold(nerfThreshold);
     //     dailyVolatileLog.push([new Date(), `Set nerf threshold to ${nerfThreshold}`]);
     // }
-
-    // If it's a Recap Sunday, then process weekly changes
-    if (state.getEventType() === DailyEventType.RecapSunday) {
-        const weeklySnapshot: GoodMorningState = await loadWeeklySnapshot();
-        // If a snapshot from last week exists (and is from this season), compute and broadcast some weekly stats
-        if (weeklySnapshot && weeklySnapshot.getSeasonNumber() === state.getSeasonNumber()) {
-            // Broadcast the biggest weekly gainer of points
-            let maxPointGains: number = -1;
-            let maxGainedPlayer: Snowflake;
-            const pointDiffs: Record<Snowflake, number> = {};
-            state.getPlayers().forEach(userId => {
-                const pointDiff: number = state.getPlayerPoints(userId) - weeklySnapshot.getPlayerPoints(userId);
-                pointDiffs[userId] = pointDiff;
-                if (pointDiff > maxPointGains) {
-                    maxPointGains = pointDiff;
-                    maxGainedPlayer = userId;
-                }
-            });
-            if (maxPointGains > 0) {
-                await messenger.send(goodMorningChannel, `Nice work to <@${maxGainedPlayer}> for earning the most points in the last week!`);
-            }
-            // Log any weekly rank upsets. TODO: Actually send this out???
-            try {
-                const beforeOrderings: Snowflake[] = weeklySnapshot.getOrderedPlayers();
-                const afterOrderings: Snowflake[] = state.getOrderedPlayers();
-                const upsets: Record<Snowflake, Snowflake[]> = getOrderingUpsets(beforeOrderings, afterOrderings);
-                await logger.log(naturalJoin(
-                    Object.entries(upsets)
-                        .map(([userId, upsettees]) => {
-                            return `**${state.getPlayerDisplayName(userId)}** has overtaken ${getBoldNames(upsettees)}`;
-                        })
-                ));
-            } catch (err) {
-                logger.log('Failed to compute ordering upsets: ' + err.toString());
-            }
-            // Log all the nonzero point changes
-            await logger.log(Object.keys(pointDiffs)
-                .filter(userId => pointDiffs[userId] !== 0)
-                .sort((x, y) => pointDiffs[y] - pointDiffs[x])
-                .map(userId => `\`${pointDiffs[userId]}\` **${state.getPlayerDisplayName(userId)}**`)
-                .join('\n') || 'No point changes this week.');
-        }
-        // Write the new snapshot
-        await dumpWeeklySnapshot(state);
-    }
 
     // Process "reverse" GM ranks
     if (state.getEventType() === DailyEventType.ReverseGoodMorning) {
@@ -1583,25 +1538,6 @@ const loadState = async (): Promise<void> => {
 
 const dumpState = async (): Promise<void> => {
     await storage.write('state', state.toJson());
-};
-
-const loadWeeklySnapshot = async (): Promise<GoodMorningState> => {
-    try {
-        return new GoodMorningState(await storage.readJson('weekly-snapshot.json'));
-    } catch (err) {
-        // Specifically check for file-not-found errors to make sure we don't overwrite anything
-        if (err.code === 'ENOENT') {
-            await logger.log('Existing weekly snapshot file not found!');
-            return undefined;
-        } else {
-            logger.log(`Unhandled exception while loading weekly snapshot file:\n\`\`\`${err.message}\`\`\``);
-        }
-    }
-    return undefined;
-};
-
-const dumpWeeklySnapshot = async (weeklySnapshot: GoodMorningState): Promise<void> => {
-    await storage.write('weekly-snapshot.json', weeklySnapshot.toJson());
 };
 
 const loadHistory = async (): Promise<void> => {
