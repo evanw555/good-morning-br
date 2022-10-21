@@ -613,6 +613,8 @@ export default class GoodMorningState {
         // If there was an existing MRB, use it to set the previous bait
         if (this.data.mostRecentBait) {
             this.data.previousBait = this.data.mostRecentBait;
+            // TODO: Temp logging to make sure this is working correctly
+            logger.log(`Baiter **${this.getPlayerDisplayName(message.author.id)}** has replaced **${this.getPlayerDisplayName(this.data.previousBait.userId)}**`);
         }
         // Set the MRB
         this.data.mostRecentBait = {
