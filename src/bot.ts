@@ -473,7 +473,7 @@ const sendGoodMorningMessage = async (): Promise<void> => {
                 content: decisionHeader,
                 files: [new MessageAttachment(await state.getGame().renderState(), `game-turn${state.getGame().getTurn()}-decision.png`)]
             });
-            await messenger.send(goodMorningChannel, 'Choose your moves by sending me a DM with your desired sequence of actions. You have until tomorrow morning to choose. DM me _"help"_ for more info.');
+            await messenger.send(goodMorningChannel, 'Choose your moves by sending me a DM with your desired sequence of actions. You have until tomorrow morning to choose. DM me _"help"_ for more info.', { immediate: true });
             break;
         case DailyEventType.GameUpdate:
             if (!state.hasGame()) {
@@ -728,20 +728,20 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         await sendGoodMorningMessage();
     }
 
-    // Let the channel know of all the newly joined players
-    if (newlyAddedPlayers.length === 1) {
-        await messenger.send(goodMorningChannel, `Let's all give a warm welcome to ${getJoinedMentions(newlyAddedPlayers)}, for this puppy is joining the game this week!`)
-    } else if (newlyAddedPlayers.length > 1) {
-        await messenger.send(goodMorningChannel, `Let's all give a warm welcome to ${getJoinedMentions(newlyAddedPlayers)}, for they are joining the game this week!`);
-    }
-
-    // Reset the daily state
+    // Reset the daily state (should happen immediately after sending the first message to be fair)
     state.setMorning(true);
     state.setGracePeriod(false);
     state.resetDailyState();
     state.clearBaiters();
     dailyVolatileLog = [];
     dailyVolatileLog.push([new Date(), 'GMBR has arisen.']);
+
+    // Let the channel know of all the newly joined players
+    if (newlyAddedPlayers.length === 1) {
+        await messenger.send(goodMorningChannel, `Let's all give a warm welcome to ${getJoinedMentions(newlyAddedPlayers)}, for this puppy is joining the game this week!`)
+    } else if (newlyAddedPlayers.length > 1) {
+        await messenger.send(goodMorningChannel, `Let's all give a warm welcome to ${getJoinedMentions(newlyAddedPlayers)}, for they are joining the game this week!`);
+    }
 
     // If we're 20% of the way through the season, determine the nerf threshold for today
     // TODO (2.0): Do we want this?
