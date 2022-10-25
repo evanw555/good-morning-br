@@ -2053,7 +2053,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
     const userId: Snowflake = msg.author.id;
     if (goodMorningChannel && msg.channel.id === goodMorningChannel.id && !msg.author.bot) {
         const isAm: boolean = new Date().getHours() < 12;
-        const is1159: boolean = getClockTime() === '11:59';
+        const is1159: boolean = getClockTime() === '11:59' || getClockTime() === '12:00'; // TODO: Can we make this condition timeout-based rather than relying on this hacky workaround?
         const isPlayerNew: boolean = !state.hasPlayer(userId);
         const isQuestion: boolean = msg.content && msg.content.trim().endsWith('?');
 
