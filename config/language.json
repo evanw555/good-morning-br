@@ -327,6 +327,14 @@
             "It's never a complete morning without {!you chiming in|your radiant presence|your kind words}! Although I was hoping you'd say something a little more {adjectives.novel?}...",
             "Good morning! Though something tells me I've heard this before...",
             "Each morning I await your {adjectives.positive?} {!greeting|words} {!oh so eagerly|with bated breath|with such anticipation}, {!but|yet} this morning's greeting {!feels|seems|felt} a little forgettable"
+        ],
+        "absent": [
+            "Good morning! It's been a while... {!how've you been|what have you been up to}?",
+            "Look who it is! I've missed you, my {nouns.alliterativeTitle?}",
+            "It's been a {!while|bit} since you've said Good Morning. How's life been?",
+            "Happy to hear from you, once again! Anything new with you?",
+            "I was starting to miss you, my friend. Has life been treating you well?",
+            "A {!truly|very} {adjectives.positive?} morning to you! It's been a while since I've heard from you"
         ]
     },
     "penaltyReply": {

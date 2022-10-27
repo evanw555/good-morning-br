@@ -2301,6 +2301,10 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     else if (priorPoints < 0) {
                         messenger.reply(msg, languageGenerator.generate('{goodMorningReply.negative?}'));
                     }
+                    // Always reply if the player hasn't said GM in over a week
+                    else if (state.getPlayerDaysSinceLGM(userId) > 7) {
+                        messenger.reply(msg, languageGenerator.generate('{goodMorningReply.absent?}'));
+                    }
                     // Reply (or react) to the user based on their rank (and chance)
                     else if (rank <= config.goodMorningReplyCount) {
                         if (Math.random() < config.replyViaReactionProbability) {
