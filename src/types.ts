@@ -3,6 +3,7 @@ import { Snowflake } from "discord.js"
 export enum TimeoutType{
     NextGoodMorning = 'NEXT_GOOD_MORNING',
     NextPreNoon = 'NEXT_PRE_NOON',
+    BaitingStart = 'BAITING_START',
     NextNoon = 'NEXT_NOON',
     // Non-standard events
     GuestReveilleFallback = 'GUEST_REVEILLE_FALLBACK',
@@ -195,6 +196,7 @@ export interface RawGoodMorningState {
     currentLeader?: Snowflake,
     combo?: Combo,
     maxCombo?: Combo,
+    isAcceptingBait?: true,
     mostRecentBait?: Bait,
     previousBait?: Bait
     event?: DailyEvent,

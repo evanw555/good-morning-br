@@ -972,6 +972,12 @@ const TIMEOUT_CALLBACKS = {
         noonToday.setHours(12, 0, 0, 0);
         // We register this with the "Increment Hour" strategy since its subsequent timeout (GoodMorning) is registered in series
         await timeoutManager.registerTimeout(TimeoutType.NextNoon, noonToday, { pastStrategy: PastTimeoutStrategy.IncrementHour });
+        // Set timeout for when baiting starts
+        const baitingStartTime: Date = new Date();
+        baitingStartTime.setHours(11, 59, 0, 0);
+        // We register this with the "Delete" strategy since it doesn't schedule any events and it's non-critical
+        await timeoutManager.registerTimeout(TimeoutType.BaitingStart, baitingStartTime, { pastStrategy: PastTimeoutStrategy.Delete });
+
 
         // Check the results of anonymous submissions
         if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
@@ -1019,6 +1025,11 @@ const TIMEOUT_CALLBACKS = {
         // Dump state
         await dumpState();
     },
+    [TimeoutType.BaitingStart]: async (): Promise<void> => {
+        // Start accepting bait
+        state.setAcceptingBait(true);
+        await dumpState();
+    },
     [TimeoutType.NextNoon]: async (): Promise<void> => {
         // If attempting to end the morning while already asleep, warn the admin and abort
         if (!state.isMorning()) {
@@ -1026,11 +1037,9 @@ const TIMEOUT_CALLBACKS = {
             return;
         }
 
-        // Revoke access for all players who should be muted (based on their track record / penalty history)
-        await revokeGMChannelAccess(state.getDelinquentPlayers());
-
         // Update basic state properties
         state.setMorning(false);
+        state.setAcceptingBait(false);
         state.clearNerfThreshold();
 
         // Activate the queued up event
@@ -1070,6 +1079,9 @@ const TIMEOUT_CALLBACKS = {
         await dumpR9KHashes();
         await dumpBaitR9KHashes();
         await dumpYouTubeIds();
+
+        // Revoke access for all players who should be muted (based on their track record / penalty history)
+        await revokeGMChannelAccess(state.getDelinquentPlayers());
 
         // If the season is still going...
         if (!state.isSeasonGoalReached()) {
@@ -2053,7 +2065,6 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
     const userId: Snowflake = msg.author.id;
     if (goodMorningChannel && msg.channel.id === goodMorningChannel.id && !msg.author.bot) {
         const isAm: boolean = new Date().getHours() < 12;
-        const is1159: boolean = getClockTime() === '11:59' || getClockTime() === '12:00'; // TODO: Can we make this condition timeout-based rather than relying on this hacky workaround?
         const isPlayerNew: boolean = !state.hasPlayer(userId);
         const isQuestion: boolean = msg.content && msg.content.trim().endsWith('?');
 
@@ -2073,7 +2084,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
 
         if (state.isMorning()) {
             // No matter what the event is, always update 11:59 bait (if user isn't the MRB and sent text)
-            if (is1159 && msg.content && userId !== state.getMostRecentBait()?.userId) {
+            if (state.isAcceptingBait() && msg.content && userId !== state.getMostRecentBait()?.userId) {
                 // Count this as bait only if it's a novel message
                 if (baitR9K.contains(msg.content)) {
                     reactToMessage(msg, '🌚');

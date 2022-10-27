@@ -597,6 +597,18 @@ export default class GoodMorningState {
         this.data.maxCombo = combo;
     }
 
+    isAcceptingBait(): boolean {
+        return this.data.isAcceptingBait ?? false;
+    }
+
+    setAcceptingBait(isAcceptingBait: boolean): void {
+        if (isAcceptingBait) {
+            this.data.isAcceptingBait = true;
+        } else {
+            delete this.data.isAcceptingBait;
+        }
+    }
+
     getMostRecentBait(): Bait | undefined {
         return this.data.mostRecentBait;
     }
