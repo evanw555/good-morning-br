@@ -82,6 +82,7 @@ export enum DailyEventType {
     SleepyMorning = 'SLEEPY_MORNING',
     WritersBlock = 'WRITERS_BLOCK',
     Nightmare = 'NIGHTMARE',
+    EarlyEnd = 'EARLY_END',
     // Abnormal events (i.e. not the typical "wait-for-GM-then-say-GM" event)
     GuestReveille = 'GUEST_REVEILLE',
     ReverseGoodMorning = 'REVERSE_GOOD_MORNING',
@@ -115,7 +116,9 @@ export interface DailyEvent {
     // Used specifically for the "writer's block" event
     customMessage?: string,
     // Used specifically for the "begin home stretch" event
-    homeStretchSurprises?: HomeStretchSurprise[]
+    homeStretchSurprises?: HomeStretchSurprise[],
+    // Used specifically for the "early end" event
+    minutesEarly?: number
 }
 
 export interface DungeonLocation {

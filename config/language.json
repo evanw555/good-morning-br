@@ -207,12 +207,19 @@
             "painters are painting",
             "ships are sailing",
             "cows are grazing"
+        ],
+        "earlyEnd": [
+            "I have {!an appointment|a hot date|to see the dentist} at noon so I'll be heading out {$when}",
+            "Please note that I'll be {!out of here|heading out} today {$when}",
+            "I'm {!very|quite} busy today so this morning will be cut short {$when}",
+            "Stay focused, for today I will be heading back to {!sleep|bed} {$when}"
         ]
     },
     "goodMorning": "{phrases.morningIntro?}! {phrases.wellWish?}",
     "happyFriday": "Happy Friday! {phrases.wellWish?} 🐒",
     "grumpyMorning": "{!Hello|Hey|Morning} everyone, honestly I'm not feeling too {!good|great} {!this morning|today}... I encourage you all to say good morning, but the first {!one|person} to say it is gonna {!piss me off|irritate me|really bug me}.",
     "sleepyMorning": "{phrases.sleepyMorningIntro?} Good morning 😴",
+    "earlyEndMorning": "{phrases.morningIntro?}! {phrases.earlyEnd?}. {phrases.wellWish?}",
     "weeklyUpdate": "{!Good morning|Happy Sunday}! {phrases.seasonUpdate?}",
     "leaderShift": [
         "{$old} is no longer the {!king|prince} of spreading Good Morning cheer, that title now belongs to {$new}!",

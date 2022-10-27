@@ -308,7 +308,7 @@ const chooseEvent = (date: Date): DailyEvent | undefined => {
     //     };
     // }
     // High chance of a random event 2/3 days, low chance 1/3 days
-    const eventChance: number = (date.getDate() % 3 === 0) ? 0.2 : 0.8;
+    const eventChance: number = (date.getDate() % 3 === 0) ? 0.3 : 0.9;
     if (Math.random() < eventChance) {
         // Compile a list of potential events (include default events)
         const potentialEvents: DailyEvent[] = [
@@ -326,6 +326,10 @@ const chooseEvent = (date: Date): DailyEvent | undefined => {
             {
                 type: DailyEventType.Nightmare,
                 disabled: true
+            },
+            {
+                type: DailyEventType.EarlyEnd,
+                minutesEarly: randChoice(1, 2, 5, 10, 15, randInt(3, 20))
             }
         ];
         // If someone should be beckoned, add beckoning as a potential event
@@ -441,6 +445,19 @@ const sendGoodMorningMessage = async (): Promise<void> => {
             } else {
                 await messenger.send(goodMorningChannel, languageGenerator.generate(overriddenMessage ?? '{goodMorning}'));
             }
+            break;
+        case DailyEventType.EarlyEnd:
+            const minutesEarly: number = state.getEvent().minutesEarly ?? 0;
+            const minutesText: Record<number, string> = {
+                0: 'at noon',
+                1: 'a minute early',
+                2: 'a couple minutes early',
+                5: 'at five till',
+                10: 'at ten till',
+                15: 'at a quarter till'
+            };
+            const when: string = minutesText[minutesEarly] ?? `${minutesEarly} minutes early`;
+            await messenger.send(goodMorningChannel, languageGenerator.generate('{earlyEndMorning}', { when }));
             break;
         case DailyEventType.AnonymousSubmissions:
             // If there's an overridden message, just send it naively upfront
@@ -708,9 +725,10 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         });
     }
 
+    const minutesEarly: number = state.getEventType() === DailyEventType.EarlyEnd ? (state.getEvent().minutesEarly ?? 0) : 0;
     // Set timeout for when morning almost ends
     const preNoonToday: Date = new Date();
-    preNoonToday.setHours(11, randInt(48, 56), randInt(0, 60), 0);
+    preNoonToday.setHours(11, randInt(48, 56) - minutesEarly, randInt(0, 60), 0);
     // We register this with the "Increment Hour" strategy since its subsequent timeout (Noon) is registered in series
     await timeoutManager.registerTimeout(TimeoutType.NextPreNoon, preNoonToday, { pastStrategy: PastTimeoutStrategy.IncrementHour });
 
@@ -967,14 +985,17 @@ const TIMEOUT_CALLBACKS = {
         await wakeUp(true);
     },
     [TimeoutType.NextPreNoon]: async (): Promise<void> => {
+        const minutesEarly: number = state.getEventType() === DailyEventType.EarlyEnd ? (state.getEvent().minutesEarly ?? 0) : 0;
         // Set timeout for when morning ends
         const noonToday: Date = new Date();
         noonToday.setHours(12, 0, 0, 0);
+        noonToday.setMinutes(noonToday.getMinutes() - minutesEarly);
         // We register this with the "Increment Hour" strategy since its subsequent timeout (GoodMorning) is registered in series
         await timeoutManager.registerTimeout(TimeoutType.NextNoon, noonToday, { pastStrategy: PastTimeoutStrategy.IncrementHour });
         // Set timeout for when baiting starts
         const baitingStartTime: Date = new Date();
         baitingStartTime.setHours(11, 59, 0, 0);
+        baitingStartTime.setMinutes(baitingStartTime.getMinutes() - minutesEarly);
         // We register this with the "Delete" strategy since it doesn't schedule any events and it's non-critical
         await timeoutManager.registerTimeout(TimeoutType.BaitingStart, baitingStartTime, { pastStrategy: PastTimeoutStrategy.Delete });
 
@@ -1036,6 +1057,9 @@ const TIMEOUT_CALLBACKS = {
             logger.log('WARNING! Attempted to end the morning while `state.isMorning` is already `false`');
             return;
         }
+
+        // We may send a warning if not ending at noon only if this isn't the "early end" event (we expect players to be paying attention)
+        const maySendWarning: boolean = state.getEventType() !== DailyEventType.EarlyEnd;
 
         // Update basic state properties
         state.setMorning(false);
@@ -1119,7 +1143,7 @@ const TIMEOUT_CALLBACKS = {
         // If this is happening at a non-standard time, explicitly warn players (add some tolerance in case of timeout variance)
         const clockTime: string = getClockTime();
         const standardClockTimes: Set<string> = new Set(['11:59', '12:00', '12:01']);
-        if (!standardClockTimes.has(clockTime)) {
+        if (maySendWarning && !standardClockTimes.has(clockTime)) {
             await messenger.send(goodMorningChannel, 'The "morning" technically ends now, so SHUT UP 🤫');
         }
 
