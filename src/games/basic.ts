@@ -63,6 +63,10 @@ export default class BasicGame extends AbstractGame<BasicGameState> {
         return `${intro}, you are appreciated!`;
     }
 
+    getWeeklyDecisionDMs(): Record<Snowflake, string> {
+        return {};
+    }
+
     addPlayerDecision(userId: string, text: string): string {
         return 'There are no decisions in this game but cool!';
     }

@@ -1326,6 +1326,19 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         }
     }
 
+    getWeeklyDecisionDMs(): Record<Snowflake, string> {
+        const results: Record<Snowflake, string> = {};
+        for (const userId of this.getPlayers()) {
+            // If the player has at least 1 of any item, construct a string informing them of their inventory
+            if (this.playerHasAnyItem(userId)) {
+                const items = this.getPlayerItems(userId);
+                results[userId] = 'Good morning! Reminder: your inventory contains '
+                    + naturalJoin(Object.keys(items).map(item => items[item] === 1 ? `a **${item}**` : `${items[item]} **${item}s**`));
+            }
+        }
+        return results;
+    }
+
     addPlayerDecision(userId: Snowflake, text: string): string {
         const commands: string[] = text.replace(/\s+/g, ' ').trim().split(' ').map(c => c.toLowerCase());
         const warnings: string[] = [];
@@ -2127,7 +2140,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     }
 
     playerHasAnyItem(userId: Snowflake): boolean {
-        return Object.values(this.state.players[userId].items ?? {}).length > 0;
+        return ITEM_NAMES.some(item => this.playerHasItem(userId, item));
     }
 
     playerHasItem(userId: Snowflake, item: DungeonItemName): boolean {
@@ -2135,7 +2148,11 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     }
 
     getPlayerItemCount(userId: Snowflake, item: DungeonItemName): number {
-        return (this.state.players[userId].items ?? {})[item] ?? 0;
+        return this.getPlayerItems(userId)[item] ?? 0;
+    }
+
+    getPlayerItems(userId: Snowflake): Partial<Record<DungeonItemName, number>> {
+        return this.state.players[userId]?.items ?? {};
     }
 
     addPlayerItem(userId: Snowflake, item: DungeonItemName, num: number = 1): void {

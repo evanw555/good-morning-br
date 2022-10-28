@@ -761,6 +761,18 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         await messenger.send(goodMorningChannel, `Let's all give a warm welcome to ${getJoinedMentions(newlyAddedPlayers)}, for they are joining the game this week!`);
     }
 
+    // Send any game-related DMs, if any
+    if (state.getEventType() === DailyEventType.GameDecision && state.hasGame()) {
+        const weeklyDecisionDMs = state.getGame().getWeeklyDecisionDMs();
+        const recipients = Object.keys(weeklyDecisionDMs);
+        if (recipients.length > 0) {
+            for (const userId of recipients) {
+                await messenger.dm(userId, weeklyDecisionDMs[userId], { immediate: true });
+            }
+            await logger.log(`Sent weekly decision DMs to: ${getJoinedMentions(recipients)}`);
+        }
+    }
+
     // If we're 20% of the way through the season, determine the nerf threshold for today
     // TODO (2.0): Do we want this?
     // if (state.getSeasonCompletion() > 0.2) {

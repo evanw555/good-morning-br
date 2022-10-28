@@ -34,6 +34,10 @@ export default abstract class AbstractGame<T extends GameState> {
     abstract getPoints(userId: Snowflake): number
     abstract addPoints(userId: Snowflake, points: number): void
     abstract awardPrize(userId: Snowflake, type: PrizeType, intro: string): string
+    /**
+     * Returns a mapping from user ID to text string for DMs that should be send to players on the morning of game decisions.
+     */
+    abstract getWeeklyDecisionDMs(): Record<Snowflake, string>
     abstract addPlayerDecision(userId: Snowflake, text: string): string
     abstract processPlayerDecisions(): DecisionProcessingResult
 
