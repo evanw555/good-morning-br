@@ -310,7 +310,7 @@ const chooseEvent = (date: Date): DailyEvent | undefined => {
     // }
     // High chance of a random event 2/3 days, low chance 1/3 days
     const eventChance: number = (date.getDate() % 3 === 0) ? 0.3 : 0.9;
-    if (Math.random() < eventChance) {
+    if (chance(eventChance)) {
         // Compile a list of potential events (include default events)
         const potentialEvents: DailyEvent[] = [
             // TODO (2.0): Should I re-enable these?
@@ -362,7 +362,7 @@ const chooseEvent = (date: Date): DailyEvent | undefined => {
         }
         // If anyone is qualified to provide the GM message, add writer's block as a potential event (with 50% odds)
         const potentialWriters: Snowflake[] = state.queryOrderedPlayers({ maxDays: 1, n: 7 });
-        if (potentialWriters.length > 0 && Math.random() < 0.5) {
+        if (potentialWriters.length > 0 && chance(0.5)) {
             const guestWriter: Snowflake = randChoice(...potentialWriters);
             potentialEvents.push({
                 type: DailyEventType.WritersBlock,
@@ -514,7 +514,7 @@ const sendGoodMorningMessage = async (): Promise<void> => {
                     + 'This season will be very different from seasons past, you\'ll see what I mean on Saturday... '
                     + `I hope to see many familiar faces, and if I\'m lucky maybe even some new ones ${config.defaultGoodMorningEmoji}`;
                 await messenger.send(goodMorningChannel, text);
-            } else if (Math.random() < config.goodMorningMessageProbability) {
+            } else if (chance(config.goodMorningMessageProbability)) {
                 await messenger.send(goodMorningChannel, languageGenerator.generate(overriddenMessage ?? '{goodMorning}'));
             }
             break;
@@ -1905,7 +1905,7 @@ const processCommands = async (msg: Message): Promise<void> => {
     }
     // Test out language generation
     if (msg.content.startsWith('$')) {
-        if (Math.random() < .5) {
+        if (chance(.5)) {
             messenger.reply(msg, languageGenerator.generate(msg.content.substring(1), { player: `<@${msg.author.id}>` }));
         } else {
             messenger.send(msg.channel, languageGenerator.generate(msg.content.substring(1), { player: `<@${msg.author.id}>` }));
@@ -2329,7 +2329,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     }
                     // Reply (or react) to the user based on their rank (and chance)
                     else if (rank <= config.goodMorningReplyCount) {
-                        if (Math.random() < config.replyViaReactionProbability) {
+                        if (chance(config.replyViaReactionProbability)) {
                             reactToMessage(msg, state.getGoodMorningEmoji());
                         } else if (isQuestion) {
                             // TODO: Can we more intelligently determine what type of question it is?
@@ -2348,7 +2348,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             }
 
             // Regardless of whether it's their first message or not, react to the magic word with a small probability
-            if (saidMagicWord(msg) && Math.random() < config.magicWordReactionProbability) {
+            if (saidMagicWord(msg) && chance(config.magicWordReactionProbability)) {
                 await reactToMessage(msg, ['😉', '😏', '😜', '😛']);
             }
         } else {
@@ -2405,7 +2405,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 await logger.log(`Awarded **${state.getPlayerDisplayName(bait.userId)}** for baiting successfully.`);
                 await messenger.dm(bait.userId, 'Bait successful.', { immediate: true });
                 // If it's the baited's first offense, then reply with some chance
-                if (!isRepeatOffense && Math.random() < 0.5) {
+                if (!isRepeatOffense && chance(0.5)) {
                     await messenger.reply(msg, languageGenerator.generate('{bait.reply?}', { player: `<@${bait.userId}>` }));
                 }
             }

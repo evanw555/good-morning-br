@@ -949,7 +949,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             while (l.length > 0) {
                 const [dr, dc] = l.shift();
                 // If looking in the same direction we just came from, skip this direction and come to it last
-                if (prev[0] === dr && prev[1] === dc && Math.random() < 0.5) {
+                if (prev[0] === dr && prev[1] === dc && chance(0.5)) {
                     l.push([dr, dc]);
                     continue;
                 }
@@ -967,27 +967,27 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         const location = DungeonCrawler.getLocationString(hnr, hnc);
                         const distance = getEuclideanDistanceToGoal(hnr, hnc);
                         // If there's a wall between here and the next spot...
-                        if ((r === 0 || c === 0 || r === 40 || c === 40) && Math.random() < 0.25) {
+                        if ((r === 0 || c === 0 || r === 40 || c === 40) && chance(0.25)) {
                             // If the current spot is on the edge, clear walls liberally
                             map[hnr][hnc] = TileType.EMPTY;
                         } else if (distance < 20) {
-                            if (Math.random() < .02) {
+                            if (chance(.02)) {
                                 // With an even smaller chance, clear this wall
                                 map[hnr][hnc] = TileType.EMPTY;
                             }
                             // In the mid-ring of the map, add keyholes somewhat liberally
                             else if (distance < 7) {
-                                if (Math.random() < .3) {
+                                if (chance(.3)) {
                                     map[hnr][hnc] = TileType.KEY_HOLE;
                                     keyHoleCosts[location] = Math.max(randInt(1, 16), randInt(1, 16));
                                 }
                             } else if (distance < 16) {
-                                if (Math.random() < .075) {
+                                if (chance(.075)) {
                                     map[hnr][hnc] = TileType.KEY_HOLE;
                                     keyHoleCosts[location] = randInt(1, 16, 2);
                                 }
                             } else {
-                                if (Math.random() < .25) {
+                                if (chance(.25)) {
                                     map[hnr][hnc] = TileType.KEY_HOLE;
                                     keyHoleCosts[location] = Math.min(randInt(1, 16), randInt(1, 16));
                                 }
@@ -1069,7 +1069,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             while (l.length > 0) {
                 const [dr, dc] = l.shift();
                 // If looking in the same direction we just came from, skip this direction and come to it last
-                if (prev[0] === dr && prev[1] === dc && Math.random() < 0.5) {
+                if (prev[0] === dr && prev[1] === dc && chance(0.5)) {
                     l.push([dr, dc]);
                     continue;
                 }
@@ -1085,15 +1085,15 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         step(nr, nc, [dr, dc]);
                     } else if (map[hnr][hnc] === TileType.WALL) {
                         // If there's a wall between here and the next spot...
-                        // if ((r === 0 || c === 0 || r === rows - 1 || c === columns - 1) && Math.random() < 0.25) {
+                        // if ((r === 0 || c === 0 || r === rows - 1 || c === columns - 1) && chance(0.25)) {
                         //     // If the current spot is on the edge, clear walls liberally
                         //     map[hnr][hnc] = TileType.EMPTY;
                         // } else
-                        if (Math.random() < .01) {
+                        if (chance(.01)) {
                             // With an even smaller chance, clear this wall
                             map[hnr][hnc] = TileType.EMPTY;
                         } else {
-                            if (Math.random() < .2) {
+                            if (chance(.2)) {
                                 map[hnr][hnc] = TileType.KEY_HOLE;
                                 keyHoleCosts[DungeonCrawler.getLocationString(hnr, hnc)] = Math.min(randInt(1, 16), randInt(1, 16));
                             }
@@ -1739,7 +1739,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                                 const otherPlayer = this.state.players[otherPlayerId];
                                 if (otherPlayer.invincible) {
                                     pushNonCollapsableStatement(`**${player.displayName}** threw fists at the invincible **${otherPlayer.displayName}** to no avail`);
-                                } else if (Math.random() < 0.75) {
+                                } else if (chance(0.75)) {
                                     otherPlayer.knockedOut = true;
                                     pushNonCollapsableStatement(`**${player.displayName}** knocked out **${otherPlayer.displayName}**`);
                                 } else {
