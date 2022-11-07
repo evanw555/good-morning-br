@@ -315,10 +315,6 @@ const chooseEvent = (date: Date): DailyEvent | undefined => {
         const potentialEvents: DailyEvent[] = [
             // TODO (2.0): Should I re-enable these?
             // {
-            //     type: DailyEventType.ReverseGoodMorning,
-            //     reverseGMRanks: {}
-            // },
-            // {
             //     type: DailyEventType.GrumpyMorning
             // },
             {
@@ -329,6 +325,13 @@ const chooseEvent = (date: Date): DailyEvent | undefined => {
                 minutesEarly: randChoice(1, 2, 5, 10, 15, randInt(3, 20))
             }
         ];
+        // Do the reverse GM event with a smaller likelihood
+        if (chance(0.5)) {
+            potentialEvents.push({
+                type: DailyEventType.ReverseGoodMorning,
+                reverseGMRanks: {}
+            });
+        }
         // Do the nightmare event with a smaller likelihood
         if (chance(0.5)) {
             potentialEvents.push({
@@ -794,7 +797,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         for (let i = 0; i < mostRecentUsers.length; i++) {
             const userId: Snowflake = mostRecentUsers[i];
             const rank: number = i + 1;
-            const rankedPoints: number = config.awardsByRank[rank] ?? config.defaultAward;
+            const rankedPoints: number = config.mediumAwardsByRank[rank] ?? config.defaultAward;
             // Dump the rank info into the daily status map and assign points accordingly
             state.awardPoints(userId, rankedPoints);
             state.setDailyRank(userId, rank);

@@ -9,6 +9,11 @@
         "2": 1.2,
         "3": 1.1
     },
+    "mediumAwardsByRank": {
+        "1": 2.5,
+        "2": 2,
+        "3": 1.5
+    },
     "largeAwardsByRank": {
         "1": 5,
         "2": 4,
