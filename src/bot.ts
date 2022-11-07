@@ -5,7 +5,7 @@ import { hasVideo, validateConfig, reactToMessage, extractYouTubeId } from './ut
 import GoodMorningState from './state';
 import logger from './logger';
 
-import { addReactsSync, FileStorage, generateKMeansClusters, getClockTime, getPollChoiceKeys, getRandomDateBetween, getRankString, getRelativeDateTimeString, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger, naturalJoin, PastTimeoutStrategy, R9KTextBank, randChoice, randInt, shuffle, sleep, TimeoutManager, toCalendarDate, toFixed, toLetterId } from 'evanw555.js';
+import { addReactsSync, chance, FileStorage, generateKMeansClusters, getClockTime, getPollChoiceKeys, getRandomDateBetween, getRankString, getRelativeDateTimeString, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger, naturalJoin, PastTimeoutStrategy, R9KTextBank, randChoice, randInt, shuffle, sleep, TimeoutManager, toCalendarDate, toFixed, toLetterId } from 'evanw555.js';
 import DungeonCrawler from './games/dungeon';
 import ActivityTracker from './activity-tracker';
 
@@ -325,14 +325,17 @@ const chooseEvent = (date: Date): DailyEvent | undefined => {
                 type: DailyEventType.SleepyMorning
             },
             {
-                type: DailyEventType.Nightmare,
-                disabled: true
-            },
-            {
                 type: DailyEventType.EarlyEnd,
                 minutesEarly: randChoice(1, 2, 5, 10, 15, randInt(3, 20))
             }
         ];
+        // Do the nightmare event with a smaller likelihood
+        if (chance(0.5)) {
+            potentialEvents.push({
+                type: DailyEventType.Nightmare,
+                disabled: true
+            });
+        }
         // If someone should be beckoned, add beckoning as a potential event
         const potentialBeckonees: Snowflake[] = state.getLeastRecentPlayers(6);
         if (potentialBeckonees.length > 0) {
