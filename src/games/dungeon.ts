@@ -179,6 +179,19 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         }
     }
 
+    removePlayer(userId: Snowflake): void {
+        delete this.state.players[userId];
+        delete this.state.decisions[userId];
+        // Remove any owned traps
+        for (const locationString of Object.keys(this.state.trapOwners)) {
+            if (this.state.trapOwners[locationString] === userId) {
+                delete this.state.trapOwners[locationString];
+                logger.log(`Deleted trap at \`${locationString}\` for removed player \`${userId}\``);
+            }
+        }
+        // TODO: Remove from winners too?
+    }
+
     async renderState(options?: { showPlayerDecision?: Snowflake, admin?: boolean }): Promise<Buffer> {
         const WIDTH: number = this.state.columns * DungeonCrawler.TILE_SIZE;
         const HEIGHT: number = this.state.rows * DungeonCrawler.TILE_SIZE;

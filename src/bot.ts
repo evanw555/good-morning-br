@@ -32,6 +32,7 @@ messenger.setMemberResolver(async (id) => {
 const client = new Client({
     intents: [
         Intents.FLAGS.GUILDS,
+        Intents.FLAGS.GUILD_MEMBERS,
         Intents.FLAGS.GUILD_MESSAGES,
         Intents.FLAGS.GUILD_MESSAGE_REACTIONS,
         Intents.FLAGS.DIRECT_MESSAGES
@@ -1731,6 +1732,12 @@ client.on('ready', async (): Promise<void> => {
 
     // Update the bot's status
     await setStatus(state.isMorning());
+});
+
+client.on('guildMemberRemove', async (member): Promise<void> => {
+    // Remove this user from the state
+    state.removePlayer(member.id);
+    await logger.log(`**${member.displayName}** left the guild, removed from state`);
 });
 
 client.on('interactionCreate', async (interaction): Promise<void> => {

@@ -43,6 +43,10 @@ export default class BasicGame extends AbstractGame<BasicGameState> {
         this.state.names[member.id] = member.displayName;
     }
 
+    removePlayer(userId: Snowflake): void {
+        delete this.state.points[userId];
+    }
+
     async renderState(options?: { showPlayerDecision?: string; admin?: boolean; }): Promise<Buffer> {
         return await this.createMidSeasonUpdateImage({});
     }

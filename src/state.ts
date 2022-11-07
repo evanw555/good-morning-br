@@ -148,6 +148,16 @@ export default class GoodMorningState {
         return this.getPlayer(userId);
     }
 
+    removePlayer(userId: Snowflake): void {
+        // Remove from core state
+        delete this.data.players[userId];
+        delete this.data.dailyStatus[userId];
+        // Remove from game state
+        if (this.hasGame()) {
+            this.getGame().removePlayer(userId);
+        }
+    }
+
     hasPlayer(userId: Snowflake): boolean {
         return this.getPlayer(userId) !== undefined;
     }
