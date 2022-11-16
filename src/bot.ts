@@ -1824,7 +1824,7 @@ const processCommands = async (msg: Message): Promise<void> => {
                 embeds: [ toSubmissionEmbed(submission) ]
             });
         } catch (err) {
-            await msg.reply(err.toString());
+            await msg.reply((err as Error).message);
         }
         awaitingSubmission = false;
         return;
@@ -2473,7 +2473,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 try {
                     state.getEvent().submissions[userId] = toSubmission(msg);
                 } catch (err) {
-                    await messenger.reply(msg, err.toString());
+                    await messenger.reply(msg, (err as Error).message);
                     return;
                 }
                 // Reply to the player via DM to let them know their submission was received
