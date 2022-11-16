@@ -1,7 +1,7 @@
-import { Client, DMChannel, Intents, MessageAttachment, TextChannel } from 'discord.js';
+import { Client, DMChannel, Intents, MessageAttachment, MessageEmbedOptions, TextChannel } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'discord.js';
-import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, HomeStretchSurprise, PrizeType, Bait } from './types';
-import { hasVideo, validateConfig, reactToMessage, extractYouTubeId } from './util';
+import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, HomeStretchSurprise, PrizeType, Bait, AnonymousSubmission } from './types';
+import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission } from './util';
 import GoodMorningState from './state';
 import logger from './logger';
 
@@ -276,24 +276,17 @@ const chooseEvent = (date: Date): DailyEvent | undefined => {
     }
     // Tuesday: Anonymous Submissions
     if (date.getDay() === 2) {
-        if (date.getDate() <= 7) {
-            // If it's the first week of the month, do text submissions
-            return {
-                type: DailyEventType.AnonymousSubmissions,
-                // TODO: Add new ones such as "short story", "motivational message" once this has happened a couple times
-                submissionType: randChoice("haiku", "limerick", "poem (ABAB)", "2-sentence horror story", "fake movie title", `${randInt(6, 12)}-word story`),
-                submissions: {}
-            };
-        } else {
-            // Otherwise, do attachment submissions
-            return {
-                type: DailyEventType.AnonymousSubmissions,
-                // TODO: Add new ones?
-                submissionType: randChoice("pic that goes hard", "cursed image", "dummy stupid pic", "pic that goes adorable", randChoice("pic that goes ruh", "pic that goes buh")),
-                isAttachmentSubmission: true,
-                submissions: {}
-            };
-        }
+        return {
+            type: DailyEventType.AnonymousSubmissions,
+            // TODO: Add new ones such as "short story", "motivational message" once this has happened a couple times
+            submissionType: randChoice(
+                // 50% chance to suggest a text prompt
+                randChoice("haiku", "limerick", "poem (ABAB)", "2-sentence horror story", "fake movie title", `${randInt(6, 12)}-word story`),
+                // 50% chance to suggest an image prompt
+                randChoice("pic that goes hard", "cursed image", "dummy stupid pic", "pic that goes adorable", randChoice("pic that goes ruh", "pic that goes buh"))
+            ),
+            submissions: {}
+        };
     }
     // If this date has a calendar date message override, then just do a standard GM (don't do any of the nonstandard ones below)
     const calendarDate: CalendarDate = toCalendarDate(date); // e.g. "12/25" for xmas
@@ -472,10 +465,9 @@ const sendGoodMorningMessage = async (): Promise<void> => {
                 await messenger.send(goodMorningChannel, languageGenerator.generate(overriddenMessage));
             }
             // Send the standard submission prompt
-            const phrase: string = state.getEvent().isAttachmentSubmission ? 'find a' : 'write a special Good Morning';
             const intro: string = overriddenMessage ? 'There\'s more!' : 'Good morning! Today is a special one.';
             const text = `${intro} Rather than sending your good morning messages here for all to see, `
-                + `I'd like you to ${phrase} _${state.getEvent().submissionType}_ and send it directly to me via DM! `
+                + `I'd like you to come up with a _${state.getEvent().submissionType}_ and send it directly to me via DM! `
                 + `At 11:00, I'll post them here anonymously and you'll all be voting on your favorites 😉`;
             await messenger.send(goodMorningChannel, text);
             // Also, let players know they can forfeit
@@ -827,8 +819,7 @@ const finalizeAnonymousSubmissions = async () => {
 
     // First and foremost, hold onto all the state data locally
     const votes = event.votes;
-    const submissions: Record<Snowflake, string> = event.submissions;
-    const isAttachmentSubmission: boolean = event.isAttachmentSubmission ?? false;
+    const submissions: Record<Snowflake, AnonymousSubmission> = event.submissions;
     const submissionOwnersByCode = event.submissionOwnersByCode;
     const allCodes = Object.keys(submissionOwnersByCode);
     const deadbeats: Snowflake[] = state.getSubmissionDeadbeats();
@@ -913,7 +904,7 @@ const finalizeAnonymousSubmissions = async () => {
         const code: string = validCodesSorted[i];
         const userId: Snowflake = submissionOwnersByCode[code];
         const rank: number = i + 1;
-        const submission: string = submissions[userId];
+        const submission: AnonymousSubmission = submissions[userId];
         if (i === 0) {
             await sleep(12000);
             await messenger.send(goodMorningChannel, `And in first place, with submission **${code}**...`);
@@ -927,10 +918,7 @@ const finalizeAnonymousSubmissions = async () => {
             // TODO: Integrate this into the Messenger utility
             await goodMorningChannel.send({
                 content: `We have our winner, <@${userId}>! Congrats!`,
-                files: isAttachmentSubmission ? [new MessageAttachment(submission)] : undefined,
-                embeds: isAttachmentSubmission ? undefined : [{
-                    description: submission
-                }]
+                embeds: [ toSubmissionEmbed(submission) ]
             });
         } else if (i < 3) {
             await sleep(12000);
@@ -940,10 +928,7 @@ const finalizeAnonymousSubmissions = async () => {
             // TODO: Integrate this into the Messenger utility
             await goodMorningChannel.send({
                 content: headerText,
-                files: isAttachmentSubmission ? [new MessageAttachment(submission)] : undefined,
-                embeds: isAttachmentSubmission ? undefined : [{
-                    description: submission
-                }]
+                embeds: [ toSubmissionEmbed(submission) ]
             });
         }
     }
@@ -1148,8 +1133,7 @@ const TIMEOUT_CALLBACKS = {
             // Notify the sungazers about tomorrow's event (if applicable)
             if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
                 const fyiText: string = `FYI gazers: tomorrow, everyone will be sending me a _${state.getEvent().submissionType}_. `
-                    + 'If you have another idea, reply to this message with an alternative '
-                    + `_${state.getEvent().isAttachmentSubmission ? 'image' : 'text'} submission_ prompt ${config.defaultGoodMorningEmoji}`;
+                    + `If you have another idea, reply to this message with an alternative prompt ${config.defaultGoodMorningEmoji}`;
                 const fyiMessage = await sungazersChannel.send(fyiText);
                 // In an hour, fetch replies to this message and start a poll for the submission type
                 const pollStartDate = new Date();
@@ -1221,7 +1205,7 @@ const TIMEOUT_CALLBACKS = {
         // For each submission (in shuffled order)...
         for (let i = 0; i < userIds.length; i++) {
             const userId: Snowflake = userIds[i];
-            const submission: string = state.getEvent().submissions[userId];
+            const submission = state.getEvent().submissions[userId];
             const submissionCode: string = toLetterId(i);
             
             // Keep track of which user this submission's "number" maps to
@@ -1230,12 +1214,10 @@ const TIMEOUT_CALLBACKS = {
 
             try {
                 // Send the message out
-                const messageHeader: string = `**Submission ${submissionCode}:**`;
-                if (state.getEvent().isAttachmentSubmission) {
-                    await goodMorningChannel.send({ content: messageHeader, files: [new MessageAttachment(submission)] });
-                } else {
-                    await messenger.send(goodMorningChannel, `${messageHeader}\n${submission}`);
-                }
+                await goodMorningChannel.send({
+                    content: `**Submission ${submissionCode}:**`,
+                    embeds: [ toSubmissionEmbed(submission) ]
+                })
                 // Take a long pause
                 await sleep(30000);
             } catch (err) {
@@ -1831,8 +1813,22 @@ client.on('interactionCreate', async (interaction): Promise<void> => {
 
 let tempDungeon: DungeonCrawler = null;
 let awaitingGameCommands = false;
+let awaitingSubmission = false;
 
 const processCommands = async (msg: Message): Promise<void> => {
+    if (awaitingSubmission) {
+        try {
+            const submission = toSubmission(msg);
+            await msg.channel.send({
+                content: `\`${JSON.stringify(submission)}\``,
+                embeds: [ toSubmissionEmbed(submission) ]
+            });
+        } catch (err) {
+            await msg.reply(err.toString());
+        }
+        awaitingSubmission = false;
+        return;
+    }
     if (awaitingGameCommands) {
         // Emergency abort temp dungeon
         if (msg.content.replace(/^\+/, '').toLowerCase() === 'exit') {
@@ -2094,6 +2090,9 @@ const processCommands = async (msg: Message): Promise<void> => {
             } catch (err) {}
             const attachment = new MessageAttachment(await tempDungeon.renderState(), 'dungeon.png');
             await msg.channel.send({ content: `Map Fairness: ${tempDungeon.getMapFairness().description}`, files: [attachment] });
+        } else if (sanitizedText.includes('submission')) {
+            awaitingSubmission = true;
+            await msg.reply('Awaiting submission...');
         }
     }
 };
@@ -2471,15 +2470,11 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             if (state.getEvent().submissions && !state.getEvent().votes) {
                 const redoSubmission: boolean = userId in state.getEvent().submissions;
                 // Add the submission
-                if (state.getEvent().isAttachmentSubmission) {
-                    const url: string = msg.attachments.first()?.url;
-                    if (!url) {
-                        await messenger.reply(msg, 'Didn\'t you mean to send me an attachment?');
-                        return;
-                    }
-                    state.getEvent().submissions[userId] = url;
-                } else {
-                    state.getEvent().submissions[userId] = msg.content;
+                try {
+                    state.getEvent().submissions[userId] = toSubmission(msg);
+                } catch (err) {
+                    await messenger.reply(msg, err.toString());
+                    return;
                 }
                 // Reply to the player via DM to let them know their submission was received
                 const numSubmissions: number = Object.keys(state.getEvent().submissions).length;

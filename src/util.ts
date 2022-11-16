@@ -1,6 +1,6 @@
-import { Message, Snowflake } from "discord.js";
+import { Message, MessageEmbedOptions, Snowflake } from "discord.js";
 import { randChoice, randInt } from "evanw555.js";
-import { GoodMorningConfig } from "./types";
+import { AnonymousSubmission, GoodMorningConfig } from "./types";
 
 export function validateConfig(config: GoodMorningConfig): void {
     if (config.goodMorningChannelId === undefined) {
@@ -98,4 +98,38 @@ export function revealLettersGeometric(input: string): string {
         }
     }
     return result;
+}
+
+export function toSubmissionEmbed(submission: AnonymousSubmission): MessageEmbedOptions {
+    const embed: MessageEmbedOptions = {};
+    if (submission.text) {
+        embed.description = submission.text;
+    }
+    if (submission.url) {
+        embed.image = { url: submission.url };
+    }
+    return embed;
+}
+
+export function toSubmission(message: Message): AnonymousSubmission {
+    const submission: AnonymousSubmission = {};
+    if (message.content.trim()) {
+        submission.text = message.content.trim();
+    }
+    if (message.attachments.size === 1) {
+        const attachment = message.attachments.first();
+        if (attachment.contentType === 'image/gif') {
+            throw new Error('No GIFs, buddy!');
+        }
+        if (attachment.contentType.startsWith('video')) {
+            throw new Error('No videos, pal!');
+        }
+        if (!attachment.contentType.startsWith('image')) {
+            throw new Error('Didn\'t you mean to send me an image?');
+        }
+        submission.url = attachment.url;
+    } else if (message.attachments.size > 1) {
+        throw new Error('Hey! Too many attachments, wise guy');
+    }
+    return submission;
 }

@@ -99,6 +99,11 @@ export enum HomeStretchSurprise {
     ComboBreakerBonus
 }
 
+export interface AnonymousSubmission {
+    text?: string,
+    url?: string
+}
+
 export interface DailyEvent {
     type: DailyEventType,
     user?: Snowflake,
@@ -106,8 +111,7 @@ export interface DailyEvent {
     reverseGMRanks?: Record<Snowflake, number>,
     // Used specifically for the "anonymous submissions" event
     submissionType?: string,
-    isAttachmentSubmission?: boolean,
-    submissions?: Record<Snowflake, string>, // Map of UserId -> submission content/url
+    submissions?: Record<Snowflake, AnonymousSubmission>, // Map of UserId -> submission text/url
     submissionOwnersByCode?: Record<string, Snowflake>, // Map of submission code -> UserId
     votes?: Record<Snowflake, string[]>, // Map of UserId -> list of submission codes
     rootSubmissionMessage?: Snowflake, // MessageId
