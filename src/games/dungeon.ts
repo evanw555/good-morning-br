@@ -1,6 +1,6 @@
 import canvas, { NodeCanvasRenderingContext2D } from 'canvas';
 import { GuildMember, Snowflake } from 'discord.js';
-import { getRankString, naturalJoin, randInt, shuffle, toLetterId, fromLetterId, AStarPathFinder, shuffleWithDependencies, toFixed, collapseRedundantStrings, chance } from 'evanw555.js';
+import { getRankString, naturalJoin, randInt, shuffle, toLetterId, fromLetterId, AStarPathFinder, shuffleWithDependencies, toFixed, collapseRedundantStrings, chance, randChoice } from 'evanw555.js';
 import { DecisionProcessingResult, DungeonGameState, DungeonItemName, DungeonLocation, DungeonPlayerState, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 import logger from '../logger';
@@ -14,7 +14,8 @@ enum TileType {
     CHEST = 4,
     HIDDEN_TRAP = 5,
     TRAP = 6,
-    BOULDER = 7
+    BOULDER = 7,
+    COIN = 8
 }
 
 type Direction = 'up' | 'down' | 'left' | 'right';
@@ -231,6 +232,14 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     context.lineWidth = 2;
                     context.setLineDash([]);
                     this.drawRandomPolygonOnTile(context, r, c);
+                } else if (this.isTileType(r, c, TileType.COIN)) {
+                    context.fillStyle = 'yellow';
+                    context.strokeStyle = 'yellow';
+                    context.lineWidth = 2;
+                    context.setLineDash([]);
+                    this.drawRandomPolygonOnTile(context, r, c);
+                    context.fillStyle = 'white';
+                    this.fillTextOnTile(context, '$', r, c);
                 } else if (this.isCloudy(r, c)) {
                     context.fillStyle = DungeonCrawler.STYLE_CLOUD;
                     context.beginPath();
@@ -635,6 +644,30 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 }
             }
         }
+
+        // If far enough in the season, start adding coins
+        if (this.getSeasonCompletion() > 0.25) {
+            const topPlayerId = this.getTopUnfinishedPlayer();
+            if (topPlayerId) {
+                const topPlayerLocation = this.getPlayerLocation(topPlayerId);
+                if (topPlayerLocation) {
+                    const searchResult = this.search({ r: 0, c: 0 }, topPlayerLocation, { avoidPlayers: true, useDoorways: true });
+                    if (searchResult.success) {
+                        // Valid locations are any vacant/empty spot in the first 80% of the path
+                        const possibleCoinLocations = searchResult.path
+                            .slice(0, Math.floor(searchResult.path.length * 0.8))
+                            .filter(location => this.isTileType(location.r, location.c, TileType.EMPTY) && !this.isPlayerAtLocation(location));
+                        // Shuffle the locations and place a certain number of coins
+                        shuffle(possibleCoinLocations);
+                        const numCoins = randInt(3, 7);
+                        for (let i = 0; i < numCoins; i++) {
+                            const coinLocation = possibleCoinLocations[i];
+                            this.state.map[coinLocation.r][coinLocation.c] = TileType.COIN;
+                        }
+                    }
+                }
+            }
+        }
     }
 
     getPoints(userId: Snowflake): number {
@@ -720,6 +753,12 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         }
     }
 
+    private getPlayerLocation(userId: string): DungeonLocation | undefined {
+        if (userId in this.state.players) {
+            return { r: this.state.players[userId].r, c: this.state.players[userId].c };
+        }
+    }
+
     private getPlayerLocationString(userId: string): string {
         return DungeonCrawler.getLocationString(this.state.players[userId].r, this.state.players[userId].c);
     }
@@ -768,6 +807,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
      */
     getOrderedUnfinishedPlayers(): Snowflake[] {
         return this.getOrderedPlayers().filter(userId => !this.state.players[userId].finished);
+    }
+
+    getTopUnfinishedPlayer(): Snowflake | undefined {
+        return this.getOrderedUnfinishedPlayers()[0];
     }
 
     /**
@@ -1283,7 +1326,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     }
 
     private isWalkableTileType(t: TileType): boolean {
-        return t === TileType.EMPTY || t === TileType.OPENED_KEY_HOLE || t === TileType.CHEST || t === TileType.HIDDEN_TRAP || t === TileType.TRAP;
+        return t === TileType.EMPTY || t === TileType.OPENED_KEY_HOLE || t === TileType.CHEST || t === TileType.HIDDEN_TRAP || t === TileType.TRAP || t === TileType.COIN;
     }
 
     private isSealable(r: number, c: number): boolean {
@@ -1337,6 +1380,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 return userId;
             }
         }
+    }
+
+    private isPlayerAtLocation(location: DungeonLocation): boolean {
+        return this.getPlayerAtLocation(location.r, location.c) !== undefined;
     }
 
     getWeeklyDecisionDMs(): Record<Snowflake, string> {
@@ -1863,6 +1910,16 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         if (!this.hasPendingDecisions(userId)) {
                             delete this.state.decisions[userId];
                         }
+                    }
+
+                    // Check to see if the player has collected any coins
+                    if (this.isTileType(player.r, player.c, TileType.COIN)) {
+                        // Set the tile back to empty
+                        this.state.map[player.r][player.c] = TileType.EMPTY;
+                        // Award the user and notify
+                        const coinValue = randChoice(1, 2, 3);
+                        this.addPoints(userId, coinValue);
+                        pushNonCollapsableStatement(`**${this.getDisplayName(userId)}** collected a gold nugget worth **$${coinValue}**`);
                     }
 
                     // Check if the player is at the goal
