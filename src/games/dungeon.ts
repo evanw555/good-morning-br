@@ -91,7 +91,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 + '`unlock`: open all doorways adjacent to you (or just one e.g. `unlock:b12`). Cost is denoted on each doorway, and is reduced with each unlock\n'
                 + '`lock`: close all doorways adjacent to you (or just one e.g. `lock:b12`). Cost is denoted on each doorway\n'
                 + '`punch`: 75% chance of knocking out any player adjacent to you, ending their turn. Costs `2`\n'
-                + '`warp`: warp to a random player. Costs `1` for each week that has elapsed\n'
+                + '`warp`: warp to a random player. Costs `0.5` for each week that has elapsed\n'
                 + '`pause`: do nothing. Free\n\n'
             + 'Misc Rules:\n'
                 + '1. If you do not choose your actions, actions will be chosen for you (use `pause` to do nothing instead).\n'
@@ -725,7 +725,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     + 'Also, you cannot be punched and you cannot fall into traps.';
             case 'key':
                 return `${intro}, you've just been awarded a **key**! Your inventory now contains **${numItems}**. `
-                    + 'You can use `key` as an action to unlock all doorways in the 4 squares adjacent to you, or optionally one specific location e.g. `key:b12`. '
+                    + 'You can use `key` as an action to unlock all doorways in the 4 squares adjacent to you (at no cost), or optionally one specific location e.g. `key:b12`. '
                     + 'If you use the key but no doorways are opened (e.g. door was already opened by someone else), then it will not be consumed. '
                     + 'Any doorway you unlock using the key will thereafter be halved in cost, as with the standard `unlock` move.';
         }
@@ -865,6 +865,14 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
      */
     getOtherPlayers(userId: Snowflake): Snowflake[] {
         return Object.keys(this.state.players).filter(id => id !== userId);
+    }
+
+    /**
+     * @returns True if this player is in the bottom half of players and has fewer than 20 points
+     */
+    doesPlayerNeedHelp(userId: Snowflake): boolean {
+        const player = this.state.players[userId];
+        return player && player.rank > Math.floor(this.getNumPlayers() / 2) && player.points < 20;
     }
 
     getDisplayName(userId: Snowflake): string {
@@ -1597,7 +1605,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 return 2;
             },
             'warp': () => {
-                return this.getTurn();
+                return Math.ceil(this.getTurn() / 2);
             }
         };
         if (action in actionCosts) {
