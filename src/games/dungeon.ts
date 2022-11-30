@@ -237,7 +237,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     context.strokeStyle = 'yellow';
                     context.lineWidth = 2;
                     context.setLineDash([]);
-                    this.drawRandomPolygonOnTile(context, r, c, { numVertices: randInt(10, 20), minRadius: 0.4, maxRadius: 0.6 });
+                    this.drawRandomPolygonOnTile(context, r, c, { numVertices: 5, minRadius: 0.5, maxRadius: 0.6 });
                     context.fillStyle = 'black';
                     context.font = `${DungeonCrawler.TILE_SIZE * .8}px sans-serif`;
                     this.fillTextOnTile(context, '$', r, c);
