@@ -445,9 +445,13 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             c2.fillText(text, (c + 1) * DungeonCrawler.TILE_SIZE + (DungeonCrawler.TILE_SIZE - c2.measureText(text).width) / 2, DungeonCrawler.TILE_SIZE * .75);
         }
 
+        // Determine the number of rows of text we need to render in the sidebar and thus the height per row
+        const rowsNeeded = this.getNumPlayers() + Object.keys(this.getChoices()).length + 6;
+        const heightPerRow = Math.floor(DungeonCrawler.TILE_SIZE * Math.min(1, this.state.rows / rowsNeeded));
+
         // Render usernames in order of location
         const MARGIN = 0.5 * DungeonCrawler.TILE_SIZE;
-        c2.font = `${DungeonCrawler.TILE_SIZE * .75}px sans-serif`;
+        c2.font = `${heightPerRow * .75}px sans-serif`;
         let y = 2;
         c2.fillStyle = 'white';
         const leftTextX = WIDTH + DungeonCrawler.TILE_SIZE + MARGIN;
@@ -462,7 +466,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             } else {
                 c2.fillStyle = `hsl(360,0%,${y % 2 === 0 ? 85 : 55}%)`;
             }
-            const textY = y * DungeonCrawler.TILE_SIZE;
+            const textY = y * heightPerRow;
             // Draw the location
             const leftTextWidth = 1.5 * DungeonCrawler.TILE_SIZE;
             c2.fillText(this.getPlayerLocationString(userId), leftTextX, textY, leftTextWidth);
@@ -479,14 +483,14 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         // Write extra text on the sidebar
         y += 2;
         c2.fillStyle = 'white';
-        c2.fillText('Reach me at the end to win!\nDM me "help" for help', leftTextX, y * DungeonCrawler.TILE_SIZE, TOTAL_WIDTH - leftTextX);
+        c2.fillText('Reach me at the end to win!\nDM me "help" for help', leftTextX, y * heightPerRow, TOTAL_WIDTH - leftTextX);
 
         // Draw potential actions
         y += 2;
         for (const [actionName, { cost, description }] of Object.entries(this.getChoices())) {
             y++;
             c2.fillStyle = `hsl(360,0%,${y % 2 === 0 ? 85 : 55}%)`;
-            const textY = y * DungeonCrawler.TILE_SIZE;
+            const textY = y * heightPerRow;
             // Draw the action name
             const leftTextWidth = 1.5 * DungeonCrawler.TILE_SIZE;
             c2.fillText(actionName, leftTextX, textY, leftTextWidth);
