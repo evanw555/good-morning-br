@@ -237,8 +237,9 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     context.strokeStyle = 'yellow';
                     context.lineWidth = 2;
                     context.setLineDash([]);
-                    this.drawRandomPolygonOnTile(context, r, c, { numVertices: randInt(10, 20), minRadius: 0.25, maxRadius: 0.6 });
+                    this.drawRandomPolygonOnTile(context, r, c, { numVertices: randInt(10, 20), minRadius: 0.4, maxRadius: 0.6 });
                     context.fillStyle = 'black';
+                    context.font = `${DungeonCrawler.TILE_SIZE * .8}px sans-serif`;
                     this.fillTextOnTile(context, '$', r, c);
                 } else if (this.isCloudy(r, c)) {
                     context.fillStyle = DungeonCrawler.STYLE_CLOUD;
@@ -2218,8 +2219,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         // Shuffle all the vacant locations
         shuffle(vacantLocations);
 
-        // Determine the cost-to-goal of the player
-        const playerCostToGoal = this.approximateCostToGoalForPlayer(userId);
+        // Determine the cost-to-goal of the player (inflated by 10% to provide padding)
+        const costThreshold = Math.floor(this.approximateCostToGoalForPlayer(userId) * 1.1);
 
         const results = [];
         while (vacantLocations.length > 0 && results.length < n) {
@@ -2228,7 +2229,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             const locationCostToGoal = this.approximateCostToGoal(nextLocation.r, nextLocation.c);
 
             // If this location is more costly (i.e. behind the player), then add it to the results
-            if (locationCostToGoal > playerCostToGoal) {
+            if (locationCostToGoal > costThreshold) {
                 results.push(nextLocation);
             }
         }
