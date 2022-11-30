@@ -237,8 +237,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     context.strokeStyle = 'yellow';
                     context.lineWidth = 2;
                     context.setLineDash([]);
-                    this.drawRandomPolygonOnTile(context, r, c);
-                    context.fillStyle = 'white';
+                    this.drawRandomPolygonOnTile(context, r, c, { numVertices: randInt(10, 20), minRadius: 0.25, maxRadius: 0.6 });
+                    context.fillStyle = 'black';
                     this.fillTextOnTile(context, '$', r, c);
                 } else if (this.isCloudy(r, c)) {
                     context.fillStyle = DungeonCrawler.STYLE_CLOUD;
@@ -512,14 +512,17 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         context.fillText(text, baseX + horizontalMargin, baseY + verticalMargin + ascent);
     }
 
-    private drawRandomPolygonOnTile(context: NodeCanvasRenderingContext2D, r: number, c: number): void {
+    private drawRandomPolygonOnTile(context: NodeCanvasRenderingContext2D, r: number, c: number, options?: { numVertices?: number, minRadius?: number, maxRadius?: number }): void {
+        const numVertices = options?.numVertices ?? randInt(8, 16);
+        const minRadius = options?.minRadius ?? 0.4;
+        const maxRadius = options?.maxRadius ?? 0.55;
+
         // Randomly generate vertices
         const vertices: { angle: number, radius: number }[] = [];
-        const numVertices = randInt(8, 16);
         for (let i = 0; i < numVertices; i++) {
             vertices.push({
                 angle: 2 * Math.PI * i / numVertices,
-                radius: randInt(Math.floor(DungeonCrawler.TILE_SIZE * 0.4), Math.floor(DungeonCrawler.TILE_SIZE * 0.55))
+                radius: randInt(Math.floor(DungeonCrawler.TILE_SIZE * minRadius), Math.floor(DungeonCrawler.TILE_SIZE * maxRadius))
             });
         }
 
@@ -649,22 +652,11 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         if (this.getSeasonCompletion() > 0.25) {
             const topPlayerId = this.getTopUnfinishedPlayer();
             if (topPlayerId) {
-                const topPlayerLocation = this.getPlayerLocation(topPlayerId);
-                if (topPlayerLocation) {
-                    const searchResult = this.search({ r: 0, c: 0 }, topPlayerLocation, { avoidPlayers: true, useDoorways: true });
-                    if (searchResult.success) {
-                        // Valid locations are any vacant/empty spot in the first 80% of the path
-                        const possibleCoinLocations = searchResult.path
-                            .slice(0, Math.floor(searchResult.path.length * 0.8))
-                            .filter(location => this.isTileType(location.r, location.c, TileType.EMPTY) && !this.isPlayerAtLocation(location));
-                        // Shuffle the locations and place a certain number of coins
-                        shuffle(possibleCoinLocations);
-                        const numCoins = randInt(3, 7);
-                        for (let i = 0; i < numCoins; i++) {
-                            const coinLocation = possibleCoinLocations[i];
-                            this.state.map[coinLocation.r][coinLocation.c] = TileType.COIN;
-                        }
-                    }
+                // Get some random vacant locations behind the top player
+                const coinLocations = this.getRandomVacantLocationsBehindPlayer(topPlayerId, randInt(3, 7));
+                // Add coins to all these locations
+                for (const coinLocation of coinLocations) {
+                    this.state.map[coinLocation.r][coinLocation.c] = TileType.COIN;
                 }
             }
         }
@@ -2193,6 +2185,16 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         }
     }
 
+    getAllLocations(): DungeonLocation[] {
+        const results = [];
+        for (let r = 0; r < this.state.rows; r++) {
+            for (let c = 0; c < this.state.columns; c++) {
+                results.push({ r, c });
+            }
+        }
+        return results;
+    }
+
     /**
      * Given a list of players, return a random location that a user may spawn in in a 3x3 box around any of the players.
      * If no such tile exists for any of the players, return nothing.
@@ -2207,6 +2209,31 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 return { r: location.r, c: location.c, userId };
             }
         }
+    }
+
+    getRandomVacantLocationsBehindPlayer(userId: Snowflake, n: number): DungeonLocation[] {
+        // Start by getting all vacant locations (even those in front of the player)
+        const vacantLocations = this.getAllLocations().filter(l => this.isTileType(l.r, l.c, TileType.EMPTY) && !this.isPlayerAtLocation(l));
+
+        // Shuffle all the vacant locations
+        shuffle(vacantLocations);
+
+        // Determine the cost-to-goal of the player
+        const playerCostToGoal = this.approximateCostToGoalForPlayer(userId);
+
+        const results = [];
+        while (vacantLocations.length > 0 && results.length < n) {
+            // Get the next vacant location and compute its cost-to-goal
+            const nextLocation = vacantLocations.pop();
+            const locationCostToGoal = this.approximateCostToGoal(nextLocation.r, nextLocation.c);
+
+            // If this location is more costly (i.e. behind the player), then add it to the results
+            if (locationCostToGoal > playerCostToGoal) {
+                results.push(nextLocation);
+            }
+        }
+
+        return results;
     }
 
     playerHasAnyItem(userId: Snowflake): boolean {
