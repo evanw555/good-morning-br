@@ -1838,20 +1838,24 @@ const processCommands = async (msg: Message): Promise<void> => {
             return;
         }
         if (tempDungeon) {
-            try {
-                const response = tempDungeon.addPlayerDecision(msg.author.id, msg.content.replace(/^\+/, ''));
-                try { // TODO: refactor typing event to somewhere else?
-                    await msg.channel.sendTyping();
-                } catch (err) {}
-                const randomOrdering: Snowflake[] = tempDungeon.getDecisionShuffledPlayers();
-                await msg.reply({
-                    content: response + `\nHere's a sample random ordering: ${randomOrdering.map(x => tempDungeon.getDisplayName(x)).join(', ')}`,
-                    files: [new MessageAttachment(await tempDungeon.renderState({ showPlayerDecision: msg.author.id }), 'confirmation.png')]
-                });
-                await sleep(5000);
-            } catch (err) {
-                await msg.reply(err.toString());
-                return;
+            if (msg.content.toLowerCase().includes('auto')) {
+                await msg.reply('Using auto-actions...');
+            } else {
+                try {
+                    const response = tempDungeon.addPlayerDecision(msg.author.id, msg.content.replace(/^\+/, ''));
+                    try { // TODO: refactor typing event to somewhere else?
+                        await msg.channel.sendTyping();
+                    } catch (err) {}
+                    const randomOrdering: Snowflake[] = tempDungeon.getDecisionShuffledPlayers();
+                    await msg.reply({
+                        content: response + `\nHere's a sample random ordering: ${randomOrdering.map(x => tempDungeon.getDisplayName(x)).join(', ')}`,
+                        files: [new MessageAttachment(await tempDungeon.renderState({ showPlayerDecision: msg.author.id }), 'confirmation.png')]
+                    });
+                    await sleep(5000);
+                } catch (err) {
+                    await msg.reply(err.toString());
+                    return;
+                }
             }
 
             // Process decisions and render state
