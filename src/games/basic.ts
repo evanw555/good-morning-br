@@ -25,8 +25,12 @@ export default class BasicGame extends AbstractGame<BasicGameState> {
         return Math.max(...Object.values(this.state.points)) / this.state.goal;
     }
 
+    getPlayers(): string[] {
+        return Object.keys(this.state.points);
+    }
+
     getOrderedPlayers(): string[] {
-        return Object.keys(this.state.points).sort((x, y) => this.getPoints(y) - this.getPoints(x));
+        return this.getPlayers().sort((x, y) => this.getPoints(y) - this.getPoints(x));
     }
 
     hasPlayer(userId: string): boolean {
@@ -45,6 +49,11 @@ export default class BasicGame extends AbstractGame<BasicGameState> {
 
     removePlayer(userId: Snowflake): void {
         delete this.state.points[userId];
+    }
+
+    doesPlayerNeedHandicap(userId: Snowflake): boolean {
+        // Player needs handicap if below 25% of the top player's points
+        return this.getPoints(userId) < (this.getMaxPoints() * 0.25);
     }
 
     async renderState(options?: { showPlayerDecision?: string; admin?: boolean; }): Promise<Buffer> {

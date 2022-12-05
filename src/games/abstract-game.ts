@@ -25,16 +25,28 @@ export default abstract class AbstractGame<T extends GameState> {
      * If the season is complete, then the value should always be 1.
      */
     abstract getSeasonCompletion(): number
+
+    getNumPlayers(): number {
+        return this.getPlayers().length;
+    }
+
+    abstract getPlayers(): Snowflake[]
     abstract getOrderedPlayers(): Snowflake[]
     abstract hasPlayer(userId: Snowflake): boolean
     abstract addPlayer(member: GuildMember): string
     abstract updatePlayer(member: GuildMember): void
     abstract removePlayer(userId: Snowflake): void
+    abstract doesPlayerNeedHandicap(userId: Snowflake): boolean
     abstract renderState(options?: { showPlayerDecision?: Snowflake, admin?: boolean }): Promise<Buffer>
     abstract beginTurn(): void
     abstract getPoints(userId: Snowflake): number
     abstract addPoints(userId: Snowflake, points: number): void
     abstract awardPrize(userId: Snowflake, type: PrizeType, intro: string): string
+
+    getMaxPoints(): number {
+        return Math.max(0, ...this.getPlayers().map(userId => this.getPoints(userId)));
+    }
+
     /**
      * Returns a mapping from user ID to text string for DMs that should be send to players on the morning of game decisions.
      */

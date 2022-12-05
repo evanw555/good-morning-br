@@ -238,6 +238,10 @@ export default class GoodMorningState {
         this.getOrCreatePlayer(userId).multiplier = multiplier;
     }
 
+    doesPlayerNeedHandicap(userId: Snowflake): boolean {
+        return this.hasGame() && this.getGame().doesPlayerNeedHandicap(userId);
+    }
+
     getPlayerDeductions(userId: Snowflake): number {
         return this.getPlayer(userId)?.deductions ?? 0;
     }

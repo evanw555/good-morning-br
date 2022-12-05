@@ -881,6 +881,7 @@ const finalizeAnonymousSubmissions = async () => {
         const rank: number = i + 1;
         const userId: Snowflake = submissionOwnersByCode[submissionCode];
         const pointsEarned: number = forfeiters.includes(userId) ? config.defaultAward : config.largeAwardsByRank[rank] ?? config.defaultAward;
+        // TODO: If player needs handicap, award more points
         state.awardPoints(userId, pointsEarned);
         state.setDailyRank(userId, rank);
         state.resetDaysSinceLGM(userId);
@@ -1934,6 +1935,7 @@ const processCommands = async (msg: Message): Promise<void> => {
                     const gamePoints = (state.hasGame() && state.getGame().hasPlayer(key)) ? state.getGame().getPoints(key) : '???';
                     return `- <@${key}>: **${gamePoints}/${state.getPlayerPoints(key)}**`
                         + (state.isPlayerInGame(key) ? '' : ' _(NEW)_')
+                        + (state.doesPlayerNeedHandicap(key) ? '' : ' ♿')
                         + (state.getPlayerDaysSinceLGM(key) ? ` ${state.getPlayerDaysSinceLGM(key)}d` : '')
                         + (state.getPlayerDeductions(key) ? (' -' + state.getPlayerDeductions(key)) : '');
                 })

@@ -133,8 +133,15 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return 1 - (lowestCost / spawnCost);
     }
 
+    /**
+     * @returns all players in no particular order
+     */
+    getPlayers(): Snowflake[] {
+        return Object.keys(this.state.players);
+    }
+
     getOrderedPlayers(): Snowflake[] {
-        return Object.keys(this.state.players).sort((x, y) => this.state.players[x].rank - this.state.players[y].rank);
+        return this.getPlayers().sort((x, y) => this.state.players[x].rank - this.state.players[y].rank);
     }
 
     hasPlayer(userId: Snowflake): boolean {
@@ -191,6 +198,12 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             }
         }
         // TODO: Remove from winners too?
+    }
+
+    doesPlayerNeedHandicap(userId: Snowflake): boolean {
+        // True if this player is in the bottom half of players and has fewer than 20 points
+        const player = this.state.players[userId];
+        return player && player.rank > Math.floor(this.getNumPlayers() / 2) && player.points < 20;
     }
 
     async renderState(options?: { showPlayerDecision?: Snowflake, admin?: boolean }): Promise<Buffer> {
@@ -676,6 +689,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         this.state.players[userId].points = toFixed(this.getPoints(userId) + points);
     }
 
+    getMaxPoints(): number {
+        return Math.max(0, ...Object.values(this.state.players).map(player => player.points));
+    }
+
     awardPrize(userId: Snowflake, type: PrizeType, intro: string): string {
         // If player isn't in the game yet, do nothing
         if (!this.hasPlayer(userId)) {
@@ -782,17 +799,6 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         }
     }
 
-    getNumPlayers(): number {
-        return Object.keys(this.state.players).length;
-    }
-
-    /**
-     * @returns all players in no particular order
-     */
-    getPlayers(): Snowflake[] {
-        return Object.keys(this.state.players);
-    }
-
     /**
      * @returns all unfinished players in no particular order
      */
@@ -869,14 +875,6 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
      */
     getOtherPlayers(userId: Snowflake): Snowflake[] {
         return Object.keys(this.state.players).filter(id => id !== userId);
-    }
-
-    /**
-     * @returns True if this player is in the bottom half of players and has fewer than 20 points
-     */
-    doesPlayerNeedHelp(userId: Snowflake): boolean {
-        const player = this.state.players[userId];
-        return player && player.rank > Math.floor(this.getNumPlayers() / 2) && player.points < 20;
     }
 
     getDisplayName(userId: Snowflake): string {
