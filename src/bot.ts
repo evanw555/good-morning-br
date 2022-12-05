@@ -1329,20 +1329,21 @@ const TIMEOUT_CALLBACKS = {
             return;
         }
 
-        // If there are too many, trim it down to 5
-        const maxAlternatives: number = 5;
+        // If there are too many, trim it down to 10
+        const maxAlternatives: number = 10;
         if (proposalSet.size > maxAlternatives) {
             await logger.log(`Too many anonymous submission type proposals, truncating from **${proposalSet.size}** to **${maxAlternatives}**`);
             proposalSet = new Set(Array.from(proposalSet).slice(0, maxAlternatives));
         }
 
-        // Add the original proposed type
+        // Add the original proposed prompt
         proposalSet.add(state.getEvent().submissionType);
-        // TODO: Can we refactor this to the common utility library?
+        // Shuffle all the prompts
         const proposedTypes: string[] = Array.from(proposalSet);
-        const choiceKeys: string[] = getPollChoiceKeys(proposedTypes);
+        shuffle(proposedTypes);
 
         // Construct the poll data
+        const choiceKeys: string[] = getPollChoiceKeys(proposedTypes);
         const choices: Record<string, string> = {};
         for (let i = 0; i < proposedTypes.length; i++) {
             choices[choiceKeys[i]] = proposedTypes[i];
@@ -1935,7 +1936,7 @@ const processCommands = async (msg: Message): Promise<void> => {
                     const gamePoints = (state.hasGame() && state.getGame().hasPlayer(key)) ? state.getGame().getPoints(key) : '???';
                     return `- <@${key}>: **${gamePoints}/${state.getPlayerPoints(key)}**`
                         + (state.isPlayerInGame(key) ? '' : ' _(NEW)_')
-                        + (state.doesPlayerNeedHandicap(key) ? '' : ' ♿')
+                        + (state.doesPlayerNeedHandicap(key) ? ' ♿' : '')
                         + (state.getPlayerDaysSinceLGM(key) ? ` ${state.getPlayerDaysSinceLGM(key)}d` : '')
                         + (state.getPlayerDeductions(key) ? (' -' + state.getPlayerDeductions(key)) : '');
                 })
