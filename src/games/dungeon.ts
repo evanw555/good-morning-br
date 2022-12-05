@@ -671,7 +671,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             const topPlayerId = this.getTopUnfinishedPlayer();
             if (topPlayerId) {
                 // Get some random vacant locations behind the top player (scale with season completion)
-                const numCoins = Math.floor(this.getSeasonCompletion() * randInt(10, 20));
+                const numCoins = Math.floor(this.getSeasonCompletion() * randInt(10, 30));
                 const coinLocations = this.getRandomVacantLocationsBehindPlayer(topPlayerId, numCoins);
                 // Add coins to all these locations
                 for (const coinLocation of coinLocations) {
