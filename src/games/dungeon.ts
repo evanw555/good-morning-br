@@ -98,7 +98,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 + '2. In a given turn, one action is processed from each player in a _semi-random_ order until all players have no actions left '
                 + '("semi-random" = random, but your action is guaranteed to be after another player\'s if you\'re walking into them).\n'
                 + '3. You cannot walk over/past other players unless they are KO\'ed or you are walking into each other head-on.\n'
-                + '4. Players starting their turn with negative points are KO\'ed the entire turn.\n'
+                + '4. Players starting their turn with zero/negative points are KO\'ed the entire turn.\n'
                 + '5. If you somehow walk into a wall, your turn is ended.\n'
                 + '6. If you walk into another player, your turn is ended if they have no more actions remaining.\n'
                 + '7. If your turn is ended early due to any of these reasons, you will only lose points for each action taken.\n'
@@ -640,8 +640,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             if (player.finished) {
                 continue;
             }
-            // If the user has negative points, knock them out
-            if (player.points < 0 && !this.hasPendingDecisions(userId)) {
+            // If the user has zero or fewer points (and has no decisions?), knock them out
+            if (player.points <= 0 && !this.hasPendingDecisions(userId)) {
                 player.knockedOut = true;
             }
             // Otherwise if player has at least one point, choose a default sequence of actions for the user
