@@ -876,13 +876,19 @@ const finalizeAnonymousSubmissions = async () => {
     const validCodesSorted: string[] = allCodes.filter(code => !deadbeatSet.has(submissionOwnersByCode[code]));
     validCodesSorted.sort((x, y) => scores[y] - scores[x]);
     const winners: Snowflake[] = [];
+    const handicapReceivers: Set<string> = new Set();
     for (let i = 0; i < validCodesSorted.length; i++) {
         const submissionCode: string = validCodesSorted[i];
         const rank: number = i + 1;
         const userId: Snowflake = submissionOwnersByCode[submissionCode];
         const pointsEarned: number = forfeiters.includes(userId) ? config.defaultAward : config.largeAwardsByRank[rank] ?? config.defaultAward;
-        // TODO: If player needs handicap, award more points
-        state.awardPoints(userId, pointsEarned);
+        // If the player placed in the top 3 and needs a handicap, give them double points
+        if (rank <= 3 && state.doesPlayerNeedHandicap(userId)) {
+            state.awardPoints(userId, 2 * pointsEarned);
+            handicapReceivers.add(userId);
+        } else {
+            state.awardPoints(userId, pointsEarned);
+        }
         state.setDailyRank(userId, rank);
         state.resetDaysSinceLGM(userId);
         winners.push(userId);
@@ -940,10 +946,19 @@ const finalizeAnonymousSubmissions = async () => {
         const code: string = validCodesSorted[i];
         const userId: Snowflake = submissionOwnersByCode[code];
         const rank: number = i + 1;
+        // Calculate number of each medal earned
+        const numGold = breakdown[code][0];
+        const numSilver = breakdown[code][1];
+        const numBronze = breakdown[code][2];
+        // Send the DM (let them know about forfeiting and handicapping too)
         await messenger.dm(userId,
-            `Your ${state.getEvent().submissionType} placed **${getRankString(rank)}** of **${numValidSubmissions}**, `
-                + `receiving **${breakdown[code][0]}** gold votes, **${breakdown[code][1]}** silver votes, and **${breakdown[code][2]}** bronze votes. `
-                + `Thanks for participating ${config.defaultGoodMorningEmoji}` + (forfeiters.includes(userId) ? ' (and sorry that you had to forfeit)' : ''),
+            `Your ${state.getEvent().submissionType} placed **${getRankString(rank)}** of **${numValidSubmissions}**, receiving `
+                + `**${numGold}** gold vote${numGold === 1 ? '' : 's'}, `
+                + `**${numSilver}** silver vote${numSilver === 1 ? '' : 's'}, and `
+                + `**${numBronze}** bronze vote${numBronze === 1 ? '' : 's'}. `
+                + `Thanks for participating ${config.defaultGoodMorningEmoji}`
+                + (forfeiters.includes(userId) ? ' (and sorry that you had to forfeit)' : '')
+                + (handicapReceivers.has(userId) ? ' (since you\'re a little behind, I\'ve doubled the points earned for this win!)' : ''),
             { immediate: true });
     }
 
@@ -980,6 +995,11 @@ const finalizeAnonymousSubmissions = async () => {
     } catch (err) {
         await messenger.send(sungazersChannel, 'Nvm, my brain is melting');
         await logger.log(`Failed to compute and send voting/scoring log: \`${err}\``);
+    }
+
+    // Misc logging
+    if (handicapReceivers.size > 0) {
+        await logger.log(`Awarded handicap points to ${getBoldNames(Array.from(handicapReceivers))}!`);
     }
 
     await dumpState();
