@@ -1840,11 +1840,12 @@ const processCommands = async (msg: Message): Promise<void> => {
             return;
         }
         if (tempDungeon) {
+            const skipRenderingActions = msg.content.endsWith('!');
             if (msg.content.toLowerCase().includes('auto')) {
                 await msg.reply('Using auto-actions...');
             } else {
                 try {
-                    const response = tempDungeon.addPlayerDecision(msg.author.id, msg.content.replace(/^\+/, ''));
+                    const response = tempDungeon.addPlayerDecision(msg.author.id, msg.content.replace(/^\+/, '').replace(/!$/, ''));
                     try { // TODO: refactor typing event to somewhere else?
                         await msg.channel.sendTyping();
                     } catch (err) {}
@@ -1863,12 +1864,14 @@ const processCommands = async (msg: Message): Promise<void> => {
             // Process decisions and render state
             while (true) {
                 const processingData = tempDungeon.processPlayerDecisions();
-                try { // TODO: refactor typing event to somewhere else?
-                    await msg.channel.sendTyping();
-                } catch (err) {}
-                const attachment = new MessageAttachment(await tempDungeon.renderState(), 'dungeon.png');
-                await msg.channel.send({ content: processingData.summary, files: [attachment] });
-                await sleep(2500);
+                if (!skipRenderingActions) {
+                    try { // TODO: refactor typing event to somewhere else?
+                        await msg.channel.sendTyping();
+                    } catch (err) {}
+                    const attachment = new MessageAttachment(await tempDungeon.renderState(), 'dungeon.png');
+                    await msg.channel.send({ content: processingData.summary, files: [attachment] });
+                    await sleep(2500);
+                }
                 if (!processingData.continueProcessing) {
                     break;
                 }
