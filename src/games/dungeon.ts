@@ -1337,6 +1337,11 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return this.isTileType(r, c, TileType.KEY_HOLE) || this.isTileType(r, c, TileType.OPENED_KEY_HOLE);
     }
 
+    private isPlaceable(r: number, c: number): boolean {
+        // Users can only place tiles over empty spots, hidden traps, or coins
+        return this.isTileType(r, c, TileType.EMPTY) || this.isTileType(r, c, TileType.HIDDEN_TRAP) || this.isTileType(r, c, TileType.COIN);
+    }
+
     /**
      * @returns True if this location is adjacent to a locked doorway, an unlocked doorway, or a sealed doorway.
      */
@@ -1543,7 +1548,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     if (this.isGoal(argLocation.r, argLocation.c)) {
                         throw new Error(`You can\'t place a ${c} on the goal!`);
                     }
-                    if (this.isTileType(argLocation.r, argLocation.c, TileType.EMPTY) || this.isTileType(argLocation.r, argLocation.c, TileType.HIDDEN_TRAP)) {
+                    if (this.isPlaceable(argLocation.r, argLocation.c)) {
                         // COOL
                     } else {
                         throw new Error(`Can't place a ${c} at **${arg}**, try a different spot.`);
