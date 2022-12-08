@@ -2,7 +2,7 @@ import { Message, Snowflake } from "discord.js";
 import { getTodayDateString, prettyPrint, toFixed } from "evanw555.js";
 import ActivityTracker from "./activity-tracker";
 import AbstractGame from "./games/abstract-game";
-import BasicGame from "./games/basic";
+import ClassicGame from "./games/classic";
 import DungeonCrawler from "./games/dungeon";
 import logger from "./logger";
 import { Bait, Combo, DailyEvent, DailyEventType, DailyPlayerState, FullDate, GameState, PlayerState, RawGoodMorningState, Season } from "./types";
@@ -16,8 +16,8 @@ export default class GoodMorningState {
         // TODO: Is there a better way to construct the game instance?
         if (rawState.game) {
             switch(rawState.game.type) {
-                case 'BASIC_GAME_STATE':
-                    this.game = new BasicGame(rawState.game);
+                case 'CLASSIC_GAME_STATE':
+                    this.game = new ClassicGame(rawState.game);
                     break;
                 case 'DUNGEON_GAME_STATE':
                     this.game = new DungeonCrawler(rawState.game);

@@ -17,8 +17,18 @@ export default abstract class AbstractGame<T extends GameState> {
         }
     }
 
+    /**
+     * Text sent out to the channel before the very first game decision of the season.
+     */
     abstract getIntroductionText(): string
+    /**
+     * Text sent out to the channel at the beginning of the weekly game decision.
+     */
     abstract getInstructionsText(): string
+    /**
+     * Text sent directly to users who request help during the game decision phase.
+     */
+    abstract getHelpText(): string
     abstract getDebugText(): string
     /**
      * Returns a number in the range [0, 1] representing the approximate completion of this game.
@@ -32,6 +42,17 @@ export default abstract class AbstractGame<T extends GameState> {
 
     abstract getPlayers(): Snowflake[]
     abstract getOrderedPlayers(): Snowflake[]
+
+    getPlayersBehindPlayer(userId: Snowflake): Snowflake[] {
+        const orderedPlayers = this.getOrderedPlayers();
+        const index = orderedPlayers.indexOf(userId);
+        if (index === -1) {
+            return [];
+        } else {
+            return orderedPlayers.slice(index + 1);
+        }
+    }
+
     abstract hasPlayer(userId: Snowflake): boolean
     abstract addPlayer(member: GuildMember): string
     abstract updatePlayer(member: GuildMember): void
@@ -70,10 +91,12 @@ export default abstract class AbstractGame<T extends GameState> {
         return this.state.winners.slice(0, 3);
     }
 
-    protected addWinner(userId: Snowflake): void {
+    protected addWinner(userId: Snowflake): boolean {
         if (!this.state.winners.includes(userId)) {
             this.state.winners.push(userId);
+            return true;
         }
+        return false;
     }
 
     protected async loadImage(key: string): Promise<canvas.Image> {

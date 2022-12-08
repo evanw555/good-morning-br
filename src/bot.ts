@@ -1,6 +1,6 @@
 import { Client, DMChannel, Intents, MessageAttachment, MessageEmbedOptions, TextChannel } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'discord.js';
-import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, HomeStretchSurprise, PrizeType, Bait, AnonymousSubmission } from './types';
+import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, HomeStretchSurprise, PrizeType, Bait, AnonymousSubmission, GameState } from './types';
 import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission } from './util';
 import GoodMorningState from './state';
 import logger from './logger';
@@ -8,6 +8,8 @@ import logger from './logger';
 import { addReactsSync, chance, FileStorage, generateKMeansClusters, getClockTime, getPollChoiceKeys, getRandomDateBetween, getRankString, getRelativeDateTimeString, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger, naturalJoin, PastTimeoutStrategy, R9KTextBank, randChoice, randInt, shuffle, sleep, TimeoutManager, toCalendarDate, toFixed, toLetterId } from 'evanw555.js';
 import DungeonCrawler from './games/dungeon';
 import ActivityTracker from './activity-tracker';
+import AbstractGame from './games/abstract-game';
+import ClassicGame from './games/classic';
 
 const auth = loadJson('config/auth.json');
 const config: GoodMorningConfig = loadJson('config/config.json');
@@ -489,7 +491,7 @@ const sendGoodMorningMessage = async (): Promise<void> => {
                 content: decisionHeader,
                 files: [new MessageAttachment(await state.getGame().renderState(), `game-turn${state.getGame().getTurn()}-decision.png`)]
             });
-            await messenger.send(goodMorningChannel, 'Choose your moves by sending me a DM with your desired sequence of actions. You have until tomorrow morning to choose. DM me _"help"_ for more info.', { immediate: true });
+            await messenger.send(goodMorningChannel, state.getGame().getInstructionsText(), { immediate: true });
             break;
         case DailyEventType.GameUpdate:
             if (!state.hasGame()) {
@@ -1833,7 +1835,7 @@ client.on('interactionCreate', async (interaction): Promise<void> => {
     }
 });
 
-let tempDungeon: DungeonCrawler = null;
+let tempDungeon: AbstractGame<GameState> = null;
 let awaitingGameCommands = false;
 let awaitingSubmission = false;
 
@@ -1869,9 +1871,9 @@ const processCommands = async (msg: Message): Promise<void> => {
                     try { // TODO: refactor typing event to somewhere else?
                         await msg.channel.sendTyping();
                     } catch (err) {}
-                    const randomOrdering: Snowflake[] = tempDungeon.getDecisionShuffledPlayers();
+                    // const randomOrdering: Snowflake[] = tempDungeon.getDecisionShuffledPlayers();
                     await msg.reply({
-                        content: response + `\nHere's a sample random ordering: ${randomOrdering.map(x => tempDungeon.getDisplayName(x)).join(', ')}`,
+                        content: response, // + `\nHere's a sample random ordering: ${randomOrdering.map(x => tempDungeon.getDisplayName(x)).join(', ')}`,
                         files: [new MessageAttachment(await tempDungeon.renderState({ showPlayerDecision: msg.author.id }), 'confirmation.png')]
                     });
                     await sleep(5000);
@@ -1889,7 +1891,7 @@ const processCommands = async (msg: Message): Promise<void> => {
                         await msg.channel.sendTyping();
                     } catch (err) {}
                     const attachment = new MessageAttachment(await tempDungeon.renderState(), 'dungeon.png');
-                    await msg.channel.send({ content: processingData.summary, files: [attachment] });
+                    await msg.channel.send({ content: processingData.summary.slice(0, 1990), files: [attachment] });
                     await sleep(2500);
                 }
                 if (!processingData.continueProcessing) {
@@ -1910,14 +1912,14 @@ const processCommands = async (msg: Message): Promise<void> => {
             // Give everyone points then show the final state
             // TODO: Temp logic to move all other players
             for (const otherId of tempDungeon.getOrderedPlayers()) {
-                tempDungeon.addPoints(otherId, randInt(0, 20));
+                tempDungeon.addPoints(otherId, randInt(0, state.getPlayerDisplayName(otherId).length));
             }
             tempDungeon.beginTurn();
             try { // TODO: refactor typing event to somewhere else?
                 await msg.channel.sendTyping();
             } catch (err) {}
             const attachment = new MessageAttachment(await tempDungeon.renderState({ admin: true }), 'dungeon.png');
-            await msg.channel.send({ content: 'Beginning of the next turn', files: [attachment] });
+            await msg.channel.send({ content: tempDungeon.getInstructionsText(), files: [attachment] });
 
         } else {
             await msg.reply('The game has not been created yet!');
@@ -2104,22 +2106,23 @@ const processCommands = async (msg: Message): Promise<void> => {
             if (members.every(m => m.id !== msg.author.id)) {
                 members.push(await guild.members.fetch(msg.author.id));
             }
-            await msg.reply('Generating new game...');
+            await msg.reply(`Generating new game with **${members.length}** player(s)...`);
             awaitingGameCommands = true;
             // tempDungeon = DungeonCrawler.createBest(members, 20, 40);
-            tempDungeon = DungeonCrawler.createSectional(members, { sectionSize: 11, sectionsAcross: 3 });
-            tempDungeon.addPoints(msg.author.id, 100);
-            tempDungeon.addPlayerItem(msg.author.id, 'trap', 5);
-            tempDungeon.addPlayerItem(msg.author.id, 'boulder', 3);
-            tempDungeon.addPlayerItem(msg.author.id, 'seal', 3);
-            tempDungeon.addPlayerItem(msg.author.id, 'key', 2);
-            tempDungeon.addPlayerItem(msg.author.id, 'star', 1);
+            // tempDungeon = DungeonCrawler.createSectional(members, { sectionSize: 11, sectionsAcross: 3 });
+            tempDungeon = ClassicGame.create(members);
+            tempDungeon.addPoints(msg.author.id, 10);
+            // tempDungeon.addPlayerItem(msg.author.id, 'trap', 5);
+            // tempDungeon.addPlayerItem(msg.author.id, 'boulder', 3);
+            // tempDungeon.addPlayerItem(msg.author.id, 'seal', 3);
+            // tempDungeon.addPlayerItem(msg.author.id, 'key', 2);
+            // tempDungeon.addPlayerItem(msg.author.id, 'star', 1);
             tempDungeon.beginTurn();
             try { // TODO: refactor typing event to somewhere else?
                 await msg.channel.sendTyping();
             } catch (err) {}
             const attachment = new MessageAttachment(await tempDungeon.renderState(), 'dungeon.png');
-            await msg.channel.send({ content: `Map Fairness: ${tempDungeon.getMapFairness().description}`, files: [attachment] });
+            await msg.channel.send({ content: 'Here\'s the game', files: [attachment] }); // `Map Fairness: ${tempDungeon.getMapFairness().description}`
         } else if (sanitizedText.includes('submission')) {
             awaitingSubmission = true;
             await msg.reply('Awaiting submission...');
@@ -2469,7 +2472,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 // Handle help requests
                 if (msg.content.trim().toLowerCase() === 'help') {
                     await logger.log(`<@${userId}> asked for help!`);
-                    await msg.reply(state.getGame().getInstructionsText());
+                    await msg.reply(state.getGame().getHelpText());
                     return;
                 }
                 try {

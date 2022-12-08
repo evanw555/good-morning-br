@@ -86,6 +86,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     }
 
     getInstructionsText(): string {
+        return 'Choose your moves by sending me a DM with your desired sequence of actions. You have until tomorrow morning to choose. DM me _"help"_ for more info.';
+    }
+
+    getHelpText(): string {
         return 'Here are the possible actions you may take and their associated costs:\n'
                 + '`up`, `down`, `left`, `right`: move one step in such direction. Costs `1`\n'
                 + '`unlock`: open all doorways adjacent to you (or just one e.g. `unlock:b12`). Cost is denoted on each doorway, and is reduced with each unlock\n'

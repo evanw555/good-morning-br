@@ -174,18 +174,19 @@ export interface DungeonGameState {
     players: Record<Snowflake, DungeonPlayerState>
 }
 
-export interface BasicGameState {
-    type: 'BASIC_GAME_STATE',
-    decisions: Record<Snowflake, string>,
+export interface ClassicGameState {
+    type: 'CLASSIC_GAME_STATE',
+    decisions: Record<Snowflake, string[]>,
     turn: number,
     winners: Snowflake[],
     // Custom properties below
     goal: number,
     points: Record<Snowflake, number>,
-    names: Record<Snowflake, string>
+    names: Record<Snowflake, string>,
+    revealedActions: Record<Snowflake, string>
 }
 
-export type GameState = DungeonGameState | BasicGameState;
+export type GameState = DungeonGameState | ClassicGameState;
 
 export interface Bait {
     userId: Snowflake,
