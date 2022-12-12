@@ -1,6 +1,6 @@
 import canvas, { Image } from 'canvas';
 import { GuildMember, Snowflake } from "discord.js";
-import { getRankString, naturalJoin, randChoice, randInt } from 'evanw555.js';
+import { chance, getRankString, naturalJoin, randChoice, randInt } from 'evanw555.js';
 import { ClassicGameState, DecisionProcessingResult, Medals, PrizeType } from "../types";
 import { getNormalizedEditDistance, getOrderingUpsets } from '../util';
 import AbstractGame from "./abstract-game";
@@ -36,10 +36,10 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
     }
 
     getInstructionsText(): string {
-        return 'You can choose one of three actions: **cheer**, **take**, or **peek**! DM me to secretly pick an action.\n'
-            + '🌞 **cheer** to spread a little Good Morning cheer (a free point) to yourself and a random player below you (default action).\n'
-            + '‼️ **take** to steal points from GMBR\'s infinite golden coffer.\n'
-            + '👀 **peek** to stop a player from taking. If you stop a player, you steal the points from them! (e.g. `peek Robert`)';
+        return 'You can choose one of three actions: **cheer**, **take**, or **peek**! DM me to secretly pick an action, or **cheer** by default.\n'
+            + '🌞 **cheer** to spread a little Good Morning cheer! (free point to yourself or a random player below you with 50/50 odds)\n'
+            + '‼️ **take** to steal **2-6** points from GMBR\'s infinite golden coffer.\n'
+            + '👀 **peek** to stop a player from taking. If you stop a player, you steal **2-6** points from them! (e.g. `peek Robert`)';
     }
 
     getHelpText(): string {
@@ -186,11 +186,12 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
 
             for (const userId of cheerers) {
                 this.state.revealedActions[userId] = 'cheer';
-                // Award points
-                this.addPoints(userId, 1);
                 const recipients = recipientsByCheerer[userId];
-                if (recipients && recipients.length > 0) {
+                // Award points
+                if (chance(0.5) && recipients.length > 0) {
                     this.addPoints(randChoice(...recipients), 1);
+                } else {
+                    this.addPoints(userId, 1);
                 }
                 // Remove decision for this player
                 delete this.state.decisions[userId];
