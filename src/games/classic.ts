@@ -1,9 +1,8 @@
 import canvas, { Image } from 'canvas';
 import { GuildMember, Snowflake } from "discord.js";
-import { chance, getRankString, naturalJoin, randChoice, randInt, shuffle } from 'evanw555.js';
-import logger from '../logger';
+import { getRankString, naturalJoin, randChoice, randInt } from 'evanw555.js';
 import { ClassicGameState, DecisionProcessingResult, Medals, PrizeType } from "../types";
-import { getEditDistance, getNormalizedEditDistance, getOrderingUpsets, levenshtein } from '../util';
+import { getNormalizedEditDistance, getOrderingUpsets } from '../util';
 import AbstractGame from "./abstract-game";
 
 export default class ClassicGame extends AbstractGame<ClassicGameState> {
@@ -26,6 +25,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
             goal: 100,
             names,
             points,
+            pointDiffs: {},
             winners: [],
             revealedActions: {}
         });
@@ -77,7 +77,11 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
     }
 
     removePlayer(userId: Snowflake): void {
+        delete this.state.decisions[userId];
         delete this.state.points[userId];
+        delete this.state.pointDiffs[userId];
+        delete this.state.names[userId];
+        delete this.state.revealedActions[userId];
     }
 
     doesPlayerNeedHandicap(userId: Snowflake): boolean {
@@ -85,13 +89,14 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         return this.getPoints(userId) < (this.getMaxPoints() * 0.25);
     }
 
-    async renderState(options?: { showPlayerDecision?: string; admin?: boolean; }): Promise<Buffer> {
-        return await this.createMidSeasonUpdateImage({});
+    async renderState(options?: { showPlayerDecision?: string; admin?: boolean, season?: number }): Promise<Buffer> {
+        return await this.createMidSeasonUpdateImage({}, options?.season);
     }
 
     beginTurn(): void {
         this.state.turn++;
 
+        this.state.pointDiffs = {};
         this.state.revealedActions = {};
 
         // Add default decisions
@@ -115,6 +120,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
 
     addPoints(userId: string, points: number): void {
         this.state.points[userId] = (this.state.points[userId] ?? 0) + points;
+        this.state.pointDiffs[userId] = (this.state.pointDiffs[userId] ?? 0) + points;
     }
     
     awardPrize(userId: string, type: PrizeType, intro: string): string {
@@ -180,13 +186,12 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
 
             for (const userId of cheerers) {
                 this.state.revealedActions[userId] = 'cheer';
-                const recipients = recipientsByCheerer[userId];
                 // Award points
                 this.addPoints(userId, 1);
-                this.addPoints(randChoice(...recipients), 1);
-                // for (const recipient of recipients) {
-                //     this.addPoints(recipient, 1);
-                // }
+                const recipients = recipientsByCheerer[userId];
+                if (recipients && recipients.length > 0) {
+                    this.addPoints(randChoice(...recipients), 1);
+                }
                 // Remove decision for this player
                 delete this.state.decisions[userId];
             }
@@ -248,6 +253,10 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         };
     }
 
+    private getPointDiff(userId: Snowflake): number {
+        return this.state.pointDiffs[userId] ?? 0;
+    }
+
     private getClosestUserByName(input: string): Snowflake | undefined {
         let minNormalizedDistance = Number.MAX_SAFE_INTEGER;
         let closestId: Snowflake | undefined = undefined;
@@ -269,7 +278,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         return this.state.names[userId] ?? userId;
     }
 
-    private async createHomeStretchImage(medals: Record<Snowflake, Medals>): Promise<Buffer> {
+    private async createHomeStretchImage(medals: Record<Snowflake, Medals>, season?: number): Promise<Buffer> {
         return await this.createImage(medals, {
             title: 'We\'re almost there!\n  The final days are upon us',
             sunImageName: 'sun_spooky.png',
@@ -277,14 +286,14 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         });
     }
 
-    private async createMidSeasonUpdateImage(medals: Record<Snowflake, Medals>): Promise<Buffer> {
+    private async createMidSeasonUpdateImage(medals: Record<Snowflake, Medals>, season?: number): Promise<Buffer> {
         return await this.createImage(medals, {
             // title: `We're ${getNumberOfDaysSince(state.getSeasonStartedOn())} days into season ${state.getSeasonNumber()}\n  What a blessed experience!`
-            title: `It's week ${this.state.turn}\n  What a blessed experience!`
+            title: `It's week ${this.state.turn} of season ${season ?? '???'}\n  What a blessed experience!`
         });
     }
 
-    private async createSeasonResultsImage(medals: Record<Snowflake, Medals>): Promise<Buffer> {
+    private async createSeasonResultsImage(medals: Record<Snowflake, Medals>, season?: number): Promise<Buffer> {
         return await this.createImage(medals);
     }
 
@@ -388,8 +397,15 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
             context.fillText(displayName, textX + 1, baseY + 0.7 * BAR_HEIGHT + 1);
 
             // Draw the number of points to the right of the name
+            let pointText = `${this.getPoints(userId)}`;
+            const pointDiff = this.getPointDiff(userId);
+            if (pointDiff > 0) {
+                pointText += ` (+${pointDiff})`;
+            } else if (pointDiff < 0) {
+                pointText += ` (${pointDiff})`;
+            }
             context.font = `${textHeight * .6}px sans-serif`;
-            context.fillText(`${this.state.points[userId]}`, textX + textWidth + (1.5 * BAR_PADDING), baseY + 0.7 * BAR_HEIGHT);
+            context.fillText(pointText, textX + textWidth + (1.5 * BAR_PADDING), baseY + 0.7 * BAR_HEIGHT);
 
             // Draw medals for this user
             if (medals && medals[userId]) {

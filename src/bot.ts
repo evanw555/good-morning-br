@@ -489,7 +489,7 @@ const sendGoodMorningMessage = async (): Promise<void> => {
             }
             await goodMorningChannel.send({
                 content: decisionHeader,
-                files: [new MessageAttachment(await state.getGame().renderState(), `game-turn${state.getGame().getTurn()}-decision.png`)]
+                files: [new MessageAttachment(await state.getGame().renderState({ season: state.getSeasonNumber() }), `game-turn${state.getGame().getTurn()}-decision.png`)]
             });
             await messenger.send(goodMorningChannel, state.getGame().getInstructionsText(), { immediate: true });
             break;
@@ -501,7 +501,7 @@ const sendGoodMorningMessage = async (): Promise<void> => {
             await messenger.send(goodMorningChannel, languageGenerator.generate(overriddenMessage ?? '{goodMorning}'));
             await goodMorningChannel.send({
                 content: 'Here\'s where we\'re all starting from. In just a few minutes, we\'ll be seeing the outcome of this week\'s turn...',
-                files: [new MessageAttachment(await state.getGame().renderState(), `game-turn${state.getGame().getTurn()}-begin.png`)]
+                files: [new MessageAttachment(await state.getGame().renderState({ season: state.getSeasonNumber() }), `game-turn${state.getGame().getTurn()}-begin.png`)]
             });
             break;
         default:
@@ -1548,7 +1548,7 @@ const TIMEOUT_CALLBACKS = {
         }
 
         // Render the updated state and send it out
-        const attachment = new MessageAttachment(await game.renderState(), `game-week${game.getTurn()}.png`);
+        const attachment = new MessageAttachment(await game.renderState({ season: state.getSeasonNumber() }), `game-week${game.getTurn()}.png`);
         await goodMorningChannel.send({ content: processingResult.summary, files: [attachment] });
 
         if (processingResult.continueProcessing) {
@@ -1874,7 +1874,7 @@ const processCommands = async (msg: Message): Promise<void> => {
                     // const randomOrdering: Snowflake[] = tempDungeon.getDecisionShuffledPlayers();
                     await msg.reply({
                         content: response, // + `\nHere's a sample random ordering: ${randomOrdering.map(x => tempDungeon.getDisplayName(x)).join(', ')}`,
-                        files: [new MessageAttachment(await tempDungeon.renderState({ showPlayerDecision: msg.author.id }), 'confirmation.png')]
+                        files: [new MessageAttachment(await tempDungeon.renderState({ showPlayerDecision: msg.author.id, season: 99 }), 'confirmation.png')]
                     });
                     await sleep(5000);
                 } catch (err) {
@@ -1890,7 +1890,7 @@ const processCommands = async (msg: Message): Promise<void> => {
                     try { // TODO: refactor typing event to somewhere else?
                         await msg.channel.sendTyping();
                     } catch (err) {}
-                    const attachment = new MessageAttachment(await tempDungeon.renderState(), 'dungeon.png');
+                    const attachment = new MessageAttachment(await tempDungeon.renderState({ season: 99 }), 'dungeon.png');
                     await msg.channel.send({ content: processingData.summary.slice(0, 1990), files: [attachment] });
                     await sleep(2500);
                 }
@@ -1918,7 +1918,7 @@ const processCommands = async (msg: Message): Promise<void> => {
             try { // TODO: refactor typing event to somewhere else?
                 await msg.channel.sendTyping();
             } catch (err) {}
-            const attachment = new MessageAttachment(await tempDungeon.renderState({ admin: true }), 'dungeon.png');
+            const attachment = new MessageAttachment(await tempDungeon.renderState({ admin: true, season: 99 }), 'dungeon.png');
             await msg.channel.send({ content: tempDungeon.getInstructionsText(), files: [attachment] });
 
         } else {
@@ -2094,7 +2094,7 @@ const processCommands = async (msg: Message): Promise<void> => {
                     await msg.channel.sendTyping();
                 } catch (err) {}
                 await msg.channel.send({ content: state.getGame().getDebugText() || 'No Debug Text.', files: [
-                    new MessageAttachment(await state.getGame().renderState({ admin: true }), 'game-test-admin.png')
+                    new MessageAttachment(await state.getGame().renderState({ admin: true, season: state.getSeasonNumber() }), 'game-test-admin.png')
                 ]});
             } else {
                 await msg.reply('The game hasn\'t been created yet!');
@@ -2124,7 +2124,7 @@ const processCommands = async (msg: Message): Promise<void> => {
             try { // TODO: refactor typing event to somewhere else?
                 await msg.channel.sendTyping();
             } catch (err) {}
-            const attachment = new MessageAttachment(await tempDungeon.renderState(), 'dungeon.png');
+            const attachment = new MessageAttachment(await tempDungeon.renderState({ season: 99 }), 'dungeon.png');
             await msg.channel.send({ content: 'Here\'s the game', files: [attachment] }); // `Map Fairness: ${tempDungeon.getMapFairness().description}`
         } else if (sanitizedText.includes('submission')) {
             awaitingSubmission = true;
@@ -2488,7 +2488,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     } catch (err) {}
                     await msg.reply({
                         content: response,
-                        files: [new MessageAttachment(await state.getGame().renderState({ showPlayerDecision: userId }), `game-turn${state.getGame().getTurn()}-confirmation.png`)]
+                        files: [new MessageAttachment(await state.getGame().renderState({ showPlayerDecision: userId, season: state.getSeasonNumber() }), `game-turn${state.getGame().getTurn()}-confirmation.png`)]
                     });
                     await logger.log(`**${state.getPlayerDisplayName(userId)}** made a valid decision!`);
                 } catch (err) {

@@ -210,7 +210,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return player && player.rank > Math.floor(this.getNumPlayers() / 2) && player.points < 20;
     }
 
-    async renderState(options?: { showPlayerDecision?: Snowflake, admin?: boolean }): Promise<Buffer> {
+    async renderState(options?: { showPlayerDecision?: Snowflake, admin?: boolean, season?: number }): Promise<Buffer> {
         const WIDTH: number = this.state.columns * DungeonCrawler.TILE_SIZE;
         const HEIGHT: number = this.state.rows * DungeonCrawler.TILE_SIZE;
         const c = canvas.createCanvas(WIDTH, HEIGHT);
@@ -472,7 +472,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         let y = 2;
         c2.fillStyle = 'white';
         const leftTextX = WIDTH + DungeonCrawler.TILE_SIZE + MARGIN;
-        c2.fillText(`Week ${this.state.turn}, Action ${this.state.action}`, leftTextX, DungeonCrawler.TILE_SIZE);
+        c2.fillText(`Season ${options?.season ?? '???'}, Week ${this.state.turn}, Action ${this.state.action}`, leftTextX, DungeonCrawler.TILE_SIZE);
         for (const userId of this.getOrganizedPlayers()) {
             y++;
             const player = this.state.players[userId];
