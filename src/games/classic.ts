@@ -37,8 +37,8 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
 
     getInstructionsText(): string {
         return 'You can choose one of three actions: **cheer**, **take**, or **peek**! DM me to secretly pick an action, or **cheer** by default.\n'
-            + '🌞 **cheer** to spread a little Good Morning cheer! (free point to yourself or a random player below you with 50/50 odds)\n'
-            + '‼️ **take** to steal **2-6** points from GMBR\'s infinite golden coffer.\n'
+            + '🌞 **cheer** to spread a little Good Morning cheer! (free point to yourself and a random player below you)\n'
+            + '‼️ **take** to take **2-6** points from GMBR\'s infinite golden coffer.\n'
             + '👀 **peek** to stop a player from taking. If you stop a player, you steal **2-6** points from them! (e.g. `peek Robert`)';
     }
 
@@ -161,7 +161,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
     processPlayerDecisions(): DecisionProcessingResult {
         const beforeOrdering = this.getOrderedPlayers();
 
-        let summary = 'Nice! ';
+        let summary = '';
 
         const anyCheerDecisions = Object.values(this.state.decisions).some(d => d.includes('cheer'));
         const takers = Object.keys(this.state.decisions).filter(userId => this.state.decisions[userId].includes('take'));
@@ -177,6 +177,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
             }
         }
         if (anyCheerDecisions) {
+            summary += randChoice('Nice', 'Splendid', 'Fantastic', 'Serendipitous', 'Wonderful') + '! ';
             // Process the cheers
             const cheerers = Object.keys(this.state.decisions).filter(userId => this.state.decisions[userId].includes('cheer'));
             const recipientsByCheerer = {};
@@ -186,12 +187,11 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
 
             for (const userId of cheerers) {
                 this.state.revealedActions[userId] = 'cheer';
-                const recipients = recipientsByCheerer[userId];
                 // Award points
-                if (chance(0.5) && recipients.length > 0) {
+                this.addPoints(userId, 1);
+                const recipients = recipientsByCheerer[userId];
+                if (recipients.length > 0) {
                     this.addPoints(randChoice(...recipients), 1);
-                } else {
-                    this.addPoints(userId, 1);
                 }
                 // Remove decision for this player
                 delete this.state.decisions[userId];
@@ -246,6 +246,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
             }
         }
 
+        // End the turn if the only thing remaining are unfulfilled peek actions
         const endTurn = Object.values(this.state.decisions).every(d => d[0] && d[0].startsWith('peek:'));
 
         return {
