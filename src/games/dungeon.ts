@@ -921,7 +921,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         }
     }
 
-    private static getInitialLocation(seq: number, rows: number, cols: number): [number, number] {
+    private static getInitialLocationRadial(seq: number, rows: number, cols: number): [number, number] {
         const offset = Math.floor(seq / 4);
         const corner = seq % 4;
         const corners = [[0, 0], [0, cols - 1], [rows - 1, cols - 1], [rows - 1, 0]];
@@ -929,7 +929,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return [corners[corner][0] + offsets[corner][0] * offset, corners[corner][1] + offsets[corner][1] * offset];
     }
 
-    private static getInitialLocationV2(seq: number, rows: number, cols: number): [number, number] {
+    private static getInitialLocationRadialV2(seq: number, rows: number, cols: number): [number, number] {
         const basePositions: [number, number][] = [[0, Math.floor(cols / 2)], [Math.floor(rows / 2), cols - 1], [rows - 1, Math.floor(cols / 2)], [Math.floor(rows / 2), 0]];
 
         const side = seq % 4;
@@ -1072,7 +1072,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         const players: Record<Snowflake, DungeonPlayerState> = {};
         for (let j = 0; j < members.length; j++) {
             const member = members[j];
-            const [ r, c ] = DungeonCrawler.getInitialLocationV2(j, 41, 41);
+            const [ r, c ] = DungeonCrawler.getInitialLocationRadialV2(j, 41, 41);
             players[member.id] = {
                 r,
                 c,
@@ -1112,6 +1112,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         }
         const keyHoleCosts = {};
 
+        const getEuclideanDistanceFromCenter = (r: number, c: number): number => {
+            return Math.sqrt(Math.pow((rows / 2) - r, 2) + Math.pow((columns / 2) - c, 2));
+        }
+
         const step = (r, c, prev: [number, number]) => {
             map[r][c] = 0;
             const l = shuffle(DungeonCrawler.getCardinalOffsets(2));
@@ -1119,7 +1123,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             while (l.length > 0) {
                 const [dr, dc] = l.shift();
                 // If looking in the same direction we just came from, skip this direction and come to it last
-                if (prev[0] === dr && prev[1] === dc && chance(0.5)) {
+                if (prev[0] === dr && prev[1] === dc && chance(0.75)) {
                     l.push([dr, dc]);
                     continue;
                 }
@@ -1139,13 +1143,22 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         //     // If the current spot is on the edge, clear walls liberally
                         //     map[hnr][hnc] = TileType.EMPTY;
                         // } else
-                        if (chance(.01)) {
+                        if (chance(0.03)) {
                             // With an even smaller chance, clear this wall
                             map[hnr][hnc] = TileType.EMPTY;
                         } else {
-                            if (chance(.2)) {
+                            if (chance(0.2)) {
                                 map[hnr][hnc] = TileType.KEY_HOLE;
-                                keyHoleCosts[DungeonCrawler.getLocationString(hnr, hnc)] = Math.min(randInt(1, 16), randInt(1, 16));
+                                // Make the cost more severe near the center of the section
+                                const distanceFromCenter = getEuclideanDistanceFromCenter(hnr, hnc);
+                                const sectionWidth = Math.min(rows, columns);
+                                if (distanceFromCenter < 0.25 * sectionWidth) {
+                                    keyHoleCosts[DungeonCrawler.getLocationString(hnr, hnc)] = Math.max(randInt(1, 16), randInt(1, 16), randInt(1, 16));
+                                } else if (distanceFromCenter < 0.4 * sectionWidth) {
+                                    keyHoleCosts[DungeonCrawler.getLocationString(hnr, hnc)] = Math.max(randInt(1, 16), randInt(1, 16));
+                                } else {
+                                    keyHoleCosts[DungeonCrawler.getLocationString(hnr, hnc)] = randInt(1, 16);
+                                }
                             }
                         }
                     }
@@ -1238,7 +1251,9 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
 
                 // If it's the last section, place the goal
                 if (isLastSection) {
-                    goal = { r: baseR + Math.floor(options.sectionSize / 2), c: baseC + Math.floor(options.sectionSize / 2) };
+                    // TODO: We could place it in the center of the section, but let's place it in the bottom right for now
+                    // goal = { r: baseR + Math.floor(options.sectionSize / 2), c: baseC + Math.floor(options.sectionSize / 2) };
+                    goal = { r: baseR + options.sectionSize - 2, c: baseC + options.sectionSize - 2 };
                     for (let dr of [-1, 0, 1]) {
                         for (let dc of [-1, 0, 1]) {
                             map[goal.r + dr][goal.c + dc] = TileType.EMPTY;
@@ -2088,9 +2103,9 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 return this.state.keyHoleCosts[locationString] * 2;
             }
             if (this.isWalkableTileType(tile)) {
-                if (options?.avoidPlayers && this.getPlayerAtLocation(r, c)) {
-                    // Treat player-occupied tiles at 3-cost because it's risky
-                    return 3;
+                if (options?.avoidPlayers && this.isPlayerAtLocation({r, c})) {
+                    // Treat player-occupied tiles as 5-cost because it's risky
+                    return 5;
                 }
                 return 1;
             }

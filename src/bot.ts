@@ -2099,7 +2099,7 @@ const processCommands = async (msg: Message): Promise<void> => {
             } else {
                 await msg.reply('The game hasn\'t been created yet!');
             }
-        } else if (sanitizedText.includes('temp dungeon')) {
+        } else if (sanitizedText.includes('temp')) {
             await msg.reply('Populating members...');
             const members = (await guild.members.list({ limit: randInt(10, 20) })).toJSON();
             // Add self if not already in the fetched members list
@@ -2108,15 +2108,18 @@ const processCommands = async (msg: Message): Promise<void> => {
             }
             await msg.reply(`Generating new game with **${members.length}** player(s)...`);
             awaitingGameCommands = true;
-            // tempDungeon = DungeonCrawler.createBest(members, 20, 40);
-            // tempDungeon = DungeonCrawler.createSectional(members, { sectionSize: 11, sectionsAcross: 3 });
-            tempDungeon = ClassicGame.create(members);
+            if (sanitizedText.includes('dungeon')) {
+                // tempDungeon = DungeonCrawler.createBest(members, 20, 40);
+                tempDungeon = DungeonCrawler.createSectional(members, { sectionSize: 33, sectionsAcross: 1 }); // Before: size=11,across=3
+                (tempDungeon as DungeonCrawler).addPlayerItem(msg.author.id, 'trap', 5);
+                (tempDungeon as DungeonCrawler).addPlayerItem(msg.author.id, 'boulder', 3);
+                (tempDungeon as DungeonCrawler).addPlayerItem(msg.author.id, 'seal', 3);
+                (tempDungeon as DungeonCrawler).addPlayerItem(msg.author.id, 'key', 2);
+                (tempDungeon as DungeonCrawler).addPlayerItem(msg.author.id, 'star', 1);
+            } else {
+                tempDungeon = ClassicGame.create(members);
+            }
             tempDungeon.addPoints(msg.author.id, 10);
-            // tempDungeon.addPlayerItem(msg.author.id, 'trap', 5);
-            // tempDungeon.addPlayerItem(msg.author.id, 'boulder', 3);
-            // tempDungeon.addPlayerItem(msg.author.id, 'seal', 3);
-            // tempDungeon.addPlayerItem(msg.author.id, 'key', 2);
-            // tempDungeon.addPlayerItem(msg.author.id, 'star', 1);
             tempDungeon.beginTurn();
             try { // TODO: refactor typing event to somewhere else?
                 await msg.channel.sendTyping();
