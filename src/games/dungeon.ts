@@ -1532,7 +1532,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     // TODO: Do validation?
                     break;
                 case 'unlock':
-                    validateDoorwayAction(argLocation, 'unlock');
+                case 'key':
+                    validateDoorwayAction(argLocation, c);
                     warnings.push(`Doorways are halved in cost when unlocked, so subsequent actions taken on a doorway you unlock will be cheaper.`);
                     break;
                 case 'lock':
