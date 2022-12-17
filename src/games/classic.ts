@@ -1,6 +1,6 @@
 import canvas, { Image } from 'canvas';
 import { GuildMember, Snowflake } from "discord.js";
-import { chance, getRankString, naturalJoin, randChoice, randInt } from 'evanw555.js';
+import { getRankString, naturalJoin, randChoice, randInt } from 'evanw555.js';
 import { ClassicGameState, DecisionProcessingResult, Medals, PrizeType } from "../types";
 import { getNormalizedEditDistance, getOrderingUpsets } from '../util';
 import AbstractGame from "./abstract-game";
@@ -47,7 +47,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
     }
 
     getDebugText(): string {
-        return 'Basic Game';
+        return 'Classic Game';
     }
 
     getSeasonCompletion(): number {

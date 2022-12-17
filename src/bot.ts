@@ -637,10 +637,11 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
                 await logger.log(`Failed to fetch member <@${userId}> when creating game: \`${err}\``);
             }
         }
-        // Create the dungeon using these initial members
-        // TODO (2.0): Eventually, this should be more generic for other game types
-        const dungeon = DungeonCrawler.createSectional(members, { sectionSize: 11, sectionsAcross: 3 });
-        state.setGame(dungeon);
+        // Create the game using these initial members
+        // TODO (2.0): Eventually, this should be more generic for other game types (don't hardcode this)
+        // const dungeon = DungeonCrawler.createSectional(members, { sectionSize: 11, sectionsAcross: 3 });
+        const newGame = ClassicGame.create(members);
+        state.setGame(newGame);
         // For all starting players, add the points they earned before the game was instantiated
         for (const userId of participatingUserIds) {
             state.getGame().addPoints(userId, state.getPlayerPoints(userId));
