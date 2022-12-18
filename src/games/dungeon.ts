@@ -741,7 +741,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         player.itemOffers = items;
         // Return text about this
         // TODO: Only bold the individual words (after bumping discordjs and evanw555.js)
-        const texts = [`${intro}, as a reward you may pick one of the follwing items: **${naturalJoin(items), 'or'}**. `
+        const texts = [`${intro}, as a reward you may pick one of the follwing items: **${naturalJoin(items, 'or')}**. `
             + 'DM me to claim the item of your choice! (e.g. \`claim ITEM\`). This offer is valid until Saturday morning.'];
         for (const item of items) {
             texts.push(`**${item}:** ${DungeonCrawler.getItemInstructions(item)}`);

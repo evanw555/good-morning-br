@@ -2138,7 +2138,7 @@ const processCommands = async (msg: Message): Promise<void> => {
                 const prizeTexts = dungeon.awardPrize(msg.author.id, 'submissions1', 'Testing the claim functionality');
                 await dumpState();
                 for (const prizeText of prizeTexts) {
-                    await msg.reply(prizeText);
+                    await msg.channel.send(prizeText);
                 }
             }
         } else if (sanitizedText.includes('items')) {
