@@ -145,6 +145,7 @@ export interface DungeonPlayerState {
     displayName: string,
     points: number,
     items?: Partial<Record<DungeonItemName, number>>,
+    itemOffers?: DungeonItemName[],
     finished?: boolean,
     knockedOut?: boolean,
     invincible?: boolean,

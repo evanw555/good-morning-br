@@ -62,7 +62,7 @@ export default abstract class AbstractGame<T extends GameState> {
     abstract beginTurn(): void
     abstract getPoints(userId: Snowflake): number
     abstract addPoints(userId: Snowflake, points: number): void
-    abstract awardPrize(userId: Snowflake, type: PrizeType, intro: string): string
+    abstract awardPrize(userId: Snowflake, type: PrizeType, intro: string): string[]
 
     getMaxPoints(): number {
         return Math.max(0, ...this.getPlayers().map(userId => this.getPoints(userId)));
@@ -74,6 +74,17 @@ export default abstract class AbstractGame<T extends GameState> {
     abstract getWeeklyDecisionDMs(): Record<Snowflake, string>
     abstract addPlayerDecision(userId: Snowflake, text: string): string
     abstract processPlayerDecisions(): DecisionProcessingResult
+
+    /**
+     * Hook for handling DMs from players during the window of time when decisions are not being processed.
+     *
+     * @param userId Player who sent the DM
+     * @param text Contents of the DM received
+     * @returns Sequence of replies to use to reply to the DM (empty list means this DM was ignored)
+     */
+    handleNonDecisionDM(userId: Snowflake, text: string): string[] {
+        return [];
+    }
 
     getState(): T {
         return this.state;

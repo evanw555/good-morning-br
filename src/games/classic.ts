@@ -123,9 +123,9 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         this.state.pointDiffs[userId] = (this.state.pointDiffs[userId] ?? 0) + points;
     }
     
-    awardPrize(userId: string, type: PrizeType, intro: string): string {
-        // A falsy return value won't trigger a DM response
-        return '';
+    awardPrize(userId: string, type: PrizeType, intro: string): string[] {
+        // An empty return value won't trigger a DM response
+        return [];
     }
 
     getWeeklyDecisionDMs(): Record<Snowflake, string> {

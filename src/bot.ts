@@ -382,11 +382,13 @@ const awardPrize = async (userId: Snowflake, type: PrizeType, intro: string): Pr
         return;
     }
     try {
-        const prizeText: string = state.getGame().awardPrize(userId, type, intro);
+        const prizeTexts: string[] = state.getGame().awardPrize(userId, type, intro).filter(t => t);
         await dumpState();
-        if (prizeText) {
-            await messenger.dm(userId, prizeText, { immediate: true });
-            await logger.log(`Sent _${type}_ prize DM to **${state.getPlayerDisplayName(userId)}**`);
+        if (prizeTexts.length > 0) {
+            for (const prizeText of prizeTexts) {
+                await messenger.dm(userId, prizeText, { immediate: true });
+            }
+            await logger.log(`Sent ${prizeTexts.length} _${type}_ prize DM(s) to **${state.getPlayerDisplayName(userId)}**`);
         }
     } catch (err) {
         await logger.log(`Unable to award _${type}_ prize to **${state.getPlayerDisplayName(userId)}**: \`${err.toString()}\``);
@@ -2130,6 +2132,20 @@ const processCommands = async (msg: Message): Promise<void> => {
         } else if (sanitizedText.includes('submission')) {
             awaitingSubmission = true;
             await msg.reply('Awaiting submission...');
+        } else if (sanitizedText.includes('offer')) {
+            if (state.hasGame() && state.getGame() instanceof DungeonCrawler) {
+                const dungeon = state.getGame() as DungeonCrawler;
+                const prizeTexts = dungeon.awardPrize(msg.author.id, 'submissions1', 'Testing the claim functionality');
+                await dumpState();
+                for (const prizeText of prizeTexts) {
+                    await msg.reply(prizeText);
+                }
+            }
+        } else if (sanitizedText.includes('items')) {
+            if (state.hasGame() && state.getGame() instanceof DungeonCrawler) {
+                const dungeon = state.getGame() as DungeonCrawler;
+                await msg.reply(dungeon.getOrderedPlayers().filter(p => dungeon.playerHasAnyItem(p)).map(p => `**${dungeon.getDisplayName(p)}:** \`${JSON.stringify(dungeon.getPlayerItems(p))}\``).join('\n'));
+            }
         }
     }
 };
@@ -2466,7 +2482,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             await safeProcessCommands(msg);
             return;
         }
-        // Process game decisions via DM
+        // If accepting game decisions, process decision and return
         if (state.isAcceptingGameDecisions()) {
             if (state.hasGame()) {
                 if (!state.getGame().hasPlayer(userId)) {
@@ -2499,9 +2515,25 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             } else {
                 await messenger.reply(msg, 'Oh dear... Looks like the game hasn\'t started yet. Please tell the admin.');
             }
+            return;
         }
+        // Otherwise, attempt to process this DM using the non-decision hook (return if there are any replies)
+        else if (state.hasGame()) {
+            const replyTexts = state.getGame().handleNonDecisionDM(userId, msg.content).filter(t => t);
+            // If this DM warranted some sort of reply, then send the reply and return
+            if (replyTexts.length > 0) {
+                await dumpState();
+                for (const replyText of replyTexts) {
+                    await messenger.reply(msg, replyText);
+                }
+                return;
+            }
+        }
+
+        // If this DM wasn't processed based on the above game logic, then proceed to process it using other rules.
+
         // Process DM submissions depending on the event
-        else if (state.isMorning() && state.getEventType() === DailyEventType.AnonymousSubmissions) {
+        if (state.isMorning() && state.getEventType() === DailyEventType.AnonymousSubmissions) {
             const userId: Snowflake = msg.author.id;
             // Handle submissions via DM only before voting has started
             if (state.getEvent().submissions && !state.getEvent().votes) {

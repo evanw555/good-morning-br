@@ -38,6 +38,7 @@ const ITEM_NAME_RECORD: Record<DungeonItemName, boolean> = {
     'star': true
 };
 const ITEM_NAMES: DungeonItemName[] = Object.keys(ITEM_NAME_RECORD) as DungeonItemName[];
+const VALID_ITEMS: Set<string> = new Set(ITEM_NAMES);
 
 const ACTION_SYMBOLS: Record<ActionName, string> = {
     'up': '⬆️',
@@ -650,6 +651,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             // Reset per-turn metadata and statuses
             delete player.previousLocations;
             player.originLocation = { r: player.r, c: player.c };
+            delete player.itemOffers;
             delete player.knockedOut;
             delete player.invincible;
             delete player.warped;
@@ -696,24 +698,19 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return Math.max(0, ...Object.values(this.state.players).map(player => player.points));
     }
 
-    awardPrize(userId: Snowflake, type: PrizeType, intro: string): string {
+    awardPrize(userId: Snowflake, type: PrizeType, intro: string): string[] {
         // If player isn't in the game yet, do nothing
         if (!this.hasPlayer(userId)) {
-            return '';
+            return [];
         }
+        const goodItems: DungeonItemName[] = ['boulder', 'key', 'star', 'seal'];
         switch (type) {
             case 'submissions1':
-                if (chance(0.5)) {
-                    return this.awardItem(userId, 'boulder', intro);
-                } else {
-                    return this.awardItem(userId, 'key', intro);
-                }
+                // For first place, let the user pick between two random "good" items
+                return this.offerItems(userId, shuffle(goodItems).slice(0, 2), intro);
             case 'submissions2':
-                if (chance(0.5)) {
-                    return this.awardItem(userId, 'star', intro);
-                } else {
-                    return this.awardItem(userId, 'seal', intro);
-                }
+                // For second place, award a random "good" item
+                return this.awardItem(userId, randChoice(...goodItems), intro);
             case 'submissions3':
             case 'streak':
             case 'nightmare':
@@ -721,37 +718,60 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         }
     }
 
-    private awardItem(userId: Snowflake, item: DungeonItemName, intro: string): string {
+    private awardItem(userId: Snowflake, item: DungeonItemName, intro: string): string[] {
         // If player isn't in the game yet, do nothing
         if (!this.hasPlayer(userId)) {
-            return '';
+            return [];
         }
+        // Add the item to the player's state
         this.addPlayerItem(userId, item);
         const numItems = this.getPlayerItemCount(userId, item);
+        // Return the notification and instructions text
+        logger.log(`Awarded **${item}** to **${this.getDisplayName(userId)}**`);
+        return [`${intro}, you've just been awarded a **${item}**! Your inventory now contains **${numItems}**. ${DungeonCrawler.getItemInstructions(item)}`];
+    }
+
+    private offerItems(userId: Snowflake, items: DungeonItemName[], intro: string): string[] {
+        // If player isn't in the game yet, do nothing
+        if (!this.hasPlayer(userId)) {
+            return [];
+        }
+        // Add the item offers to the player's state
+        const player = this.state.players[userId];
+        player.itemOffers = items;
+        // Return text about this
+        // TODO: Only bold the individual words (after bumping discordjs and evanw555.js)
+        const texts = [`${intro}, as a reward you may pick one of the follwing items: **${naturalJoin(items), 'or'}**. `
+            + 'DM me to claim the item of your choice! (e.g. \`claim ITEM\`). This offer is valid until Saturday morning.'];
+        for (const item of items) {
+            texts.push(`**${item}:** ${DungeonCrawler.getItemInstructions(item)}`);
+        }
+        logger.log(`Offered **${naturalJoin(items)}** to **${this.getDisplayName(userId)}**`);
+        return texts;
+    }
+
+    private static getItemInstructions(item: DungeonItemName): string {
         switch (item) {
             case 'trap':
-                return `${intro}, you've just been awarded a **trap**! Your inventory now contains **${numItems}**. `
-                    + 'You can place this at a particular location as an action e.g. `trap:b12`. '
+                return 'You can place a `trap` at a particular location as an action e.g. `trap:b12`. '
                     + 'If a player ends their turn on a trap, they will be sent back to where they started that week\'s turn. '
                     + 'Traps are invisible until triggered. You will be given **1** point each time this trap is triggered.';
             case 'boulder':
-                return `${intro}, you've just been awarded a **boulder**! Your inventory now contains **${numItems}**. `
-                    + 'You can place this at a particular location as an action e.g. `boulder:b12`. '
+                return 'You can place a `boulder` at a particular location as an action e.g. `boulder:b12`. '
                     + 'The boulder will act as a immovable barrier that cannot be destroyed, unless it causes players to become permanently trapped.';
             case 'seal':
-                return `${intro}, you've just been awarded a **seal**! Your inventory now contains **${numItems}**. `
-                    + 'You can use `seal` as an action to permanently seal any locked/unlocked doorway in the 4 squares adjacent to you. '
+                return 'You can use `seal` as an action to permanently seal any locked/unlocked doorway in the 4 squares adjacent to you. '
                     + 'Once a doorway is sealed, it is effectively a wall and cannot be unlocked. Optionally, seal one specific location e.g. `seal:b12`';
             case 'star':
-                return `${intro}, you've just been awarded a **star**! Your inventory now contains **${numItems}**. `
-                    + 'You can use `star` as an action to make yourself invincible for the remainder of the week\'s turn. '
+                return 'You can use `star` as an action to make yourself invincible for the remainder of the week\'s turn. '
                     + 'While invincible, walking into other players will knock them out (you won\'t bump into them). '
                     + 'Also, you cannot be punched and you cannot fall into traps.';
             case 'key':
-                return `${intro}, you've just been awarded a **key**! Your inventory now contains **${numItems}**. `
-                    + 'You can use `key` as an action to unlock all doorways in the 4 squares adjacent to you (at no cost), or optionally one specific location e.g. `key:b12`. '
+                return 'You can use `key` as an action to unlock all doorways in the 4 squares adjacent to you (at no cost), or optionally one specific location e.g. `key:b12`. '
                     + 'If you use the key but no doorways are opened (e.g. door was already opened by someone else), then it will not be consumed. '
                     + 'Any doorway you unlock using the key will thereafter be halved in cost, as with the standard `unlock` move.';
+            default:
+                return 'Not sure what this item is, I don\'t recognize it. Please reach out to the admin!';
         }
     }
 
@@ -2053,6 +2073,31 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             return this.state.decisions[userId][0];
         }
         return undefined;
+    }
+
+    override handleNonDecisionDM(userId: Snowflake, text: string): string[] {
+        if (!this.hasPlayer(userId)) {
+            return [];
+        }
+
+        // If this player has any offers, process their claim
+        const player = this.state.players[userId];
+        if (player.itemOffers) {
+            const sanitizedText = text.toLowerCase().trim();
+            if (sanitizedText.startsWith('claim')) {
+                const claimedItem = sanitizedText.replace('claim', '').trim();
+                if (VALID_ITEMS.has(claimedItem)) {
+                    // Clear offers and award the claimed item
+                    delete player.itemOffers;
+                    return this.awardItem(userId, claimedItem as DungeonItemName, 'Nice choice');
+                } else {
+                    // Invalid item name, so let them know the exact options
+                    return ['Invalid claim attempt bro, please say ' + naturalJoin(player.itemOffers.map(item => `\`claim ${item}\``), 'or')];
+                }
+            }
+        }
+
+        return [];
     }
 
     /**
