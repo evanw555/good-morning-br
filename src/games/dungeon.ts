@@ -943,6 +943,9 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             return { r: location.r, c: location.c - 1};
         } else if (action === 'right') {
             return { r: location.r, c: location.c + 1 };
+        } else if (action.startsWith('charge')) {
+            const [actionName, arg] = action.split(':');
+            return DungeonCrawler.parseLocationString(arg) ?? location;
         } else {
             return location;
         }
@@ -1639,6 +1642,9 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                             throw new Error(`You can't charge to **${arg}**, as obstacle at **${DungeonCrawler.getLocationString(intermediateLocation.r, intermediateLocation.c)}** is in the way!`);
                         }
                     }
+                    // Update the new temp location to the target location
+                    newLocation.r = argLocation.r;
+                    newLocation.c = argLocation.c;
                     break;
                 case 'punch':
                 case 'warp':
