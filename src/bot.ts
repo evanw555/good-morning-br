@@ -2119,6 +2119,7 @@ const processCommands = async (msg: Message): Promise<void> => {
                 (tempDungeon as DungeonCrawler).addPlayerItem(msg.author.id, 'seal', 3);
                 (tempDungeon as DungeonCrawler).addPlayerItem(msg.author.id, 'key', 2);
                 (tempDungeon as DungeonCrawler).addPlayerItem(msg.author.id, 'star', 1);
+                (tempDungeon as DungeonCrawler).addPlayerItem(msg.author.id, 'charge', 5);
             } else {
                 tempDungeon = ClassicGame.create(members);
             }

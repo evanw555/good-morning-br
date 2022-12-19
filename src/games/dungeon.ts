@@ -21,40 +21,42 @@ enum TileType {
 type Direction = 'up' | 'down' | 'left' | 'right';
 
 const OFFSETS_BY_DIRECTION: Record<Direction, [number, number]> = {
-    'up': [-1, 0],
-    'down': [1, 0],
-    'left': [0, -1],
-    'right': [0, 1]
+    up: [-1, 0],
+    down: [1, 0],
+    left: [0, -1],
+    right: [0, 1]
 };
 
 type BasicActionName = Direction | 'pause' | 'unlock' | 'lock' | 'punch' | 'warp';
 type ActionName = BasicActionName | DungeonItemName;
 
 const ITEM_NAME_RECORD: Record<DungeonItemName, boolean> = {
-    'boulder': true,
-    'seal': true,
-    'trap': true,
-    'key': true,
-    'star': true
+    boulder: true,
+    seal: true,
+    trap: true,
+    key: true,
+    star: true,
+    charge: true
 };
 const ITEM_NAMES: DungeonItemName[] = Object.keys(ITEM_NAME_RECORD) as DungeonItemName[];
 const VALID_ITEMS: Set<string> = new Set(ITEM_NAMES);
 
 const ACTION_SYMBOLS: Record<ActionName, string> = {
-    'up': '⬆️',
-    'down': '⬇️',
-    'left': '⬅️',
-    'right': '➡️',
-    'pause': '⏸️',
-    'unlock': '🔓',
-    'lock': '🔒',
-    'punch': '🥊',
-    'warp': '🎱',
-    'boulder': '🪨',
-    'seal': '🦭',
-    'trap': '🕳️',
-    'key': '🔑',
-    'star': '⭐'
+    up: '⬆️',
+    down: '⬇️',
+    left: '⬅️',
+    right: '➡️',
+    pause: '⏸️',
+    unlock: '🔓',
+    lock: '🔒',
+    punch: '🥊',
+    warp: '🎱',
+    boulder: '🪨',
+    seal: '🦭',
+    trap: '🕳️',
+    key: '🔑',
+    star: '⭐',
+    charge: '🏈'
 };
 
 interface PathingOptions {
@@ -751,28 +753,25 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     }
 
     private static getItemInstructions(item: DungeonItemName): string {
-        switch (item) {
-            case 'trap':
-                return 'You can place a `trap` at a particular location as an action e.g. `trap:b12`. '
-                    + 'If a player ends their turn on a trap, they will be sent back to where they started that week\'s turn. '
-                    + 'Traps are invisible until triggered. You will be given **1** point each time this trap is triggered.';
-            case 'boulder':
-                return 'You can place a `boulder` at a particular location as an action e.g. `boulder:b12`. '
-                    + 'The boulder will act as a immovable barrier that cannot be destroyed, unless it causes players to become permanently trapped.';
-            case 'seal':
-                return 'You can use `seal` as an action to permanently seal any locked/unlocked doorway in the 4 squares adjacent to you. '
-                    + 'Once a doorway is sealed, it is effectively a wall and cannot be unlocked. Optionally, seal one specific location e.g. `seal:b12`';
-            case 'star':
-                return 'You can use `star` as an action to make yourself invincible for the remainder of the week\'s turn. '
-                    + 'While invincible, walking into other players will knock them out (you won\'t bump into them). '
-                    + 'Also, you cannot be punched and you cannot fall into traps.';
-            case 'key':
-                return 'You can use `key` as an action to unlock all doorways in the 4 squares adjacent to you (at no cost), or optionally one specific location e.g. `key:b12`. '
-                    + 'If you use the key but no doorways are opened (e.g. door was already opened by someone else), then it will not be consumed. '
-                    + 'Any doorway you unlock using the key will thereafter be halved in cost, as with the standard `unlock` move.';
-            default:
-                return 'Not sure what this item is, I don\'t recognize it. Please reach out to the admin!';
-        }
+        const itemInstructions: Record<DungeonItemName, string> = {
+            trap: 'You can place a `trap` at a particular location as an action e.g. `trap:b12`. '
+                + 'If a player ends their turn on a trap, they will be sent back to where they started that week\'s turn. '
+                + 'Traps are invisible until triggered. You will be given **1** point each time this trap is triggered.',
+            boulder: 'You can place a `boulder` at a particular location as an action e.g. `boulder:b12`. '
+                + 'The boulder will act as a immovable barrier that cannot be destroyed, unless it causes players to become permanently trapped.',
+            seal: 'You can use `seal` as an action to permanently seal any locked/unlocked doorway in the 4 squares adjacent to you. '
+                + 'Once a doorway is sealed, it is effectively a wall and cannot be unlocked. Optionally, seal one specific location e.g. `seal:b12`',
+            star: 'You can use `star` as an action to make yourself invincible for the remainder of the week\'s turn. '
+                + 'While invincible, walking into other players will knock them out (you won\'t bump into them). '
+                + 'Also, you cannot be punched and you cannot fall into traps.',
+            key: 'You can use `key` as an action to unlock all doorways in the 4 squares adjacent to you (at no cost), or optionally one specific location e.g. `key:b12`. '
+                + 'If you use the key but no doorways are opened (e.g. door was already opened by someone else), then it will not be consumed. '
+                + 'Any doorway you unlock using the key will thereafter be halved in cost, as with the standard `unlock` move.',
+            charge: 'You can use `charge` to charge as far as you want in a particular direction in one single move '
+                + '(e.g. `charge:b12` to charge to location `b:12`). Any players standing in the way will be knocked out and you will not bump into them. '
+                + 'There must be a path to the target location and it must be directly up, down, left, or right from you.'
+        };
+        return itemInstructions[item] ?? 'Not sure what this item is, I don\'t recognize it. Please reach out to the admin!';
     }
 
     private static getLocationString(r: number, c: number): string {
@@ -905,6 +904,13 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             return this.state.players[userId].displayName;
         }
         return userId || 'Unknown Player';
+    }
+
+    getJoinedNames(userIds: Snowflake[], options?: { conjunction?: string, bold?: boolean }): string {
+        if (options?.bold) {
+            return naturalJoin(userIds.map(userId => `**${this.getDisplayName(userId)}**`), options?.conjunction ?? 'and');
+        }
+        return naturalJoin(userIds.map(userId => this.getDisplayName(userId)), options?.conjunction ?? 'and');
     }
 
     private addPlayerPreviousLocation(userId: Snowflake, location: DungeonLocation): void {
@@ -1429,6 +1435,21 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         }
     }
 
+    /**
+     * @returns all unfinished players at the given location
+     */
+    private getPlayersAtLocation(location: DungeonLocation): Snowflake[] {
+        const result = [];
+        // Exclude players who've already finished (since they effectively don't have a location)
+        for (const userId of this.getUnfinishedPlayers()) {
+            const player = this.state.players[userId];
+            if (player.r === location.r && player.c === location.c) {
+                result.push(userId);
+            }
+        }
+        return result;
+    }
+
     private isPlayerAtLocation(location: DungeonLocation): boolean {
         return this.getPlayerAtLocation(location.r, location.c) !== undefined;
     }
@@ -1548,9 +1569,6 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 case 'right':
                     validateMovementAction(c);
                     break;
-                case 'pause':
-                    // TODO: Do validation?
-                    break;
                 case 'unlock':
                 case 'key':
                     validateDoorwayAction(argLocation, c);
@@ -1573,16 +1591,14 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         }
                     }
                     break;
-                case 'punch':
-                    // TODO: Do validation?
-                    break;
-                case 'warp':
-                    // TODO: Do validation?
-                    break;
                 case 'trap':
                 case 'boulder':
                     if (!argLocation) {
-                        throw new Error(`**${arg}** is not a valid location on the map!`);
+                        if (arg) {
+                            throw new Error(`**${arg}** is not a valid location on the map!`);
+                        } else {
+                            throw new Error(`You must specify a location at which to place a ${c}! (e.g. \`${c}:b12\`)`);
+                        }
                     }
                     if (this.isGoal(argLocation.r, argLocation.c)) {
                         throw new Error(`You can\'t place a ${c} on the goal!`);
@@ -1593,7 +1609,34 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         throw new Error(`Can't place a ${c} at **${arg}**, try a different spot.`);
                     }
                     break;
+                case 'charge':
+                    if (!argLocation) {
+                        if (arg) {
+                            throw new Error(`**${arg}** is not a valid location on the map!`);
+                        } else {
+                            throw new Error('You must specify a location to charge to! (e.g. `charge:b12`)');
+                        }
+                    }
+                    // Validate that the location isn't the current location
+                    if (argLocation.r === newLocation.r && argLocation.c === newLocation.c) {
+                        throw new Error('You can\'t charge at yourself, you silly goose!');
+                    }
+                    // Validate that the location is in the same row or column
+                    if (argLocation.r !== newLocation.r && argLocation.c !== newLocation.c) {
+                        throw new Error('You must charge to a location in the same row or column at which you would use the charge!');
+                    }
+                    // Validate that it's a clear shot to this location
+                    const intermediateLocations = this.getLocationsBetween(newLocation, argLocation);
+                    for (const intermediateLocation of intermediateLocations) {
+                        if (!this.isWalkable(intermediateLocation.r, intermediateLocation.c)) {
+                            throw new Error(`You can't charge to **${arg}**, as obstacle at **${DungeonCrawler.getLocationString(intermediateLocation.r, intermediateLocation.c)}** is in the way!`);
+                        }
+                    }
+                    break;
+                case 'punch':
+                case 'warp':
                 case 'star':
+                case 'pause':
                     // TODO: Do validation?
                     break;
                 default:
@@ -1790,26 +1833,26 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     return numDoorwaysUnlocked;
                 };
                 const commandActions: Record<ActionName, (arg: string) => boolean> = {
-                    'up': () => {
+                    up: () => {
                         return processStep(-1, 0);
                     },
-                    'down': () => {
+                    down: () => {
                         return processStep(1, 0);
                     },
-                    'left': () => {
+                    left: () => {
                         return processStep(0, -1);
                     },
-                    'right': () => {
+                    right: () => {
                         return processStep(0, 1);
                     },
-                    'pause': () => {
+                    pause: () => {
                         return true;
                     },
-                    'unlock': (arg) => {
+                    unlock: (arg) => {
                         doUnlock(arg);
                         return true;
                     },
-                    'lock': (arg) => {
+                    lock: (arg) => {
                         const argLocation: DungeonLocation = DungeonCrawler.parseLocationString(arg);
                         let numDoorwaysLocked = 0;
                         for (const { r, c } of this.getAdjacentLocationsOrOverride({ r: player.r, c: player.c }, argLocation)) {
@@ -1825,7 +1868,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         }
                         return true;
                     },
-                    'punch': () => {
+                    punch: () => {
                         let nearPlayer = false;
                         for (const { r, c } of this.getAdjacentLocations({ r: player.r, c: player.c })) {
                             const otherPlayerId = this.getPlayerAtLocation(r, c);
@@ -1847,7 +1890,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         }
                         return true;
                     },
-                    'warp': () => {
+                    warp: () => {
                         const { r: newR, c: newC, userId: nearUserId } = this.getSpawnableLocationAroundPlayers(this.getOtherPlayers(userId));
                         const isFirstWarp: boolean = !player.warped;
                         const isCloser: boolean = this.approximateCostToGoal(newR, newC) < this.approximateCostToGoal(player.r, player.c);
@@ -1863,14 +1906,14 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         }
                         return true;
                     },
-                    'trap': (arg) => {
+                    trap: (arg) => {
                         const { r, c } = DungeonCrawler.parseLocationString(arg);
                         this.state.map[r][c] = TileType.HIDDEN_TRAP;
                         this.state.trapOwners[arg.toUpperCase()] = userId;
                         this.consumePlayerItem(userId, 'trap');
                         return true;
                     },
-                    'boulder': (arg) => {
+                    boulder: (arg) => {
                         const { r, c } = DungeonCrawler.parseLocationString(arg);
                         // If doing this will softlock the game, knock out the player
                         if (!this.canAllPlayersReachGoal([{ r, c }])) {
@@ -1885,7 +1928,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         pushNonCollapsableStatement(`**${player.displayName}** placed a boulder at **${DungeonCrawler.getLocationString(r, c)}**`);
                         return true;
                     },
-                    'seal': (arg) => {
+                    seal: (arg) => {
                         const argLocation: DungeonLocation = DungeonCrawler.parseLocationString(arg);
                         const sealableLocations = this.getAdjacentLocationsOrOverride({ r: player.r, c: player.c }, argLocation).filter(l => this.isSealable(l.r, l.c));
                         // If doing this will softlock the game, knock out the player
@@ -1909,7 +1952,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         this.consumePlayerItem(userId, 'seal');
                         return true;
                     },
-                    'key': (arg) => {
+                    key: (arg) => {
                         const numDoorwaysUnlocked: number = doUnlock(arg);
                         // Only consume the key if any doorways were unlocked
                         if (numDoorwaysUnlocked > 0) {
@@ -1917,10 +1960,47 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         }
                         return true;
                     },
-                    'star': () => {
+                    star: () => {
                         player.invincible = true;
                         this.consumePlayerItem(userId, 'star');
                         pushNonCollapsableStatement(`**${player.displayName}** used a star to become invincible`);
+                        return true;
+                    },
+                    charge: (arg) => {
+                        const argLocation: DungeonLocation = DungeonCrawler.parseLocationString(arg);
+                        const direction = DungeonCrawler.getDirectionTo({ r: player.r, c: player.c }, argLocation);
+                        const intermediateLocations = this.getLocationsBetween({ r: player.r, c: player.c }, argLocation);
+                        this.consumePlayerItem(userId, 'charge');
+                        this.addPlayerPreviousLocation(userId, { r: player.r, c: player.c });
+                        const trampledPlayers = [];
+                        const getChargeText = (slammedIntoWall: boolean): string => {
+                            let text = `**${player.displayName}** charged like a ${slammedIntoWall ? 'dumbass' : 'madman'} **${intermediateLocations.length - 1}** spaces to the ${direction}`;
+                            if (slammedIntoWall) {
+                                text += ' (slamming into a wall and knocking himself out)';
+                            }
+                            if (trampledPlayers.length > 0) {
+                                text += `, trampling ${this.getJoinedNames(trampledPlayers, { bold: true })}`;
+                            }
+                            return text;
+                        };
+                        for (const intermediateLocation of intermediateLocations) {
+                            // If this location isn't walkable, end the charge
+                            if (!this.isWalkable(intermediateLocation.r, intermediateLocation.c)) {
+                                pushNonCollapsableStatement(getChargeText(true));
+                                return true;
+                            }
+                            // Trample all players in this location
+                            const playersAtLocation = this.getPlayersAtLocation({ r: player.r, c: player.c });
+                            for (const otherPlayerId of playersAtLocation) {
+                                const otherPlayer = this.state.players[otherPlayerId];
+                                otherPlayer.knockedOut = true;
+                                trampledPlayers.push(otherPlayerId);
+                            }
+                            // Move to the new location
+                            player.r = intermediateLocation.r;
+                            player.c = intermediateLocation.c;
+                        }
+                        pushNonCollapsableStatement(getChargeText(false));
                         return true;
                     }
                 };
@@ -2161,6 +2241,75 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
 
     private static getCardinalOffsets(n: number = 1): [[number, number], [number, number], [number, number], [number, number]] {
         return [[-n, 0], [n, 0], [0, -n], [0, n]];
+    }
+
+    private static getNormalizedOffsetTo(from: DungeonLocation, to: DungeonLocation): [number, number] {
+        if (from.r === to.r && from.c !== to.c) {
+            if (from.r < to.r) {
+                return [1, 0];
+            } else {
+                return [-1, 0];
+            }
+        } else if (from.r !== to.r && from.c === to.c) {
+            if (from.c < to.c) {
+                return [0, 1];
+            } else {
+                return [0, -1];
+            }
+        }
+        // TODO: What about same row and column?
+        throw new Error(`Cannot compute normalized offset from ${from} to ${to}, as they're not in the same row or column`);
+    }
+
+    private static getDirectionByOffset(offset: [number, number]): Direction {
+        for (const [direction, otherOffset] of Object.entries(OFFSETS_BY_DIRECTION)) {
+            if (offset[0] === otherOffset[0] && offset[1] === otherOffset[1]) {
+                return direction as Direction;
+            }
+        }
+        throw new Error(`Offset ${offset} cannot be mapped to a cardinal direction!`);
+    }
+
+    private static getDirectionTo(from: DungeonLocation, to: DungeonLocation): Direction {
+        if (from.r > to.r) {
+            return 'up';
+        } else if (from.r < to.r) {
+            return 'down';
+        } else if (from.c < to.c) {
+            return 'right';
+        } else if (from.c > to.c) {
+            return 'left';
+        }
+        throw new Error(`Cannot get cardinal direction from ${from} to ${to}`);
+    }
+
+    private static locationEquals(a: DungeonLocation, b: DungeonLocation): boolean {
+        return a.r === b.r && a.c === b.c;
+    }
+
+    private getLocationsBetween(from: DungeonLocation, to: DungeonLocation): DungeonLocation[] {
+        if (from.r !== to.r && from.c !== to.c) {
+            throw new Error(`Cannot compute locations between ${from} and ${to}, as they're not in the same row or column`);
+        }
+        if (!this.isInBounds(from.r, from.c)) {
+            throw new Error(`Cannot compute locations between ${from} and ${to}, as ${from} is out of bound`);
+        }
+        if (!this.isInBounds(to.r, to.c)) {
+            throw new Error(`Cannot compute locations between ${from} and ${to}, as ${to} is out of bound`);
+        }
+        let row = from.r;
+        let col = from.c;
+        const result = [{ r: row, c: col }];
+        const offset = DungeonCrawler.getNormalizedOffsetTo(from, to);
+        while (this.isInBounds(row, col)) {
+            row += offset[0];
+            col += offset[1];
+            result.push({ r: row, c: col });
+            if (row === to.r && col === to.c) {
+                return result;
+            }
+        }
+        throw new Error(`Cannot compute locations between ${from} and ${to}, as the computation somehow went out of bounds`);
     }
 
     /**
