@@ -74,6 +74,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     private static readonly STYLE_LIGHT_SKY: string = 'hsl(217, 85%, 75%)';
     private static readonly STYLE_CLOUD: string = 'rgba(222, 222, 222, 1)';
     private static readonly STYLE_WARP_PATH: string = 'rgba(98, 11, 212, 0.5)';
+    private static readonly STYLE_HEAVY_PATH: string = 'rgba(255, 0, 0, 0.75)';
 
     constructor(state: DungeonGameState) {
         super(state);
@@ -397,7 +398,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             // Render dashed warp line if showing heavy movement line
             if (player.previousLocations && player.showHeavyMovementLine) {
                 context.lineWidth = 4;
-                context.strokeStyle = DungeonCrawler.STYLE_WARP_PATH;
+                context.strokeStyle = player.warped ? DungeonCrawler.STYLE_WARP_PATH : DungeonCrawler.STYLE_HEAVY_PATH;
                 context.setLineDash([Math.floor(DungeonCrawler.TILE_SIZE / 4), Math.floor(DungeonCrawler.TILE_SIZE / 4)]);
                 // TODO: Can this "draw path" logic be refactored?
                 context.beginPath();
