@@ -218,6 +218,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         const HEIGHT: number = this.state.rows * DungeonCrawler.TILE_SIZE;
         const c = canvas.createCanvas(WIDTH, HEIGHT);
         const context = c.getContext('2d');
+        const coinImage = await this.loadImage('assets/coin.png');
 
         // Fill the blue sky background
         context.fillStyle = DungeonCrawler.STYLE_SKY;
@@ -253,14 +254,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     context.setLineDash([]);
                     this.drawRandomPolygonOnTile(context, r, c);
                 } else if (this.isTileType(r, c, TileType.COIN)) {
-                    context.fillStyle = 'yellow';
-                    context.strokeStyle = 'yellow';
-                    context.lineWidth = 2;
-                    context.setLineDash([]);
-                    this.drawRandomPolygonOnTile(context, r, c, { numVertices: 5, minRadius: 0.5, maxRadius: 0.6 });
-                    context.fillStyle = 'black';
-                    context.font = `${DungeonCrawler.TILE_SIZE * .8}px sans-serif`;
-                    this.fillTextOnTile(context, '$', r, c);
+                    context.drawImage(coinImage, c * DungeonCrawler.TILE_SIZE, r * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE);
                 } else if (this.isCloudy(r, c)) {
                     context.fillStyle = DungeonCrawler.STYLE_CLOUD;
                     context.beginPath();
