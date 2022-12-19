@@ -264,18 +264,6 @@ const chooseEvent = (date: Date): DailyEvent | undefined => {
             type: DailyEventType.GameUpdate
         };
     }
-    // Saturday: Game Decision
-    if (date.getDay() === 6) {
-        return {
-            type: DailyEventType.GameDecision
-        };
-    }
-    // Friday: Monkey Friday
-    if (date.getDay() === 5) {
-        return {
-            type: DailyEventType.MonkeyFriday
-        };
-    }
     // Tuesday: Anonymous Submissions
     if (date.getDay() === 2) {
         return {
@@ -290,10 +278,29 @@ const chooseEvent = (date: Date): DailyEvent | undefined => {
             submissions: {}
         };
     }
-    // If this date has a calendar date message override, then just do a standard GM (don't do any of the nonstandard ones below)
+    // Friday: Monkey Friday
+    if (date.getDay() === 5) {
+        return {
+            type: DailyEventType.MonkeyFriday
+        };
+    }
+    // Saturday: Game Decision
+    if (date.getDay() === 6) {
+        return {
+            type: DailyEventType.GameDecision
+        };
+    }
+    // If this date has a calendar date message override, then just do a standard GM (this means date overrides will take precedent over the below events)
     const calendarDate: CalendarDate = toCalendarDate(date); // e.g. "12/25" for xmas
     if (calendarDate in config.goodMorningMessageOverrides) {
         return undefined;
+    }
+    // Wednesday: Wishful Wednesday (sometimes!)
+    if (date.getDay() === 3 && chance(0.5)) {
+        return {
+            type: DailyEventType.WishfulWednesday,
+            wishesReceived: {}
+        };
     }
     // Begin home stretch if we're far enough along and not currently in the home stretch (this will be delayed if an above event needs to happen instead e.g. MF)
     // TODO (2.0): Re-enable this?
@@ -303,9 +310,8 @@ const chooseEvent = (date: Date): DailyEvent | undefined => {
     //         homeStretchSurprises: [HomeStretchSurprise.Multipliers, HomeStretchSurprise.LongestComboBonus, HomeStretchSurprise.ComboBreakerBonus]
     //     };
     // }
-    // High chance of a random event 2/3 days, low chance 1/3 days
-    const eventChance: number = (date.getDate() % 3 === 0) ? 0.3 : 0.9;
-    if (chance(eventChance)) {
+    // High chance of a random event every day
+    if (chance(0.9)) {
         // Compile a list of potential events (include default events)
         const potentialEvents: DailyEvent[] = [
             // TODO (2.0): Should I re-enable these?
@@ -421,6 +427,9 @@ const sendGoodMorningMessage = async (): Promise<void> => {
                 content: languageGenerator.generate(overriddenMessage ?? '{weeklyUpdate}', { season: state.getSeasonNumber().toString(), top: `<@${top}>`, second: `<@${second}>` }),
                 files: [] // TODO (2.0): Should we just delete this?
             });
+            break;
+        case DailyEventType.WishfulWednesday:
+            await messenger.send(goodMorningChannel, languageGenerator.generate(overriddenMessage ?? '{wishfulWednesday}'));
             break;
         case DailyEventType.MonkeyFriday:
             await messenger.send(goodMorningChannel, languageGenerator.generate(overriddenMessage ?? '{happyFriday}'));
@@ -1039,6 +1048,27 @@ const TIMEOUT_CALLBACKS = {
                 await sleep(10000);
             } else {
                 await logger.log('Aborting pre-noon submission finalizing, as the votes have already been wiped.');
+            }
+        }
+
+        // Award prizes to the players with the most wishes
+        if (state.getEventType() === DailyEventType.WishfulWednesday) {
+            // TODO: Remove this try-catch once we're sure this works
+            try {
+                const wishesReceived = state.getEvent().wishesReceived;
+                if (wishesReceived) {
+                    const winners = Object.keys(wishesReceived).sort((x, y) => (wishesReceived[y] ?? 0) - (wishesReceived[x] ?? 0));
+                    await logger.log('Wishful wednesday results:\n' + winners.map(u => `**${state.getPlayerDisplayName(u)}:** ${wishesReceived[u]}`));
+                    // Award points based on number of wishes received
+                    for (let i = 0; i < winners.length; i++) {
+                        const userId: Snowflake = winners[i];
+                        const wishRank: number = i + 1;
+                        state.awardPoints(userId, config.mediumAwardsByRank[wishRank]);
+                    }
+                    // TODO: If one player received the most, tag them?
+                }
+            } catch (err) {
+                await logger.log(`Wishful Wednesday wrapup logic failed: \`${err}\``);
             }
         }
 
@@ -2317,6 +2347,40 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     state.awardPoints(userId, config.bonusAward);
                     await messenger.dm(msg.member, `You said _"${state.getMagicWord()}"_, the magic word of the day! Nice 😉`);
                     logStory += `said the magic word "${state.getMagicWord()}", `;
+                }
+
+                // If today is wishful wednesday, cut the generic logic off here
+                if (state.getEventType() === DailyEventType.WishfulWednesday) {
+                    // TODO: Remove this try-catch once we're sure this works
+                    try {
+                        const wishesReceived = state.getEvent().wishesReceived;
+                        // The wish recipient is the first mention in the message (if any)
+                        const wishRecipient: Snowflake | undefined = msg.mentions.users.toJSON().map(u => u.id)[0];
+                        if (wishRecipient) {
+                            // Increment the wish count of the recipient
+                            const newWishCount = (wishesReceived[wishRecipient] ?? 0) + 1;
+                            wishesReceived[wishRecipient] = newWishCount;
+                            // Award the user with a default award
+                            state.awardPoints(userId, config.defaultAward);
+                            await reactToMessage(msg, state.getGoodMorningEmoji());
+                            // If this recipient has the most wishes, reply at certain thresholds
+                            const maxWishes = Math.max(0, ...Object.values(wishesReceived));
+                            if (newWishCount === maxWishes) {
+                                if (newWishCount === 3) {
+                                    await messenger.send(goodMorningChannel, `Count your blessings <@${wishRecipient}>, for you have many loving friends!`);
+                                } else if (newWishCount === 5) {
+                                    await messenger.send(goodMorningChannel, `Wow, <@${wishRecipient}> is shining bright with the love of his fellow dogs!`);
+                                }
+                            }
+                        } else {
+                            // Don't award the player if they didn't send any wishes!
+                            await reactToMessage(msg, '🌚');
+                        }
+                    } catch (err) {
+                        await logger.log(`Wishful Wednesday logic failed for user **${state.getPlayerDisplayName(userId)}**: \`${err}\``);
+                    }
+                    await dumpState();
+                    return;
                 }
 
                 // Compute beckoning bonus and reset the state beckoning property if needed

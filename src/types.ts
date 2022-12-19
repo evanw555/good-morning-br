@@ -1,6 +1,6 @@
 import { Snowflake } from "discord.js"
 
-export enum TimeoutType{
+export enum TimeoutType {
     NextGoodMorning = 'NEXT_GOOD_MORNING',
     NextPreNoon = 'NEXT_PRE_NOON',
     BaitingStart = 'BAITING_START',
@@ -76,6 +76,7 @@ export interface PlayerState {
 
 export enum DailyEventType {
     RecapSunday = 'RECAP_SUNDAY',
+    WishfulWednesday = 'WISHFUL_WEDNESDAY',
     MonkeyFriday = 'MONKEY_FRIDAY',
     BeginHomeStretch = 'BEGIN_HOME_STRETCH',
     Beckoning = 'BECKONING',
@@ -123,7 +124,9 @@ export interface DailyEvent {
     // Used specifically for the "begin home stretch" event
     homeStretchSurprises?: HomeStretchSurprise[],
     // Used specifically for the "early end" event
-    minutesEarly?: number
+    minutesEarly?: number,
+    // Used specifically for the "wishful wednesday" event
+    wishesReceived?: Record<Snowflake, number>
 }
 
 export interface DungeonLocation {
