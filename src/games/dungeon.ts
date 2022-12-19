@@ -674,7 +674,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             const topPlayerId = this.getTopUnfinishedPlayer();
             if (topPlayerId) {
                 // Get some random vacant locations behind the top player (scale with season completion)
-                const numCoins = Math.floor(this.getSeasonCompletion() * randInt(10, 30));
+                const numCoins = Math.floor(this.getSeasonCompletion() * randInt(15, 35));
                 const coinLocations = this.getRandomVacantLocationsBehindPlayer(topPlayerId, numCoins);
                 // Add coins to all these locations
                 for (const coinLocation of coinLocations) {
@@ -2062,9 +2062,9 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         // Set the tile back to empty
                         this.state.map[player.r][player.c] = TileType.EMPTY;
                         // Award the user and notify
-                        const coinValue = randChoice(1, 2, 3);
+                        const coinValue = randChoice(1, 2, 2, 3, 3, 4);
                         this.addPoints(userId, coinValue);
-                        pushNonCollapsableStatement(`**${this.getDisplayName(userId)}** collected a gold nugget worth **$${coinValue}**`);
+                        pushNonCollapsableStatement(`**${this.getDisplayName(userId)}** collected a gold coin worth **$${coinValue}**`);
                     }
 
                     // Check if the player is at the goal
@@ -2466,17 +2466,22 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         // Shuffle all the vacant locations
         shuffle(vacantLocations);
 
-        // Determine the cost-to-goal of the player (inflated by 10% to provide padding)
-        const costThreshold = Math.floor(this.approximateCostToGoalForPlayer(userId) * 1.1);
+        // Deterine the total spawn-to-goal cost
+        // TODO: Use an actual spawn location, not a hardcoded one
+        const totalCost = this.approximateCostToGoal(0, 0);
+
+        // Determine the cost-from-spawn of the player
+        const playerCostFromSpawn = totalCost - this.approximateCostToGoalForPlayer(userId);
+        const costThreshold = Math.floor(playerCostFromSpawn * 0.75);
 
         const results = [];
         while (vacantLocations.length > 0 && results.length < n) {
             // Get the next vacant location and compute its cost-to-goal
             const nextLocation = vacantLocations.pop();
-            const locationCostToGoal = this.approximateCostToGoal(nextLocation.r, nextLocation.c);
+            const locationCostFromSpawn = totalCost - this.approximateCostToGoal(nextLocation.r, nextLocation.c);
 
-            // If this location is more costly (i.e. behind the player), then add it to the results
-            if (locationCostToGoal > costThreshold) {
+            // If this location is less than 75% of the way to the player's location, use it
+            if (locationCostFromSpawn < costThreshold) {
                 results.push(nextLocation);
             }
         }
