@@ -1561,6 +1561,12 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         for (const command of commands) {
             const [c, arg] = command.split(':') as [ActionName, string];
             const argLocation: DungeonLocation = DungeonCrawler.parseLocationString(arg);
+            if (argLocation) {
+                // If a location was specified, validate that it's not out of bounds
+                if (!this.isInBounds(argLocation.r, argLocation.c)) {
+                    throw new Error(`Location **${arg}** is out-of-bounds!`);
+                }
+            }
             cost += this.getActionCost(c, newLocation, arg);
             switch (c) {
                 case 'up':
@@ -2244,13 +2250,13 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     }
 
     private static getNormalizedOffsetTo(from: DungeonLocation, to: DungeonLocation): [number, number] {
-        if (from.r === to.r && from.c !== to.c) {
+        if (from.r !== to.r && from.c === to.c) {
             if (from.r < to.r) {
                 return [1, 0];
             } else {
                 return [-1, 0];
             }
-        } else if (from.r !== to.r && from.c === to.c) {
+        } else if (from.r === to.r && from.c !== to.c) {
             if (from.c < to.c) {
                 return [0, 1];
             } else {
