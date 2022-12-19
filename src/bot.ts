@@ -429,7 +429,12 @@ const sendGoodMorningMessage = async (): Promise<void> => {
             });
             break;
         case DailyEventType.WishfulWednesday:
-            await messenger.send(goodMorningChannel, languageGenerator.generate(overriddenMessage ?? '{wishfulWednesday}'));
+            // If there's an overridden message, just send it naively upfront
+            if (overriddenMessage) {
+                await messenger.send(goodMorningChannel, languageGenerator.generate(overriddenMessage));
+            }
+            // Send the standard WW message (immediately if we just sent an overridden message)
+            await messenger.send(goodMorningChannel, languageGenerator.generate('{wishfulWednesday}'), { immediate: overriddenMessage !== undefined });
             break;
         case DailyEventType.MonkeyFriday:
             await messenger.send(goodMorningChannel, languageGenerator.generate(overriddenMessage ?? '{happyFriday}'));
@@ -502,6 +507,7 @@ const sendGoodMorningMessage = async (): Promise<void> => {
                 content: decisionHeader,
                 files: [new MessageAttachment(await state.getGame().renderState({ season: state.getSeasonNumber() }), `game-turn${state.getGame().getTurn()}-decision.png`)]
             });
+            // Send this immediately because it's technically not morning yet and a message has already been sent
             await messenger.send(goodMorningChannel, state.getGame().getInstructionsText(), { immediate: true });
             break;
         case DailyEventType.GameUpdate:
