@@ -706,7 +706,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         if (!this.hasPlayer(userId)) {
             return [];
         }
-        const goodItems: DungeonItemName[] = ['boulder', 'key', 'star', 'seal'];
+        // "Good" items are just any item that's not a trap
+        const goodItems: DungeonItemName[] = ITEM_NAMES.filter(item => item !== 'trap');
         switch (type) {
             case 'submissions1':
                 // For first place, let the user pick between two random "good" items
