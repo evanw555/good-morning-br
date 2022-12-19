@@ -312,8 +312,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         // Render all player "previous locations" before rendering the players themselves
         for (const userId of this.getUnfinishedPlayers()) {
             const player = this.state.players[userId];
-            // Render movement line if not warped
-            if (player.previousLocations && !player.warped) {
+            // Render movement line if not showing heavy line
+            if (player.previousLocations && !player.showHeavyMovementLine) {
                 context.lineWidth = 2;
                 context.strokeStyle = DungeonCrawler.STYLE_LIGHT_SKY;
                 context.setLineDash([Math.floor(DungeonCrawler.TILE_SIZE / 12), Math.floor(DungeonCrawler.TILE_SIZE / 12)]);
@@ -400,8 +400,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         // Render all player warp lines after rendering the players themselves
         for (const userId of this.getUnfinishedPlayers()) {
             const player = this.state.players[userId];
-            // Render dashed warp line if warped
-            if (player.previousLocations && player.warped) {
+            // Render dashed warp line if showing heavy movement line
+            if (player.previousLocations && player.showHeavyMovementLine) {
                 context.lineWidth = 4;
                 context.strokeStyle = DungeonCrawler.STYLE_WARP_PATH;
                 context.setLineDash([Math.floor(DungeonCrawler.TILE_SIZE / 4), Math.floor(DungeonCrawler.TILE_SIZE / 4)]);
@@ -657,6 +657,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             delete player.knockedOut;
             delete player.invincible;
             delete player.warped;
+            delete player.showHeavyMovementLine;
             // If the user already finished, do nothing
             if (player.finished) {
                 continue;
@@ -1711,9 +1712,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     }
 
     processPlayerDecisions(): DecisionProcessingResult {
-        // Delete all previous locations (this is not done in the inner method since we want to show long paths for multiple consecutive actions)
+        // Delete all previous locations for all players (this is not done in the inner method since we want to show long paths for multiple consecutive actions)
         for (const userId of this.getPlayers()) {
             delete this.state.players[userId].previousLocations;
+            delete this.state.players[userId].showHeavyMovementLine;
         }
 
         // Process one action for each player, and repeat so long as the inner method says it's ok
@@ -1906,6 +1908,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                             player.r = newR;
                             player.c = newC;
                             player.warped = true;
+                            player.showHeavyMovementLine = true;
                             pushNonCollapsableStatement(`**${player.displayName}** warped to **${this.getDisplayName(nearUserId)}**`);
                         } else {
                             pushNonCollapsableStatement(`**${player.displayName}** avoided warping to **${this.getDisplayName(nearUserId)}**`);
@@ -1978,6 +1981,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         const intermediateLocations = this.getLocationsBetween({ r: player.r, c: player.c }, argLocation);
                         this.consumePlayerItem(userId, 'charge');
                         this.addPlayerPreviousLocation(userId, { r: player.r, c: player.c });
+                        player.showHeavyMovementLine = true;
                         const trampledPlayers = [];
                         const getChargeText = (slammedIntoWall: boolean): string => {
                             let text = `**${player.displayName}** charged like a ${slammedIntoWall ? 'dumbass' : 'madman'} **${intermediateLocations.length - 1}** spaces to the ${direction}`;
@@ -2095,10 +2099,11 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         }
                         // Handle revealed traps (this will trigger if the above condition is triggered)
                         if (this.getTileAtUser(userId) === TileType.TRAP) {
+                            player.previousLocations = [{ r: player.r, c: player.c }];
+                            player.showHeavyMovementLine = true;
                             player.r = player.originLocation.r;
                             player.c = player.originLocation.c;
                             player.knockedOut = true;
-                            delete player.previousLocations;
                             const trapOwnerId = this.state.trapOwners[locationString];
                             logger.log(`\`${userId}\` triggered trap by \`${trapOwnerId}\` at \`${locationString}\``);
                             if (trapRevealed) {

@@ -151,7 +151,8 @@ export interface DungeonPlayerState {
     invincible?: boolean,
     previousLocations?: DungeonLocation[],
     originLocation?: DungeonLocation,
-    warped?: boolean
+    warped?: boolean,
+    showHeavyMovementLine?: boolean
 }
 
 export interface DecisionProcessingResult {
