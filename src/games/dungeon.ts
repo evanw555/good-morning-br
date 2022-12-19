@@ -73,7 +73,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     private static readonly STYLE_DARK_SKY: string = 'hsl(217, 90%, 64%)';
     private static readonly STYLE_LIGHT_SKY: string = 'hsl(217, 85%, 75%)';
     private static readonly STYLE_CLOUD: string = 'rgba(222, 222, 222, 1)';
-    private static readonly STYLE_WARP_PATH: string = 'rgba(98, 11, 212, 0.35)';
+    private static readonly STYLE_WARP_PATH: string = 'rgba(98, 11, 212, 0.5)';
 
     constructor(state: DungeonGameState) {
         super(state);
@@ -1989,8 +1989,9 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         this.addPlayerPreviousLocation(userId, { r: player.r, c: player.c });
                         player.showHeavyMovementLine = true;
                         const trampledPlayers = [];
+                        let spacesMoved = 0;
                         const getChargeText = (slammedIntoWall: boolean): string => {
-                            let text = `**${player.displayName}** charged like a ${slammedIntoWall ? 'dumbass' : 'madman'} **${intermediateLocations.length - 1}** spaces to the ${direction}`;
+                            let text = `**${player.displayName}** charged like a ${slammedIntoWall ? 'dumbass' : 'madman'} **${spacesMoved}** space${spacesMoved === 1 ? '' : 's'} ${direction}ward`;
                             if (slammedIntoWall) {
                                 text += ' (slamming into a wall and knocking himself out)';
                             }
@@ -2000,9 +2001,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                             return text;
                         };
                         for (const intermediateLocation of intermediateLocations) {
-                            // If this location isn't walkable, end the charge
+                            // If this location isn't walkable, knock the player out and end the charge
                             if (!this.isWalkable(intermediateLocation.r, intermediateLocation.c)) {
                                 pushNonCollapsableStatement(getChargeText(true));
+                                player.knockedOut = true;
                                 return true;
                             }
                             // Trample all other players in this location
@@ -2017,6 +2019,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                             // Move to the new location
                             player.r = intermediateLocation.r;
                             player.c = intermediateLocation.c;
+                            spacesMoved++;
                         }
                         pushNonCollapsableStatement(getChargeText(false));
                         return true;
