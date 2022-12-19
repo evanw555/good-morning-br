@@ -1995,12 +1995,14 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                                 pushNonCollapsableStatement(getChargeText(true));
                                 return true;
                             }
-                            // Trample all players in this location
+                            // Trample all other players in this location
                             const playersAtLocation = this.getPlayersAtLocation({ r: player.r, c: player.c });
                             for (const otherPlayerId of playersAtLocation) {
-                                const otherPlayer = this.state.players[otherPlayerId];
-                                otherPlayer.knockedOut = true;
-                                trampledPlayers.push(otherPlayerId);
+                                if (otherPlayerId !== userId) {
+                                    const otherPlayer = this.state.players[otherPlayerId];
+                                    otherPlayer.knockedOut = true;
+                                    trampledPlayers.push(otherPlayerId);
+                                }
                             }
                             // Move to the new location
                             player.r = intermediateLocation.r;
