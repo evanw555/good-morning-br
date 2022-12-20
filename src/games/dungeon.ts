@@ -61,7 +61,7 @@ const ACTION_SYMBOLS: Record<ActionName, string> = {
 
 interface PathingOptions {
     useDoorways?: boolean,
-    avoidPlayers?: boolean,
+    addedOccupiedTileCost?: number,
     obstacles?: DungeonLocation[]
 }
 
@@ -2200,27 +2200,32 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
 
     /**
      * For a given player, returns a set of actions limited by what they can afford.
-     * The actions are determined using a naive search (ignore keyholes and other players).
+     * The actions are determined using a naive search (ignore keyholes).
      */
     getNextActionsTowardGoal(userId: Snowflake, n: number = 1): string[] {
-        return this.searchToGoalFromPlayer(userId, { avoidPlayers: true }).semanticSteps.slice(0, n);
+        if (!this.hasPlayer(userId)) {
+            throw new Error(`Cannot get next actions toward goal for nonexistent player \`${userId}\``);
+        }
+        const player = this.state.players[userId];
+        // Treat player-occupied tiles as very costly to create more distributed pathing
+        return this.searchToGoal(player.r, player.c, { addedOccupiedTileCost: 4 }).semanticSteps.slice(0, n);
     }
 
     approximateCostToGoal(r: number, c: number): number {
-        return this.searchToGoal(r, c, { useDoorways: true, avoidPlayers: true }).cost;
+        // Don't treat player-occupied tiles as too costly because it'll distort the cost too much
+        return this.searchToGoal(r, c, { useDoorways: true, addedOccupiedTileCost: 1 }).cost;
     }
 
     approximateCostToGoalForPlayer(userId: Snowflake): number {
-        return this.searchToGoalFromPlayer(userId, { useDoorways: true, avoidPlayers: true }).cost;
+        if (!this.hasPlayer(userId)) {
+            throw new Error(`Cannot approximate cost-to-goal for nonexistent player \`${userId}\``);
+        }
+        const player = this.state.players[userId];
+        return this.approximateCostToGoal(player.r, player.c);
     }
 
     searchToGoal(r: number, c: number, options?: PathingOptions) {
         return this.search({ r, c }, { r: this.getGoalRow(), c: this.getGoalColumn() }, options);
-    }
-
-    searchToGoalFromPlayer(userId: Snowflake, options?: PathingOptions) {
-        const player = this.state.players[userId];
-        return this.searchToGoal(player.r, player.c, options);
     }
 
     search(start: DungeonLocation, goal: DungeonLocation, options?: PathingOptions) {
@@ -2247,9 +2252,9 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 return this.state.keyHoleCosts[locationString] * 2;
             }
             if (this.isWalkableTileType(tile)) {
-                if (options?.avoidPlayers && this.isPlayerAtLocation({r, c})) {
-                    // Treat player-occupied tiles as 5-cost because it's risky
-                    return 5;
+                if (options?.addedOccupiedTileCost && this.isPlayerAtLocation({r, c})) {
+                    // Increase cost of player-occupied tiles because it's risky
+                    return 1 + options.addedOccupiedTileCost;
                 }
                 return 1;
             }
