@@ -260,3 +260,7 @@ export function getNormalizedEditDistance(a: string, b: string): number {
     const maxLength = Math.max(a.length, b.length);
     return levenshtein(a, b) / maxLength;
 }
+
+export function getMessageMentions(msg: Message): Snowflake[] {
+    return msg.mentions.users.toJSON().map(u => u.id);
+}

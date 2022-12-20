@@ -1,7 +1,7 @@
 import { Client, DMChannel, Intents, MessageAttachment, MessageEmbedOptions, TextChannel } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'discord.js';
 import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, HomeStretchSurprise, PrizeType, Bait, AnonymousSubmission, GameState } from './types';
-import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission } from './util';
+import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions } from './util';
 import GoodMorningState from './state';
 import logger from './logger';
 
@@ -1986,6 +1986,11 @@ const processCommands = async (msg: Message): Promise<void> => {
     if (hasVideo(msg)) {
         await msg.react('🎥');
     }
+    // Check for mentions
+    const mentions: Snowflake[] = getMessageMentions(msg);
+    if (mentions.length > 0) {
+        await msg.reply('Mentions: ' + getJoinedMentions(mentions));
+    }
     if (sanitizedText.includes('?')) {
         // Test the experimental clusters logic
         if (sanitizedText.includes('clusters')) {
@@ -2361,7 +2366,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     try {
                         const wishesReceived = state.getEvent().wishesReceived;
                         // The wish recipient is the first mention in the message (if any)
-                        const wishRecipient: Snowflake | undefined = msg.mentions.users.toJSON().map(u => u.id)[0];
+                        const wishRecipient: Snowflake | undefined = getMessageMentions(msg)[0];
                         if (wishRecipient) {
                             // Increment the wish count of the recipient
                             const newWishCount = (wishesReceived[wishRecipient] ?? 0) + 1;
