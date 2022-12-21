@@ -105,7 +105,7 @@ const reactToMessageById = async (messageId: Snowflake, emoji: string | string[]
 const logStateBackupFile = async (): Promise<void> => {
     if (guildOwnerDmChannel) {
         try {
-            const dateString = new Date().toDateString().replace(/[\s\/-]/g, '_');
+            const dateString = new Date().toDateString().replace(/[\s\/-]/g, '_').toLowerCase();
             const fileName = `gmbr_state_${dateString}.json`;
             await guildOwnerDmChannel.send({
                 content: `GMBR state backup: \`${fileName}\``,
@@ -113,6 +113,21 @@ const logStateBackupFile = async (): Promise<void> => {
             });
         } catch (err) {
             await logger.log(`Failed to log state backup: \`${err}\``);
+        }
+    }
+};
+
+const logHistoryBackupFile = async (): Promise<void> => {
+    if (guildOwnerDmChannel) {
+        try {
+            const dateString = new Date().toDateString().replace(/[\s\/-]/g, '_').toLowerCase();
+            const fileName = `gmbr_history_${dateString}.json`;
+            await guildOwnerDmChannel.send({
+                content: `GMBR history backup: \`${fileName}\``,
+                files: [new AttachmentBuilder(Buffer.from(JSON.stringify(history))).setName(fileName)]
+            });
+        } catch (err) {
+            await logger.log(`Failed to log history backup: \`${err}\``);
         }
     }
 };
@@ -234,6 +249,12 @@ const updateSungazers = async (winners: { gold?: Snowflake, silver?: Snowflake, 
 }
 
 const advanceSeason = async (): Promise<{ gold?: Snowflake, silver?: Snowflake, bronze?: Snowflake }> => {
+    // Send the final state/history to the guild owner one last time before wiping it
+    if (guildOwnerDmChannel) {
+        await logger.log(`Sending final state of season **${state.getSeasonNumber()}** (and a history backup) before it's wiped...`);
+        await logStateBackupFile();
+        await logHistoryBackupFile();
+    }
     // Add new entry for this season
     const newHistoryEntry: Season = state.toHistorySeasonEntry();
     history.seasons.push(newHistoryEntry);
@@ -258,11 +279,6 @@ const advanceSeason = async (): Promise<{ gold?: Snowflake, silver?: Snowflake, 
             history.medals[userId][medal] = (history.medals[userId][medal] ?? 0) + 1;
         }
     });
-    // Send the final state to the guild owner one last time before wiping it
-    if (guildOwnerDmChannel) {
-        await guildOwnerDmChannel.send(`The final state of season **${state.getSeasonNumber()}** before it's wiped:`);
-        await messenger.sendLargeMonospaced(guildOwnerDmChannel, state.toJson());
-    }
     // Reset the state
     const nextSeason: number = state.getSeasonNumber() + 1;
     state = new GoodMorningState({
