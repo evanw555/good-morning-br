@@ -778,6 +778,10 @@ export default class GoodMorningState {
         return JSON.stringify(this.data, null, 2);
     }
 
+    toCompactJson(): string {
+        return JSON.stringify(this.data);
+    }
+
     toSpecialJson(): string {
         return prettyPrint(this.data, {
             overrides: {

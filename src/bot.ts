@@ -102,6 +102,21 @@ const reactToMessageById = async (messageId: Snowflake, emoji: string | string[]
     }
 }
 
+const logStateBackupFile = async (): Promise<void> => {
+    if (guildOwnerDmChannel) {
+        try {
+            const dateString = new Date().toDateString().replace(/[\s\/-]/g, '_');
+            const fileName = `gmbr_state_${dateString}.json`;
+            await guildOwnerDmChannel.send({
+                content: `GMBR state backup: \`${fileName}\``,
+                files: [new AttachmentBuilder(Buffer.from(state.toCompactJson())).setName(fileName)]
+            });
+        } catch (err) {
+            await logger.log(`Failed to log state backup: \`${err}\``);
+        }
+    }
+};
+
 /**
  * For each player currently in the state, fetch their current member info and update it everywhere in the state (e.g. display name, avatar).
  */
@@ -1267,6 +1282,9 @@ const TIMEOUT_CALLBACKS = {
 
         // Update the bot's status
         await setStatus(false);
+
+        // Finally, log the final state for today
+        await logStateBackupFile();
     },
     [TimeoutType.GuestReveilleFallback]: async (): Promise<void> => {
         // Take action if the guest reveiller hasn't said GM
@@ -2093,6 +2111,10 @@ const processCommands = async (msg: Message): Promise<void> => {
         else if (sanitizedText.includes('state')) {
             // Collapse all primitive lists into one line
             await messenger.sendLargeMonospaced(msg.channel, state.toSpecialJson());
+        }
+        // Log the state backup
+        else if (sanitizedText.includes('backup')) {
+            await logStateBackupFile();
         }
         // Return the timeout info
         else if (sanitizedText.includes('timeouts')) {
