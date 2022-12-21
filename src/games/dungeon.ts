@@ -744,7 +744,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         for (const item of items) {
             texts.push(`**${item}:** ${DungeonCrawler.getItemInstructions(item)}`);
         }
-        logger.log(`Offered **${naturalJoin(items)}** to **${this.getDisplayName(userId)}**`);
+        logger.log(`Offered ${naturalJoin(items, { bold: true })} to **${this.getDisplayName(userId)}**`);
         return texts;
     }
 
