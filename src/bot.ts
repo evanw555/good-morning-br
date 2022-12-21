@@ -2208,7 +2208,6 @@ const saidMagicWord = (message: Message): boolean => {
 client.on('messageCreate', async (msg: Message): Promise<void> => {
     const userId: Snowflake = msg.author.id;
     if (goodMorningChannel && msg.channel.id === goodMorningChannel.id && !msg.author.bot) {
-        await logger.log(`GM channel message create: **${state.getPlayerDisplayName(userId)}**`);
         const isAm: boolean = new Date().getHours() < 12;
         const isPlayerNew: boolean = !state.hasPlayer(userId);
         const isQuestion: boolean = msg.content && msg.content.trim().endsWith('?');
@@ -2286,11 +2285,9 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 }
                 await dumpState();
             }
-            await logger.log(`GM MORNING channel message create: **${state.getPlayerDisplayName(userId)}** -> trigger=${triggerStandardGM}, hasNoRank=${!state.hasDailyRank(userId)}`);
 
             // Handle standard GM messages if the conditions are met and its the user's first GM of the day
             if (triggerStandardGM && !state.hasDailyRank(userId)) {
-                await logger.log(`Trigger standard GM: **${state.getPlayerDisplayName(userId)}**`);
                 // If it's a "grumpy" morning and no one has said anything yet, punish the player (but don't assign a rank, so player may still say good morning)
                 if (state.getEventType() === DailyEventType.GrumpyMorning && !state.getEvent().disabled) {
                     // Deduct points and update point-related data
