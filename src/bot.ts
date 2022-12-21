@@ -2367,7 +2367,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                         const wishesReceived = state.getEvent().wishesReceived;
                         // The wish recipient is the first mention in the message (if any)
                         const wishRecipient: Snowflake | undefined = getMessageMentions(msg)[0];
-                        if (wishRecipient) {
+                        if (wishRecipient && wishRecipient !== userId) {
                             // Increment the wish count of the recipient
                             const newWishCount = (wishesReceived[wishRecipient] ?? 0) + 1;
                             wishesReceived[wishRecipient] = newWishCount;

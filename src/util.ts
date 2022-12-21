@@ -262,5 +262,6 @@ export function getNormalizedEditDistance(a: string, b: string): number {
 }
 
 export function getMessageMentions(msg: Message): Snowflake[] {
-    return msg.mentions.users.toJSON().map(u => u.id);
+    // Ignore bots
+    return msg.mentions.users.toJSON().filter(u => !u.bot).map(u => u.id);
 }
