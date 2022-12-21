@@ -1072,7 +1072,13 @@ const TIMEOUT_CALLBACKS = {
                         const wishRank: number = i + 1;
                         state.awardPoints(userId, config.mediumAwardsByRank[wishRank]);
                     }
-                    // TODO: If one player received the most, tag them?
+                    // Tag players who received wishes
+                    if (winners.length > 0) {
+                        await messenger.send(goodMorningChannel, `Today's biggest wish receipient was **${state.getPlayerDisplayName(winners[0])}**, how wonderful ${config.defaultGoodMorningEmoji}`);
+                        if (winners.length > 2) {
+                            await messenger.send(goodMorningChannel, `**${state.getPlayerDisplayName(winners[1])}** and **${state.getPlayerDisplayName(winners[2])}** were also blessed!`);
+                        }
+                    }
                 }
             } catch (err) {
                 await logger.log(`Wishful Wednesday wrapup logic failed: \`${err}\``);
@@ -2368,20 +2374,25 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                         const wishesReceived = state.getEvent().wishesReceived;
                         // The wish recipient is the first mention in the message (if any)
                         const wishRecipient: Snowflake | undefined = getMessageMentions(msg)[0];
-                        if (wishRecipient && wishRecipient !== userId) {
-                            // Increment the wish count of the recipient
-                            const newWishCount = (wishesReceived[wishRecipient] ?? 0) + 1;
-                            wishesReceived[wishRecipient] = newWishCount;
-                            // Award the user with a default award
-                            state.awardPoints(userId, config.defaultAward);
-                            await reactToMessage(msg, state.getGoodMorningEmoji());
-                            // If this recipient has the most wishes, reply at certain thresholds
-                            const maxWishes = Math.max(0, ...Object.values(wishesReceived));
-                            if (newWishCount === maxWishes) {
-                                if (newWishCount === 3) {
-                                    await messenger.send(goodMorningChannel, `Count your blessings <@${wishRecipient}>, for you have many loving friends!`);
-                                } else if (newWishCount === 5) {
-                                    await messenger.send(goodMorningChannel, `Wow, <@${wishRecipient}> is shining bright with the love of his fellow dogs!`);
+                        if (wishRecipient) {
+                            if (wishRecipient === userId) {
+                                // Don't award if they tagged themself
+                                await messenger.reply(msg, 'Who do you think you are? 🌚');
+                            } else {
+                                // Increment the wish count of the recipient
+                                const newWishCount = (wishesReceived[wishRecipient] ?? 0) + 1;
+                                wishesReceived[wishRecipient] = newWishCount;
+                                // Award the user with a default award
+                                state.awardPoints(userId, config.defaultAward);
+                                await reactToMessage(msg, state.getGoodMorningEmoji());
+                                // If this recipient has the most wishes, reply at certain thresholds
+                                const maxWishes = Math.max(0, ...Object.values(wishesReceived));
+                                if (newWishCount === maxWishes) {
+                                    if (newWishCount === 3) {
+                                        await messenger.send(goodMorningChannel, `Count your blessings <@${wishRecipient}>, for you have many loving friends!`);
+                                    } else if (newWishCount === 5) {
+                                        await messenger.send(goodMorningChannel, `Wow, <@${wishRecipient}> is shining bright with the love of his fellow dogs!`);
+                                    }
                                 }
                             }
                         } else {
