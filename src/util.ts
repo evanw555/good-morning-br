@@ -1,4 +1,4 @@
-import { Message, MessageEmbedOptions, Snowflake } from "discord.js";
+import { APIEmbed, Message, Snowflake } from "discord.js";
 import { randChoice, randInt } from "evanw555.js";
 import { AnonymousSubmission, GoodMorningConfig } from "./types";
 
@@ -100,8 +100,8 @@ export function revealLettersGeometric(input: string): string {
     return result;
 }
 
-export function toSubmissionEmbed(submission: AnonymousSubmission): MessageEmbedOptions {
-    const embed: MessageEmbedOptions = {};
+export function toSubmissionEmbed(submission: AnonymousSubmission): APIEmbed {
+    const embed: APIEmbed = {};
     if (submission.text) {
         embed.description = submission.text;
     }

@@ -1,12 +1,12 @@
-import { TextBasedChannels } from "discord.js";
+import { TextBasedChannel } from "discord.js";
 
 /**
  * Unified logger for logging both to console and to the designated text channel, if it exists.
  */
 class Logger {
-    private channel?: TextBasedChannels;
+    private channel?: TextBasedChannel;
 
-    setChannel(channel: TextBasedChannels): void {
+    setChannel(channel: TextBasedChannel): void {
         this.channel = channel;
     }
 

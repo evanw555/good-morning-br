@@ -178,7 +178,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             rank: this.getNumPlayers() + 1,
             points: lateStarterPoints,
             displayName: member.displayName,
-            avatarUrl: member.user.displayAvatarURL({ size: 32, format: 'png' })
+            avatarUrl: member.user.displayAvatarURL({ size: 32, extension: 'png' })
         };
         // Refresh all player ranks
         this.refreshPlayerRanks();
@@ -191,7 +191,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         if (this.hasPlayer(member.id)) {
             const player = this.state.players[member.id];
             player.displayName = member.displayName;
-            player.avatarUrl = member.user.displayAvatarURL({ size: 32, format: 'png' });
+            player.avatarUrl = member.user.displayAvatarURL({ size: 32, extension: 'png' });
         }
     }
 
@@ -739,8 +739,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         const player = this.state.players[userId];
         player.itemOffers = items;
         // Return text about this
-        // TODO: Only bold the individual words (after bumping discordjs and evanw555.js)
-        const texts = [`${intro}, as a reward you may pick one of the follwing items: **${naturalJoin(items, 'or')}**. `
+        const texts = [`${intro}, as a reward you may pick one of the follwing items: ${naturalJoin(items, { bold: true, conjunction: 'or' })}. `
             + 'DM me to claim the item of your choice! (e.g. \`claim ITEM\`). This offer is valid until Saturday morning.'];
         for (const item of items) {
             texts.push(`**${item}:** ${DungeonCrawler.getItemInstructions(item)}`);
@@ -903,11 +902,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return userId || 'Unknown Player';
     }
 
-    getJoinedNames(userIds: Snowflake[], options?: { conjunction?: string, bold?: boolean }): string {
-        if (options?.bold) {
-            return naturalJoin(userIds.map(userId => `**${this.getDisplayName(userId)}**`), options?.conjunction ?? 'and');
-        }
-        return naturalJoin(userIds.map(userId => this.getDisplayName(userId)), options?.conjunction ?? 'and');
+    getDisplayNames(userIds: Snowflake[]): string[] {
+        return userIds.map(userId => this.getDisplayName(userId));
     }
 
     private addPlayerPreviousLocation(userId: Snowflake, location: DungeonLocation): void {
@@ -1103,7 +1099,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 r,
                 c,
                 rank: j + 1,
-                avatarUrl: member.user.displayAvatarURL({ size: 32, format: 'png' }),
+                avatarUrl: member.user.displayAvatarURL({ size: 32, extension: 'png' }),
                 displayName: member.displayName,
                 points: DungeonCrawler.STARTER_POINTS
             };
@@ -1306,7 +1302,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 r,
                 c,
                 rank: j + 1,
-                avatarUrl: member.user.displayAvatarURL({ size: 32, format: 'png' }),
+                avatarUrl: member.user.displayAvatarURL({ size: 32, extension: 'png' }),
                 displayName: member.displayName,
                 points: DungeonCrawler.STARTER_POINTS
             };
@@ -1992,7 +1988,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                                 text += ' (slamming into a wall and knocking himself out)';
                             }
                             if (trampledPlayers.length > 0) {
-                                text += `, trampling ${this.getJoinedNames(trampledPlayers, { bold: true })}`;
+                                text += `, trampling ${naturalJoin(this.getDisplayNames(trampledPlayers), { bold: true })}`;
                             }
                             return text;
                         };
@@ -2149,7 +2145,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
 
         // If there are no decisions left, end the turn
         return {
-            summary: naturalJoin(summaryData.statements, 'then') || 'Dogs sat around with their hands in their pockets...',
+            summary: naturalJoin(summaryData.statements, { conjunction: 'then' }) || 'Dogs sat around with their hands in their pockets...',
             continueProcessing,
             continueImmediately
         };
@@ -2190,7 +2186,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     return this.awardItem(userId, claimedItem as DungeonItemName, 'Nice choice');
                 } else {
                     // Invalid item name, so let them know the exact options
-                    return ['Invalid claim attempt bro, please say ' + naturalJoin(player.itemOffers.map(item => `\`claim ${item}\``), 'or')];
+                    return ['Invalid claim attempt bro, please say ' + naturalJoin(player.itemOffers.map(item => `\`claim ${item}\``), { conjunction: 'or' })];
                 }
             }
         }

@@ -1,5 +1,5 @@
-import { Client, DMChannel, Intents, MessageAttachment, MessageEmbedOptions, TextChannel } from 'discord.js';
-import { Guild, GuildMember, Message, Snowflake, TextBasedChannels } from 'discord.js';
+import { ActivityType, ApplicationCommandOptionType, Attachment, AttachmentBuilder, Client, DMChannel, GatewayIntentBits, Partials, TextChannel } from 'discord.js';
+import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discord.js';
 import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, HomeStretchSurprise, PrizeType, Bait, AnonymousSubmission, GameState } from './types';
 import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions } from './util';
 import GoodMorningState from './state';
@@ -33,14 +33,14 @@ messenger.setMemberResolver(async (id) => {
 
 const client = new Client({
     intents: [
-        Intents.FLAGS.GUILDS,
-        Intents.FLAGS.GUILD_MEMBERS,
-        Intents.FLAGS.GUILD_MESSAGES,
-        Intents.FLAGS.GUILD_MESSAGE_REACTIONS,
-        Intents.FLAGS.DIRECT_MESSAGES
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.GuildMessageReactions,
+        GatewayIntentBits.DirectMessages
     ],
     partials: [
-        'CHANNEL' // Required to receive DMs
+        Partials.Channel // Required to receive DMs
     ]
 });
 
@@ -133,7 +133,7 @@ const revokeGMChannelAccess = async (userIds: Snowflake[]): Promise<void> => {
     for (let userId of userIds) {
         try {
             await goodMorningChannel.permissionOverwrites.create(await fetchMember(userId), {
-                'SEND_MESSAGES': false
+                SendMessages: false
             });
         } catch (err) {
             await logger.log(`Unable to revoke GM channel access for user <@${userId}>: \`${err.toString()}\``);
@@ -161,7 +161,7 @@ const updateSungazer = async (userId: Snowflake, terms: number): Promise<void> =
 
 const updateSungazers = async (winners: { gold?: Snowflake, silver?: Snowflake, bronze?: Snowflake }): Promise<void> => {
     // Get the sungazer channel
-    const sungazerChannel: TextBasedChannels = (await guild.channels.fetch(config.sungazers.channel)) as TextBasedChannels;
+    const sungazerChannel: TextBasedChannel = (await guild.channels.fetch(config.sungazers.channel)) as TextBasedChannel;
     const newSungazers: boolean = (winners.gold && history.sungazers[winners.gold] === undefined)
         || (winners.silver && history.sungazers[winners.silver] === undefined)
         || (winners.bronze && history.sungazers[winners.bronze] === undefined);
@@ -505,7 +505,7 @@ const sendGoodMorningMessage = async (): Promise<void> => {
             }
             await goodMorningChannel.send({
                 content: decisionHeader,
-                files: [new MessageAttachment(await state.getGame().renderState({ season: state.getSeasonNumber() }), `game-turn${state.getGame().getTurn()}-decision.png`)]
+                files: [new AttachmentBuilder(await state.getGame().renderState({ season: state.getSeasonNumber() })).setName(`game-turn${state.getGame().getTurn()}-decision.png`)]
             });
             // Send this immediately because it's technically not morning yet and a message has already been sent
             await messenger.send(goodMorningChannel, state.getGame().getInstructionsText(), { immediate: true });
@@ -518,7 +518,7 @@ const sendGoodMorningMessage = async (): Promise<void> => {
             await messenger.send(goodMorningChannel, languageGenerator.generate(overriddenMessage ?? '{goodMorning}'));
             await goodMorningChannel.send({
                 content: 'Here\'s where we\'re all starting from. In just a few minutes, we\'ll be seeing the outcome of this week\'s turn...',
-                files: [new MessageAttachment(await state.getGame().renderState({ season: state.getSeasonNumber() }), `game-turn${state.getGame().getTurn()}-begin.png`)]
+                files: [new AttachmentBuilder(await state.getGame().renderState({ season: state.getSeasonNumber() })).setName(`game-turn${state.getGame().getTurn()}-begin.png`)]
             });
             break;
         default:
@@ -536,7 +536,7 @@ const sendGoodMorningMessage = async (): Promise<void> => {
     }
 };
 
-const sendSeasonEndMessages = async (channel: TextBasedChannels, previousState: GoodMorningState): Promise<void> => {
+const sendSeasonEndMessages = async (channel: TextBasedChannel, previousState: GoodMorningState): Promise<void> => {
     // TODO (2.0): We should do this a little more safely...
     const winner: Snowflake = previousState.getGame().getWinners()[0];
     const newSeason: number = previousState.getSeasonNumber() + 1;
@@ -574,7 +574,7 @@ const setStatus = async (active: boolean): Promise<void> => {
             status: 'online',
             activities: [{
                 name: 'GOOD MORNING! 🌞',
-                type: 'PLAYING'
+                type: ActivityType.Playing
             }]
         });
     } else {
@@ -1294,21 +1294,21 @@ const TIMEOUT_CALLBACKS = {
             description: `Vote for a ${state.getEvent().submissionType}`,
             options: [
                 {
-                    type: 'STRING',
+                    type: ApplicationCommandOptionType.String,
                     name: 'first',
                     description: 'Your favorite submission',
                     required: true,
                     choices
                 },
                 {
-                    type: 'STRING',
+                    type: ApplicationCommandOptionType.String,
                     name: 'second',
                     description: 'Your second favorite submission',
                     required: true,
                     choices
                 },
                 {
-                    type: 'STRING',
+                    type: ApplicationCommandOptionType.String,
                     name: 'third',
                     description: 'Your third favorite submission',
                     required: true,
@@ -1587,7 +1587,7 @@ const TIMEOUT_CALLBACKS = {
         }
 
         // Render the updated state and send it out
-        const attachment = new MessageAttachment(await game.renderState({ season: state.getSeasonNumber() }), `game-week${game.getTurn()}.png`);
+        const attachment = new AttachmentBuilder(await game.renderState({ season: state.getSeasonNumber() })).setName(`game-week${game.getTurn()}.png`);
         await goodMorningChannel.send({ content: processingResult.summary, files: [attachment] });
 
         if (processingResult.continueProcessing) {
@@ -1792,7 +1792,7 @@ client.on('guildMemberRemove', async (member): Promise<void> => {
 });
 
 client.on('interactionCreate', async (interaction): Promise<void> => {
-    if (interaction.isCommand() && interaction.applicationId === client.application.id) {
+    if (interaction.isChatInputCommand() && interaction.applicationId === client.application.id) {
         const userId: Snowflake = interaction.user.id;
         await interaction.deferReply({ ephemeral: true });
         if (interaction.commandName === 'vote') {
@@ -1913,7 +1913,7 @@ const processCommands = async (msg: Message): Promise<void> => {
                     // const randomOrdering: Snowflake[] = tempDungeon.getDecisionShuffledPlayers();
                     await msg.reply({
                         content: response, // + `\nHere's a sample random ordering: ${randomOrdering.map(x => tempDungeon.getDisplayName(x)).join(', ')}`,
-                        files: [new MessageAttachment(await tempDungeon.renderState({ showPlayerDecision: msg.author.id, season: 99 }), 'confirmation.png')]
+                        files: [new AttachmentBuilder(await tempDungeon.renderState({ showPlayerDecision: msg.author.id, season: 99 })).setName('confirmation.png')]
                     });
                     await sleep(5000);
                 } catch (err) {
@@ -1929,7 +1929,7 @@ const processCommands = async (msg: Message): Promise<void> => {
                     try { // TODO: refactor typing event to somewhere else?
                         await msg.channel.sendTyping();
                     } catch (err) {}
-                    const attachment = new MessageAttachment(await tempDungeon.renderState({ season: 99 }), 'dungeon.png');
+                    const attachment = new AttachmentBuilder(await tempDungeon.renderState({ season: 99 })).setName('dungeon.png');
                     await msg.channel.send({ content: processingData.summary.slice(0, 1990), files: [attachment] });
                     await sleep(2500);
                 }
@@ -1957,7 +1957,7 @@ const processCommands = async (msg: Message): Promise<void> => {
             try { // TODO: refactor typing event to somewhere else?
                 await msg.channel.sendTyping();
             } catch (err) {}
-            const attachment = new MessageAttachment(await tempDungeon.renderState({ admin: true, season: 99 }), 'dungeon.png');
+            const attachment = new AttachmentBuilder(await tempDungeon.renderState({ admin: true, season: 99 })).setName('dungeon.png');
             await msg.channel.send({ content: tempDungeon.getInstructionsText(), files: [attachment] });
 
         } else {
@@ -2138,7 +2138,7 @@ const processCommands = async (msg: Message): Promise<void> => {
                     await msg.channel.sendTyping();
                 } catch (err) {}
                 await msg.channel.send({ content: state.getGame().getDebugText() || 'No Debug Text.', files: [
-                    new MessageAttachment(await state.getGame().renderState({ admin: true, season: state.getSeasonNumber() }), 'game-test-admin.png')
+                    new AttachmentBuilder(await state.getGame().renderState({ admin: true, season: state.getSeasonNumber() })).setName('game-test-admin.png')
                 ]});
             } else {
                 await msg.reply('The game hasn\'t been created yet!');
@@ -2169,7 +2169,7 @@ const processCommands = async (msg: Message): Promise<void> => {
             try { // TODO: refactor typing event to somewhere else?
                 await msg.channel.sendTyping();
             } catch (err) {}
-            const attachment = new MessageAttachment(await tempDungeon.renderState({ season: 99 }), 'dungeon.png');
+            const attachment = new AttachmentBuilder(await tempDungeon.renderState({ season: 99 })).setName('dungeon.png');
             await msg.channel.send({ content: 'Here\'s the game', files: [attachment] }); // `Map Fairness: ${tempDungeon.getMapFairness().description}`
         } else if (sanitizedText.includes('submission')) {
             awaitingSubmission = true;
@@ -2581,7 +2581,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     } catch (err) {}
                     await msg.reply({
                         content: response,
-                        files: [new MessageAttachment(await state.getGame().renderState({ showPlayerDecision: userId, season: state.getSeasonNumber() }), `game-turn${state.getGame().getTurn()}-confirmation.png`)]
+                        files: [new AttachmentBuilder(await state.getGame().renderState({ showPlayerDecision: userId, season: state.getSeasonNumber() })).setName(`game-turn${state.getGame().getTurn()}-confirmation.png`)]
                     });
                     await logger.log(`**${state.getPlayerDisplayName(userId)}** made a valid decision!`);
                 } catch (err) {

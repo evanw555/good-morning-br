@@ -211,7 +211,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
                 if (peekers.length === 1) {
                     summary += `**${this.getName(taker)}** tried to steal from GMBR, but was stopped by **${this.getName(peekers[0])}** who looted **${amount}** points from the bastard's pile`;
                 } else {
-                    summary += `**${this.getName(taker)}** tried to steal from GMBR, but was stopped by ${naturalJoin(peekers.map(u => `**${this.getName(u)}**`), '&')}! They each plundered **${amount}** points from **${this.getName(taker)}**`;
+                    summary += `**${this.getName(taker)}** tried to steal from GMBR, but was stopped by ${naturalJoin(peekers.map(u => `**${this.getName(u)}**`), { conjunction: '&' })}! They each plundered **${amount}** points from **${this.getName(taker)}**`;
                 }
             } else {
                 this.addPoints(taker, amount);
@@ -228,7 +228,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         const upsetStrings = [];
         for (const upsetter of Object.keys(upsets)) {
             const upsettees = upsets[upsetter];
-            upsetStrings.push(`**${this.getName(upsetter)}** has overtaken ${naturalJoin(upsettees.map(u => `**${this.getName(u)}**`), '&')}`);
+            upsetStrings.push(`**${this.getName(upsetter)}** has overtaken ${naturalJoin(upsettees.map(u => `**${this.getName(u)}**`), { conjunction: '&' })}`);
         }
         const upsetString = naturalJoin(upsetStrings);
         if (upsetString) {
