@@ -450,7 +450,7 @@ export default class GoodMorningState {
      * @returns Actual number of points awarded
      */
     awardPoints(userId: Snowflake, points: number): number {
-        if (points < 0) {
+        if (points < 0 || isNaN(points)) {
             throw new Error('Can only award a non-negative number of points!');
         }
         const actualPoints: number = points * this.getPlayerMultiplier(userId);
@@ -464,7 +464,7 @@ export default class GoodMorningState {
     }
 
     deductPoints(userId: Snowflake, points: number): void {
-        if (points < 0) {
+        if (points < 0 || isNaN(points)) {
             throw new Error('Can only deduct a non-negative number of points!');
         }
         // Update the daily "points lost" value

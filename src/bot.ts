@@ -1085,7 +1085,7 @@ const TIMEOUT_CALLBACKS = {
                     for (let i = 0; i < winners.length; i++) {
                         const userId: Snowflake = winners[i];
                         const wishRank: number = i + 1;
-                        state.awardPoints(userId, config.mediumAwardsByRank[wishRank]);
+                        state.awardPoints(userId, config.mediumAwardsByRank[wishRank] ?? config.defaultAward);
                     }
                     // Tag players who received wishes
                     if (winners.length > 0) {

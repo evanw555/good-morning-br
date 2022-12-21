@@ -119,6 +119,9 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
     }
 
     addPoints(userId: string, points: number): void {
+        if (isNaN(points)) {
+            throw new Error('Cannot award NaN points!');
+        }
         this.state.points[userId] = (this.state.points[userId] ?? 0) + points;
         this.state.pointDiffs[userId] = (this.state.pointDiffs[userId] ?? 0) + points;
     }
