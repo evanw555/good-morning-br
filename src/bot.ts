@@ -2439,27 +2439,37 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                         // TODO: Remove this try-catch once we're sure this works
                         try {
                             // The wish recipient is the first mention in the message (if any)
-                            const wishRecipient: Snowflake | undefined = getMessageMentions(msg)[0];
-                            if (wishRecipient) {
-                                if (wishRecipient === userId) {
+                            const wishRecipients: Snowflake[] = getMessageMentions(msg);
+                            if (wishRecipients.length > 0) {
+                                if (wishRecipients.includes(userId)) {
                                     // Don't award if they tagged themself
                                     await messenger.reply(msg, 'Who do you think you are? 🌚');
                                 } else {
-                                    // Increment the wish count of the recipient
-                                    const newWishCount = (wishesReceived[wishRecipient] ?? 0) + 1;
-                                    wishesReceived[wishRecipient] = newWishCount;
-                                    // Award the user with a default award
-                                    state.awardPoints(userId, config.defaultAward);
-                                    await reactToMessage(msg, state.getGoodMorningEmoji());
-                                    // If this recipient has the most wishes, reply at certain thresholds
-                                    const maxWishes = Math.max(0, ...Object.values(wishesReceived));
-                                    if (newWishCount === maxWishes) {
-                                        if (newWishCount === 3) {
-                                            await messenger.send(goodMorningChannel, `Count your blessings <@${wishRecipient}>, for you have many loving friends!`);
-                                        } else if (newWishCount === 5) {
-                                            await messenger.send(goodMorningChannel, `Wow, <@${wishRecipient}> is shining bright with the love of his fellow dogs!`);
+                                    // If tagged multiple users, split up the wishes between them
+                                    const wishPoints = toFixed(1 / wishRecipients.length);
+                                    for (const wishRecipient of wishRecipients) {
+                                        // Increment the wish count of the recipient
+                                        const oldWishScore = wishesReceived[wishRecipient] ?? 0;
+                                        const newWishScore = oldWishScore + wishPoints;
+                                        wishesReceived[wishRecipient] = newWishScore;
+                                        // Award the user with a default award
+                                        state.awardPoints(userId, config.defaultAward);
+                                        await reactToMessage(msg, state.getGoodMorningEmoji());
+                                        // If this recipient has the most wishes, reply at certain thresholds
+                                        const maxWishes = Math.max(0, ...Object.values(wishesReceived));
+                                        if (newWishScore === maxWishes) {
+                                            if (oldWishScore < 3 && newWishScore >= 3) {
+                                                await messenger.send(goodMorningChannel, `Count your blessings <@${wishRecipient}>, for you have many loving friends!`);
+                                            } else if (oldWishScore < 5 && newWishScore >= 5) {
+                                                await messenger.send(goodMorningChannel, `Wow, <@${wishRecipient}> is shining bright with the love of his fellow dogs!`);
+                                            }
                                         }
                                     }
+                                    // Log the updated wish counts
+                                    await logger.log('Wishes:\n' + Object.keys(wishesReceived)
+                                        .sort((x, y) => wishesReceived[y] - wishesReceived[x])
+                                        .map(id => `**${state.getPlayerDisplayName(id)}:** \`${wishesReceived[id]}\``)
+                                        .join('\n'));
                                 }
                             } else {
                                 // Don't award the player if they didn't send any wishes!
