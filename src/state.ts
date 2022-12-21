@@ -451,7 +451,8 @@ export default class GoodMorningState {
      */
     awardPoints(userId: Snowflake, points: number): number {
         if (points < 0 || isNaN(points)) {
-            throw new Error('Can only award a non-negative number of points!');
+            logger.log(`WARNING! Tried to award \`${points}\` points to **${this.getPlayerDisplayName(userId)}** (state)`);
+            return this.awardPoints(userId, 0);
         }
         const actualPoints: number = points * this.getPlayerMultiplier(userId);
         this.getOrCreateDailyStatus(userId).pointsEarned = toFixed(this.getPointsEarnedToday(userId) + actualPoints);
@@ -465,7 +466,8 @@ export default class GoodMorningState {
 
     deductPoints(userId: Snowflake, points: number): void {
         if (points < 0 || isNaN(points)) {
-            throw new Error('Can only deduct a non-negative number of points!');
+            logger.log(`WARNING! Tried to deduct \`${points}\` points from **${this.getPlayerDisplayName(userId)}** (state)`);
+            return this.deductPoints(userId, 0);
         }
         // Update the daily "points lost" value
         this.getOrCreateDailyStatus(userId).pointsLost = toFixed(this.getPointsLostToday(userId) + points);

@@ -696,7 +696,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
 
     addPoints(userId: Snowflake, points: number): void {
         if (isNaN(points)) {
-            throw new Error('Cannot award NaN points!');
+            logger.log(`WARNING! Tried to award \`${points}\` points to **${this.getDisplayName(userId)}** (dungeon)`);
+            return;
         }
         this.state.players[userId].points = toFixed(this.getPoints(userId) + points);
     }
