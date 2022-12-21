@@ -34,7 +34,7 @@ export function extractYouTubeId(text?: string): string | undefined {
  * Returns true if the given message contains a video or (potentially animated) GIF.
  */
 export function hasVideo(msg: Message): boolean {
-    return msg.attachments?.some(x => x.contentType.includes('video/') || x.contentType === 'image/gif')
+    return msg.attachments?.some(x => x.contentType?.includes('video/') || x.contentType === 'image/gif')
         || msg.embeds?.some(x => x.video)
         // Next to manually check for YouTube links since apparently the embeds check doesn't always work...
         || msg.content.includes('https://youtu.be/')
@@ -88,7 +88,7 @@ export function getOrderingUpsets(before: Snowflake[], after: Snowflake[]): Reco
  */
 export function revealLettersGeometric(input: string): string {
     const letters: string[] = input.split('');
-    let result = letters.shift();
+    let result = letters.shift() ?? '';
     while (letters.length > 0) {
         const p = letters.length / input.length;
         if (Math.random() < p) {
@@ -118,16 +118,24 @@ export function toSubmission(message: Message): AnonymousSubmission {
     }
     if (message.attachments.size === 1) {
         const attachment = message.attachments.first();
-        if (attachment.contentType === 'image/gif') {
-            throw new Error('No GIFs, buddy!');
+        if (attachment) {
+            if (attachment.contentType) {
+                if (attachment.contentType === 'image/gif') {
+                    throw new Error('No GIFs, buddy!');
+                }
+                if (attachment.contentType.startsWith('video')) {
+                    throw new Error('No videos, pal!');
+                }
+                if (!attachment.contentType.startsWith('image')) {
+                    throw new Error('Didn\'t you mean to send me an image?');
+                }
+                submission.url = attachment.url;
+            } else {
+                throw new Error('Hmmmm I can\'t see the content type of your attachment... tell the admin about this');
+            }
+        } else {
+        throw new Error('Hmmmm I don\'t see your attachment... tell the admin about this');
         }
-        if (attachment.contentType.startsWith('video')) {
-            throw new Error('No videos, pal!');
-        }
-        if (!attachment.contentType.startsWith('image')) {
-            throw new Error('Didn\'t you mean to send me an image?');
-        }
-        submission.url = attachment.url;
     } else if (message.attachments.size > 1) {
         throw new Error('Hey! Too many attachments, wise guy');
     }

@@ -7,7 +7,7 @@
       "esModuleInterop": true,
       "skipLibCheck": true,
       "noFallthroughCasesInSwitch": true,
-      "strictNullChecks": false // TODO: set this to true
+      "strictNullChecks": true
     },
     "include": [
         "src"

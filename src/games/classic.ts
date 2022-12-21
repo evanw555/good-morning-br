@@ -225,7 +225,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         const afterOrdering = this.getOrderedPlayers();
         const upsets = getOrderingUpsets(beforeOrdering, afterOrdering);
 
-        const upsetStrings = [];
+        const upsetStrings: string[] = [];
         for (const upsetter of Object.keys(upsets)) {
             const upsettees = upsets[upsetter];
             upsetStrings.push(`**${this.getName(upsetter)}** has overtaken ${naturalJoin(upsettees.map(u => `**${this.getName(u)}**`), { conjunction: '&' })}`);
@@ -361,7 +361,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
 
         let textInsideBar = true;
         for (let i = 0; i < orderedUserIds.length; i++) {
-            const userId = orderedUserIds[i];
+            const userId: Snowflake = orderedUserIds[i];
             // const displayName = options?.showMultiplier ? state.getPlayerDisplayNameWithMultiplier(userId) : state.getPlayerDisplayName(userId);
             const displayName = this.state.names[userId] ?? `Player ${userId}`;
             const baseY = HEADER_HEIGHT + i * (BAR_HEIGHT + BAR_SPACING);
@@ -417,19 +417,24 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
                 const IMAGE_WIDTH = imageWidth + BAR_PADDING;
                 let j = 0;
                 const baseMedalX = WIDTH - MARGIN - BAR_PADDING - (numMedals * IMAGE_WIDTH);
-                for (let k = 0; k < medals[userId].gold ?? 0; k++) {
+
+                const numGolds = medals[userId].gold ?? 0;
+                for (let k = 0; k < numGolds; k++) {
                     context.drawImage(rank1Image, baseMedalX + j * IMAGE_WIDTH, baseY + BAR_PADDING, imageWidth, imageWidth);
                     j++;
                 }
-                for (let k = 0; k < medals[userId].silver ?? 0; k++) {
+                const numSilvers = medals[userId].silver ?? 0;
+                for (let k = 0; k < numSilvers; k++) {
                     context.drawImage(rank2Image, baseMedalX + j * IMAGE_WIDTH, baseY + BAR_PADDING, imageWidth, imageWidth);
                     j++;
                 }
-                for (let k = 0; k < medals[userId].bronze ?? 0; k++) {
+                const numBronzes = medals[userId].bronze ?? 0;
+                for (let k = 0; k < numBronzes; k++) {
                     context.drawImage(rank3Image, baseMedalX + j * IMAGE_WIDTH, baseY + BAR_PADDING, imageWidth, imageWidth);
                     j++;
                 }
-                for (let k = 0; k < medals[userId].skull ?? 0; k++) {
+                const numSkulls = medals[userId].skull ?? 0
+                for (let k = 0; k < numSkulls; k++) {
                     context.drawImage(rankLastImage, baseMedalX + j * IMAGE_WIDTH, baseY + BAR_PADDING, imageWidth, imageWidth);
                     j++;
                 }

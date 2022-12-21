@@ -159,7 +159,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     addPlayer(member: GuildMember): string {
         if (member.id in this.state.players) {
             logger.log(`Refusing to add **${member.displayName}** to the dungeon, as they're already in it!`);
-            return;
+            return `Cannot add **${member.displayName}** (already in-game)`;
         }
         // Get the worst 33% of players based on location
         const playersClosestToGoal: Snowflake[] = this.getUnfinishedPlayersClosestToGoal();
@@ -422,7 +422,9 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             context.fillStyle = 'black';
             for (const locationString of Object.keys(this.state.trapOwners)) {
                 const location = DungeonCrawler.parseLocationString(locationString);
-                context.fillText(this.getDisplayName(this.state.trapOwners[locationString]), location.c * DungeonCrawler.TILE_SIZE, (location.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE);
+                if (location) {
+                    this.fillTextOnTile(context, this.getDisplayName(this.state.trapOwners[locationString]), location.r, location.c);
+                }
             }
             // Render all player decisions
             for (const userId of Object.keys(this.state.players)) {
@@ -601,12 +603,16 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         for (const decision of decisions.filter(d => d.startsWith('trap:'))) {
             const [ action, locationString ] = decision.split(':');
             const location = DungeonCrawler.parseLocationString(locationString);
-            context.strokeText('PLACE\nTRAP', location.c * DungeonCrawler.TILE_SIZE, (location.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE);
+            if (location) {
+                this.fillTextOnTile(context, 'PLACE\nTRAP', location.r, location.c);
+            }
         }
         for (const decision of decisions.filter(d => d.startsWith('boulder:'))) {
             const [ action, locationString ] = decision.split(':');
             const location = DungeonCrawler.parseLocationString(locationString);
-            context.strokeText('PLACE\nBOULDER', location.c * DungeonCrawler.TILE_SIZE, (location.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE);
+            if (location) {
+                this.fillTextOnTile(context, 'PLACE\nBOULDER', location.r, location.c);
+            }
         }
         // Show placed traps
         context.lineWidth = 1;
@@ -871,13 +877,13 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         const dependencies: Record<Snowflake, Snowflake> = {};
         // For each player...
         for (const userId of this.getPlayers()) {
-            const nextDecision: string = this.getNextDecidedAction(userId);
+            const nextDecision: string | undefined = this.getNextDecidedAction(userId);
             // If the next action is moving in a particular direction...
-            if (nextDecision in OFFSETS_BY_DIRECTION) {
+            if (nextDecision && nextDecision in OFFSETS_BY_DIRECTION) {
                 const [ dr, dc ] = OFFSETS_BY_DIRECTION[nextDecision];
                 const player = this.state.players[userId];
                 // Check if there's a player blocking that direction...
-                const blockingUserId: Snowflake = this.getPlayerAtLocation(player.r + dr, player.c + dc);
+                const blockingUserId = this.getPlayerAtLocation(player.r + dr, player.c + dc);
                 // If there's a blocking player, then the blocking player must be earlier in the list than this player
                 // Also, only add this dependency if it doesn't create a cycle
                 if (blockingUserId && dependencies[blockingUserId] !== userId) {
@@ -1019,7 +1025,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             const l = shuffle(DungeonCrawler.getCardinalOffsets(2));
             let pick = 0;
             while (l.length > 0) {
-                const [dr, dc] = l.shift();
+                const [dr, dc] = l.shift() as [number, number];
                 // If looking in the same direction we just came from, skip this direction and come to it last
                 if (prev[0] === dr && prev[1] === dc && chance(0.5)) {
                     l.push([dr, dc]);
@@ -1143,7 +1149,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             const l = shuffle(DungeonCrawler.getCardinalOffsets(2));
             let pick = 0;
             while (l.length > 0) {
-                const [dr, dc] = l.shift();
+                const [dr, dc] = l.shift() as [number, number];
                 // If looking in the same direction we just came from, skip this direction and come to it last
                 if (prev[0] === dr && prev[1] === dc && chance(0.75)) {
                     l.push([dr, dc]);
@@ -1230,7 +1236,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 }
                 // Transform and apply each keyhole cost
                 for (const keyHoleLocation of Object.keys(section.keyHoleCosts)) {
-                    const { r: keyR, c: keyC } = DungeonCrawler.parseLocationString(keyHoleLocation);
+                    const { r: keyR, c: keyC } = DungeonCrawler.parseLocationString(keyHoleLocation) as DungeonLocation;
                     const transformedLocation = DungeonCrawler.getLocationString(keyR + baseR, keyC + baseC);
                     keyHoleCosts[transformedLocation] = section.keyHoleCosts[keyHoleLocation];
                 }
@@ -1329,7 +1335,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
 
     static createBest(members: GuildMember[], attempts: number, minSteps: number = 0): DungeonCrawler {
         let maxFairness = { fairness: 0 };
-        let bestMap = null;
+        let bestMap: DungeonCrawler | null = null;
         let validAttempts = 0;
         while (validAttempts < attempts) {
             const newDungeon = DungeonCrawler.create(members);
@@ -1343,7 +1349,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 console.log(`Attempt ${validAttempts}: ${fairness.description}`);
             }
         }
-        return bestMap;
+        return bestMap as DungeonCrawler;
     }
 
     private getTileAtUser(userId: Snowflake): TileType {
@@ -1406,11 +1412,11 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     }
 
     private getHiddenTrapsForPlayer(userId: Snowflake): { r: number, c: number }[] {
-        const locations = [];
+        const locations: DungeonLocation[] = [];
         for (const [locationString, ownerId] of Object.entries(this.state.trapOwners)) {
             if (ownerId === userId) {
                 const location = DungeonCrawler.parseLocationString(locationString);
-                if (this.isTileType(location.r, location.c, TileType.HIDDEN_TRAP)) {
+                if (location && this.isTileType(location.r, location.c, TileType.HIDDEN_TRAP)) {
                     locations.push(location);
                 }
             }
@@ -1435,7 +1441,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
      * @returns all unfinished players at the given location
      */
     private getPlayersAtLocation(location: DungeonLocation): Snowflake[] {
-        const result = [];
+        const result: Snowflake[] = [];
         // Exclude players who've already finished (since they effectively don't have a location)
         for (const userId of this.getUnfinishedPlayers()) {
             const player = this.state.players[userId];
@@ -1514,13 +1520,13 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         if (commands.some(c => c.startsWith('boulder:'))) {
             const boulderLocations = commands.filter(c => c.startsWith('boulder:'))
                 .map(c => c.split(':')[1])
-                .map(l => DungeonCrawler.parseLocationString(l));
+                .map(l => DungeonCrawler.parseLocationString(l) as DungeonLocation);
             if (!this.canAllPlayersReachGoal(boulderLocations)) {
                 throw new Error('You can\'t place a boulder in a location that would permanently trap players! Please pick another location...');
             }
         }
 
-        const validateDoorwayAction = (targetLocation: DungeonLocation, action: ActionName) => {
+        const validateDoorwayAction = (targetLocation: DungeonLocation | undefined, action: ActionName) => {
             const newLocationString: string = DungeonCrawler.getLocationString(newLocation.r, newLocation.c);
             // If there's a target location, validate that the target is a doorway and that it's adjacent to the current location
             if (targetLocation) {
@@ -1556,7 +1562,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
 
         for (const command of commands) {
             const [c, arg] = command.split(':') as [ActionName, string];
-            const argLocation: DungeonLocation = DungeonCrawler.parseLocationString(arg);
+            const argLocation: DungeonLocation | undefined = DungeonCrawler.parseLocationString(arg);
             if (argLocation) {
                 // If a location was specified, validate that it's not out of bounds
                 if (!this.isInBounds(argLocation.r, argLocation.c)) {
@@ -1660,7 +1666,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     }
 
     private getActionCost(action: ActionName, location?: DungeonLocation, arg?: string): number {
-        const argLocation: DungeonLocation = DungeonCrawler.parseLocationString(arg);
+        const argLocation: DungeonLocation | undefined = arg ? DungeonCrawler.parseLocationString(arg) : undefined;
         const actionCosts: Record<BasicActionName, () => number> = {
             'up': () => {
                 return 1;
@@ -1741,9 +1747,9 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     processPlayerDecisionsOnce(): DecisionProcessingResult & { continueImmediately: boolean } {
         this.state.action++;
         const summaryData = {
-            consecutiveStepUsers: [],
-            consecutiveBumpGoners: [],
-            statements: []
+            consecutiveStepUsers: [] as Snowflake[],
+            consecutiveBumpGoners: [] as Snowflake[],
+            statements: [] as string[]
         };
         const flushCollapsableStatements = () => {
             // Flush step statements, if any
@@ -1780,7 +1786,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     const nr = player.r + dr;
                     const nc = player.c + dc;
                     // Handle situations where another user is standing in the way
-                    const blockingUserId: Snowflake = this.getPlayerAtLocation(nr, nc);
+                    const blockingUserId: Snowflake | undefined = this.getPlayerAtLocation(nr, nc);
                     if (blockingUserId) {
                         const blockingUser = this.state.players[blockingUserId];
                         if (player.invincible && !blockingUser.invincible) {
@@ -1820,7 +1826,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     return false;
                 };
                 const doUnlock = (arg: string): number => {
-                    const argLocation: DungeonLocation = DungeonCrawler.parseLocationString(arg);
+                    const argLocation: DungeonLocation| undefined = DungeonCrawler.parseLocationString(arg);
                     let numDoorwaysUnlocked = 0;
                     for (const { r, c } of this.getAdjacentLocationsOrOverride({ r: player.r, c: player.c }, argLocation)) {
                         if (this.isTileType(r, c, TileType.KEY_HOLE)) {
@@ -1859,7 +1865,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         return true;
                     },
                     lock: (arg) => {
-                        const argLocation: DungeonLocation = DungeonCrawler.parseLocationString(arg);
+                        const argLocation: DungeonLocation | undefined = DungeonCrawler.parseLocationString(arg);
                         let numDoorwaysLocked = 0;
                         for (const { r, c } of this.getAdjacentLocationsOrOverride({ r: player.r, c: player.c }, argLocation)) {
                             if (this.isTileType(r, c, TileType.OPENED_KEY_HOLE)) {
@@ -1897,7 +1903,15 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         return true;
                     },
                     warp: () => {
-                        const { r: newR, c: newC, userId: nearUserId } = this.getSpawnableLocationAroundPlayers(this.getOtherPlayers(userId));
+                        const warpableLocation = this.getSpawnableLocationAroundPlayers(this.getOtherPlayers(userId));
+                        // Emergency fallback (this shouldn't happen)
+                        if (!warpableLocation) {
+                            player.knockedOut = true;
+                            endTurn = true;
+                            pushNonCollapsableStatement(`**${player.displayName}** tried to warp but forgot to jump into the wormhole because he was watching webMs`);
+                            return false;
+                        }
+                        const { r: newR, c: newC, userId: nearUserId } = warpableLocation;
                         const isFirstWarp: boolean = !player.warped;
                         const isCloser: boolean = this.approximateCostToGoal(newR, newC) < this.approximateCostToGoal(player.r, player.c);
                         // If it's the user's first warp of the turn or the warp is closer to the goal, do it
@@ -1914,29 +1928,43 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         return true;
                     },
                     trap: (arg) => {
-                        const { r, c } = DungeonCrawler.parseLocationString(arg);
-                        this.state.map[r][c] = TileType.HIDDEN_TRAP;
+                        const targetLocation = DungeonCrawler.parseLocationString(arg);
+                        // Emergency fallback (this shouldn't happen)
+                        if (!targetLocation) {
+                            player.knockedOut = true;
+                            endTurn = true;
+                            pushNonCollapsableStatement(`**${player.displayName}** tried to place a trap but he left his trap at home`);
+                            return false;
+                        }
+                        this.state.map[targetLocation.r][targetLocation.c] = TileType.HIDDEN_TRAP;
                         this.state.trapOwners[arg.toUpperCase()] = userId;
                         this.consumePlayerItem(userId, 'trap');
                         return true;
                     },
                     boulder: (arg) => {
-                        const { r, c } = DungeonCrawler.parseLocationString(arg);
-                        // If doing this will softlock the game, knock out the player
-                        if (!this.canAllPlayersReachGoal([{ r, c }])) {
+                        const targetLocation = DungeonCrawler.parseLocationString(arg);
+                        // Emergency fallback (this shouldn't happen)
+                        if (!targetLocation) {
                             player.knockedOut = true;
                             endTurn = true;
-                            pushNonCollapsableStatement(`**${player.displayName}** got knocked out trying to softlock the game (tried to place boulder at **${DungeonCrawler.getLocationString(r, c)}**)`);
+                            pushNonCollapsableStatement(`**${player.displayName}** tried to place a boulder but the boulder disintegrated in his hands`);
+                            return false;
+                        }
+                        // If doing this will softlock the game, knock out the player
+                        if (!this.canAllPlayersReachGoal([targetLocation])) {
+                            player.knockedOut = true;
+                            endTurn = true;
+                            pushNonCollapsableStatement(`**${player.displayName}** got knocked out trying to softlock the game (tried to place boulder at **${DungeonCrawler.getLocationString(targetLocation.r, targetLocation.c)}**)`);
                             return false;
                         }
                         // Otherwise, place the boulder
-                        this.state.map[r][c] = TileType.BOULDER;
+                        this.state.map[targetLocation.r][targetLocation.c] = TileType.BOULDER;
                         this.consumePlayerItem(userId, 'boulder');
-                        pushNonCollapsableStatement(`**${player.displayName}** placed a boulder at **${DungeonCrawler.getLocationString(r, c)}**`);
+                        pushNonCollapsableStatement(`**${player.displayName}** placed a boulder at **${DungeonCrawler.getLocationString(targetLocation.r, targetLocation.c)}**`);
                         return true;
                     },
                     seal: (arg) => {
-                        const argLocation: DungeonLocation = DungeonCrawler.parseLocationString(arg);
+                        const argLocation: DungeonLocation | undefined = DungeonCrawler.parseLocationString(arg);
                         const sealableLocations = this.getAdjacentLocationsOrOverride({ r: player.r, c: player.c }, argLocation).filter(l => this.isSealable(l.r, l.c));
                         // If doing this will softlock the game, knock out the player
                         if (!this.canAllPlayersReachGoal(sealableLocations)) {
@@ -1974,13 +2002,20 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         return true;
                     },
                     charge: (arg) => {
-                        const argLocation: DungeonLocation = DungeonCrawler.parseLocationString(arg);
+                        const argLocation: DungeonLocation | undefined = DungeonCrawler.parseLocationString(arg);
+                        // Emergency fallback (this shouldn't happen)
+                        if (!argLocation) {
+                            player.knockedOut = true;
+                            endTurn = true;
+                            pushNonCollapsableStatement(`**${player.displayName}** tried to charge like a madman but accidentally gave himself AIDS`);
+                            return false;
+                        }
                         const direction = DungeonCrawler.getDirectionTo({ r: player.r, c: player.c }, argLocation);
                         const intermediateLocations = this.getLocationsBetween({ r: player.r, c: player.c }, argLocation);
                         this.consumePlayerItem(userId, 'charge');
                         this.addPlayerPreviousLocation(userId, { r: player.r, c: player.c });
                         player.showHeavyMovementLine = true;
-                        const trampledPlayers = [];
+                        const trampledPlayers: Snowflake[] = [];
                         let spacesMoved = 0;
                         const getChargeText = (slammedIntoWall: boolean): string => {
                             let text = `**${player.displayName}** charged like a ${slammedIntoWall ? 'dumbass' : 'madman'} **${spacesMoved}** space${spacesMoved === 1 ? '' : 's'} ${direction}ward`;
@@ -2102,8 +2137,12 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         if (this.getTileAtUser(userId) === TileType.TRAP) {
                             player.previousLocations = [{ r: player.r, c: player.c }];
                             player.showHeavyMovementLine = true;
-                            player.r = player.originLocation.r;
-                            player.c = player.originLocation.c;
+                            if (player.originLocation) {
+                                player.r = player.originLocation.r;
+                                player.c = player.originLocation.c;
+                            } else {
+                                logger.log(`Unable to send \`${userId}\` back to origin location (it doesn't exist!)`);
+                            }
                             player.knockedOut = true;
                             const trapOwnerId = this.state.trapOwners[locationString];
                             logger.log(`\`${userId}\` triggered trap by \`${trapOwnerId}\` at \`${locationString}\``);
@@ -2435,7 +2474,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     }
 
     getAllLocations(): DungeonLocation[] {
-        const results = [];
+        const results: DungeonLocation[] = [];
         for (let r = 0; r < this.state.rows; r++) {
             for (let c = 0; c < this.state.columns; c++) {
                 results.push({ r, c });
@@ -2475,15 +2514,17 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         const playerCostFromSpawn = totalCost - this.approximateCostToGoalForPlayer(userId);
         const costThreshold = Math.floor(playerCostFromSpawn * 0.75);
 
-        const results = [];
+        const results: DungeonLocation[] = [];
         while (vacantLocations.length > 0 && results.length < n) {
             // Get the next vacant location and compute its cost-to-goal
             const nextLocation = vacantLocations.pop();
-            const locationCostFromSpawn = totalCost - this.approximateCostToGoal(nextLocation.r, nextLocation.c);
-
-            // If this location is less than 75% of the way to the player's location, use it
-            if (locationCostFromSpawn < costThreshold) {
-                results.push(nextLocation);
+            if (nextLocation) {
+                const locationCostFromSpawn = totalCost - this.approximateCostToGoal(nextLocation.r, nextLocation.c);
+    
+                // If this location is less than 75% of the way to the player's location, use it
+                if (locationCostFromSpawn < costThreshold) {
+                    results.push(nextLocation);
+                }
             }
         }
 
@@ -2519,13 +2560,14 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     consumePlayerItem(userId: Snowflake, item: DungeonItemName): void {
         const player = this.state.players[userId];
 
-        if (!this.playerHasItem(userId, item)) {
+        if (!player.items || !this.playerHasItem(userId, item)) {
             return;
         }
 
-        player.items[item]--;
+        const newItemCount = (player.items[item] ?? 0) - 1;
+        player.items[item] = newItemCount;
 
-        if (player.items[item] <= 0) {
+        if (newItemCount <= 0) {
             delete player.items[item];
         }
 

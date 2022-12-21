@@ -1,15 +1,17 @@
-import { ActivityType, ApplicationCommandOptionType, Attachment, AttachmentBuilder, Client, DMChannel, GatewayIntentBits, Partials, TextChannel } from 'discord.js';
+import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, Client, DMChannel, GatewayIntentBits, Partials, TextChannel } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discord.js';
-import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, HomeStretchSurprise, PrizeType, Bait, AnonymousSubmission, GameState } from './types';
+import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, AnonymousSubmission, GameState } from './types';
 import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions } from './util';
 import GoodMorningState from './state';
-import logger from './logger';
-
-import { addReactsSync, chance, FileStorage, generateKMeansClusters, getClockTime, getPollChoiceKeys, getRandomDateBetween, getRankString, getRelativeDateTimeString, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger, naturalJoin, PastTimeoutStrategy, R9KTextBank, randChoice, randInt, shuffle, sleep, TimeoutManager, toCalendarDate, toFixed, toLetterId } from 'evanw555.js';
+import { addReactsSync, chance, FileStorage, generateKMeansClusters, getClockTime, getPollChoiceKeys, getRandomDateBetween,
+    getRankString, getRelativeDateTimeString, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger,
+    naturalJoin, PastTimeoutStrategy, R9KTextBank, randChoice, randInt, shuffle, sleep, TimeoutManager, toCalendarDate, toFixed, toLetterId } from 'evanw555.js';
 import DungeonCrawler from './games/dungeon';
 import ActivityTracker from './activity-tracker';
 import AbstractGame from './games/abstract-game';
 import ClassicGame from './games/classic';
+
+import logger from './logger';
 
 const auth = loadJson('config/auth.json');
 const config: GoodMorningConfig = loadJson('config/config.json');
@@ -66,7 +68,7 @@ const getDisplayName = async (userId: Snowflake): Promise<string> => {
     }
 }
 
-const fetchMember = async (userId: Snowflake): Promise<GuildMember> => {
+const fetchMember = async (userId: Snowflake): Promise<GuildMember | undefined> => {
     try {
         return await guild.members.fetch(userId);
     } catch (err) {
@@ -122,7 +124,10 @@ const refreshStateMemberInfo = async (): Promise<void> => {
 const grantGMChannelAccess = async (userIds: Snowflake[]): Promise<void> => {
     for (let userId of userIds) {
         try {
-            await goodMorningChannel.permissionOverwrites.delete(await fetchMember(userId));
+            const member = await fetchMember(userId);
+            if (member) {
+                await goodMorningChannel.permissionOverwrites.delete(member);
+            }
         } catch (err) {
             await logger.log(`Unable to grant GM channel access for user <@${userId}>: \`${err.toString()}\``);
         }
@@ -133,9 +138,12 @@ const grantGMChannelAccess = async (userIds: Snowflake[]): Promise<void> => {
 const revokeGMChannelAccess = async (userIds: Snowflake[]): Promise<void> => {
     for (let userId of userIds) {
         try {
-            await goodMorningChannel.permissionOverwrites.create(await fetchMember(userId), {
-                SendMessages: false
-            });
+            const member = await fetchMember(userId);
+            if (member) {
+                await goodMorningChannel.permissionOverwrites.create(member, {
+                    SendMessages: false
+                });
+            }
         } catch (err) {
             await logger.log(`Unable to revoke GM channel access for user <@${userId}>: \`${err.toString()}\``);
         }
@@ -163,9 +171,9 @@ const updateSungazer = async (userId: Snowflake, terms: number): Promise<void> =
 const updateSungazers = async (winners: { gold?: Snowflake, silver?: Snowflake, bronze?: Snowflake }): Promise<void> => {
     // Get the sungazer channel
     const sungazerChannel: TextBasedChannel = (await guild.channels.fetch(config.sungazers.channel)) as TextBasedChannel;
-    const newSungazers: boolean = (winners.gold && history.sungazers[winners.gold] === undefined)
-        || (winners.silver && history.sungazers[winners.silver] === undefined)
-        || (winners.bronze && history.sungazers[winners.bronze] === undefined);
+    const newSungazers: boolean = (winners.gold  !== undefined && history.sungazers[winners.gold] === undefined)
+        || (winners.silver  !== undefined && history.sungazers[winners.silver] === undefined)
+        || (winners.bronze  !== undefined && history.sungazers[winners.bronze] === undefined);
     if (newSungazers) {
         await messenger.send(sungazerChannel, 'As the sun fades into the horizon on yet another sunny season, let us welcome the new Sungazers to the Council!');
     } else {
@@ -402,12 +410,13 @@ const awardPrize = async (userId: Snowflake, type: PrizeType, intro: string): Pr
     }
 };
 
-const chooseMagicWord = async (): Promise<string> => {
+const chooseMagicWord = async (): Promise<string | undefined> => {
     try {
         const words: string[] = await loadJson('config/words.json');
         return randChoice(...words);
     } catch (err) {
-        logger.log(`Failed to choose a word of the day: \`${err.toString()}\``);
+        await logger.log(`Failed to choose a word of the day: \`${err.toString()}\``);
+        return undefined;
     }
 }
 
@@ -459,11 +468,7 @@ const sendGoodMorningMessage = async (): Promise<void> => {
             break;
         case DailyEventType.WritersBlock:
             // If the guest writer submitted something, use that; otherwise, send the standard GM message
-            if (state.getEvent().customMessage) {
-                await messenger.send(goodMorningChannel, state.getEvent().customMessage);
-            } else {
-                await messenger.send(goodMorningChannel, languageGenerator.generate(overriddenMessage ?? '{goodMorning}'));
-            }
+            await messenger.send(goodMorningChannel, state.getEvent().customMessage ?? languageGenerator.generate(overriddenMessage ?? '{goodMorning}'));
             break;
         case DailyEventType.EarlyEnd:
             const minutesEarly: number = state.getEvent().minutesEarly ?? 0;
@@ -570,36 +575,42 @@ const sendSeasonEndMessages = async (channel: TextBasedChannel, previousState: G
 };
 
 const setStatus = async (active: boolean): Promise<void> => {
-    if (active) {
-        client.user.setPresence({
-            status: 'online',
-            activities: [{
-                name: 'GOOD MORNING! 🌞',
-                type: ActivityType.Playing
-            }]
-        });
+    if (client.user) {
+        if (active) {
+            client.user.setPresence({
+                status: 'online',
+                activities: [{
+                    name: 'GOOD MORNING! 🌞',
+                    type: ActivityType.Playing
+                }]
+            });
+        } else {
+            client.user.setPresence({
+                status: 'idle',
+                activities: []
+            });
+        }
     } else {
-        client.user.setPresence({
-            status: 'idle',
-            activities: []
-        });
+        await logger.log('Cannot set bot presence, as `client.user` is null!');
     }
 };
 
 const chooseGoodMorningTime = (eventType: DailyEventType | undefined): Date => {
     // Hour-minute overrides of the earliest/latest possible time of a particular event
     const MIN_HOURS: Record<string, [number, number]> = {
+        default: [6, 0],
         [DailyEventType.SleepyMorning]: [10, 0],
         [DailyEventType.ReverseGoodMorning]: [7, 0]
     };
     const MAX_HOURS: Record<string, [number, number]> = {
+        default: [10, 45],
         [DailyEventType.SleepyMorning]: [11, 30],
         [DailyEventType.ReverseGoodMorning]: [11, 15],
         [DailyEventType.AnonymousSubmissions]: [8, 0],
         [DailyEventType.GameUpdate]: [9, 0]
     };
-    const MIN_HOUR: [number, number] = MIN_HOURS[eventType] ?? [6, 0];
-    const MAX_HOUR_EXCLUSIVE: [number, number] = MAX_HOURS[eventType] ?? [10, 45];
+    const MIN_HOUR: [number, number] = MIN_HOURS[eventType ?? 'default'] ?? MIN_HOURS.default;
+    const MAX_HOUR_EXCLUSIVE: [number, number] = MAX_HOURS[eventType ?? 'default'] ?? MAX_HOURS.default;
 
     // Set boundary of possible date a number of days in the future (1 by default)
     const lowDate: Date = new Date();
@@ -646,13 +657,11 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     if (state.getEventType() === DailyEventType.GameDecision && !state.hasGame()) {
         // Fetch all participating members, ordered by performance in the first week
         const participatingUserIds: Snowflake[] = state.getOrderedPlayers();
-        const members = [];
+        const members: GuildMember[] = [];
         for (const userId of participatingUserIds) {
-            try {
-                const member = await guild.members.fetch(userId);
+            const member = await fetchMember(userId);
+            if (member) {
                 members.push(member);
-            } catch (err) {
-                await logger.log(`Failed to fetch member <@${userId}> when creating game: \`${err}\``);
             }
         }
         // Create the game using these initial members
@@ -804,22 +813,28 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
 
     // Process "reverse" GM ranks
     if (state.getEventType() === DailyEventType.ReverseGoodMorning) {
-        const mostRecentUsers: Snowflake[] = Object.keys(state.getEvent().reverseGMRanks);
-        mostRecentUsers.sort((x, y) => state.getEvent().reverseGMRanks[y] - state.getEvent().reverseGMRanks[x]);
-        // Process the users in order of most recent reverse GM message
-        for (let i = 0; i < mostRecentUsers.length; i++) {
-            const userId: Snowflake = mostRecentUsers[i];
-            const rank: number = i + 1;
-            const rankedPoints: number = config.mediumAwardsByRank[rank] ?? config.defaultAward;
-            // Dump the rank info into the daily status map and assign points accordingly
-            state.awardPoints(userId, rankedPoints);
-            state.setDailyRank(userId, rank);
-            state.resetDaysSinceLGM(userId);
-            dailyVolatileLog.push([new Date(), `<@${userId}> was ${getRankString(rank)}-to-last = \`${rankedPoints}\``]);
-        }
-        // Send a message to the channel tagging the respective players
-        if (mostRecentUsers.length >= 3) {
-            await messenger.send(goodMorningChannel, `Thanks to <@${mostRecentUsers[2]}>, <@${mostRecentUsers[1]}>, and especially <@${mostRecentUsers[0]}> for paving the way!`);
+        const event = state.getEvent();
+        const reverseGMRanks = event.reverseGMRanks;
+        if (reverseGMRanks) {
+            const mostRecentUsers: Snowflake[] = Object.keys(reverseGMRanks);
+            mostRecentUsers.sort((x, y) => reverseGMRanks[y] - reverseGMRanks[x]);
+            // Process the users in order of most recent reverse GM message
+            for (let i = 0; i < mostRecentUsers.length; i++) {
+                const userId: Snowflake = mostRecentUsers[i];
+                const rank: number = i + 1;
+                const rankedPoints: number = config.mediumAwardsByRank[rank] ?? config.defaultAward;
+                // Dump the rank info into the daily status map and assign points accordingly
+                state.awardPoints(userId, rankedPoints);
+                state.setDailyRank(userId, rank);
+                state.resetDaysSinceLGM(userId);
+                dailyVolatileLog.push([new Date(), `<@${userId}> was ${getRankString(rank)}-to-last = \`${rankedPoints}\``]);
+            }
+            // Send a message to the channel tagging the respective players
+            if (mostRecentUsers.length >= 3) {
+                await messenger.send(goodMorningChannel, `Thanks to <@${mostRecentUsers[2]}>, <@${mostRecentUsers[1]}>, and especially <@${mostRecentUsers[0]}> for paving the way!`);
+            }
+        } else {
+            await logger.log('Cannot process reverse GM winners, as there\'s no `reverseGMRanks` map in the event state!');
         }
     }
 
@@ -833,8 +848,8 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
 const finalizeAnonymousSubmissions = async () => {
     const event = state.getEvent();
 
-    if (!event.votes || !event.submissions) {
-        await logger.log('WARNING! Attempting to finalize submissions with the votes and/or submissions already wiped. Aborting!');
+    if (!event.votes || !event.submissions || !event.submissionOwnersByCode) {
+        await logger.log('WARNING! Attempting to finalize submissions with the `votes`, `submissions`, and/or `submissionOwnersByCode` already wiped. Aborting!');
         return;
     }
 
@@ -858,7 +873,7 @@ const finalizeAnonymousSubmissions = async () => {
     // Disable voting and forfeiting by deleting commands
     const guildCommands = await guild.commands.fetch();
     guildCommands.forEach(command => {
-        if ((command.name === 'vote' || command.name === 'forfeit') && command.applicationId === client.application.id) {
+        if ((command.name === 'vote' || command.name === 'forfeit') && command.applicationId === client.application?.id) {
             command.delete();
         }
     });
@@ -1086,13 +1101,13 @@ const TIMEOUT_CALLBACKS = {
         }
 
         // Update current leader property
-        const previousLeader: Snowflake = state.getCurrentLeader();
+        const previousLeader = state.getCurrentLeader();
         const leaderUpset: boolean = state.updateCurrentLeader();
         // TODO (2.0): Should this be re-enabled?
         if (false && leaderUpset) {
-            const newLeader: Snowflake = state.getCurrentLeader();
+            const newLeader = state.getCurrentLeader();
             // If it's not the end of the season, notify the channel of the leader shift
-            if (!state.isSeasonGoalReached()) {
+            if (!state.isSeasonGoalReached() && previousLeader && newLeader) {
                 await messenger.send(goodMorningChannel, languageGenerator.generate('{leaderShift?}', { old: `<@${previousLeader}>`, new: `<@${newLeader}>` }));
             }
             // Sleep to provide a buffer in case more messages need to be sent
@@ -1100,7 +1115,7 @@ const TIMEOUT_CALLBACKS = {
         }
 
         // Determine event for tomorrow
-        const nextEvent: DailyEvent = chooseEvent(getTomorrow());
+        const nextEvent = chooseEvent(getTomorrow());
         if (nextEvent && !state.isSeasonGoalReached()) {
             state.setNextEvent(nextEvent);
             // TODO: temporary message to tell admin when a special event has been selected, remove this soon
@@ -1144,7 +1159,7 @@ const TIMEOUT_CALLBACKS = {
 
         // Set tomorrow's magic word (if it's not an abnormal event)
         state.clearMagicWord();
-        const magicWord: string = await chooseMagicWord();
+        const magicWord = await chooseMagicWord();
         if (magicWord && !state.isEventAbnormal()) {
             state.setMagicWord(magicWord);
         }
@@ -1221,13 +1236,18 @@ const TIMEOUT_CALLBACKS = {
 
         // If the event for tomorrow is writer's block, then send a message to the guest writer asking them to submit a GM message
         if (!state.isSeasonGoalReached() && state.getEventType() === DailyEventType.WritersBlock) {
-            try {
-                await messenger.dm(state.getEvent().user,
-                    "Hey, I've been experiencing a little writer's block lately and can't think of a solid greeting for tomorrow. "
-                    + "What do you think I should say? Send me something and I'll use it as my Good Morning greeting tomorrow as-is 🤔");
-                await logger.log(`Sent writer's block invite to **${state.getPlayerDisplayName(state.getEvent().user)}**`);
-            } catch (err) {
-                await logger.log(`Unable to send writer's block invite to **${state.getPlayerDisplayName(state.getEvent().user)}**: \`${err.toString()}\``);
+            const writersBlockUserId = state.getEvent().user;
+            if (writersBlockUserId) {
+                try {
+                    await messenger.dm(writersBlockUserId,
+                        "Hey, I've been experiencing a little writer's block lately and can't think of a solid greeting for tomorrow. "
+                        + "What do you think I should say? Send me something and I'll use it as my Good Morning greeting tomorrow as-is 🤔");
+                    await logger.log(`Sent writer's block invite to **${state.getPlayerDisplayName(writersBlockUserId)}**`);
+                } catch (err) {
+                    await logger.log(`Unable to send writer's block invite to **${state.getPlayerDisplayName(writersBlockUserId)}**: \`${err.toString()}\``);
+                }
+            } else {
+                await logger.log('Cannot DM the writer\'s block user, as there\'s no user ID in the event state!');
             }
         }
 
@@ -1251,34 +1271,50 @@ const TIMEOUT_CALLBACKS = {
     [TimeoutType.GuestReveilleFallback]: async (): Promise<void> => {
         // Take action if the guest reveiller hasn't said GM
         if (!state.isMorning()) {
-            // Penalize the reveiller
-            const userId: Snowflake = state.getEvent().user;
-            state.deductPoints(userId, 2);
-            // Wake up, then send a message calling out the reveiller (don't tag them, we don't want to give them an advantage...)
-            await wakeUp(false);
-            await messenger.send(goodMorningChannel, `Good morning! I had to step in because I guess ${state.getPlayerDisplayName(userId)} isn't cut out for the job 😒`);
+            const userId = state.getEvent().user;
+            if (userId) {
+                // Penalize the reveiller
+                state.deductPoints(userId, 2);
+                // Wake up, then send a message calling out the reveiller (don't tag them, we don't want to give them an advantage...)
+                await wakeUp(false);
+                await messenger.send(goodMorningChannel, `Good morning! I had to step in because I guess ${state.getPlayerDisplayName(userId)} isn't cut out for the job 😒`);
+            } else {
+                await logger.log('Cannot penalize guest reveille, as there\'s no user ID in the event state!');
+            }
         }
     },
     [TimeoutType.AnonymousSubmissionReveal]: async (): Promise<void> => {
+        if (state.getEventType() !== DailyEventType.AnonymousSubmissions) {
+            await logger.log(`WARNING! Attempted to trigger anonymous submission reveal with the event as \`${state.getEventType()}\``);
+            return;
+        }
+        const event = state.getEvent();
+
+        // Validate that the submissions map exists
+        if (!event.submissions) {
+            await logger.log('WARNING! Attempted to trigger anonymous submission reveal with no submissions map!');
+            return;
+        }
+
         // Send the initial message
         const rootSubmissionMessage: Message = await messenger.sendAndGet(goodMorningChannel, `Here are your anonymous submissions! ${config.defaultGoodMorningEmoji}`);
-        state.getEvent().rootSubmissionMessage = rootSubmissionMessage.id;
-        state.getEvent().votes = {};
-        state.getEvent().submissionOwnersByCode = {};
+        event.rootSubmissionMessage = rootSubmissionMessage.id;
+        event.votes = {};
+        event.submissionOwnersByCode = {};
         await dumpState();
 
         // Get all the relevant user IDs and shuffle them
-        const userIds: Snowflake[] = Object.keys(state.getEvent().submissions);
+        const userIds: Snowflake[] = Object.keys(event.submissions);
         shuffle(userIds);
 
         // For each submission (in shuffled order)...
         for (let i = 0; i < userIds.length; i++) {
             const userId: Snowflake = userIds[i];
-            const submission = state.getEvent().submissions[userId];
+            const submission = event.submissions[userId];
             const submissionCode: string = toLetterId(i);
             
             // Keep track of which user this submission's "number" maps to
-            state.getEvent().submissionOwnersByCode[submissionCode] = userId;
+            event.submissionOwnersByCode[submissionCode] = userId;
             await dumpState();
 
             try {
@@ -1295,10 +1331,10 @@ const TIMEOUT_CALLBACKS = {
         }
 
         // Register the vote command
-        const choices = Object.keys(state.getEvent().submissionOwnersByCode).map(c => { return { name: `Submission ${c}`, value: c }; });
+        const choices = Object.keys(event.submissionOwnersByCode).map(c => { return { name: `Submission ${c}`, value: c }; });
         await guild.commands.create({
             name: 'vote',
-            description: `Vote for a ${state.getEvent().submissionType}`,
+            description: `Vote for a ${event.submissionType}`,
             options: [
                 {
                     type: ApplicationCommandOptionType.String,
@@ -1338,8 +1374,17 @@ const TIMEOUT_CALLBACKS = {
         });
     },
     [TimeoutType.AnonymousSubmissionVotingReminder]: async (): Promise<void> => {
-        if (!state.getEvent().votes) {
+        if (state.getEventType() !== DailyEventType.AnonymousSubmissions) {
+            await logger.log(`WARNING! Attempted to trigger anonymous submission voting reminder with the event as \`${state.getEventType()}\``);
+            return;
+        }
+        const event = state.getEvent();
+        if (!event.votes) {
             await logger.log('Aborting submission voting reminder, as the votes have already been wiped.');
+            return;
+        }
+        if (!event.rootSubmissionMessage) {
+            await logger.log('Aborting submission voting reminder, as there\'s no root submission message ID.');
             return;
         }
         const delinquents: Snowflake[] = state.getSubmissionDeadbeats();
@@ -1349,8 +1394,8 @@ const TIMEOUT_CALLBACKS = {
         } else if (delinquents.length > 1) {
             // Send a voting notification to the channel
             try {
-                const rootSubmissionMessage: Message = await goodMorningChannel.messages.fetch(state.getEvent().rootSubmissionMessage);
-                await messenger.reply(rootSubmissionMessage, `If you haven't already, please vote on your favorite ${state.getEvent().submissionType} with \`/vote\`!`);
+                const rootSubmissionMessage: Message = await goodMorningChannel.messages.fetch(event.rootSubmissionMessage);
+                await messenger.reply(rootSubmissionMessage, `If you haven't already, please vote on your favorite ${event.submissionType} with \`/vote\`!`);
             } catch (err) {
                 logger.log(`Failed to fetch root submission message and send reminder: \`${err.toString()}\``);
             }
@@ -1360,7 +1405,7 @@ const TIMEOUT_CALLBACKS = {
                 delinquents.forEach(async (userId) => {
                     try {
                         await messenger.dm(userId,
-                            `You still haven\'t voted! You and your ${state.getEvent().submissionType} will be disqualified if you don't vote by noon. You can vote with the \`/vote\` command.`);
+                            `You still haven\'t voted! You and your ${event.submissionType} will be disqualified if you don't vote by noon. You can vote with the \`/vote\` command.`);
                     } catch (err) {
                         await logger.log(`Unable to send voting reminder DM to **${state.getPlayerDisplayName(userId)}**: \`${err.toString()}\``);
                     }
@@ -1381,6 +1426,8 @@ const TIMEOUT_CALLBACKS = {
             await logger.log(`Aborting anonymous submission type poll start, as the current event type is \`${state.getEventType()}\``);
             return;
         }
+
+        const event = state.getEvent();
 
         // Construct the set of proposed submission types by fetching replies to the original FYI message
         let proposalSet: Set<string> = new Set();
@@ -1405,7 +1452,9 @@ const TIMEOUT_CALLBACKS = {
         }
 
         // Add the original proposed prompt
-        proposalSet.add(state.getEvent().submissionType);
+        if (event.submissionType) {
+            proposalSet.add(event.submissionType);
+        }
         // Shuffle all the prompts
         const proposedTypes: string[] = Array.from(proposalSet);
         shuffle(proposedTypes);
@@ -1487,85 +1536,85 @@ const TIMEOUT_CALLBACKS = {
     },
     [TimeoutType.HomeStretchSurprise]: async (): Promise<void> => {
         // TODO (2.0): If we enable home stretch again, fix this
-        const surprises: HomeStretchSurprise[] = state.getEvent()?.homeStretchSurprises;
-        if (surprises && surprises.length > 0) {
-            // Get the next surprise and dump state
-            const surprise: HomeStretchSurprise = surprises.shift();
-            await dumpState();
-            // Recursively schedule the next timeout
-            const nextTimeout: Date = new Date();
-            nextTimeout.setMinutes(nextTimeout.getMinutes() + 10);
-            await timeoutManager.registerTimeout(TimeoutType.HomeStretchSurprise, nextTimeout, { pastStrategy: PastTimeoutStrategy.Invoke });
-            // Act on this surprise
-            switch (surprise) {
-            case HomeStretchSurprise.Multipliers:
-                const x1players: Snowflake[] = [];
-                const x1_5players: Snowflake[] = [];
-                const x2players: Snowflake[] = [];
-                const orderedPlayers: Snowflake[] = state.getOrderedPlayers();
-                // Update player multipliers and dump state
-                orderedPlayers.forEach(userId => {
-                    // TODO (2.0): Re-enable this using some accurate form of completion?
-                    // if (state.getPlayerPoints(userId) <= 0) {
-                    //     state.setPlayerMultiplier(userId, 0.5);
-                    // } else if (state.getPlayerCompletion(userId) >= 0.8) {
-                    //     x1players.push(userId);
-                    // } else if (state.getPlayerCompletion(userId) >= 0.7) {
-                    //     x1_5players.push(userId);
-                    //     state.setPlayerMultiplier(userId, 1.5);
-                    // } else if (state.getPlayerCompletion(userId) >= 0.5) {
-                    //     x2players.push(userId);
-                    //     state.setPlayerMultiplier(userId, 2);
-                    // } else {
-                    //     state.setPlayerMultiplier(userId, 3);
-                    // }
-                });
-                await dumpState();
-                // Notify the channel
-                await messenger.send(goodMorningChannel, 'Here is a very special surprise indeed...');
-                await messenger.send(goodMorningChannel, 'In order to help some of you catch up, I\'ll be handing out some karma multipliers');
-                await sleep(10000);
-                await messenger.send(goodMorningChannel, `First and foremost, ${getBoldNames(x1players)} will sadly not be getting any multiplier`);
-                await sleep(6000);
-                await messenger.send(goodMorningChannel, `${getBoldNames(x1_5players)} will receive 1.5x karma until the end of the season!`);
-                await sleep(6000);
-                await messenger.send(goodMorningChannel, `For ${getBoldNames(x2players)}, it's DOUBLE XP WEEKEND!`);
-                await sleep(6000);
-                await messenger.send(goodMorningChannel, `...and everyone else not mentioned will be getting 3x karma 😉`);
-                break;
-            case HomeStretchSurprise.LongestComboBonus:
-                const maxCombo: Combo = state.getMaxCombo();
-                if (maxCombo) {
-                    await messenger.send(goodMorningChannel, 'It\'s time to announce the winner of the _longest combo_ bonus! This user was first to say good morning the most days in a row...');
-                    await sleep(10000);
-                    // Award points and dump state
-                    const pointsAwarded: number = state.awardPoints(maxCombo.user, config.bonusAward);
-                    await dumpState();
-                    // Notify channel
-                    await messenger.send(goodMorningChannel, `The winner is <@${maxCombo.user}>, with a streak lasting **${maxCombo.days}** days! This bonus is worth **${pointsAwarded}%** karma ${config.defaultGoodMorningEmoji}`);
-                }
-                break;
-            case HomeStretchSurprise.ComboBreakerBonus:
-                const maxTimesBroken: number = Math.max(...Object.values(state.getPlayerStates()).map(player => player.combosBroken ?? 0));
-                const maxBreakers: Snowflake[] = state.getOrderedPlayers().filter(userId => state.getPlayerCombosBroken(userId) === maxTimesBroken);
-                if (maxBreakers.length > 0) {
-                    const maxBreaker: Snowflake = maxBreakers[0];
-                    await messenger.send(goodMorningChannel, 'Now to announce the winner of the _combo breaker_ bonus! This user broke the most Good Morning combos...');
-                    await sleep(10000);
-                    // Award points and dump state
-                    const pointsAwarded: number = state.awardPoints(maxBreaker, config.bonusAward);
-                    await dumpState();
-                    // Notify channel
-                    await messenger.send(goodMorningChannel, `The winner is <@${maxBreaker}>, who broke **${maxTimesBroken}** streaks! This bonus is worth **${pointsAwarded}%** karma ${config.defaultGoodMorningEmoji}`);
-                }
-                break;
-            }
-        } else {
-            await goodMorningChannel.send({
-                content: 'Well that\'s all for now! Here are the updated standings, good luck everyone!',
-                files: [] // TODO (2.0): Should we just delete this?
-            });
-        }
+        // const surprises: HomeStretchSurprise[] = state.getEvent()?.homeStretchSurprises;
+        // if (surprises && surprises.length > 0) {
+        //     // Get the next surprise and dump state
+        //     const surprise: HomeStretchSurprise = surprises.shift();
+        //     await dumpState();
+        //     // Recursively schedule the next timeout
+        //     const nextTimeout: Date = new Date();
+        //     nextTimeout.setMinutes(nextTimeout.getMinutes() + 10);
+        //     await timeoutManager.registerTimeout(TimeoutType.HomeStretchSurprise, nextTimeout, { pastStrategy: PastTimeoutStrategy.Invoke });
+        //     // Act on this surprise
+        //     switch (surprise) {
+        //     case HomeStretchSurprise.Multipliers:
+        //         const x1players: Snowflake[] = [];
+        //         const x1_5players: Snowflake[] = [];
+        //         const x2players: Snowflake[] = [];
+        //         const orderedPlayers: Snowflake[] = state.getOrderedPlayers();
+        //         // Update player multipliers and dump state
+        //         orderedPlayers.forEach(userId => {
+        //             // TODO (2.0): Re-enable this using some accurate form of completion?
+        //             // if (state.getPlayerPoints(userId) <= 0) {
+        //             //     state.setPlayerMultiplier(userId, 0.5);
+        //             // } else if (state.getPlayerCompletion(userId) >= 0.8) {
+        //             //     x1players.push(userId);
+        //             // } else if (state.getPlayerCompletion(userId) >= 0.7) {
+        //             //     x1_5players.push(userId);
+        //             //     state.setPlayerMultiplier(userId, 1.5);
+        //             // } else if (state.getPlayerCompletion(userId) >= 0.5) {
+        //             //     x2players.push(userId);
+        //             //     state.setPlayerMultiplier(userId, 2);
+        //             // } else {
+        //             //     state.setPlayerMultiplier(userId, 3);
+        //             // }
+        //         });
+        //         await dumpState();
+        //         // Notify the channel
+        //         await messenger.send(goodMorningChannel, 'Here is a very special surprise indeed...');
+        //         await messenger.send(goodMorningChannel, 'In order to help some of you catch up, I\'ll be handing out some karma multipliers');
+        //         await sleep(10000);
+        //         await messenger.send(goodMorningChannel, `First and foremost, ${getBoldNames(x1players)} will sadly not be getting any multiplier`);
+        //         await sleep(6000);
+        //         await messenger.send(goodMorningChannel, `${getBoldNames(x1_5players)} will receive 1.5x karma until the end of the season!`);
+        //         await sleep(6000);
+        //         await messenger.send(goodMorningChannel, `For ${getBoldNames(x2players)}, it's DOUBLE XP WEEKEND!`);
+        //         await sleep(6000);
+        //         await messenger.send(goodMorningChannel, `...and everyone else not mentioned will be getting 3x karma 😉`);
+        //         break;
+        //     case HomeStretchSurprise.LongestComboBonus:
+        //         const maxCombo: Combo = state.getMaxCombo();
+        //         if (maxCombo) {
+        //             await messenger.send(goodMorningChannel, 'It\'s time to announce the winner of the _longest combo_ bonus! This user was first to say good morning the most days in a row...');
+        //             await sleep(10000);
+        //             // Award points and dump state
+        //             const pointsAwarded: number = state.awardPoints(maxCombo.user, config.bonusAward);
+        //             await dumpState();
+        //             // Notify channel
+        //             await messenger.send(goodMorningChannel, `The winner is <@${maxCombo.user}>, with a streak lasting **${maxCombo.days}** days! This bonus is worth **${pointsAwarded}%** karma ${config.defaultGoodMorningEmoji}`);
+        //         }
+        //         break;
+        //     case HomeStretchSurprise.ComboBreakerBonus:
+        //         const maxTimesBroken: number = Math.max(...Object.values(state.getPlayerStates()).map(player => player.combosBroken ?? 0));
+        //         const maxBreakers: Snowflake[] = state.getOrderedPlayers().filter(userId => state.getPlayerCombosBroken(userId) === maxTimesBroken);
+        //         if (maxBreakers.length > 0) {
+        //             const maxBreaker: Snowflake = maxBreakers[0];
+        //             await messenger.send(goodMorningChannel, 'Now to announce the winner of the _combo breaker_ bonus! This user broke the most Good Morning combos...');
+        //             await sleep(10000);
+        //             // Award points and dump state
+        //             const pointsAwarded: number = state.awardPoints(maxBreaker, config.bonusAward);
+        //             await dumpState();
+        //             // Notify channel
+        //             await messenger.send(goodMorningChannel, `The winner is <@${maxBreaker}>, who broke **${maxTimesBroken}** streaks! This bonus is worth **${pointsAwarded}%** karma ${config.defaultGoodMorningEmoji}`);
+        //         }
+        //         break;
+        //     }
+        // } else {
+        //     await goodMorningChannel.send({
+        //         content: 'Well that\'s all for now! Here are the updated standings, good luck everyone!',
+        //         files: [] // TODO (2.0): Should we just delete this?
+        //     });
+        // }
     },
     [TimeoutType.ProcessGameDecisions]: async (): Promise<void> => {
         if (!state.hasGame()) {
@@ -1741,7 +1790,8 @@ client.on('ready', async (): Promise<void> => {
 
     // Then, fetch the guilds and guild channels
     await client.guilds.fetch();
-    guild = client.guilds.cache.first();
+    // TODO: Can this be safer?
+    guild = client.guilds.cache.first() as Guild;
     await guild.channels.fetch();
 
     // Determine the guild owner and the guild owner's DM channel
@@ -1799,79 +1849,89 @@ client.on('guildMemberRemove', async (member): Promise<void> => {
 });
 
 client.on('interactionCreate', async (interaction): Promise<void> => {
-    if (interaction.isChatInputCommand() && interaction.applicationId === client.application.id) {
+    if (interaction.isChatInputCommand() && interaction.applicationId === client.application?.id) {
         const userId: Snowflake = interaction.user.id;
         await interaction.deferReply({ ephemeral: true });
         if (interaction.commandName === 'vote') {
-            if (state.getEventType() === DailyEventType.AnonymousSubmissions && state.getEvent().votes) {
-                const submissionCodes: string[] = [
-                    interaction.options.getString('first'),
-                    interaction.options.getString('second'),
-                    interaction.options.getString('third')
-                ];
-                const submissionCodeSet: Set<string> = new Set(submissionCodes);
-                const validSubmissionCodes: Set<string> = new Set(Object.keys(state.getEvent().submissionOwnersByCode));
-                // Do some validation on the vote before processing it further
-                if (submissionCodes.length === 0) {
-                    await interaction.editReply(`I don\'t understand, please tell me which submissions you\'re voting for. Choose from ${naturalJoin([...validSubmissionCodes])}.`);
-                } else if (submissionCodeSet.size !== submissionCodes.length) {
-                    await interaction.editReply('You can\'t vote for the same submission twice!');
-                } else {
-                    // Ensure that all votes are for valid submissions
-                    for (let i = 0; i < submissionCodes.length; i++) {
-                        const submissionCode: string = submissionCodes[i];
-                        if (!validSubmissionCodes.has(submissionCode)) {
-                            await interaction.editReply(`${submissionCode} is not a valid submission! Choose from ${naturalJoin([...validSubmissionCodes])}.`);
-                            return;
-                        }
-                        if (state.getEvent().submissionOwnersByCode[submissionCode] === userId) {
-                            await interaction.editReply('You can\'t vote for your own submission!');
-                            return;
-                        }
-                    }
-                    // Cast the vote
-                    state.getEvent().votes[userId] = submissionCodes;
-                    await dumpState();
-
-                    if (state.haveAllSubmittersVoted()) {
-                        // If all the votes have been cast, then finalize the voting
-                        await interaction.editReply('Thanks, but you were the last to vote (no penalty, but be quicker next time) 🌚');
-                        await finalizeAnonymousSubmissions();
+            if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
+                const event = state.getEvent();
+                if (event.votes && event.submissionOwnersByCode) {
+                    const submissionCodes: string[] = [
+                        interaction.options.getString('first', true),
+                        interaction.options.getString('second', true),
+                        interaction.options.getString('third', true)
+                    ];
+                    const submissionCodeSet: Set<string> = new Set(submissionCodes);
+                    const validSubmissionCodes: Set<string> = new Set(Object.keys(event.submissionOwnersByCode));
+                    // Do some validation on the vote before processing it further
+                    if (submissionCodes.length === 0) {
+                        await interaction.editReply(`I don\'t understand, please tell me which submissions you\'re voting for. Choose from ${naturalJoin([...validSubmissionCodes])}.`);
+                    } else if (submissionCodeSet.size !== submissionCodes.length) {
+                        await interaction.editReply('You can\'t vote for the same submission twice!');
                     } else {
-                        // Otherwise, just send confirmation to the voter
-                        await interaction.editReply('Your vote has been cast!');
-                        // Notify the admin of how many votes remain
-                        await logger.log(`**${state.getPlayerDisplayName(userId)}** just voted, waiting on **${state.getSubmissionDeadbeats().length}** more votes.`);
+                        // Ensure that all votes are for valid submissions
+                        for (let i = 0; i < submissionCodes.length; i++) {
+                            const submissionCode: string = submissionCodes[i];
+                            if (!validSubmissionCodes.has(submissionCode)) {
+                                await interaction.editReply(`${submissionCode} is not a valid submission! Choose from ${naturalJoin([...validSubmissionCodes])}.`);
+                                return;
+                            }
+                            if (event.submissionOwnersByCode[submissionCode] === userId) {
+                                await interaction.editReply('You can\'t vote for your own submission!');
+                                return;
+                            }
+                        }
+                        // Cast the vote
+                        event.votes[userId] = submissionCodes;
+                        await dumpState();
+    
+                        if (state.haveAllSubmittersVoted()) {
+                            // If all the votes have been cast, then finalize the voting
+                            await interaction.editReply('Thanks, but you were the last to vote (no penalty, but be quicker next time) 🌚');
+                            await finalizeAnonymousSubmissions();
+                        } else {
+                            // Otherwise, just send confirmation to the voter
+                            await interaction.editReply('Your vote has been cast!');
+                            // Notify the admin of how many votes remain
+                            await logger.log(`**${state.getPlayerDisplayName(userId)}** just voted, waiting on **${state.getSubmissionDeadbeats().length}** more votes.`);
+                        }
                     }
+                } else {
+                    await interaction.editReply('You shouldn\'t be able to vote right now!');
                 }
             } else {
                 await interaction.editReply('You shouldn\'t be able to vote right now!');
             }
         } else if (interaction.commandName === 'forfeit') {
-            if (state.getEventType() === DailyEventType.AnonymousSubmissions && state.getEvent().submissions) {
-                // If voting has started, notify and abort
-                if (state.getEvent().votes) {
-                    await interaction.editReply('You can\'t forfeit now, it\'s too late! Now please vote.');
-                    return;
-                }
-                // If they haven't submitted anything, notify and abort
-                if (!state.getEvent().submissions[userId]) {
-                    await interaction.editReply('Why are you trying to forfeit? You haven\'t even submitted anything!');
-                    return;
-                }
-                // If the forfeiters list isn't initialized, create it
-                if (!state.getEvent().forfeiters) {
-                    state.getEvent().forfeiters = [];
-                }
-                // Add the player to the forefeiters list if they're not already on it
-                if (state.getEvent().forfeiters.includes(userId)) {
-                    await interaction.editReply(languageGenerator.generate('{!Uhhh|Erm|Um}... you\'ve already forfeited, {!bonehead|blockhead|silly}.'));
+            if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
+                const event = state.getEvent();
+                if (event.submissions) {
+                    // If voting has started, notify and abort
+                    if (event.votes) {
+                        await interaction.editReply('You can\'t forfeit now, it\'s too late! Now please vote.');
+                        return;
+                    }
+                    // If they haven't submitted anything, notify and abort
+                    if (!event.submissions[userId]) {
+                        await interaction.editReply('Why are you trying to forfeit? You haven\'t even submitted anything!');
+                        return;
+                    }
+                    // If the forfeiters list isn't initialized, create it
+                    if (!event.forfeiters) {
+                        event.forfeiters = [];
+                    }
+                    // Add the player to the forefeiters list if they're not already on it
+                    if (event.forfeiters.includes(userId)) {
+                        await interaction.editReply(languageGenerator.generate('{!Uhhh|Erm|Um}... you\'ve already forfeited, {!bonehead|blockhead|silly}.'));
+                    } else {
+                        event.forfeiters.push(userId);
+                        await interaction.editReply('You have forfeited today\'s contest. This cannot be undone. You will still be able to vote, though.');
+                        await logger.log(`**${state.getPlayerDisplayName(userId)}** has forfeited!`);
+                    }
+                    await dumpState();
                 } else {
-                    state.getEvent().forfeiters.push(userId);
-                    await interaction.editReply('You have forfeited today\'s contest. This cannot be undone. You will still be able to vote, though.');
-                    await logger.log(`**${state.getPlayerDisplayName(userId)}** has forfeited!`);
+                    await interaction.editReply('You can\'t forfeit right now!');
                 }
-                await dumpState();
             } else {
                 await interaction.editReply('You can\'t forfeit right now!');
             }
@@ -1881,7 +1941,7 @@ client.on('interactionCreate', async (interaction): Promise<void> => {
     }
 });
 
-let tempDungeon: AbstractGame<GameState> = null;
+let tempDungeon: AbstractGame<GameState> | null = null;
 let awaitingGameCommands = false;
 let awaitingSubmission = false;
 
@@ -2097,10 +2157,10 @@ const processCommands = async (msg: Message): Promise<void> => {
         }
         // Choose a magic word and show potential recipients
         else if (sanitizedText.includes('magic word')) {
-            const magicWord: string = await chooseMagicWord();
+            const magicWord = await chooseMagicWord();
             const potentialRecipients: Snowflake[] = state.getPotentialMagicWordRecipients();
             const recipient: string = potentialRecipients.length > 0 ? state.getPlayerDisplayName(randChoice(...potentialRecipients)) : 'N/A';
-            await msg.reply(`The test magic word is _${magicWord}_, and send the hint to **${recipient}** (Out of **${potentialRecipients.length}** choices)`);
+            await msg.reply(`The test magic word is _${magicWord ?? '???'}_, and send the hint to **${recipient}** (Out of **${potentialRecipients.length}** choices)`);
         }
         // Activity counter simulation/testing
         else if (sanitizedText.includes('activity')) {
@@ -2208,7 +2268,11 @@ const safeProcessCommands = async (msg: Message): Promise<void> => {
 };
 
 const saidMagicWord = (message: Message): boolean => {
-    return state.hasMagicWord() && message.content?.toLowerCase().includes(state.getMagicWord().toLowerCase());
+    const magicWord = state.getMagicWord();
+    if (magicWord) {
+        return message.content?.toLowerCase().includes(magicWord.toLowerCase());
+    }
+    return false;
 };
 
 client.on('messageCreate', async (msg: Message): Promise<void> => {
@@ -2216,7 +2280,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
     if (goodMorningChannel && msg.channel.id === goodMorningChannel.id && !msg.author.bot) {
         const isAm: boolean = new Date().getHours() < 12;
         const isPlayerNew: boolean = !state.hasPlayer(userId);
-        const isQuestion: boolean = msg.content && msg.content.trim().endsWith('?');
+        const isQuestion: boolean = msg.content.trim().endsWith('?');
 
         // If the grace period is active, then completely ignore all messages
         if (state.isGracePeriod()) {
@@ -2254,11 +2318,12 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             state.resetDaysSinceLGM(userId);
 
             // Determine whether a "nerf" should be applied to this player before his points are altered
-            const applyLeaderNerf: boolean = state.hasNerfThreshold() && state.getPlayerPoints(userId) > state.getNerfThreshold();
+            const nerfThreshold = state.getNerfThreshold();
+            const applyLeaderNerf: boolean = nerfThreshold !== undefined && state.getPlayerPoints(userId) > nerfThreshold;
 
             // Determine some properties related to the contents of the message
             const messageHasVideo: boolean = hasVideo(msg);
-            const messageHasText: boolean = msg.content && msg.content.trim().length !== 0;
+            const messageHasText: boolean = msg.content.trim().length !== 0;
 
             // The conditions for triggering MF and GM are separate so that players can post videos-then-messages, vice-versa, or both together
             const triggerMonkeyFriday: boolean = (state.getEventType() === DailyEventType.MonkeyFriday) && messageHasVideo;
@@ -2317,10 +2382,10 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 // If user is first, update the combo state accordingly
                 let comboDaysBroken: number = 0;
                 let sendComboBrokenMessage: boolean = false;
-                let comboBreakee: Snowflake;
+                let comboBreakee: Snowflake | null = null;
                 if (rank === 1) {
                     if (state.hasCombo()) {
-                        const combo: Combo = state.getCombo();
+                        const combo: Combo = state.getCombo() as Combo;
                         if (combo.user === userId) {
                             // If it's the existing combo holder, then increment his combo counter
                             combo.days++;
@@ -2350,7 +2415,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                         });
                     }
                     // Update the max combo record if it's been broken
-                    const newCombo: Combo = state.getCombo();
+                    const newCombo: Combo = state.getCombo() as Combo;
                     if (newCombo.days > state.getMaxComboDays()) {
                         state.setMaxCombo({
                             user: newCombo.user,
@@ -2363,46 +2428,50 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 // If the player said the magic word, reward them and let them know privately
                 if (saidMagicWord(msg)) {
                     state.awardPoints(userId, config.bonusAward);
-                    await messenger.dm(msg.member, `You said _"${state.getMagicWord()}"_, the magic word of the day! Nice 😉`);
+                    await messenger.dm(userId, `You said _"${state.getMagicWord()}"_, the magic word of the day! Nice 😉`);
                     logStory += `said the magic word "${state.getMagicWord()}", `;
                 }
 
                 // If today is wishful wednesday, cut the generic logic off here
                 if (state.getEventType() === DailyEventType.WishfulWednesday) {
-                    // TODO: Remove this try-catch once we're sure this works
-                    try {
-                        const wishesReceived = state.getEvent().wishesReceived;
-                        // The wish recipient is the first mention in the message (if any)
-                        const wishRecipient: Snowflake | undefined = getMessageMentions(msg)[0];
-                        if (wishRecipient) {
-                            if (wishRecipient === userId) {
-                                // Don't award if they tagged themself
-                                await messenger.reply(msg, 'Who do you think you are? 🌚');
-                            } else {
-                                // Increment the wish count of the recipient
-                                const newWishCount = (wishesReceived[wishRecipient] ?? 0) + 1;
-                                wishesReceived[wishRecipient] = newWishCount;
-                                // Award the user with a default award
-                                state.awardPoints(userId, config.defaultAward);
-                                await reactToMessage(msg, state.getGoodMorningEmoji());
-                                // If this recipient has the most wishes, reply at certain thresholds
-                                const maxWishes = Math.max(0, ...Object.values(wishesReceived));
-                                if (newWishCount === maxWishes) {
-                                    if (newWishCount === 3) {
-                                        await messenger.send(goodMorningChannel, `Count your blessings <@${wishRecipient}>, for you have many loving friends!`);
-                                    } else if (newWishCount === 5) {
-                                        await messenger.send(goodMorningChannel, `Wow, <@${wishRecipient}> is shining bright with the love of his fellow dogs!`);
+                    const wishesReceived = state.getEvent().wishesReceived;
+                    if (wishesReceived) {
+                        // TODO: Remove this try-catch once we're sure this works
+                        try {
+                            // The wish recipient is the first mention in the message (if any)
+                            const wishRecipient: Snowflake | undefined = getMessageMentions(msg)[0];
+                            if (wishRecipient) {
+                                if (wishRecipient === userId) {
+                                    // Don't award if they tagged themself
+                                    await messenger.reply(msg, 'Who do you think you are? 🌚');
+                                } else {
+                                    // Increment the wish count of the recipient
+                                    const newWishCount = (wishesReceived[wishRecipient] ?? 0) + 1;
+                                    wishesReceived[wishRecipient] = newWishCount;
+                                    // Award the user with a default award
+                                    state.awardPoints(userId, config.defaultAward);
+                                    await reactToMessage(msg, state.getGoodMorningEmoji());
+                                    // If this recipient has the most wishes, reply at certain thresholds
+                                    const maxWishes = Math.max(0, ...Object.values(wishesReceived));
+                                    if (newWishCount === maxWishes) {
+                                        if (newWishCount === 3) {
+                                            await messenger.send(goodMorningChannel, `Count your blessings <@${wishRecipient}>, for you have many loving friends!`);
+                                        } else if (newWishCount === 5) {
+                                            await messenger.send(goodMorningChannel, `Wow, <@${wishRecipient}> is shining bright with the love of his fellow dogs!`);
+                                        }
                                     }
                                 }
+                            } else {
+                                // Don't award the player if they didn't send any wishes!
+                                await reactToMessage(msg, '🌚');
                             }
-                        } else {
-                            // Don't award the player if they didn't send any wishes!
-                            await reactToMessage(msg, '🌚');
+                        } catch (err) {
+                            await logger.log(`Wishful Wednesday logic failed for user **${state.getPlayerDisplayName(userId)}**: \`${err}\``);
                         }
-                    } catch (err) {
-                        await logger.log(`Wishful Wednesday logic failed for user **${state.getPlayerDisplayName(userId)}**: \`${err}\``);
+                        await dumpState();
+                    } else {
+                        await logger.log('WARNING! `event.wishesReceived` is null, aborting WW logic...');
                     }
-                    await dumpState();
                     return;
                 }
 
@@ -2441,7 +2510,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 r9k.add(msg.content);
 
                 // If it's a combo-breaker, reply with a special message (may result in double replies on Monkey Friday)
-                if (sendComboBrokenMessage) {
+                if (sendComboBrokenMessage && comboBreakee) {
                     messenger.reply(msg, languageGenerator.generate('{goodMorningReply.comboBreaker?}', { breakee: `<@${comboBreakee}>`, days: comboDaysBroken.toString() }));
                 }
                 // If this post is NOT a Monkey Friday post, reply as normal (this is to avoid double replies on Monkey Friday)
@@ -2487,7 +2556,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             } else if (saidMagicWord(msg)) {
                 // If this isn't the user's GM message yet they still said the magic word, let them know...
                 await logger.log(`**${state.getPlayerDisplayName(userId)}** just said the magic word _"${state.getMagicWord()}"_, though too late...`);
-                await messenger.dm(msg.member, languageGenerator.generate(`You {!said|just said} the {!magic word|word of the day|secret word|magic word of the day}, {!yet|but|though} {!you're a little too late|it wasn't in your GM message} so it doesn't count...`));
+                await messenger.dm(userId, languageGenerator.generate(`You {!said|just said} the {!magic word|word of the day|secret word|magic word of the day}, {!yet|but|though} {!you're a little too late|it wasn't in your GM message} so it doesn't count...`));
             }
 
             // Regardless of whether it's their first message or not, react to the magic word with a small probability
@@ -2507,10 +2576,15 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             // If the bot hasn't woken up yet and it's a reverse GM, react and track the rank of each player for now...
             // TODO: Clean this up! Doesn't even take R9K into account
             if (state.getEventType() === DailyEventType.ReverseGoodMorning && isAm) {
-                if (state.getEvent().reverseGMRanks[userId] === undefined) {
-                    state.getEvent().reverseGMRanks[userId] = new Date().getTime();
-                    await reactToMessage(msg, state.getGoodMorningEmoji());
-                    await dumpState();
+                const event = state.getEvent();
+                if (event.reverseGMRanks) {
+                    if (event.reverseGMRanks[userId] === undefined) {
+                        event.reverseGMRanks[userId] = new Date().getTime();
+                        await reactToMessage(msg, state.getGoodMorningEmoji());
+                        await dumpState();
+                    }
+                } else {
+                    await logger.log('ERROR! `event.reverseGMRanks` is null!');
                 }
                 return;
             }
@@ -2539,7 +2613,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             // If this player has more deductions than cumulative points, mute them immediately (hopefully this prevents abuse...)
             if (!state.isPlayerMuted(userId) && state.getPlayerDeductions(userId) > state.getPlayerPoints(userId)) {
                 await revokeGMChannelAccess([userId]);
-                await logger.log(`Revoked GM channel access for **${msg.member.displayName}**`);
+                await logger.log(`Revoked GM channel access for **${msg.member?.displayName ?? msg.author.id}**`);
             }
             // If someone baited and it's the afternoon, award and notify via DM
             const bait: Bait | undefined = state.getMostRecentBait();
@@ -2622,19 +2696,21 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
 
         // Process DM submissions depending on the event
         if (state.isMorning() && state.getEventType() === DailyEventType.AnonymousSubmissions) {
+            const event = state.getEvent();
+            const submissions = event.submissions;
             const userId: Snowflake = msg.author.id;
             // Handle submissions via DM only before voting has started
-            if (state.getEvent().submissions && !state.getEvent().votes) {
-                const redoSubmission: boolean = userId in state.getEvent().submissions;
+            if (submissions && !event.votes) {
+                const redoSubmission: boolean = userId in submissions;
                 // Add the submission
                 try {
-                    state.getEvent().submissions[userId] = toSubmission(msg);
+                    submissions[userId] = toSubmission(msg);
                 } catch (err) {
                     await messenger.reply(msg, (err as Error).message);
                     return;
                 }
                 // Reply to the player via DM to let them know their submission was received
-                const numSubmissions: number = Object.keys(state.getEvent().submissions).length;
+                const numSubmissions: number = Object.keys(submissions).length;
                 if (redoSubmission) {
                     await messenger.reply(msg, 'Thanks for the update, I\'ll use this submission instead of your previous one.');
                 } else {

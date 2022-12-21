@@ -142,10 +142,10 @@ export default class GoodMorningState {
             this.data.players[userId] = {
                 displayName: `User ${userId}`,
                 cumulativePoints: 0
-            }
+            };
         }
 
-        return this.getPlayer(userId);
+        return this.getPlayer(userId) as PlayerState;
     }
 
     removePlayer(userId: Snowflake): void {
@@ -193,12 +193,13 @@ export default class GoodMorningState {
      * @returns true if the user just achieved a full streak with this operation
      */
     addPlayerActivity(userId: Snowflake, active: boolean): boolean {
-        const tracker: ActivityTracker = new ActivityTracker(this.getOrCreatePlayer(userId)?.activity);
+        const playerState = this.getOrCreatePlayer(userId);
+        const tracker: ActivityTracker = new ActivityTracker(playerState.activity);
         const result: boolean = tracker.add(active);
         if (tracker.getActivityLevel() === 0) {
-            delete this.getPlayer(userId).activity;
+            delete playerState.activity;
         } else {
-            this.getPlayer(userId).activity = tracker.dump();
+            playerState.activity = tracker.dump();
         }
         return result;
     }
@@ -353,24 +354,29 @@ export default class GoodMorningState {
             result = result.slice(startIndex, endIndex);
         }
 
-        if (options.maxDays !== undefined) {
-            result = result.filter(userId => this.getPlayerDaysSinceLGM(userId) <= options.maxDays)
+        const maxDays = options.maxDays;
+        if (maxDays !== undefined) {
+            result = result.filter(userId => this.getPlayerDaysSinceLGM(userId) <= maxDays)
         }
 
-        if (options.minDays !== undefined) {
-            result = result.filter(userId => this.getPlayerDaysSinceLGM(userId) >= options.minDays)
+        const minDays = options.minDays;
+        if (minDays !== undefined) {
+            result = result.filter(userId => this.getPlayerDaysSinceLGM(userId) >= minDays)
         }
 
-        if (options.maxRelativePoints !== undefined) {
-            result = result.filter(userId => this.getPlayerRelativePoints(userId) <= options.maxRelativePoints);
+        const maxRelativePoints = options.maxRelativePoints;
+        if (maxRelativePoints !== undefined) {
+            result = result.filter(userId => this.getPlayerRelativePoints(userId) <= maxRelativePoints);
         }
 
-        if (options.minRelativePoints !== undefined) {
-            result = result.filter(userId => this.getPlayerRelativePoints(userId) >= options.minRelativePoints);
+        const minRelativePoints = options.minRelativePoints;
+        if (minRelativePoints !== undefined) {
+            result = result.filter(userId => this.getPlayerRelativePoints(userId) >= minRelativePoints);
         }
 
-        if (options.minPoints !== undefined) {
-            result = result.filter(userId => this.getPlayerPoints(userId) >= options.minPoints);
+        const minPoints = options.minPoints;
+        if (minPoints !== undefined) {
+            result = result.filter(userId => this.getPlayerPoints(userId) >= minPoints);
         }
 
         if (options.n !== undefined) {
@@ -437,7 +443,7 @@ export default class GoodMorningState {
             };
         }
 
-        return this.getDailyStatus(userId);
+        return this.getDailyStatus(userId) as DailyPlayerState;
     }
 
     /**
@@ -523,7 +529,7 @@ export default class GoodMorningState {
         this.getOrCreateDailyStatus(userId).videoRank = videoRank;
     }
 
-    getCurrentLeader(): Snowflake {
+    getCurrentLeader(): Snowflake | undefined {
         return this.data.currentLeader;
     }
 
@@ -555,7 +561,7 @@ export default class GoodMorningState {
         this.data.goodMorningEmoji = emoji;
     }
 
-    getMagicWord(): string {
+    getMagicWord(): string | undefined {
         return this.data.magicWord;
     }
 
@@ -571,7 +577,7 @@ export default class GoodMorningState {
         delete this.data.magicWord;
     }
 
-    getNerfThreshold(): number {
+    getNerfThreshold(): number | undefined {
         return this.data.nerfThreshold;
     }
 
@@ -587,7 +593,7 @@ export default class GoodMorningState {
         delete this.data.nerfThreshold;
     }
 
-    getCombo(): Combo {
+    getCombo(): Combo | undefined {
         return this.data.combo;
     }
 
@@ -599,7 +605,7 @@ export default class GoodMorningState {
         this.data.combo = combo;
     }
 
-    getMaxCombo(): Combo {
+    getMaxCombo(): Combo | undefined {
         return this.data.maxCombo;
     }
 
@@ -663,11 +669,14 @@ export default class GoodMorningState {
         };
     }
 
-    getEventType(): DailyEventType {
+    getEventType(): DailyEventType | undefined {
         return this.data.event?.type;
     }
 
     getEvent(): DailyEvent {
+        if (!this.data.event) {
+            throw new Error('Cannot get event, there is no event!');
+        }
         return this.data.event;
     }
 
@@ -694,10 +703,16 @@ export default class GoodMorningState {
      * @returns True if every user who has submitted something has either voted or submitted.
      */
     haveAllSubmittersVoted(): boolean {
-        return this.getEventType() === DailyEventType.AnonymousSubmissions
-            && this.getEvent().submissions !== undefined
-            && this.getEvent().votes !== undefined
-            && Object.keys(this.getEvent().submissions).every(userId => userId in this.getEvent().votes || this.hasUserForfeited(userId));
+        if (this.getEventType() !== DailyEventType.AnonymousSubmissions) {
+            return false;
+        }
+        const event = this.getEvent();
+        const submissions = event.submissions;
+        const votes = event.votes;
+        if (!submissions || !votes) {
+            return false;
+        }
+        return Object.keys(submissions).every(userId => (userId in votes) || this.hasUserForfeited(userId));
     }
 
     hasUserForfeited(userId: Snowflake): boolean {
@@ -708,17 +723,26 @@ export default class GoodMorningState {
      * Get the list of all users who have sent in a submission, yet haven't voted and haven't forfeited.
      */
     getSubmissionDeadbeats(): Snowflake[] {
-        if (!this.getEvent()?.submissions) {
+        if (this.getEventType() !== DailyEventType.AnonymousSubmissions) {
             return [];
         }
-        return Object.keys(this.getEvent().submissions)
+        const event = this.getEvent();
+        const submissions = event.submissions;
+        const votes = event.votes;
+        if (!submissions || !votes) {
+            return [];
+        }
+        return Object.keys(submissions)
             // Users who haven't forfeited...
             .filter(userId => !this.hasUserForfeited(userId))
             // And who haven't voted...
-            .filter(userId => !this.getEvent().votes[userId]);
+            .filter(userId => !votes[userId]);
     }
 
-    getGame(): AbstractGame<GameState> | undefined {
+    getGame(): AbstractGame<GameState> {
+        if (!this.game) {
+            throw new Error('Cannot get game, there is no game!');
+        }
         return this.game;
     }
 
