@@ -2285,6 +2285,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 }
                 await dumpState();
             }
+            await logger.log(`GM MORNING channel message create: **${state.getPlayerDisplayName(userId)}** -> trigger=${triggerStandardGM}, hasNoRank=${!state.hasDailyRank(userId)}`);
 
             // Handle standard GM messages if the conditions are met and its the user's first GM of the day
             if (triggerStandardGM && !state.hasDailyRank(userId)) {
