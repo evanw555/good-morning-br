@@ -1882,6 +1882,26 @@ client.on('guildMemberRemove', async (member): Promise<void> => {
     await logger.log(`**${member.displayName}** left the guild, removed from state`);
 });
 
+client.on('shardError', async (error, shardId) => {
+    await logger.log(`Shard Error: \`${shardId}\`, error: \`${error}\``);
+});
+
+client.on('shardDisconnect', async (closeEvent, shardId) => {
+    await logger.log(`Shard Disconnect: \`${shardId}\` (code **${closeEvent.code}**)`);
+});
+
+client.on('shardReconnecting', async (shardId) => {
+    await logger.log(`Shard Reconnecting: \`${shardId}\``);
+});
+
+client.on('shardResume', async (shardId, replayedEvents) => {
+    await logger.log(`Shard Resume: \`${shardId}\` (**${replayedEvents}** replayed events)`);
+});
+
+client.on('shardReady', async (shardId, unavailableGuilds) => {
+    await logger.log(`Shard Ready: \`${shardId}\` (**${unavailableGuilds?.size ?? 'N/A'}** unavailable guilds)`);
+});
+
 client.on('interactionCreate', async (interaction): Promise<void> => {
     if (interaction.isChatInputCommand() && interaction.applicationId === client.application?.id) {
         const userId: Snowflake = interaction.user.id;
