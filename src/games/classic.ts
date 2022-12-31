@@ -1,6 +1,6 @@
 import canvas, { Image } from 'canvas';
 import { GuildMember, Snowflake } from "discord.js";
-import { getRankString, naturalJoin, randChoice, randInt } from 'evanw555.js';
+import { getRankString, naturalJoin, randChoice, randInt, toFixed } from 'evanw555.js';
 import { ClassicGameState, DecisionProcessingResult, Medals, PrizeType } from "../types";
 import { getNormalizedEditDistance, getOrderingUpsets } from '../util';
 import AbstractGame from "./abstract-game";
@@ -122,8 +122,8 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         if (isNaN(points)) {
             throw new Error('Cannot award NaN points!');
         }
-        this.state.points[userId] = (this.state.points[userId] ?? 0) + points;
-        this.state.pointDiffs[userId] = (this.state.pointDiffs[userId] ?? 0) + points;
+        this.state.points[userId] = toFixed((this.state.points[userId] ?? 0) + points);
+        this.state.pointDiffs[userId] = toFixed((this.state.pointDiffs[userId] ?? 0) + points);
     }
     
     awardPrize(userId: string, type: PrizeType, intro: string): string[] {
