@@ -499,7 +499,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             // Draw the location
             resetTextColor();
             const leftTextWidth = 1.5 * DungeonCrawler.TILE_SIZE;
-            c2.fillText(this.getPlayerLocationString(userId), leftTextX, textY, leftTextWidth);
+            const locationText = player.finished ? ':)' : this.getPlayerLocationString(userId);
+            c2.fillText(locationText, leftTextX, textY, leftTextWidth);
             // Set the text to blue just for the points if there's a multiplier
             if (this.getPlayerMultiplier(userId)) {
                 c2.fillStyle = 'blue';
