@@ -1545,9 +1545,9 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             }
         }
 
-        // Ensure that finished players can only trap
-        if (player.finished && !commands.every(c => c.startsWith('trap'))) {
-            throw new Error('You\'ve already finished, the only action you can take now is to place traps')
+        // Ensure that finished players can only trap/boulder
+        if (player.finished && !commands.every(c => c.startsWith('trap') || c.startsWith('boulder'))) {
+            throw new Error('You\'ve already finished, the only action you can take now is to place traps and boulders')
         }
 
         // For each known item type, ensure the player isn't using more than they currently own
