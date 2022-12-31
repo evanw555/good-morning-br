@@ -351,7 +351,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 }
             } else {
                 // Draw a blue outline if the player has a multiplier, else black
-                context.fillStyle = (this.getPlayerMultiplier(userId) > 1) ? 'blue' : 'black';
+                context.fillStyle = this.playerHasMultiplier(userId) ? 'blue' : 'black';
                 context.beginPath();
                 context.arc(outlineX, outlineY, outlineRadius, 0, Math.PI * 2, false);
                 context.fill();
@@ -502,7 +502,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             const locationText = player.finished ? ':)' : this.getPlayerLocationString(userId);
             c2.fillText(locationText, leftTextX, textY, leftTextWidth);
             // Set the text to blue just for the points if there's a multiplier
-            if (this.getPlayerMultiplier(userId)) {
+            if (this.playerHasMultiplier(userId)) {
                 c2.fillStyle = 'blue';
             }
             // Draw the points
@@ -2579,6 +2579,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
 
     getPlayerMultiplier(userId: Snowflake): number {
         return this.state.players[userId]?.multiplier ?? 1;
+    }
+
+    playerHasMultiplier(userId: Snowflake): boolean {
+        return this.getPlayerMultiplier(userId) > 1;
     }
 
     playerHasAnyItem(userId: Snowflake): boolean {
