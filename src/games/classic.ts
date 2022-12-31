@@ -402,7 +402,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
             context.fillText(displayName, textX + 1, baseY + 0.7 * BAR_HEIGHT + 1);
 
             // Draw the number of points to the right of the name
-            let pointText = `${this.getPoints(userId)}`;
+            let pointText = `${Math.floor(this.getPoints(userId))}`;
             const pointDiff = this.getPointDiff(userId);
             if (pointDiff > 0) {
                 pointText += ` (+${pointDiff})`;
