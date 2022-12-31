@@ -90,6 +90,14 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     }
 
     getInstructionsText(): string {
+        if (this.state.homeStretch && this.getNumWinners() > 0) {
+            const text = 'All players in _blue_ have a **2x** point multiplier';
+            if (this.getNumWinners() === 1) {
+                return `**${this.getDisplayName(this.getWinners()[0])}** has already reached the goal, so the race for 2nd and 3rd is on! ${text}`;
+            } else {
+                return `**${this.getDisplayName(this.getWinners()[0])}** and **${this.getDisplayName(this.getWinners()[1])}** have already reached the goal, so the race for 3rd is on! ${text}`;
+            }
+        }
         return 'Choose your moves by sending me a DM with your desired sequence of actions. You have until tomorrow morning to choose. DM me _"help"_ for more info.';
     }
 
@@ -342,7 +350,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     context.stroke();
                 }
             } else {
-                context.fillStyle = 'black';
+                // Draw a blue outline if the player has a multiplier, else black
+                context.fillStyle = (this.getPlayerMultiplier(userId) > 1) ? 'blue' : 'black';
                 context.beginPath();
                 context.arc(outlineX, outlineY, outlineRadius, 0, Math.PI * 2, false);
                 context.fill();
@@ -476,22 +485,31 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         for (const userId of this.getOrganizedPlayers()) {
             y++;
             const player = this.state.players[userId];
-            if (player.knockedOut) {
-                c2.fillStyle = 'hsl(360,50%,55%)';
-            } else if (player.finished) {
-                c2.fillStyle = 'yellow';
-            } else {
-                c2.fillStyle = `hsl(360,0%,${y % 2 === 0 ? 85 : 55}%)`;
-            }
+            // Define helper for resetting the text color
+            const resetTextColor = () => {
+                if (player.knockedOut) {
+                    c2.fillStyle = 'hsl(360,50%,55%)';
+                } else if (player.finished) {
+                    c2.fillStyle = 'yellow';
+                } else {
+                    c2.fillStyle = `hsl(360,0%,${y % 2 === 0 ? 85 : 55}%)`;
+                }
+            };
             const textY = y * heightPerRow;
             // Draw the location
+            resetTextColor();
             const leftTextWidth = 1.5 * DungeonCrawler.TILE_SIZE;
             c2.fillText(this.getPlayerLocationString(userId), leftTextX, textY, leftTextWidth);
+            // Set the text to blue just for the points if there's a multiplier
+            if (this.getPlayerMultiplier(userId)) {
+                c2.fillStyle = 'blue';
+            }
             // Draw the points
             const middleTextX = leftTextX + leftTextWidth + MARGIN;
             const middleTextWidth = 1.25 * DungeonCrawler.TILE_SIZE;
             c2.fillText(`$${Math.floor(player.points)}`, middleTextX, textY, middleTextWidth);
             // Draw the username
+            resetTextColor();
             const rightTextX = middleTextX + middleTextWidth + MARGIN;
             const rightTextWidth = TOTAL_WIDTH - rightTextX;
             c2.fillText(player.displayName, rightTextX, textY, rightTextWidth);
@@ -649,6 +667,11 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         // Refresh all player ranks
         this.refreshPlayerRanks();
 
+        // If at least player has completed the maze, enable "home stretch" mode
+        if (!this.state.homeStretch && this.getNumWinners() > 0) {
+            this.state.homeStretch = true;
+        }
+
         for (const userId of this.getPlayers()) {
             const player = this.state.players[userId];
             // Reset per-turn metadata and statuses
@@ -659,6 +682,11 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             delete player.invincible;
             delete player.warped;
             delete player.showHeavyMovementLine;
+            // Give the player a multiplier for this turn if it's the home stretch and they're in need of help
+            delete player.multiplier;
+            if (this.state.homeStretch && this.doesPlayerNeedHandicap(userId)) {
+                player.multiplier = 2;
+            }
             // If the user already finished, do nothing
             if (player.finished) {
                 continue;
@@ -699,7 +727,16 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             logger.log(`WARNING! Tried to award \`${points}\` points to **${this.getDisplayName(userId)}** (dungeon)`);
             return;
         }
-        this.state.players[userId].points = toFixed(this.getPoints(userId) + points);
+
+        // Apply point multiplier (ONLY when adding positive points)
+        const multiplier = (points > 0) ? this.getPlayerMultiplier(userId) : 1;
+
+        // TODO: temp logging to see how this plays out
+        if (multiplier > 1) {
+            logger.log(`Adding **${points}** points to **${this.getDisplayName(userId)}** with **${multiplier}x** multiplier (dungeon)`);
+        }
+
+        this.state.players[userId].points = toFixed(this.getPoints(userId) + (points * multiplier));
     }
 
     getMaxPoints(): number {
@@ -2533,6 +2570,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         }
 
         return results;
+    }
+
+    getPlayerMultiplier(userId: Snowflake): number {
+        return this.state.players[userId]?.multiplier ?? 1;
     }
 
     playerHasAnyItem(userId: Snowflake): boolean {

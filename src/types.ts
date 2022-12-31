@@ -147,6 +147,7 @@ export interface DungeonPlayerState {
     avatarUrl: string,
     displayName: string,
     points: number,
+    multiplier?: number,
     items?: Partial<Record<DungeonItemName, number>>,
     itemOffers?: DungeonItemName[],
     finished?: boolean,
@@ -174,6 +175,7 @@ export interface DungeonGameState {
     columns: number
     map: number[][],
     goal: DungeonLocation,
+    homeStretch?: boolean,
     keyHoleCosts: Record<string, number>,
     trapOwners: Record<string, Snowflake>,
     players: Record<Snowflake, DungeonPlayerState>

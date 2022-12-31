@@ -102,6 +102,10 @@ export default abstract class AbstractGame<T extends GameState> {
         return this.state.winners.slice(0, 3);
     }
 
+    getNumWinners(): number {
+        return this.getWinners().length;
+    }
+
     protected addWinner(userId: Snowflake): boolean {
         if (!this.state.winners.includes(userId)) {
             this.state.winners.push(userId);
