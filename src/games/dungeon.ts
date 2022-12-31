@@ -749,8 +749,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         if (!this.hasPlayer(userId)) {
             return [];
         }
-        // "Good" items are just any item that's not a trap
-        const goodItems: DungeonItemName[] = ITEM_NAMES.filter(item => item !== 'trap');
+        // "Good" items are just any item that's not a trap (award boulders/traps if the player is finished)
+        const goodItems: DungeonItemName[] = this.isPlayerFinished(userId) ? ['boulder', 'trap'] : ITEM_NAMES.filter(item => item !== 'trap');
         switch (type) {
             case 'submissions1':
                 // For first place, let the user pick between two random "good" items
@@ -2571,6 +2571,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         }
 
         return results;
+    }
+
+    isPlayerFinished(userId: Snowflake): boolean {
+        return this.state.players[userId]?.finished ?? false;
     }
 
     getPlayerMultiplier(userId: Snowflake): number {
