@@ -91,7 +91,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
 
     getInstructionsText(): string {
         if (this.state.homeStretch && this.getNumWinners() > 0) {
-            const text = 'All players in _blue_ have a **2x** point multiplier';
+            const text = 'All players in _blue_ have a **2x** point multiplier for the next week';
             if (this.getNumWinners() === 1) {
                 return `**${this.getDisplayName(this.getWinners()[0])}** has already reached the goal, so the race for 2nd and 3rd is on! ${text}`;
             } else {
