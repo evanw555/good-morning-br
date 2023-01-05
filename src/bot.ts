@@ -351,7 +351,7 @@ const chooseEvent = (date: Date): DailyEvent | undefined => {
     //     };
     // }
     // High chance of a random event every day
-    if (chance(0.9)) {
+    if (chance(0.95)) {
         // Compile a list of potential events (include default events)
         const potentialEvents: DailyEvent[] = [
             // TODO (2.0): Should I re-enable these?
