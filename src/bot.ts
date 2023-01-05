@@ -2333,12 +2333,13 @@ const processCommands = async (msg: Message): Promise<void> => {
         } else if (sanitizedText.includes('remove')) {
             const id = sanitizedText.replace(/\D/g, '');
             if (state.hasPlayer(id)) {
+                const playerDisplayName = state.getPlayerDisplayName(id);
                 if (sanitizedText.includes('confirm')) {
                     state.removePlayer(id);
                     await dumpState();
-                    await msg.reply(`Removed **${state.getPlayerDisplayName(id)}** from the state.`);
+                    await msg.reply(`Removed **${playerDisplayName}** from the state.`);
                 } else {
-                    await msg.reply(`\`${id}\` is in the state as **${state.getPlayerDisplayName(id)}**, type this command again with "confirm" to remove`);
+                    await msg.reply(`\`${id}\` is in the state as **${playerDisplayName}**, type this command again with "confirm" to remove`);
                 }
             } else {
                 await msg.reply(`\`${id}\` is NOT in the state!`);

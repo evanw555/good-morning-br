@@ -204,13 +204,20 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     }
 
     removePlayer(userId: Snowflake): void {
+        const playerDisplayName = this.getDisplayName(userId);
         delete this.state.players[userId];
         delete this.state.decisions[userId];
         // Remove any owned traps
         for (const locationString of Object.keys(this.state.trapOwners)) {
             if (this.state.trapOwners[locationString] === userId) {
-                delete this.state.trapOwners[locationString];
-                logger.log(`Deleted trap at \`${locationString}\` for removed player \`${userId}\``);
+                const location = DungeonCrawler.parseLocationString(locationString);
+                if (location) {
+                    this.state.map[location.r][location.c] = TileType.EMPTY;
+                    delete this.state.trapOwners[locationString];
+                    logger.log(`Deleted trap at \`${locationString}\` for removed player **${playerDisplayName}**`);
+                } else {
+                    logger.log(`Couldn't remove trap at \`${locationString}\` for removed player **${playerDisplayName}** (invalid location!)`);
+                }
             }
         }
         // TODO: Remove from winners too?
@@ -701,6 +708,22 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             } else {
                 // Otherwise, knock them out
                 player.knockedOut = true;
+            }
+        }
+
+        // Validate that all trap tiles have owners
+        for (const location of this.getAllLocations()) {
+            const { r, c } = location;
+            const locationString = DungeonCrawler.getLocationString(location.r, location.c);
+            const isTrapTile = this.isTileType(r, c, TileType.HIDDEN_TRAP) || this.isTileType(r, c, TileType.TRAP);
+            const hasTrapOwner = locationString in this.state.trapOwners;
+            if (isTrapTile && !hasTrapOwner) {
+                this.state.map[r][c] = TileType.EMPTY;
+                logger.log(`(Trap validation) Deleted ownerless trap at **${locationString}**`);
+            } else if (!isTrapTile && hasTrapOwner) {
+                const trapOwner = this.state.trapOwners[locationString];
+                delete this.state.trapOwners[locationString];
+                logger.log(`(Trap validation) Deleted owner **${this.getDisplayName(trapOwner)}** for nonexistent trap at **${locationString}**`);
             }
         }
 
