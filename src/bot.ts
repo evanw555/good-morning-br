@@ -2653,8 +2653,10 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 }
             } else if (saidMagicWord(msg)) {
                 // If this isn't the user's GM message yet they still said the magic word, let them know...
-                await logger.log(`**${state.getPlayerDisplayName(userId)}** just said the magic word _"${state.getMagicWord()}"_, though too late...`);
-                await messenger.dm(userId, languageGenerator.generate(`You {!said|just said} the {!magic word|word of the day|secret word|magic word of the day}, {!yet|but|though} {!you're a little too late|it wasn't in your GM message} so it doesn't count...`));
+                if (userId !== guildOwner.id) {
+                    await logger.log(`**${state.getPlayerDisplayName(userId)}** just said the magic word _"${state.getMagicWord()}"_, though too late...`);
+                }
+                await messenger.dm(userId, languageGenerator.generate(`You {!said|just said} the {!magic word|word of the day|secret word|magic word of the day}, {!yet|but|though} {!you're a little too late|it wasn't in your GM message} so it doesn't count...`), { immediate: true });
             }
 
             // Regardless of whether it's their first message or not, react to the magic word with a small probability
