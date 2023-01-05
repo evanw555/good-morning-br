@@ -1879,6 +1879,7 @@ client.on('ready', async (): Promise<void> => {
 client.on('guildMemberRemove', async (member): Promise<void> => {
     // Remove this user from the state
     state.removePlayer(member.id);
+    await dumpState();
     await logger.log(`**${member.displayName}** left the guild, removed from state`);
 });
 
@@ -2328,6 +2329,19 @@ const processCommands = async (msg: Message): Promise<void> => {
             if (state.hasGame() && state.getGame() instanceof DungeonCrawler) {
                 const dungeon = state.getGame() as DungeonCrawler;
                 await msg.reply(dungeon.getOrderedPlayers().filter(p => dungeon.playerHasAnyItem(p)).map(p => `**${dungeon.getDisplayName(p)}:** \`${JSON.stringify(dungeon.getPlayerItems(p))}\``).join('\n'));
+            }
+        } else if (sanitizedText.includes('remove')) {
+            const id = sanitizedText.replace(/\D/g, '');
+            if (state.hasPlayer(id)) {
+                if (sanitizedText.includes('confirm')) {
+                    state.removePlayer(id);
+                    await dumpState();
+                    await msg.reply(`Removed **${state.getPlayerDisplayName(id)}** from the state.`);
+                } else {
+                    await msg.reply(`\`${id}\` is in the state as **${state.getPlayerDisplayName(id)}**, type this command again with "confirm" to remove`);
+                }
+            } else {
+                await msg.reply(`\`${id}\` is NOT in the state!`);
             }
         }
     }
