@@ -1902,6 +1902,22 @@ client.on('shardReady', async (shardId, unavailableGuilds) => {
     await logger.log(`Shard Ready: \`${shardId}\` (**${unavailableGuilds?.size ?? 'N/A'}** unavailable guilds)`);
 });
 
+client.on('guildUnavailable', async (guild) => {
+    await logger.log('Guild unavailable!');
+});
+
+client.on('error', async (error) => {
+    await logger.log(`Discord Error Event: \`${error}\``);
+});
+
+client.on('warn', async (message) => {
+    await logger.log(`Discord Warn Event: \`${message}\``);
+});
+
+client.on('invalidated', async () => {
+    await logger.log('Client session invalidated!');
+});
+
 client.on('interactionCreate', async (interaction): Promise<void> => {
     if (interaction.isChatInputCommand() && interaction.applicationId === client.application?.id) {
         const userId: Snowflake = interaction.user.id;
