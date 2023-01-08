@@ -709,7 +709,6 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             delete player.knockedOut;
             delete player.invincible;
             delete player.warped;
-            delete player.showHeavyMovementLine;
             // Give the player a multiplier for this turn if it's the home stretch and they're in need of help
             delete player.multiplier;
             if (this.state.homeStretch && this.doesPlayerNeedHandicap(userId)) {
@@ -2009,7 +2008,6 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                             player.r = newR;
                             player.c = newC;
                             player.warped = true;
-                            player.showHeavyMovementLine = true;
                             pushNonCollapsableStatement(`**${player.displayName}** warped to **${this.getDisplayName(nearUserId)}**`);
                         } else {
                             pushNonCollapsableStatement(`**${player.displayName}** avoided warping to **${this.getDisplayName(nearUserId)}**`);
@@ -2103,7 +2101,6 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         const direction = DungeonCrawler.getDirectionTo({ r: player.r, c: player.c }, argLocation);
                         const intermediateLocations = this.getLocationsBetween({ r: player.r, c: player.c }, argLocation);
                         this.consumePlayerItem(userId, 'charge');
-                        player.showHeavyMovementLine = true;
                         const trampledPlayers: Snowflake[] = [];
                         let spacesMoved = 0;
                         const getChargeText = (slammedIntoWall: boolean): string => {
@@ -2225,7 +2222,6 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         }
                         // Handle revealed traps (this will trigger if the above condition is triggered)
                         if (this.getTileAtUser(userId) === TileType.TRAP) {
-                            player.showHeavyMovementLine = true;
                             if (player.originLocation) {
                                 this.addRenderLine({ r: player.r, c: player.c }, player.originLocation, 'red');
                                 player.r = player.originLocation.r;

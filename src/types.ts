@@ -167,8 +167,7 @@ export interface DungeonPlayerState {
     knockedOut?: boolean,
     invincible?: boolean,
     originLocation?: DungeonLocation,
-    warped?: boolean,
-    showHeavyMovementLine?: boolean
+    warped?: boolean
 }
 
 export interface DecisionProcessingResult {
