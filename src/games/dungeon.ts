@@ -1554,8 +1554,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     getWeeklyDecisionDMs(): Record<Snowflake, string> {
         const results: Record<Snowflake, string> = {};
         for (const userId of this.getPlayers()) {
-            // If the player has at least 1 of any item, construct a string informing them of their inventory
-            if (this.playerHasAnyItem(userId)) {
+            // If the player has at least 1 point and at least 1 of any item, construct a string informing them of their inventory
+            if (this.getPoints(userId) >= 1 && this.playerHasAnyItem(userId)) {
                 const items = this.getPlayerItems(userId);
                 results[userId] = 'Good morning! Reminder: your inventory contains '
                     + naturalJoin(Object.keys(items).map(item => items[item] === 1 ? `a **${item}**` : `${items[item]} **${item}s**`));
