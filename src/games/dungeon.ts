@@ -87,7 +87,11 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             + 'The first, second, and third pups to reach me at the end will be crowned victorious. '
             + 'Each Saturday, you will have all day to choose your moves, each costing some amount of points. '
             + 'Some moves are secret and can only be performed once unlocked. '
-            + 'The next day (Sunday), your moves will be performed one-by-one. ';
+            + 'The next day (Sunday), your moves will be performed one-by-one.'
+        // Temp text indicating new features for this season
+            + '\n\n_CHANGES IN THIS SEASON:_'
+            + '\n⭐ The maze has been shortened, with more branching paths!'
+            + '\n⭐ Rather than awarding just one point, traps will award more points for sending players farther!';
     }
 
     getInstructionsText(): string {
@@ -2222,8 +2226,12 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         }
                         // Handle revealed traps (this will trigger if the above condition is triggered)
                         if (this.getTileAtUser(userId) === TileType.TRAP) {
+                            // Track how much "progress" was lost (steps back to the origin location)
+                            let progressLost = 1;
                             if (player.originLocation) {
                                 this.addRenderLine({ r: player.r, c: player.c }, player.originLocation, 'red');
+                                // TODO: What if the path doesn't exist? Zero points?
+                                progressLost = this.getNumStepsToLocation(player.originLocation, { r: player.r, c: player.c });
                                 player.r = player.originLocation.r;
                                 player.c = player.originLocation.c;
                             } else {
@@ -2231,15 +2239,16 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                             }
                             player.knockedOut = true;
                             const trapOwnerId = this.state.trapOwners[locationString];
-                            logger.log(`\`${userId}\` triggered trap by \`${trapOwnerId}\` at \`${locationString}\``);
+                            logger.log(`\`${this.getDisplayName(userId)}\` triggered trap by \`${this.getDisplayName(trapOwnerId)}\` at \`${locationString}\` (progress lost: **${progressLost}**)`);
                             if (trapRevealed) {
                                 pushNonCollapsableStatement(`was sent back to **${this.getPlayerLocationString(userId)}**`);
                             } else {
                                 pushNonCollapsableStatement(`**${player.displayName}** stepped on **${this.getDisplayName(trapOwnerId)}'s** trap and was sent back to **${this.getPlayerLocationString(userId)}**`);
                             }
                             // Reward the trap's owner
+                            // TODO: Award points based on the progress lost
                             this.addPoints(trapOwnerId, 1);
-                            pushNonCollapsableStatement(`**${this.getDisplayName(trapOwnerId)}** earned **1** point for trapping`);
+                            pushNonCollapsableStatement(`**${this.getDisplayName(trapOwnerId)}** earned **$1** for trapping`);
                         }
                     }
                 }
@@ -2330,6 +2339,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         const player = this.state.players[userId];
         // Treat player-occupied tiles as very costly to create more distributed pathing
         return this.searchToGoal(player.r, player.c, { addedOccupiedTileCost: 4 }).semanticSteps.slice(0, n);
+    }
+
+    getNumStepsToLocation(from: DungeonLocation, to: DungeonLocation): number {
+        return this.search(from, to, { useDoorways: true }).steps.length;
     }
 
     approximateCostToGoal(r: number, c: number): number {

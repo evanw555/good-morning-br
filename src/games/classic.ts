@@ -32,11 +32,11 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
     }
 
     getIntroductionText(): string {
-        return 'I know you all must be exhausted, so this season will just be classic GMBR! Say Good Morning and get points, have fun!'
+        return 'I know you all must be exhausted, so this season will just be classic GMBR! Say Good Morning and get points, have fun!';
     }
 
     getInstructionsText(): string {
-        return 'You can choose one of three actions: **cheer**, **take**, or **peek**! DM me to secretly pick an action, or **cheer** by default.\n'
+        return 'Each week, you can choose one of three actions: **cheer**, **take**, or **peek**! DM me to secretly pick an action, or **cheer** by default.\n'
             + '🌞 **cheer** to spread a little Good Morning cheer! (free point to yourself and a random player below you)\n'
             + '‼️ **take** to take **2-6** points from GMBR\'s infinite golden coffer.\n'
             + '👀 **peek** to stop a player from taking. If you stop a player, you steal **2-6** points from them! (e.g. `peek Robert`)';
