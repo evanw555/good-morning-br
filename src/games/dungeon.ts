@@ -492,26 +492,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
 
         // Draw inner stuff
         if (player.avatarUrl.startsWith('http')) {
-            // Draw semi-translucent if the user is knocked out
-            context.globalAlpha = player.knockedOut ? 0.5 : 1;
-
-            // Save the context so we can undo the clipping region at a later time
-            context.save();
-
-            // Define the clipping region as an 360 degrees arc at point x and y
-            context.beginPath();
-            context.arc((player.c + .5) * DungeonCrawler.TILE_SIZE, (player.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE / 2, 0, Math.PI * 2, false);
-
-            // Clip!
-            context.clip();
-
-            // Draw the image at imageX, imageY
             const avatarImage = await this.loadImage(player.avatarUrl);
-            context.drawImage(avatarImage, player.c * DungeonCrawler.TILE_SIZE, player.r * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE);
-
-            // Restore context to undo the clipping
-            context.restore();
-            context.globalAlpha = 1;
+            await this.drawImageAsCircle(context, avatarImage, player.knockedOut ? 0.5 : 1, (player.c + .5) * DungeonCrawler.TILE_SIZE, (player.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE / 2);
         } else {
             // If it's not a URL, assume it's a CSS style
             context.fillStyle = player.avatarUrl;
@@ -532,6 +514,28 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             context.lineTo(player.c * DungeonCrawler.TILE_SIZE, (player.r + 1) * DungeonCrawler.TILE_SIZE);
             context.stroke();
         }
+    }
+
+    private async drawImageAsCircle(context: NodeCanvasRenderingContext2D, image: canvas.Image, alpha: number, centerX: number, centerY: number, radius: number): Promise<void> {
+        // Set the global alpha
+        context.globalAlpha = alpha;
+
+        // Save the context so we can undo the clipping region at a later time
+        context.save();
+
+        // Define the clipping region as an 360 degrees arc at point x and y
+        context.beginPath();
+        context.arc(centerX, centerY, radius, 0, Math.PI * 2, false);
+
+        // Clip!
+        context.clip();
+
+        // Draw the image at imageX, imageY
+        context.drawImage(image, centerX - radius, centerY - radius, radius * 2, radius * 2);
+
+        // Restore the context to undo the clipping
+        context.restore();
+        context.globalAlpha = 1;
     }
 
     private fillTextOnTile(context: NodeCanvasRenderingContext2D, text: string, r: number, c: number): void {
@@ -641,10 +645,14 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             context.stroke();
             // Show the final location
             if (i === locations.length - 1) {
+                // Show a circle at the final location
                 context.setLineDash([]);
                 context.beginPath();
                 context.arc((curr.c + .5) * DungeonCrawler.TILE_SIZE, (curr.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE / 2 + 1, 0, Math.PI * 2, false);
                 context.stroke();
+                // Render the player's avatar faintly
+                const avatarImage = await this.loadImage(player.avatarUrl);
+                await this.drawImageAsCircle(context, avatarImage, 0.25, (player.c + .5) * DungeonCrawler.TILE_SIZE, (player.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE / 2);
             }
         }
         // Show attempted traps
