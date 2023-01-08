@@ -323,75 +323,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         // Render all "standard" lines (e.g. player steps) before rendering the players themselves
         this.renderLines(context, this.state.lines.filter(line => !line.over));
 
-        // Render all players (who haven't finished)
-        for (const userId of this.getUnfinishedPlayers()) {
-            const player = this.state.players[userId];
-
-            // Draw outline (rainbow if invincible, black otherwise)
-            const outlineX = (player.c + .5) * DungeonCrawler.TILE_SIZE;
-            const outlineY = (player.r + .5) * DungeonCrawler.TILE_SIZE;
-            const outlineRadius = DungeonCrawler.TILE_SIZE / 2 + 1;
-            if (player.invincible) {
-                const n = 32;
-                const rotationOffset = randInt(0, n);
-                context.lineWidth = 3;
-                context.setLineDash([]);
-                for (let i = 0; i < n; i++) {
-                    context.strokeStyle = `hsl(${Math.floor((i + rotationOffset) * 360 / n)},100%,50%)`;
-                    context.beginPath();
-                    context.arc(outlineX, outlineY, outlineRadius, (i * 2 / n) * Math.PI, ((i + 1) * 2 / n) * Math.PI);
-                    context.stroke();
-                }
-            } else {
-                // Draw a blue outline if the player has a multiplier, else black
-                context.fillStyle = this.playerHasMultiplier(userId) ? 'blue' : 'black';
-                context.beginPath();
-                context.arc(outlineX, outlineY, outlineRadius, 0, Math.PI * 2, false);
-                context.fill();
-            }
-
-            // Draw inner stuff
-            if (player.avatarUrl.startsWith('http')) {
-                // Draw semi-translucent if the user is knocked out
-                context.globalAlpha = player.knockedOut ? 0.5 : 1;
-
-                // Save the context so we can undo the clipping region at a later time
-                context.save();
-    
-                // Define the clipping region as an 360 degrees arc at point x and y
-                context.beginPath();
-                context.arc((player.c + .5) * DungeonCrawler.TILE_SIZE, (player.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE / 2, 0, Math.PI * 2, false);
-    
-                // Clip!
-                context.clip();
-    
-                // Draw the image at imageX, imageY
-                const avatarImage = await this.loadImage(player.avatarUrl);
-                context.drawImage(avatarImage, player.c * DungeonCrawler.TILE_SIZE, player.r * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE);
-    
-                // Restore context to undo the clipping
-                context.restore();
-                context.globalAlpha = 1;
-            } else {
-                // If it's not a URL, assume it's a CSS style
-                context.fillStyle = player.avatarUrl;
-                context.beginPath();
-                context.arc((player.c + .5) * DungeonCrawler.TILE_SIZE, (player.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE / 2, 0, Math.PI * 2, false);
-                context.fill();
-            }
-
-            // If the user is knocked out, draw an X
-            if (player.knockedOut) {
-                context.strokeStyle = 'red';
-                context.lineWidth = 2;
-                context.setLineDash([]);
-                context.beginPath();
-                context.moveTo(player.c * DungeonCrawler.TILE_SIZE, player.r * DungeonCrawler.TILE_SIZE);
-                context.lineTo((player.c + 1) * DungeonCrawler.TILE_SIZE, (player.r + 1) * DungeonCrawler.TILE_SIZE);
-                context.moveTo((player.c + 1) * DungeonCrawler.TILE_SIZE, player.r * DungeonCrawler.TILE_SIZE);
-                context.lineTo(player.c * DungeonCrawler.TILE_SIZE, (player.r + 1) * DungeonCrawler.TILE_SIZE);
-                context.stroke();
-            }
+        // Render all unfinished players (always render KO'ed players first so they're beneath others)
+        const renderOrderedUserIds = this.getUnfinishedPlayers().sort((a, b) => (this.isPlayerKnockedOut(b) ? 1 : 0) - (this.isPlayerKnockedOut(a) ? 1 : 0));
+        for (const userId of renderOrderedUserIds) {
+            await this.renderPlayer(context, userId);
         }
 
         // Render all "special" lines (e.g. warps, charges, traps) after rendering the players themselves
@@ -519,6 +454,76 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         }
 
         return masterImage.toBuffer();
+    }
+
+    private async renderPlayer(context: NodeCanvasRenderingContext2D, userId: Snowflake): Promise<void> {
+        const player = this.state.players[userId];
+
+        // Draw outline (rainbow if invincible, black otherwise)
+        const outlineX = (player.c + .5) * DungeonCrawler.TILE_SIZE;
+        const outlineY = (player.r + .5) * DungeonCrawler.TILE_SIZE;
+        const outlineRadius = DungeonCrawler.TILE_SIZE / 2 + 1;
+        if (player.invincible) {
+            const n = 32;
+            const rotationOffset = randInt(0, n);
+            context.lineWidth = 3;
+            context.setLineDash([]);
+            for (let i = 0; i < n; i++) {
+                context.strokeStyle = `hsl(${Math.floor((i + rotationOffset) * 360 / n)},100%,50%)`;
+                context.beginPath();
+                context.arc(outlineX, outlineY, outlineRadius, (i * 2 / n) * Math.PI, ((i + 1) * 2 / n) * Math.PI);
+                context.stroke();
+            }
+        } else {
+            // Draw a blue outline if the player has a multiplier, else black
+            context.fillStyle = this.playerHasMultiplier(userId) ? 'blue' : 'black';
+            context.beginPath();
+            context.arc(outlineX, outlineY, outlineRadius, 0, Math.PI * 2, false);
+            context.fill();
+        }
+
+        // Draw inner stuff
+        if (player.avatarUrl.startsWith('http')) {
+            // Draw semi-translucent if the user is knocked out
+            context.globalAlpha = player.knockedOut ? 0.5 : 1;
+
+            // Save the context so we can undo the clipping region at a later time
+            context.save();
+
+            // Define the clipping region as an 360 degrees arc at point x and y
+            context.beginPath();
+            context.arc((player.c + .5) * DungeonCrawler.TILE_SIZE, (player.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE / 2, 0, Math.PI * 2, false);
+
+            // Clip!
+            context.clip();
+
+            // Draw the image at imageX, imageY
+            const avatarImage = await this.loadImage(player.avatarUrl);
+            context.drawImage(avatarImage, player.c * DungeonCrawler.TILE_SIZE, player.r * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE);
+
+            // Restore context to undo the clipping
+            context.restore();
+            context.globalAlpha = 1;
+        } else {
+            // If it's not a URL, assume it's a CSS style
+            context.fillStyle = player.avatarUrl;
+            context.beginPath();
+            context.arc((player.c + .5) * DungeonCrawler.TILE_SIZE, (player.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE / 2, 0, Math.PI * 2, false);
+            context.fill();
+        }
+
+        // If the user is knocked out, draw an X
+        if (player.knockedOut) {
+            context.strokeStyle = 'red';
+            context.lineWidth = 2;
+            context.setLineDash([]);
+            context.beginPath();
+            context.moveTo(player.c * DungeonCrawler.TILE_SIZE, player.r * DungeonCrawler.TILE_SIZE);
+            context.lineTo((player.c + 1) * DungeonCrawler.TILE_SIZE, (player.r + 1) * DungeonCrawler.TILE_SIZE);
+            context.moveTo((player.c + 1) * DungeonCrawler.TILE_SIZE, player.r * DungeonCrawler.TILE_SIZE);
+            context.lineTo(player.c * DungeonCrawler.TILE_SIZE, (player.r + 1) * DungeonCrawler.TILE_SIZE);
+            context.stroke();
+        }
     }
 
     private fillTextOnTile(context: NodeCanvasRenderingContext2D, text: string, r: number, c: number): void {
@@ -2618,6 +2623,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
 
     isPlayerFinished(userId: Snowflake): boolean {
         return this.state.players[userId]?.finished ?? false;
+    }
+
+    isPlayerKnockedOut(userId: Snowflake): boolean {
+        return this.state.players[userId]?.knockedOut ?? false;
     }
 
     getPlayerMultiplier(userId: Snowflake): number {
