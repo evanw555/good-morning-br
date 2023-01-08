@@ -79,6 +79,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
 
     constructor(state: DungeonGameState) {
         super(state);
+        // TODO: Temp logic to fill in missing properties
+        if (state.lines === undefined) {
+            state.lines = [];
+        }
     }
 
     getIntroductionText(): string {
