@@ -652,7 +652,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 context.stroke();
                 // Render the player's avatar faintly
                 const avatarImage = await this.loadImage(player.avatarUrl);
-                await this.drawImageAsCircle(context, avatarImage, 0.25, (curr.c + .5) * DungeonCrawler.TILE_SIZE, (curr.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE / 2);
+                await this.drawImageAsCircle(context, avatarImage, 0.35, (curr.c + .5) * DungeonCrawler.TILE_SIZE, (curr.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE / 2);
             }
         }
         // Show attempted traps
@@ -664,14 +664,14 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             const [ action, locationString ] = decision.split(':');
             const location = DungeonCrawler.parseLocationString(locationString);
             if (location) {
-                this.fillTextOnTile(context, 'PLACE\nTRAP', location.r, location.c);
+                this.fillTextOnTile(context, 'TRAP', location.r, location.c);
             }
         }
         for (const decision of decisions.filter(d => d.startsWith('boulder:'))) {
             const [ action, locationString ] = decision.split(':');
             const location = DungeonCrawler.parseLocationString(locationString);
             if (location) {
-                this.fillTextOnTile(context, 'PLACE\nBOULDER', location.r, location.c);
+                this.fillTextOnTile(context, 'BOULDER', location.r, location.c);
             }
         }
         // Show placed traps
