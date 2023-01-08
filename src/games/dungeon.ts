@@ -1585,9 +1585,14 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         const playerPoints: number = player.points;
         let cost: number = 0;
 
-        // Abort if the user has less than one point
-        if (playerPoints < 1) {
-            throw new Error('Oh dear... looks like you have no points buddy, nice try...');
+        // Abort if the player is already knocked out
+        if (player.knockedOut) {
+            throw new Error('Don\'t you remember? You were knocked out for having no points! No action for you this week, my friend...');
+        }
+
+        // Abort if the player has negative points
+        if (playerPoints < 0) {
+            throw new Error('Oh dear... looks like you have negative points buddy, nice try...');
         }
 
         // Prevent pause-griefing
@@ -1765,12 +1770,6 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         // TODO: Next season, make this just a warning
         if (cost > playerPoints) {
             throw new Error(`You can't afford these actions. It would cost **${cost}** points, yet you only have **${Math.floor(playerPoints)}**.`);
-        }
-
-        // Just in case the player was knocked out but has since earned points, un-knock them out
-        if (player.knockedOut) {
-            delete player.knockedOut;
-            logger.log(`**${this.getDisplayName(userId)}** was pre-KO'ed but now has **${playerPoints}** points, so he's been un-KO'ed.`);
         }
 
         this.state.decisions[userId] = commands;
