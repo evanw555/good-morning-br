@@ -1,8 +1,9 @@
 import canvas, { NodeCanvasRenderingContext2D } from 'canvas';
 import { GuildMember, Snowflake } from 'discord.js';
-import { getRankString, naturalJoin, randInt, shuffle, toLetterId, fromLetterId, AStarPathFinder, shuffleWithDependencies, toFixed, collapseRedundantStrings, chance, randChoice } from 'evanw555.js';
+import { getRankString, getNumberBetween, naturalJoin, randInt, shuffle, toLetterId, fromLetterId, AStarPathFinder, shuffleWithDependencies, toFixed, collapseRedundantStrings, chance, randChoice } from 'evanw555.js';
 import { DecisionProcessingResult, DungeonGameState, DungeonItemName, DungeonLine, DungeonLocation, DungeonPlayerState, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
+
 import logger from '../logger';
 
 enum TileType {
@@ -320,7 +321,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         context.drawImage(sunImage, (this.getGoalColumn() - .5) * DungeonCrawler.TILE_SIZE, (this.getGoalRow() - .5) * DungeonCrawler.TILE_SIZE, 2 * DungeonCrawler.TILE_SIZE, 2 * DungeonCrawler.TILE_SIZE);
 
         // Render all "standard" lines (e.g. player steps) before rendering the players themselves
-        this.renderLines(context, this.state.lines.filter(line => !line.special));
+        this.renderLines(context, this.state.lines.filter(line => !line.over));
 
         // Render all players (who haven't finished)
         for (const userId of this.getUnfinishedPlayers()) {
@@ -394,7 +395,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         }
 
         // Render all "special" lines (e.g. warps, charges, traps) after rendering the players themselves
-        this.renderLines(context, this.state.lines.filter(line => line.special));
+        this.renderLines(context, this.state.lines.filter(line => line.over));
 
         // Render the player's actions if enabled
         if (options?.showPlayerDecision) {
@@ -569,7 +570,29 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     }
 
     private renderLines(context: canvas.CanvasRenderingContext2D, lines: DungeonLine[]): void {
+        // Use a stateful counter for the hue angle between lines
+        let theta = Math.random();
+
         for (const line of lines) {
+            // Handle rainbow lines specially
+            if (line.special === 'rainbow') {
+                context.lineWidth = 3;
+                context.setLineDash([]);
+                const n = 12;
+                for (let i = 0; i < n; i++) {
+                    context.beginPath();
+                    const r1 = getNumberBetween(line.from.r, line.to.r, i / n);
+                    const c1 = getNumberBetween(line.from.c, line.to.c, i / n);
+                    context.moveTo((c1 + .5) * DungeonCrawler.TILE_SIZE, (r1 + .5) * DungeonCrawler.TILE_SIZE);
+                    const r2 = getNumberBetween(line.from.r, line.to.r, (i + 1) / n);
+                    const c2 = getNumberBetween(line.from.c, line.to.c, (i + 1) / n);
+                    context.lineTo((c2 + .5) * DungeonCrawler.TILE_SIZE, (r2 + .5) * DungeonCrawler.TILE_SIZE);
+                    context.strokeStyle = `hsl(${Math.floor(theta * 360)},100%,50%)`;
+                    theta = (theta + 0.02) % 1;
+                    context.stroke();
+                }
+                continue;
+            }
             // Dash lines should be an even fraction of the tile size so that they look continuous together
             // TODO: Rather than having types of "special" lines, should we just have the style be explicitly overridden?
             if (line.special) {
@@ -969,10 +992,14 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return userIds.map(userId => this.getDisplayName(userId));
     }
 
-    private addRenderLine(from: DungeonLocation, to: DungeonLocation, special?: 'warp' | 'red'): void {
+    private addRenderLine(from: DungeonLocation, to: DungeonLocation, special?: 'warp' | 'red' | 'rainbow'): void {
         const line: DungeonLine = { from, to };
         if (special) {
             line.special = special;
+            // TODO: This really needs to be a little more flexible and less hardcoded
+            if (special === 'warp' || special === 'red') {
+                line.over = true;
+            }
         }
         this.state.lines.push(line);
     }
@@ -1841,7 +1868,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 const processStep = (dr: number, dc: number): boolean => {
                     const nr = player.r + dr;
                     const nc = player.c + dc;
-                    this.addRenderLine({ r: player.r, c: player.c }, { r: nr, c: nc });
+                    this.addRenderLine({ r: player.r, c: player.c }, { r: nr, c: nc }, player.invincible ? 'rainbow' : undefined);
                     // Handle situations where another user is standing in the way
                     const blockingUserId: Snowflake | undefined = this.getPlayerAtLocation(nr, nc);
                     if (blockingUserId) {

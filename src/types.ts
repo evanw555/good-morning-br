@@ -139,7 +139,14 @@ export type DungeonItemName = 'trap' | 'boulder' | 'seal' | 'key' | 'star' | 'ch
 export interface DungeonLine {
     from: DungeonLocation,
     to: DungeonLocation,
-    special?: 'warp' | 'red'
+    /**
+     * Render this line under players if falsy, over players if truthy.
+     */
+    over?: boolean,
+    /**
+     * The type of line to render.
+     */
+    special?: 'warp' | 'red' | 'rainbow'
 }
 
 export interface DungeonPlayerState {
