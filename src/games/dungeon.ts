@@ -1,7 +1,7 @@
 import canvas, { NodeCanvasRenderingContext2D } from 'canvas';
 import { GuildMember, Snowflake } from 'discord.js';
 import { getRankString, naturalJoin, randInt, shuffle, toLetterId, fromLetterId, AStarPathFinder, shuffleWithDependencies, toFixed, collapseRedundantStrings, chance, randChoice } from 'evanw555.js';
-import { DecisionProcessingResult, DungeonGameState, DungeonItemName, DungeonLocation, DungeonPlayerState, PrizeType } from "../types";
+import { DecisionProcessingResult, DungeonGameState, DungeonItemName, DungeonLine, DungeonLocation, DungeonPlayerState, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 import logger from '../logger';
 
@@ -319,23 +319,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         const sunImage = await this.loadImage('assets/sun4.png');
         context.drawImage(sunImage, (this.getGoalColumn() - .5) * DungeonCrawler.TILE_SIZE, (this.getGoalRow() - .5) * DungeonCrawler.TILE_SIZE, 2 * DungeonCrawler.TILE_SIZE, 2 * DungeonCrawler.TILE_SIZE);
 
-        // Render all player "previous locations" before rendering the players themselves
-        for (const userId of this.getUnfinishedPlayers()) {
-            const player = this.state.players[userId];
-            // Render movement line if not showing heavy line
-            if (player.previousLocations && !player.showHeavyMovementLine) {
-                context.lineWidth = 2;
-                context.strokeStyle = DungeonCrawler.STYLE_LIGHT_SKY;
-                context.setLineDash([Math.floor(DungeonCrawler.TILE_SIZE / 12), Math.floor(DungeonCrawler.TILE_SIZE / 12)]);
-                // TODO: Can this "draw path" logic be refactored?
-                context.beginPath();
-                context.moveTo((player.c + .5) * DungeonCrawler.TILE_SIZE, (player.r + .5) * DungeonCrawler.TILE_SIZE);
-                for (const previousLocation of player.previousLocations) {
-                    context.lineTo((previousLocation.c + .5) * DungeonCrawler.TILE_SIZE, (previousLocation.r + .5) * DungeonCrawler.TILE_SIZE);
-                }
-                context.stroke();
-            }
-        }
+        // Render all "standard" lines (e.g. player steps) before rendering the players themselves
+        this.renderLines(context, this.state.lines.filter(line => !line.special));
 
         // Render all players (who haven't finished)
         for (const userId of this.getUnfinishedPlayers()) {
@@ -408,23 +393,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             }
         }
 
-        // Render all player warp lines after rendering the players themselves
-        for (const userId of this.getUnfinishedPlayers()) {
-            const player = this.state.players[userId];
-            // Render dashed warp line if showing heavy movement line
-            if (player.previousLocations && player.showHeavyMovementLine) {
-                context.lineWidth = 4;
-                context.strokeStyle = player.warped ? DungeonCrawler.STYLE_WARP_PATH : DungeonCrawler.STYLE_HEAVY_PATH;
-                context.setLineDash([Math.floor(DungeonCrawler.TILE_SIZE / 4), Math.floor(DungeonCrawler.TILE_SIZE / 4)]);
-                // TODO: Can this "draw path" logic be refactored?
-                context.beginPath();
-                context.moveTo((player.c + .5) * DungeonCrawler.TILE_SIZE, (player.r + .5) * DungeonCrawler.TILE_SIZE);
-                for (const previousLocation of player.previousLocations) {
-                    context.lineTo((previousLocation.c + .5) * DungeonCrawler.TILE_SIZE, (previousLocation.r + .5) * DungeonCrawler.TILE_SIZE);
-                }
-                context.stroke();
-            }
-        }
+        // Render all "special" lines (e.g. warps, charges, traps) after rendering the players themselves
+        this.renderLines(context, this.state.lines.filter(line => line.special));
 
         // Render the player's actions if enabled
         if (options?.showPlayerDecision) {
@@ -598,6 +568,26 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         context.fill();
     }
 
+    private renderLines(context: canvas.CanvasRenderingContext2D, lines: DungeonLine[]): void {
+        for (const line of lines) {
+            // Dash lines should be an even fraction of the tile size so that they look continuous together
+            // TODO: Rather than having types of "special" lines, should we just have the style be explicitly overridden?
+            if (line.special) {
+                context.lineWidth = 4;
+                context.strokeStyle = (line.special === 'warp') ? DungeonCrawler.STYLE_WARP_PATH : DungeonCrawler.STYLE_HEAVY_PATH;
+                context.setLineDash([Math.floor(DungeonCrawler.TILE_SIZE / 4), Math.floor(DungeonCrawler.TILE_SIZE / 4)]);
+            } else {
+                context.lineWidth = 2;
+                context.strokeStyle = DungeonCrawler.STYLE_LIGHT_SKY;
+                context.setLineDash([Math.floor(DungeonCrawler.TILE_SIZE / 12), Math.floor(DungeonCrawler.TILE_SIZE / 12)]);
+            }
+            context.beginPath();
+            context.moveTo((line.from.c + .5) * DungeonCrawler.TILE_SIZE, (line.from.r + .5) * DungeonCrawler.TILE_SIZE);
+            context.lineTo((line.to.c + .5) * DungeonCrawler.TILE_SIZE, (line.to.r + .5) * DungeonCrawler.TILE_SIZE);
+            context.stroke();
+        }
+    }
+
     private async renderPlayerDecision(context: canvas.CanvasRenderingContext2D, userId: Snowflake) {
         const player = this.state.players[userId];
         const decisions: string[] = this.state.decisions[userId] ?? [];
@@ -624,7 +614,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         // Show attempted traps
         context.font = `${DungeonCrawler.TILE_SIZE * .5}px sans-serif`;
         context.lineWidth = 1;
-        context.strokeStyle = 'red';
+        context.fillStyle = 'red';
         context.setLineDash([]);
         for (const decision of decisions.filter(d => d.startsWith('trap:'))) {
             const [ action, locationString ] = decision.split(':');
@@ -672,6 +662,9 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         this.state.action = 0;
         this.state.decisions = {};
 
+        // Clear all render lines (this is done before each action, but it must be done now so lines don't show up in the decision render)
+        this.state.lines = [];
+
         // Refresh all player ranks
         this.refreshPlayerRanks();
 
@@ -683,7 +676,6 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         for (const userId of this.getPlayers()) {
             const player = this.state.players[userId];
             // Reset per-turn metadata and statuses
-            delete player.previousLocations;
             player.originLocation = { r: player.r, c: player.c };
             delete player.itemOffers;
             delete player.knockedOut;
@@ -977,11 +969,12 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return userIds.map(userId => this.getDisplayName(userId));
     }
 
-    private addPlayerPreviousLocation(userId: Snowflake, location: DungeonLocation): void {
-        if (userId in this.state.players) {
-            const player = this.state.players[userId];
-            player.previousLocations = [location, ...(player.previousLocations ?? [])];
+    private addRenderLine(from: DungeonLocation, to: DungeonLocation, special?: 'warp' | 'red'): void {
+        const line: DungeonLine = { from, to };
+        if (special) {
+            line.special = special;
         }
+        this.state.lines.push(line);
     }
 
     private static getSequenceOfLocations(initialLocation: { r: number, c: number }, actions: ActionName[]): { r: number, c: number }[] {
@@ -1187,7 +1180,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             goal: { r: 20, c: 20 },
             keyHoleCosts,
             trapOwners: {},
-            players
+            players,
+            lines: []
         });
         dungeon.refreshPlayerRanks();
 
@@ -1391,7 +1385,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             goal,
             keyHoleCosts,
             trapOwners: {},
-            players
+            players,
+            lines: []
         });
         dungeon.refreshPlayerRanks();
 
@@ -1781,11 +1776,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     }
 
     processPlayerDecisions(): DecisionProcessingResult {
-        // Delete all previous locations for all players (this is not done in the inner method since we want to show long paths for multiple consecutive actions)
-        for (const userId of this.getPlayers()) {
-            delete this.state.players[userId].previousLocations;
-            delete this.state.players[userId].showHeavyMovementLine;
-        }
+        // Delete all render lines (this is not done in the inner method since we want to show long paths for multiple consecutive actions)
+        this.state.lines = [];
 
         // Process one action for each player, and repeat so long as the inner method says it's ok
         const summaries: string[] = [];
@@ -1847,9 +1839,9 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 numPlayersProcessed++;
                 let endTurn = false;
                 const processStep = (dr: number, dc: number): boolean => {
-                    this.addPlayerPreviousLocation(userId, { r: player.r, c: player.c });
                     const nr = player.r + dr;
                     const nc = player.c + dc;
+                    this.addRenderLine({ r: player.r, c: player.c }, { r: nr, c: nc });
                     // Handle situations where another user is standing in the way
                     const blockingUserId: Snowflake | undefined = this.getPlayerAtLocation(nr, nc);
                     if (blockingUserId) {
@@ -1981,7 +1973,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         const isCloser: boolean = this.approximateCostToGoal(newR, newC) < this.approximateCostToGoal(player.r, player.c);
                         // If it's the user's first warp of the turn or the warp is closer to the goal, do it
                         if (isFirstWarp || isCloser) {
-                            this.addPlayerPreviousLocation(userId, { r: player.r, c: player.c });
+                            this.addRenderLine({ r: player.r, c: player.c }, { r: newR, c: newC }, 'warp');
                             player.r = newR;
                             player.c = newC;
                             player.warped = true;
@@ -2075,10 +2067,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                             pushNonCollapsableStatement(`**${player.displayName}** tried to charge like a madman but accidentally gave himself AIDS`);
                             return false;
                         }
+                        const previousLocation = { r: player.r, c: player.c };
                         const direction = DungeonCrawler.getDirectionTo({ r: player.r, c: player.c }, argLocation);
                         const intermediateLocations = this.getLocationsBetween({ r: player.r, c: player.c }, argLocation);
                         this.consumePlayerItem(userId, 'charge');
-                        this.addPlayerPreviousLocation(userId, { r: player.r, c: player.c });
                         player.showHeavyMovementLine = true;
                         const trampledPlayers: Snowflake[] = [];
                         let spacesMoved = 0;
@@ -2113,6 +2105,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                             player.c = intermediateLocation.c;
                             spacesMoved++;
                         }
+                        this.addRenderLine(previousLocation, { r: player.r, c: player.c }, 'red');
                         pushNonCollapsableStatement(getChargeText(false));
                         return true;
                     }
@@ -2200,9 +2193,9 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         }
                         // Handle revealed traps (this will trigger if the above condition is triggered)
                         if (this.getTileAtUser(userId) === TileType.TRAP) {
-                            player.previousLocations = [{ r: player.r, c: player.c }];
                             player.showHeavyMovementLine = true;
                             if (player.originLocation) {
+                                this.addRenderLine({ r: player.r, c: player.c }, player.originLocation, 'red');
                                 player.r = player.originLocation.r;
                                 player.c = player.originLocation.c;
                             } else {

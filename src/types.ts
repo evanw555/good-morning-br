@@ -136,6 +136,12 @@ export interface DungeonLocation {
 
 export type DungeonItemName = 'trap' | 'boulder' | 'seal' | 'key' | 'star' | 'charge';
 
+export interface DungeonLine {
+    from: DungeonLocation,
+    to: DungeonLocation,
+    special?: 'warp' | 'red'
+}
+
 export interface DungeonPlayerState {
     r: number,
     c: number,
@@ -153,7 +159,6 @@ export interface DungeonPlayerState {
     finished?: boolean,
     knockedOut?: boolean,
     invincible?: boolean,
-    previousLocations?: DungeonLocation[],
     originLocation?: DungeonLocation,
     warped?: boolean,
     showHeavyMovementLine?: boolean
@@ -178,7 +183,8 @@ export interface DungeonGameState {
     homeStretch?: boolean,
     keyHoleCosts: Record<string, number>,
     trapOwners: Record<string, Snowflake>,
-    players: Record<Snowflake, DungeonPlayerState>
+    players: Record<Snowflake, DungeonPlayerState>,
+    lines: DungeonLine[]
 }
 
 export interface ClassicGameState {
