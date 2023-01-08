@@ -652,7 +652,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 context.stroke();
                 // Render the player's avatar faintly
                 const avatarImage = await this.loadImage(player.avatarUrl);
-                await this.drawImageAsCircle(context, avatarImage, 0.25, (player.c + .5) * DungeonCrawler.TILE_SIZE, (player.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE / 2);
+                await this.drawImageAsCircle(context, avatarImage, 0.25, (curr.c + .5) * DungeonCrawler.TILE_SIZE, (curr.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE / 2);
             }
         }
         // Show attempted traps
