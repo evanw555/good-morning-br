@@ -164,7 +164,7 @@ export interface DungeonPlayerState {
     items?: Partial<Record<DungeonItemName, number>>,
     itemOffers?: DungeonItemName[],
     finished?: boolean,
-    knockedOut?: boolean,
+    stuns?: number,
     invincible?: boolean,
     originLocation?: DungeonLocation,
     warped?: boolean
@@ -190,7 +190,9 @@ export interface DungeonGameState {
     keyHoleCosts: Record<string, number>,
     trapOwners: Record<string, Snowflake>,
     players: Record<Snowflake, DungeonPlayerState>,
-    lines: DungeonLine[]
+    lines: DungeonLine[],
+    // TODO: Temp property to test features for next season
+    usingBetaFeatures?: boolean
 }
 
 export interface ClassicGameState {

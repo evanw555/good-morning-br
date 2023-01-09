@@ -2292,7 +2292,8 @@ const processCommands = async (msg: Message): Promise<void> => {
             if (members.every(m => m.id !== msg.author.id)) {
                 members.push(await guild.members.fetch(msg.author.id));
             }
-            await msg.reply(`Generating new game with **${members.length}** player(s)...`);
+            const useBetaFeatures = sanitizedText.includes('beta');
+            await msg.reply(`Generating new game with **${members.length}** player(s)...` + (useBetaFeatures ? ' (with beta features enabled)' : ''));
             awaitingGameCommands = true;
             if (sanitizedText.includes('dungeon')) {
                 // tempDungeon = DungeonCrawler.createBest(members, 20, 40);
@@ -2303,6 +2304,9 @@ const processCommands = async (msg: Message): Promise<void> => {
                 (tempDungeon as DungeonCrawler).addPlayerItem(msg.author.id, 'key', 2);
                 (tempDungeon as DungeonCrawler).addPlayerItem(msg.author.id, 'star', 1);
                 (tempDungeon as DungeonCrawler).addPlayerItem(msg.author.id, 'charge', 5);
+                if (useBetaFeatures) {
+                    (tempDungeon as DungeonCrawler).setUsingBetaFeatures(true);
+                }
             } else {
                 tempDungeon = ClassicGame.create(members);
             }

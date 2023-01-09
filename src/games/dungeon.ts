@@ -95,7 +95,9 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         // Temp text indicating new features for this season
             + '\n\n_CHANGES IN THIS SEASON:_'
             + '\n⭐ The maze has been shortened, with more branching paths!'
-            + '\n⭐ Rather than awarding just one point, traps will award more points for sending players farther!';
+            + '\n⭐ You can choose more actions than you can afford, but running out of points will KO you.'
+            + '\n⭐ Rather than awarding just one point, traps will award more points for sending players farther!'
+            + '\n⭐ Most turn-ending KOs have been replaced with temporary stuns (e.g. punching stuns a player for 3 actions)';
     }
 
     getInstructionsText(): string {
@@ -331,8 +333,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         // Render all "standard" lines (e.g. player steps) before rendering the players themselves
         this.renderLines(context, this.state.lines.filter(line => !line.over));
 
-        // Render all unfinished players (always render KO'ed players first so they're beneath others)
-        const renderOrderedUserIds = this.getUnfinishedPlayers().sort((a, b) => (this.isPlayerKnockedOut(b) ? 1 : 0) - (this.isPlayerKnockedOut(a) ? 1 : 0));
+        // Render all unfinished players (always render stunned players first so they're beneath others)
+        const renderOrderedUserIds = this.getUnfinishedPlayers().sort((a, b) => (this.isPlayerStunned(b) ? 1 : 0) - (this.isPlayerStunned(a) ? 1 : 0));
         for (const userId of renderOrderedUserIds) {
             await this.renderPlayer(context, userId);
         }
@@ -408,7 +410,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             const player = this.state.players[userId];
             // Define helper for resetting the text color
             const resetTextColor = () => {
-                if (player.knockedOut) {
+                if (this.isPlayerStunned(userId)) {
                     c2.fillStyle = 'hsl(360,50%,55%)';
                 } else if (player.finished) {
                     c2.fillStyle = 'yellow';
@@ -493,7 +495,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         // Draw inner stuff
         if (player.avatarUrl.startsWith('http')) {
             const avatarImage = await this.loadImage(player.avatarUrl);
-            await this.drawImageAsCircle(context, avatarImage, player.knockedOut ? 0.5 : 1, (player.c + .5) * DungeonCrawler.TILE_SIZE, (player.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE / 2);
+            await this.drawImageAsCircle(context, avatarImage, this.isPlayerStunned(userId) ? 0.5 : 1, (player.c + .5) * DungeonCrawler.TILE_SIZE, (player.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE / 2);
         } else {
             // If it's not a URL, assume it's a CSS style
             context.fillStyle = player.avatarUrl;
@@ -502,17 +504,24 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             context.fill();
         }
 
-        // If the user is knocked out, draw an X
-        if (player.knockedOut) {
-            context.strokeStyle = 'red';
-            context.lineWidth = 2;
-            context.setLineDash([]);
-            context.beginPath();
-            context.moveTo(player.c * DungeonCrawler.TILE_SIZE, player.r * DungeonCrawler.TILE_SIZE);
-            context.lineTo((player.c + 1) * DungeonCrawler.TILE_SIZE, (player.r + 1) * DungeonCrawler.TILE_SIZE);
-            context.moveTo((player.c + 1) * DungeonCrawler.TILE_SIZE, player.r * DungeonCrawler.TILE_SIZE);
-            context.lineTo(player.c * DungeonCrawler.TILE_SIZE, (player.r + 1) * DungeonCrawler.TILE_SIZE);
-            context.stroke();
+        // If the user is stunned, draw something to indicate this
+        if (this.isPlayerStunned(userId)) {
+            // If the player has pending decisions, show the stuns left; else just draw an X
+            if (this.hasPendingDecisions(userId)) {
+                context.font = `${DungeonCrawler.TILE_SIZE * .8}px sans-serif`;
+                context.fillStyle = 'red';
+                this.fillTextOnTile(context,this.getPlayerStuns(userId).toString(), player.r, player.c);
+            } else {
+                context.strokeStyle = 'red';
+                context.lineWidth = 2;
+                context.setLineDash([]);
+                context.beginPath();
+                context.moveTo(player.c * DungeonCrawler.TILE_SIZE, player.r * DungeonCrawler.TILE_SIZE);
+                context.lineTo((player.c + 1) * DungeonCrawler.TILE_SIZE, (player.r + 1) * DungeonCrawler.TILE_SIZE);
+                context.moveTo((player.c + 1) * DungeonCrawler.TILE_SIZE, player.r * DungeonCrawler.TILE_SIZE);
+                context.lineTo(player.c * DungeonCrawler.TILE_SIZE, (player.r + 1) * DungeonCrawler.TILE_SIZE);
+                context.stroke();
+            }
         }
     }
 
@@ -722,7 +731,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             // Reset per-turn metadata and statuses
             player.originLocation = { r: player.r, c: player.c };
             delete player.itemOffers;
-            delete player.knockedOut;
+            delete player.stuns;
             delete player.invincible;
             delete player.warped;
             // Give the player a multiplier for this turn if it's the home stretch and they're in need of help
@@ -742,7 +751,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 }
             } else {
                 // Otherwise, knock them out
-                player.knockedOut = true;
+                player.stuns = 1;
             }
         }
 
@@ -1586,7 +1595,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         let cost: number = 0;
 
         // Abort if the player is already knocked out
-        if (player.knockedOut) {
+        if (this.isPlayerStunned(userId)) {
             throw new Error('Don\'t you remember? You were knocked out for having no points! No action for you this week, my friend...');
         }
 
@@ -1663,7 +1672,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             if (this.isTileType(nr, nc, TileType.KEY_HOLE)) {
                 newLocation.r += dr;
                 newLocation.c += dc;
-                warnings.push(`Doorway at **${DungeonCrawler.getLocationString(nr, nc)}** must be unlocked, whether by you or someone else.`);
+                warnings.push(`⚠️ Doorway at **${DungeonCrawler.getLocationString(nr, nc)}** must be unlocked, whether by you or someone else.`);
             } else if (this.isWalkable(nr, nc)) {
                 newLocation.r += dr;
                 newLocation.c += dc;
@@ -1692,11 +1701,11 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 case 'unlock':
                 case 'key':
                     validateDoorwayAction(argLocation, c);
-                    warnings.push(`Doorways are halved in cost when unlocked, so subsequent actions taken on a doorway you unlock will be cheaper.`);
+                    warnings.push(`ℹ️ Doorways are halved in cost when unlocked, so subsequent actions taken on a doorway you unlock will be cheaper.`);
                     break;
                 case 'lock':
                     validateDoorwayAction(argLocation, 'lock');
-                    warnings.push(`Doorways are halved in cost when unlocked, so you may end up spending fewer points than expected.`);
+                    warnings.push(`ℹ️ Doorways are halved in cost when unlocked, so you may end up spending fewer points than expected.`);
                     break;
                 case 'seal':
                     validateDoorwayAction(argLocation, 'seal');
@@ -1767,15 +1776,19 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             }
         }
 
-        // TODO: Next season, make this just a warning
         if (cost > playerPoints) {
-            throw new Error(`You can't afford these actions. It would cost **${cost}** points, yet you only have **${Math.floor(playerPoints)}**.`);
+            // TODO: Un-beta this next season
+            if (this.isUsingBetaFeatures()) {
+                warnings.push(`⚠️ You currently have **${Math.floor(playerPoints)}** points, yet these actions cost **${cost}**. Unless you collect points mid-turn, you'll be KO'ed when you run out of points.`);
+            } else {
+                throw new Error(`You can't afford these actions. It would cost **${cost}** points, yet you only have **${Math.floor(playerPoints)}**.`);
+            }
         }
 
         this.state.decisions[userId] = commands;
         return `Valid actions, your new location will be **${isWarping ? '???' : DungeonCrawler.getLocationString(newLocation.r, newLocation.c)}**. `
             + `This will consume **${cost}** of your **${Math.floor(playerPoints)}** points if successful. `
-            + (warnings.length > 0 ? ' BUT PLEASE NOTE THE FOLLOWING WARNINGS:\n' + warnings.join('\n') : '');
+            + (warnings.length > 0 ? ' _BUT PLEASE NOTE THE FOLLOWING:_\n' + warnings.join('\n') : '');
     }
 
     private getActionCost(action: ActionName, location?: DungeonLocation, arg?: string): number {
@@ -1900,8 +1913,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     if (blockingUserId) {
                         const blockingUser = this.state.players[blockingUserId];
                         if (player.invincible && !blockingUser.invincible) {
-                            // If this player is invincible and the other isn't, knock them out and continue walking
-                            blockingUser.knockedOut = true;
+                            // If this player is invincible and the other isn't, stun them and continue walking
+                            blockingUser.stuns = 3;
                             pushNonCollapsableStatement(`**${player.displayName}** trampled **${blockingUser.displayName}**`)
                         } else {
                             // Otherwise, handle the blocking user as normal
@@ -1909,8 +1922,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                             if (bumpers[blockingUserId] === userId) {
                                 // If the other user previously bumped into this user, then allow him to pass by
                                 pushNonCollapsableStatement(`**${player.displayName}** walked past **${blockingUser.displayName}**`);
-                            } else if (blockingUser.knockedOut) {
-                                // If the other user is knocked out, walk past him
+                            } else if (this.isPlayerStunned(blockingUserId)) {
+                                // If the other user is stunned, walk past him
                                 pushNonCollapsableStatement(`**${player.displayName}** stepped over the knocked-out body of **${blockingUser.displayName}**`);
                             } else {
                                 // Otherwise, refuse to move
@@ -2000,7 +2013,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                                 if (otherPlayer.invincible) {
                                     pushNonCollapsableStatement(`**${player.displayName}** threw fists at the invincible **${otherPlayer.displayName}** to no avail`);
                                 } else if (chance(0.75)) {
-                                    otherPlayer.knockedOut = true;
+                                    otherPlayer.stuns = 3;
                                     pushNonCollapsableStatement(`**${player.displayName}** knocked out **${otherPlayer.displayName}**`);
                                 } else {
                                     pushNonCollapsableStatement(`**${player.displayName}** tried to punch **${otherPlayer.displayName}** and missed`);
@@ -2016,7 +2029,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         const warpableLocation = this.getSpawnableLocationAroundPlayers(this.getOtherPlayers(userId));
                         // Emergency fallback (this shouldn't happen)
                         if (!warpableLocation) {
-                            player.knockedOut = true;
+                            player.stuns = 1;
                             endTurn = true;
                             pushNonCollapsableStatement(`**${player.displayName}** tried to warp but forgot to jump into the wormhole because he was watching webMs`);
                             return false;
@@ -2040,7 +2053,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         const targetLocation = DungeonCrawler.parseLocationString(arg);
                         // Emergency fallback (this shouldn't happen)
                         if (!targetLocation) {
-                            player.knockedOut = true;
+                            player.stuns = 1;
                             endTurn = true;
                             pushNonCollapsableStatement(`**${player.displayName}** tried to place a trap but he left his trap at home`);
                             return false;
@@ -2054,14 +2067,14 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         const targetLocation = DungeonCrawler.parseLocationString(arg);
                         // Emergency fallback (this shouldn't happen)
                         if (!targetLocation) {
-                            player.knockedOut = true;
+                            player.stuns = 1;
                             endTurn = true;
                             pushNonCollapsableStatement(`**${player.displayName}** tried to place a boulder but the boulder disintegrated in his hands`);
                             return false;
                         }
                         // If doing this will softlock the game, knock out the player
                         if (!this.canAllPlayersReachGoal([targetLocation])) {
-                            player.knockedOut = true;
+                            player.stuns = 1;
                             endTurn = true;
                             pushNonCollapsableStatement(`**${player.displayName}** got knocked out trying to softlock the game (tried to place boulder at **${DungeonCrawler.getLocationString(targetLocation.r, targetLocation.c)}**)`);
                             return false;
@@ -2077,7 +2090,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         const sealableLocations = this.getAdjacentLocationsOrOverride({ r: player.r, c: player.c }, argLocation).filter(l => this.isSealable(l.r, l.c));
                         // If doing this will softlock the game, knock out the player
                         if (!this.canAllPlayersReachGoal(sealableLocations)) {
-                            player.knockedOut = true;
+                            player.stuns = 1;
                             endTurn = true;
                             pushNonCollapsableStatement(`**${player.displayName}** got knocked out trying to softlock the game (tried to permanently seal doorways)`);
                             return false;
@@ -2114,7 +2127,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         const argLocation: DungeonLocation | undefined = DungeonCrawler.parseLocationString(arg);
                         // Emergency fallback (this shouldn't happen)
                         if (!argLocation) {
-                            player.knockedOut = true;
+                            player.stuns = 1;
                             endTurn = true;
                             pushNonCollapsableStatement(`**${player.displayName}** tried to charge like a madman but accidentally gave himself AIDS`);
                             return false;
@@ -2139,7 +2152,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                             // If this location isn't walkable, knock the player out and end the charge
                             if (!this.isWalkable(intermediateLocation.r, intermediateLocation.c)) {
                                 pushNonCollapsableStatement(getChargeText(true));
-                                player.knockedOut = true;
+                                player.stuns = 1;
+                                endTurn = true;
                                 return true;
                             }
                             // Trample all other players in this location
@@ -2147,7 +2161,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                             for (const otherPlayerId of playersAtLocation) {
                                 if (otherPlayerId !== userId) {
                                     const otherPlayer = this.state.players[otherPlayerId];
-                                    otherPlayer.knockedOut = true;
+                                    otherPlayer.stuns = 3;
                                     trampledPlayers.push(otherPlayerId);
                                 }
                             }
@@ -2162,10 +2176,22 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     }
                 };
 
-                // This player is knocked out yet still has pending decisions (likely knocked out by another player), thus we need to end their turn.
-                // We can't let players wipe the decisions of other players because we need to process turn-end logic for all players (e.g. punching another player, then letting them trigger a trap)
-                if (player.knockedOut) {
-                    endTurn = true;
+                if (this.isPlayerStunned(userId)) {
+                    // TODO: Un-beta this feature next season
+                    if (this.isUsingBetaFeatures()) {
+                        this.consumePlayerStun(userId);
+                        // If all stuns have been consumed, notify
+                        if (!this.isPlayerStunned(userId)) {
+                            pushNonCollapsableStatement(`**${player.displayName}** regained consciousness`);
+                        }
+                        // Skip processing this player's decisions
+                        continue;
+                    } else {
+                        // This player is knocked out yet still has pending decisions (likely knocked out by another player),
+                        // thus we need to end their turn. We can't let players wipe the decisions of other players because
+                        // we need to process turn-end logic for all players (e.g. punching another player, then letting them trigger a trap)
+                        endTurn = true;
+                    }
                 }
 
                 // Unless this player's turn should end, process their next action
@@ -2174,11 +2200,12 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     const nextAction = this.state.decisions[userId][0];
                     const [actionName, actionArg] = nextAction.toLowerCase().split(':') as [ActionName, string];
 
-                    // If the player can't afford this action, delete all their decisions (ending their turn)
+                    // If the player can't afford this action, delete all their decisions and stun them (ending their turn)
                     const actionCost: number = this.getActionCost(actionName, { r: player.r, c: player.c }, actionArg);
                     if (actionCost > player.points) {
                         delete this.state.decisions[userId];
-                        pushNonCollapsableStatement(`**${player.displayName}** ran out of action points`);
+                        player.stuns = 1;
+                        pushNonCollapsableStatement(`**${player.displayName}** ran out of action points and fainted`);
                         continue;
                     }
 
@@ -2230,7 +2257,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 if (turnIsOver) {
                     // If the user warped, knock them out
                     if (player.warped) {
-                        player.knockedOut = true;
+                        player.stuns = 1;
                     }
                     // Handle hidden traps if not invincible
                     if (!player.invincible) {
@@ -2255,7 +2282,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                             } else {
                                 logger.log(`Unable to send \`${userId}\` back to origin location (it doesn't exist!)`);
                             }
-                            player.knockedOut = true;
+                            player.stuns = 1;
                             const trapOwnerId = this.state.trapOwners[locationString];
                             logger.log(`\`${this.getDisplayName(userId)}\` triggered trap by \`${this.getDisplayName(trapOwnerId)}\` at \`${locationString}\` (progress lost: **${progressLost}**)`);
                             if (trapRevealed) {
@@ -2264,9 +2291,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                                 pushNonCollapsableStatement(`**${player.displayName}** stepped on **${this.getDisplayName(trapOwnerId)}'s** trap and was sent back to **${this.getPlayerLocationString(userId)}**`);
                             }
                             // Reward the trap's owner
-                            // TODO: Award points based on the progress lost
-                            this.addPoints(trapOwnerId, 1);
-                            pushNonCollapsableStatement(`**${this.getDisplayName(trapOwnerId)}** earned **$1** for trapping`);
+                            // TODO: Un-beta this feature next season
+                            const trapperPoints = this.isUsingBetaFeatures() ? progressLost : 1;
+                            this.addPoints(trapOwnerId, trapperPoints);
+                            pushNonCollapsableStatement(`**${this.getDisplayName(trapOwnerId)}** earned **$${trapperPoints}** for trapping`);
                         }
                     }
                 }
@@ -2652,8 +2680,22 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return this.state.players[userId]?.finished ?? false;
     }
 
-    isPlayerKnockedOut(userId: Snowflake): boolean {
-        return this.state.players[userId]?.knockedOut ?? false;
+    getPlayerStuns(userId: Snowflake): number {
+        return this.state.players[userId]?.stuns ?? 0;
+    }
+
+    isPlayerStunned(userId: Snowflake): boolean {
+        return this.getPlayerStuns(userId) > 0;
+    }
+
+    consumePlayerStun(userId: Snowflake): void {
+        if (this.hasPlayer(userId)) {
+            const player = this.state.players[userId];
+            player.stuns = this.getPlayerStuns(userId) - 1;
+            if (player.stuns === 0) {
+                delete player.stuns;
+            }
+        }
     }
 
     getPlayerMultiplier(userId: Snowflake): number {
@@ -2707,5 +2749,13 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         if (Object.keys(player.items).length === 0) {
             delete player.items;
         }
+    }
+
+    isUsingBetaFeatures(): boolean {
+        return this.state.usingBetaFeatures ?? false;
+    }
+
+    setUsingBetaFeatures(usingBetaFeatures: boolean): void {
+        this.state.usingBetaFeatures = usingBetaFeatures;
     }
 }
