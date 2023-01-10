@@ -93,11 +93,13 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             + 'Some moves are secret and can only be performed once unlocked. '
             + 'The next day (Sunday), your moves will be performed one-by-one.'
         // Temp text indicating new features for this season
+        // TODO: Split this up into a separate message, since it may get too long
             + '\n\n_CHANGES IN THIS SEASON:_'
             + '\n⭐ The maze has been shortened, with more branching paths!'
             + '\n⭐ You can choose more actions than you can afford, but running out of points will KO you.'
             + '\n⭐ Rather than awarding just one point, traps will award more points for sending players farther!'
-            + '\n⭐ Most turn-ending KOs have been replaced with temporary stuns (e.g. punching stuns a player for 3 actions)';
+            + '\n⭐ Most turn-ending KOs have been replaced with temporary stuns (e.g. punching stuns a player for 3 actions)'
+            + '\n⭐ If you bump into a player with no remaining actions, you\'ll shove them forward rather than giving up (if possible)';
     }
 
     getInstructionsText(): string {
@@ -113,6 +115,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     }
 
     getHelpText(): string {
+        // TODO: Update this for the new season
         return 'Here are the possible actions you may take and their associated costs:\n'
                 + '`up`, `down`, `left`, `right`: move one step in such direction. Costs `1`\n'
                 + '`unlock`: open all doorways adjacent to you (or just one e.g. `unlock:b12`). Cost is denoted on each doorway, and is reduced with each unlock\n'
@@ -1907,7 +1910,9 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 const processStep = (dr: number, dc: number): boolean => {
                     const nr = player.r + dr;
                     const nc = player.c + dc;
-                    this.addRenderLine({ r: player.r, c: player.c }, { r: nr, c: nc }, player.invincible ? 'rainbow' : undefined);
+                    const currentLocation = { r: player.r, c: player.c };
+                    const newLocation = { r: nr, c: nc };
+                    this.addRenderLine(currentLocation, newLocation, player.invincible ? 'rainbow' : undefined);
                     // Handle situations where another user is standing in the way
                     const blockingUserId: Snowflake | undefined = this.getPlayerAtLocation(nr, nc);
                     if (blockingUserId) {
@@ -1926,14 +1931,38 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                                 // If the other user is stunned, walk past him
                                 pushNonCollapsableStatement(`**${player.displayName}** stepped over the knocked-out body of **${blockingUser.displayName}**`);
                             } else {
-                                // Otherwise, refuse to move
+                                // Otherwise, deal with colliding into a non-stunned player
                                 if (this.hasPendingDecisions(blockingUserId)) {
+                                    // If they've got actions left, just bump and wait
                                     pushNonCollapsableStatement(`**${player.displayName}** bumped into someone`);
+                                    return false;
                                 } else {
-                                    summaryData.consecutiveBumpGoners.push(userId);
-                                    endTurn = true;
+                                    // Otherwise, bumping into a player with no more actions...
+                                    // TODO: Un-beta this feature
+                                    if (this.isUsingBetaFeatures()) {
+                                        const shoveOffset = DungeonCrawler.getNormalizedOffsetTo(currentLocation, newLocation);
+                                        const shoveLocation = DungeonCrawler.getOffsetLocation(newLocation, shoveOffset);
+                                        // TODO: This wouldn't handle shoving a player onto a KO'ed player
+                                        // TODO: This should check if the shove location triggered a trap
+                                        if (this.isWalkable(shoveLocation.r, shoveLocation.c) && !this.isPlayerAtLocation(shoveLocation)) {
+                                            // If the blocking player can be shoved, shove them!
+                                            blockingUser.r = shoveLocation.r;
+                                            blockingUser.c = shoveLocation.c;
+                                            const shoveDirection = DungeonCrawler.getDirectionByOffset(shoveOffset);
+                                            pushNonCollapsableStatement(`**${player.displayName}** shoved **${blockingUser.displayName}** ${shoveDirection}ward`);
+                                        } else {
+                                            // Otherwise, just bump and give up
+                                            summaryData.consecutiveBumpGoners.push(userId);
+                                            endTurn = true;
+                                            return false;
+                                        }
+                                    } else {
+                                        // Bump and give up
+                                        summaryData.consecutiveBumpGoners.push(userId);
+                                        endTurn = true;
+                                        return false;
+                                    }
                                 }
-                                return false;
                             }
                         }
                     }
@@ -2471,6 +2500,13 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             }
         }
         throw new Error(`Offset ${offset} cannot be mapped to a cardinal direction!`);
+    }
+
+    private static getOffsetLocation(location: DungeonLocation, offset: [number, number]): DungeonLocation {
+        return {
+            r: location.r + offset[0],
+            c: location.c + offset[1]
+        };
     }
 
     private static getDirectionTo(from: DungeonLocation, to: DungeonLocation): Direction {
