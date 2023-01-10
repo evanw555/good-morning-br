@@ -2034,18 +2034,23 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     },
                     punch: () => {
                         let nearPlayer = false;
-                        for (const { r, c } of this.getAdjacentLocations({ r: player.r, c: player.c })) {
-                            const otherPlayerId = this.getPlayerAtLocation(r, c);
-                            if (otherPlayerId) {
-                                nearPlayer = true;
-                                const otherPlayer = this.state.players[otherPlayerId];
-                                if (otherPlayer.invincible) {
-                                    pushNonCollapsableStatement(`**${player.displayName}** threw fists at the invincible **${otherPlayer.displayName}** to no avail`);
-                                } else if (chance(0.75)) {
-                                    otherPlayer.stuns = 3;
-                                    pushNonCollapsableStatement(`**${player.displayName}** knocked out **${otherPlayer.displayName}**`);
-                                } else {
-                                    pushNonCollapsableStatement(`**${player.displayName}** tried to punch **${otherPlayer.displayName}** and missed`);
+                        // For each location adjacent to the player...
+                        for (const adjacentLocation of this.getAdjacentLocations({ r: player.r, c: player.c })) {
+                            const adjacentPlayerIds = this.getPlayersAtLocation(adjacentLocation);
+                            // For each player in this adjacent location...
+                            for (const otherPlayerId of adjacentPlayerIds) {
+                                // If this player isn't currently stunned, attempt to punch them
+                                if (!this.isPlayerStunned(otherPlayerId)) {
+                                    nearPlayer = true;
+                                    const otherPlayer = this.state.players[otherPlayerId];
+                                    if (otherPlayer.invincible) {
+                                        pushNonCollapsableStatement(`**${player.displayName}** threw fists at the invincible **${otherPlayer.displayName}** to no avail`);
+                                    } else if (chance(0.75)) {
+                                        otherPlayer.stuns = 3;
+                                        pushNonCollapsableStatement(`**${player.displayName}** knocked out **${otherPlayer.displayName}**`);
+                                    } else {
+                                        pushNonCollapsableStatement(`**${player.displayName}** tried to punch **${otherPlayer.displayName}** and missed`);
+                                    }
                                 }
                             }
                         }
