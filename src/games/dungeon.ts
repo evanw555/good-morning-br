@@ -498,7 +498,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         // Draw inner stuff
         if (player.avatarUrl.startsWith('http')) {
             const avatarImage = await this.loadImage(player.avatarUrl);
-            await this.drawImageAsCircle(context, avatarImage, this.isPlayerStunned(userId) ? 0.5 : 1, (player.c + .5) * DungeonCrawler.TILE_SIZE, (player.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE / 2);
+            await this.drawImageAsCircle(context, avatarImage, this.isPlayerStunned(userId) ? 0.4 : 1, (player.c + .5) * DungeonCrawler.TILE_SIZE, (player.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE / 2);
         } else {
             // If it's not a URL, assume it's a CSS style
             context.fillStyle = player.avatarUrl;
@@ -511,7 +511,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         if (this.isPlayerStunned(userId)) {
             // If the player has pending decisions, show the stuns left; else just draw an X
             if (this.hasPendingDecisions(userId)) {
-                context.font = `${DungeonCrawler.TILE_SIZE * .8}px sans-serif`;
+                context.font = `bold ${DungeonCrawler.TILE_SIZE * .85}px arial`;
                 context.fillStyle = 'red';
                 this.fillTextOnTile(context,this.getPlayerStuns(userId).toString(), player.r, player.c);
             } else {
