@@ -1899,6 +1899,23 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             flushCollapsableStatements();
             summaryData.statements.push(s);
         };
+        // TODO: Un-beta this feature next season
+        if (this.isUsingBetaFeatures()) {
+            // First, tick down all stunned players who still have pending decisions
+            const playersRegainingConsciousness: Snowflake[] = [];
+            for (const userId of this.getUnfinishedPlayers()) {
+                if (this.hasPendingDecisions(userId) && this.isPlayerStunned(userId)) {
+                    this.consumePlayerStun(userId);
+                    // If all stuns have been consumed, notify
+                    if (!this.isPlayerStunned(userId)) {
+                        playersRegainingConsciousness.push(userId);
+                    }
+                }
+            }
+            if (playersRegainingConsciousness.length > 0) {
+                pushNonCollapsableStatement(`${naturalJoin(this.getDisplayNames(playersRegainingConsciousness), { bold: true })} regained consciousness`);
+            }
+        }
         const bumpers: Record<Snowflake, Snowflake> = {};
         // Process one decision from each player
         let numPlayersProcessed: number = 0;
@@ -2220,11 +2237,6 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 if (this.isPlayerStunned(userId)) {
                     // TODO: Un-beta this feature next season
                     if (this.isUsingBetaFeatures()) {
-                        this.consumePlayerStun(userId);
-                        // If all stuns have been consumed, notify
-                        if (!this.isPlayerStunned(userId)) {
-                            pushNonCollapsableStatement(`**${player.displayName}** regained consciousness`);
-                        }
                         // Skip processing this player's decisions
                         continue;
                     } else {
