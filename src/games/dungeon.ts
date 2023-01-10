@@ -1127,7 +1127,11 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
 
         const getEuclideanDistanceFromCenter = (r: number, c: number): number => {
             return Math.sqrt(Math.pow((rows / 2) - r, 2) + Math.pow((columns / 2) - c, 2));
-        }
+        };
+
+        const isInBounds = (r: number, c: number): boolean => {
+            return r >= 0 && c >= 0 && r < rows && c < columns;
+        };
 
         const step = (r: number, c: number, prev: [number, number]) => {
             map[r][c] = 0;
@@ -1146,7 +1150,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 const hnr = r + (dr / 2);
                 const hnc = c + (dc / 2);
                 // const dist = Math.sqrt(Math.pow(hnr - 20, 2) + Math.pow(hnc - 20, 2)) / 41;
-                if (nr >= 0 && nc >= 0 && nr < rows && nc < columns) {
+                if (isInBounds(nr, nc)) {
                     if (map[nr][nc] === TileType.WALL) {
                         map[hnr][hnc] = TileType.EMPTY;
                         step(nr, nc, [dr, dc]);
@@ -1182,17 +1186,35 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         // Actually cut the path
         step(entrance.r, entrance.c, [-1, -1]);
 
-        // Remove single dot walls, replace with traps (if not near the border)
+        // Define helper for placing tiles with surrounding traps
+        const placeFormation = (r: number, c: number, t: TileType) => {
+            for (const dr of [-1, 0, 1]) {
+                for (const dc of [-1, 0, 1]) {
+                    const nr = r + dr;
+                    const nc = c + dc;
+                    if (isInBounds(nr, nc)) {
+                        map[nr][nc] = chance(0.6) ? TileType.TRAP : TileType.EMPTY;
+                    }
+                }
+            }
+            map[r][c] = t;
+        };
+
+        // Remove single dot walls, replace with formations (if not near the border)
         const isWall = (r: number, c: number) => {
-            return r < 0 || c < 0 || r >= rows || c >= columns || map[r][c] !== TileType.EMPTY;
+            return !isInBounds(r, c) || map[r][c] !== TileType.EMPTY;
         };
         for (let r = 1; r < rows - 1; r++) {
             for (let c = 1; c < columns - 1; c++) {
                 if (isWall(r, c) && !isWall(r + 1, c) && !isWall(r - 1, c) && !isWall(r, c + 1) && !isWall(r, c - 1)) {
-                    map[r][c] = TileType.TRAP;
+                    placeFormation(r, c, TileType.COIN);
                 }
             }
         }
+
+        // Place two formations in the corners
+        placeFormation(rows - 2, 1, TileType.COIN);
+        placeFormation(1, columns - 2, TileType.COIN);
 
         return { map, keyHoleCosts };
     }
@@ -1294,6 +1316,15 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         for (let r = 0; r < spawnWidth; r++) {
             for (let c = 0; c < spawnWidth; c++) {
                 map[r][c] = TileType.EMPTY;
+            }
+        }
+
+        // Remove all dangling doorway costs
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < columns; c++) {
+                if (map[r][c] !== TileType.KEY_HOLE) {
+                    delete keyHoleCosts[DungeonCrawler.getLocationString(r, c)];
+                }
             }
         }
 
