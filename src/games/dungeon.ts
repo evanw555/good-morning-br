@@ -1913,6 +1913,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     const currentLocation = { r: player.r, c: player.c };
                     const newLocation = { r: nr, c: nc };
                     this.addRenderLine(currentLocation, newLocation, player.invincible ? 'rainbow' : undefined);
+                    let skipStepMessage = false;
                     // Handle situations where another user is standing in the way
                     const blockingUserId: Snowflake | undefined = this.getPlayerAtLocation(nr, nc);
                     if (blockingUserId) {
@@ -1920,15 +1921,18 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         if (player.invincible && !blockingUser.invincible) {
                             // If this player is invincible and the other isn't, stun them and continue walking
                             blockingUser.stuns = 3;
-                            pushNonCollapsableStatement(`**${player.displayName}** trampled **${blockingUser.displayName}**`)
+                            skipStepMessage = true;
+                            pushNonCollapsableStatement(`**${player.displayName}** trampled **${blockingUser.displayName}**`);
                         } else {
                             // Otherwise, handle the blocking user as normal
                             bumpers[userId] = blockingUserId;
                             if (bumpers[blockingUserId] === userId) {
                                 // If the other user previously bumped into this user, then allow him to pass by
+                                skipStepMessage = true;
                                 pushNonCollapsableStatement(`**${player.displayName}** walked past **${blockingUser.displayName}**`);
                             } else if (this.isPlayerStunned(blockingUserId)) {
                                 // If the other user is stunned, walk past him
+                                skipStepMessage = true;
                                 pushNonCollapsableStatement(`**${player.displayName}** stepped over the knocked-out body of **${blockingUser.displayName}**`);
                             } else {
                                 // Otherwise, deal with colliding into a non-stunned player
@@ -1949,6 +1953,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                                             blockingUser.r = shoveLocation.r;
                                             blockingUser.c = shoveLocation.c;
                                             const shoveDirection = DungeonCrawler.getDirectionByOffset(shoveOffset);
+                                            skipStepMessage = true;
                                             pushNonCollapsableStatement(`**${player.displayName}** shoved **${blockingUser.displayName}** ${shoveDirection}ward`);
                                         } else {
                                             // Otherwise, just bump and give up
@@ -1970,7 +1975,9 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     if (this.isWalkable(nr, nc)) {
                         player.r += dr;
                         player.c += dc;
-                        summaryData.consecutiveStepUsers.push(player.displayName);
+                        if (!skipStepMessage) {
+                            summaryData.consecutiveStepUsers.push(player.displayName);
+                        }
                         return true;
                     }
                     pushNonCollapsableStatement(`**${player.displayName}** walked into a wall and gave up`);
