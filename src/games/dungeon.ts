@@ -222,8 +222,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         delete this.state.players[userId];
         delete this.state.decisions[userId];
         // Remove any owned traps
-        for (const locationString of Object.keys(this.state.trapOwners)) {
-            if (this.state.trapOwners[locationString] === userId) {
+        for (const [ locationString, trapOwnerId ] of Object.entries(this.state.trapOwners)) {
+            if (trapOwnerId === userId) {
                 const location = DungeonCrawler.parseLocationString(locationString);
                 if (location) {
                     this.state.map[location.r][location.c] = TileType.EMPTY;
@@ -355,10 +355,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             // Render trap owners
             context.font = `${DungeonCrawler.TILE_SIZE * .35}px sans-serif`;
             context.fillStyle = 'black';
-            for (const locationString of Object.keys(this.state.trapOwners)) {
+            for (const [ locationString, trapOwnerId ] of Object.entries(this.state.trapOwners)) {
                 const location = DungeonCrawler.parseLocationString(locationString);
                 if (location) {
-                    this.fillTextOnTile(context, this.getDisplayName(this.state.trapOwners[locationString]), location.r, location.c);
+                    this.fillTextOnTile(context, this.getDisplayName(trapOwnerId), location.r, location.c);
                 }
             }
             // Render all player decisions
@@ -758,19 +758,14 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             }
         }
 
-        // Validate that all trap tiles have owners
+        // Remove all dangling trap owners
         for (const location of this.getAllLocations()) {
-            const { r, c } = location;
             const locationString = DungeonCrawler.getLocationString(location.r, location.c);
-            const isTrapTile = this.isTileType(r, c, TileType.HIDDEN_TRAP) || this.isTileType(r, c, TileType.TRAP);
-            const hasTrapOwner = locationString in this.state.trapOwners;
-            if (isTrapTile && !hasTrapOwner) {
-                this.state.map[r][c] = TileType.EMPTY;
-                logger.log(`(Trap validation) Deleted ownerless trap at **${locationString}**`);
-            } else if (!isTrapTile && hasTrapOwner) {
-                const trapOwner = this.state.trapOwners[locationString];
+            const isTrapTile = this.isTileType(location.r, location.c, TileType.HIDDEN_TRAP) || this.isTileType(location.r, location.c, TileType.TRAP);
+            const trapOwnerId = this.getTrapOwner(location);
+            if (!isTrapTile && trapOwnerId) {
                 delete this.state.trapOwners[locationString];
-                logger.log(`(Trap validation) Deleted owner **${this.getDisplayName(trapOwner)}** for nonexistent trap at **${locationString}**`);
+                logger.log(`(Trap validation) Deleted owner **${this.getDisplayName(trapOwnerId)}** for nonexistent trap at **${locationString}**`);
             }
         }
 
@@ -1117,134 +1112,6 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             r--;
             c++;
         }
-
-    }
-
-    static create(members: GuildMember[]): DungeonCrawler {
-        const map: number[][] = [];
-        const keyHoleCosts: Record<string, number> = {};
-        const isWall = (r, c) => {
-            return r < 0 || c < 0 || r >= 41 || c >= 41 || map[r][c] !== TileType.EMPTY;
-        };
-        for (let r = 0; r < 41; r++) {
-            map.push([]);
-            for (let c = 0; c < 41; c++) {
-                map[r][c] = TileType.WALL;
-            }
-        }
-
-
-        const getEuclideanDistanceToGoal = (r: number, c: number): number => {
-            return Math.sqrt(Math.pow(20 - r, 2) + Math.pow(20 - c, 2));
-        }
-        const step = (r, c, prev: [number, number]) => {
-            map[r][c] = 0;
-            const l = shuffle(DungeonCrawler.getCardinalOffsets(2));
-            let pick = 0;
-            while (l.length > 0) {
-                const [dr, dc] = l.shift() as [number, number];
-                // If looking in the same direction we just came from, skip this direction and come to it last
-                if (prev[0] === dr && prev[1] === dc && chance(0.5)) {
-                    l.push([dr, dc]);
-                    continue;
-                }
-                pick++;
-                const nr = r + dr;
-                const nc = c + dc;
-                const hnr = r + (dr / 2);
-                const hnc = c + (dc / 2);
-                // const dist = Math.sqrt(Math.pow(hnr - 20, 2) + Math.pow(hnc - 20, 2)) / 41;
-                if (nr >= 0 && nc >= 0 && nr < 41 && nc < 41) {
-                    if (map[nr][nc] === TileType.WALL) {
-                        map[hnr][hnc] = TileType.EMPTY;
-                        step(nr, nc, [dr, dc]);
-                    } else if (map[hnr][hnc] === TileType.WALL) {
-                        const location = DungeonCrawler.getLocationString(hnr, hnc);
-                        const distance = getEuclideanDistanceToGoal(hnr, hnc);
-                        // If there's a wall between here and the next spot...
-                        if ((r === 0 || c === 0 || r === 40 || c === 40) && chance(0.25)) {
-                            // If the current spot is on the edge, clear walls liberally
-                            map[hnr][hnc] = TileType.EMPTY;
-                        } else if (distance < 20) {
-                            if (chance(.02)) {
-                                // With an even smaller chance, clear this wall
-                                map[hnr][hnc] = TileType.EMPTY;
-                            }
-                            // In the mid-ring of the map, add keyholes somewhat liberally
-                            else if (distance < 7) {
-                                if (chance(.3)) {
-                                    map[hnr][hnc] = TileType.KEY_HOLE;
-                                    keyHoleCosts[location] = Math.max(randInt(1, 16), randInt(1, 16));
-                                }
-                            } else if (distance < 16) {
-                                if (chance(.075)) {
-                                    map[hnr][hnc] = TileType.KEY_HOLE;
-                                    keyHoleCosts[location] = randInt(1, 16, 2);
-                                }
-                            } else {
-                                if (chance(.25)) {
-                                    map[hnr][hnc] = TileType.KEY_HOLE;
-                                    keyHoleCosts[location] = Math.min(randInt(1, 16), randInt(1, 16));
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        };
-        step(20, 20, [0, 0]);
-        for (let r = 19; r < 22; r++) {
-            for (let c = 19; c < 22; c++) {
-                if (isWall(r, c)) {
-                    map[r][c] = TileType.EMPTY;
-                }
-            }
-        }
-        // Remove single dots, replace with chests (if not near the border)
-        for (let r = 0; r < 41; r++) {
-            for (let c = 0; c < 41; c++) {
-                if (isWall(r, c) && !isWall(r + 1, c) && !isWall(r - 1, c) && !isWall(r, c + 1) && !isWall(r, c - 1)) {
-                    if (r > 1 && c > 1 && r < 39 && c < 39) {
-                        map[r][c] = TileType.EMPTY;
-                        // TODO: Actually make these chests next season when I figure out how items and stuff work
-                        // map[r][c] = TileType.CHEST;
-                    } else {
-                        map[r][c] = TileType.EMPTY;
-                    }
-                }
-            }
-        }
-        const players: Record<Snowflake, DungeonPlayerState> = {};
-        for (let j = 0; j < members.length; j++) {
-            const member = members[j];
-            const [ r, c ] = DungeonCrawler.getInitialLocationRadialV2(j, 41, 41);
-            players[member.id] = {
-                r,
-                c,
-                rank: j + 1,
-                avatarUrl: member.user.displayAvatarURL({ size: 32, extension: 'png' }),
-                displayName: member.displayName,
-                points: DungeonCrawler.STARTER_POINTS
-            };
-        }
-        const dungeon = new DungeonCrawler({
-            type: 'DUNGEON_GAME_STATE',
-            decisions: {},
-            turn: 0,
-            winners: [],
-            action: 0,
-            rows: 41,
-            columns: 41,
-            map,
-            goal: { r: 20, c: 20 },
-            keyHoleCosts,
-            trapOwners: {},
-            players,
-            lines: []
-        });
-        dungeon.refreshPlayerRanks();
-
-        return dungeon;
     }
 
     private static createSection(rows: number, columns: number, entrance: DungeonLocation, exit: DungeonLocation): { map: TileType[][], keyHoleCosts: Record<string, number> } {
@@ -1262,7 +1129,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             return Math.sqrt(Math.pow((rows / 2) - r, 2) + Math.pow((columns / 2) - c, 2));
         }
 
-        const step = (r, c, prev: [number, number]) => {
+        const step = (r: number, c: number, prev: [number, number]) => {
             map[r][c] = 0;
             const l = shuffle(DungeonCrawler.getCardinalOffsets(2));
             let pick = 0;
@@ -1312,7 +1179,20 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             }
         };
 
+        // Actually cut the path
         step(entrance.r, entrance.c, [-1, -1]);
+
+        // Remove single dot walls, replace with traps (if not near the border)
+        const isWall = (r: number, c: number) => {
+            return r < 0 || c < 0 || r >= rows || c >= columns || map[r][c] !== TileType.EMPTY;
+        };
+        for (let r = 1; r < rows - 1; r++) {
+            for (let c = 1; c < columns - 1; c++) {
+                if (isWall(r, c) && !isWall(r + 1, c) && !isWall(r - 1, c) && !isWall(r, c + 1) && !isWall(r, c - 1)) {
+                    map[r][c] = TileType.TRAP;
+                }
+            }
+        }
 
         return { map, keyHoleCosts };
     }
@@ -1457,7 +1337,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         let bestMap: DungeonCrawler | null = null;
         let validAttempts = 0;
         while (validAttempts < attempts) {
-            const newDungeon = DungeonCrawler.create(members);
+            const newDungeon = DungeonCrawler.createSectional(members, {
+                sectionsAcross: 1,
+                sectionSize: 29
+            });
             const fairness = newDungeon.getMapFairness();
             if (fairness.min >= minSteps) {
                 validAttempts++;
@@ -1530,6 +1413,20 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return this.isTileType(r, c, TileType.WALL) || this.isTileType(r, c, TileType.KEY_HOLE) || this.isTileType(r, c, TileType.OPENED_KEY_HOLE);
     }
 
+    private setSurroundingTiles(location: DungeonLocation, t: TileType): void {
+        for (let dr = -1; dr <= 1; dr++) {
+            for (let dc = -1; dc <= 1; dc++) {
+                if (dr !== 0 || dc !== 0) {
+                    const r = location.r + dr;
+                    const c = location.c + dc;
+                    if (this.isInBounds(r, c)) {
+                        this.state.map[r][c] = t;
+                    }
+                }
+            }
+        }
+    }
+
     private getHiddenTrapsForPlayer(userId: Snowflake): { r: number, c: number }[] {
         const locations: DungeonLocation[] = [];
         for (const [locationString, ownerId] of Object.entries(this.state.trapOwners)) {
@@ -1541,6 +1438,11 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             }
         }
         return locations;
+    }
+
+    private getTrapOwner(location: DungeonLocation): Snowflake | undefined {
+        const locationString = DungeonCrawler.getLocationString(location.r, location.c);
+        return this.state.trapOwners[locationString];
     }
 
     /**
@@ -2315,12 +2217,17 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     // Handle hidden traps if not invincible
                     if (!player.invincible) {
                         let trapRevealed = false;
+                        const trapOwnerId = this.getTrapOwner({ r: player.r, c: player.c });
                         const locationString = DungeonCrawler.getLocationString(player.r, player.c);
+                        // Reveal the trap if it's hidden
                         if (this.getTileAtUser(userId) === TileType.HIDDEN_TRAP) {
                             this.state.map[player.r][player.c] = TileType.TRAP;
                             trapRevealed = true;
-                            const trapOwnerId = this.state.trapOwners[locationString];
-                            pushNonCollapsableStatement(`**${player.displayName}** revealed a hidden trap placed by **${this.getDisplayName(trapOwnerId)}**`);
+                            if (trapOwnerId) {
+                                pushNonCollapsableStatement(`**${player.displayName}** revealed a hidden trap placed by **${this.getDisplayName(trapOwnerId)}**`);
+                            } else {
+                                pushNonCollapsableStatement(`**${player.displayName}** revealed a hidden trap`);
+                            }
                         }
                         // Handle revealed traps (this will trigger if the above condition is triggered)
                         if (this.getTileAtUser(userId) === TileType.TRAP) {
@@ -2335,19 +2242,23 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                             } else {
                                 logger.log(`Unable to send \`${userId}\` back to origin location (it doesn't exist!)`);
                             }
+                            // Stun the player
                             player.stuns = 1;
-                            const trapOwnerId = this.state.trapOwners[locationString];
-                            logger.log(`\`${this.getDisplayName(userId)}\` triggered trap by \`${this.getDisplayName(trapOwnerId)}\` at \`${locationString}\` (progress lost: **${progressLost}**)`);
+                            // Add a statement about this trap being triggered
+                            const trapText = !trapOwnerId ? 'a trap' : `**${this.getDisplayName(trapOwnerId)}'s** trap`;
+                            logger.log(`\`${this.getDisplayName(userId)}\` triggered ${trapText} at \`${locationString}\` (progress lost: **${progressLost}**)`);
                             if (trapRevealed) {
                                 pushNonCollapsableStatement(`was sent back to **${this.getPlayerLocationString(userId)}**`);
                             } else {
-                                pushNonCollapsableStatement(`**${player.displayName}** stepped on **${this.getDisplayName(trapOwnerId)}'s** trap and was sent back to **${this.getPlayerLocationString(userId)}**`);
+                                pushNonCollapsableStatement(`**${player.displayName}** stepped on ${trapText} and was sent back to **${this.getPlayerLocationString(userId)}**`);
                             }
-                            // Reward the trap's owner
-                            // TODO: Un-beta this feature next season
-                            const trapperPoints = this.isUsingBetaFeatures() ? progressLost : 1;
-                            this.addPoints(trapOwnerId, trapperPoints);
-                            pushNonCollapsableStatement(`**${this.getDisplayName(trapOwnerId)}** earned **$${trapperPoints}** for trapping`);
+                            // If the trap has an owner, reward the owner
+                            if (trapOwnerId) {
+                                // TODO: Un-beta this feature next season
+                                const trapperPoints = this.isUsingBetaFeatures() ? progressLost : 1;
+                                this.addPoints(trapOwnerId, trapperPoints);
+                                pushNonCollapsableStatement(`**${this.getDisplayName(trapOwnerId)}** earned **$${trapperPoints}** for trapping`);
+                            }
                         }
                     }
                 }
