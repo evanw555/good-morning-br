@@ -668,23 +668,16 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 await this.drawImageAsCircle(context, avatarImage, 0.35, (curr.c + .5) * DungeonCrawler.TILE_SIZE, (curr.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE / 2);
             }
         }
-        // Show attempted traps
+        // Show attempted "placement" actions
         context.font = `${DungeonCrawler.TILE_SIZE * .5}px sans-serif`;
         context.lineWidth = 1;
         context.fillStyle = 'red';
         context.setLineDash([]);
-        for (const decision of decisions.filter(d => d.startsWith('trap:'))) {
+        for (const decision of decisions.filter(d => d.startsWith('trap:') || d.startsWith('boulder:') || d.startsWith('coin:'))) {
             const [ action, locationString ] = decision.split(':');
             const location = DungeonCrawler.parseLocationString(locationString);
             if (location) {
-                this.fillTextOnTile(context, 'TRAP', location.r, location.c);
-            }
-        }
-        for (const decision of decisions.filter(d => d.startsWith('boulder:'))) {
-            const [ action, locationString ] = decision.split(':');
-            const location = DungeonCrawler.parseLocationString(locationString);
-            if (location) {
-                this.fillTextOnTile(context, 'BOULDER', location.r, location.c);
+                this.fillTextOnTile(context, action.toUpperCase(), location.r, location.c);
             }
         }
         // Show placed traps
