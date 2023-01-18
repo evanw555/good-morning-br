@@ -28,7 +28,7 @@ const OFFSETS_BY_DIRECTION: Record<Direction, [number, number]> = {
     right: [0, 1]
 };
 
-type BasicActionName = Direction | 'pause' | 'unlock' | 'lock' | 'punch' | 'warp';
+type BasicActionName = Direction | 'pause' | 'unlock' | 'lock' | 'punch' | 'warp' | 'coin';
 type ActionName = BasicActionName | DungeonItemName;
 
 const ITEM_NAME_RECORD: Record<DungeonItemName, boolean> = {
@@ -52,6 +52,7 @@ const ACTION_SYMBOLS: Record<ActionName, string> = {
     lock: '🔒',
     punch: '🥊',
     warp: '🎱',
+    coin: '🪙',
     boulder: '🪨',
     seal: '🦭',
     trap: '🕳️',
@@ -1421,6 +1422,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return this.isTileType(r, c, TileType.EMPTY) || this.isTileType(r, c, TileType.HIDDEN_TRAP) || this.isTileType(r, c, TileType.COIN);
     }
 
+    private isTrap(location: DungeonLocation): boolean {
+        return this.isTileType(location.r, location.c, TileType.TRAP) || this.isTileType(location.r, location.c, TileType.HIDDEN_TRAP);
+    }
+
     /**
      * @returns True if this location is adjacent to a locked doorway, an unlocked doorway, or a sealed doorway.
      */
@@ -1511,11 +1516,20 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     getWeeklyDecisionDMs(): Record<Snowflake, string> {
         const results: Record<Snowflake, string> = {};
         for (const userId of this.getPlayers()) {
+            const statements: string[] = [];
             // If the player has at least 1 point and at least 1 of any item, construct a string informing them of their inventory
             if (this.getPoints(userId) >= 1 && this.playerHasAnyItem(userId)) {
                 const items = this.getPlayerItems(userId);
-                results[userId] = 'Good morning! Reminder: your inventory contains '
-                    + naturalJoin(Object.keys(items).map(item => items[item] === 1 ? `a **${item}**` : `${items[item]} **${item}s**`));
+                const inventoryText = naturalJoin(Object.keys(items).map(item => items[item] === 1 ? `a **${item}**` : `${items[item]} **${item}s**`));
+                statements.push('your inventory contains ' + inventoryText);
+            }
+            // If the user has finished, let them know what they can do
+            if (this.isPlayerFinished(userId)) {
+                statements.push('since you\'ve completed the maze, all you can do place **traps**, **boulders**, and **coins** (e.g. `coin:b12`)');
+            }
+            // If any statements, add message
+            if (statements.length > 0) {
+                results[userId] = 'Good morning! Reminder: ' + naturalJoin(statements);
             }
         }
         return results;
@@ -1560,9 +1574,9 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             }
         }
 
-        // Ensure that finished players can only trap/boulder
-        if (player.finished && !commands.every(c => c.startsWith('trap') || c.startsWith('boulder'))) {
-            throw new Error('You\'ve already finished, the only action you can take now is to place traps and boulders')
+        // Ensure that finished players can only trap/boulder/coin
+        if (player.finished && !commands.every(c => c.startsWith('trap') || c.startsWith('boulder') || c.startsWith('coin'))) {
+            throw new Error('You\'ve already finished, the only action you can take now is to place traps, boulders, and coins')
         }
 
         // For each known item type, ensure the player isn't using more than they currently own
@@ -1619,6 +1633,14 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
 
         for (const command of commands) {
             const [c, arg] = command.split(':') as [ActionName, string];
+            // Ensure that non-finished players aren't trying to use secret winner-only moves
+            // TODO: Extend this logic to other possible winner-only actions
+            if (!player.finished) {
+                if (c === 'coin') {
+                    throw new Error(`\`${c}\` is an invalid action!`);
+                }
+            }
+            // Parse and validate the location param (if one was provided)
             const argLocation: DungeonLocation | undefined = DungeonCrawler.parseLocationString(arg);
             if (argLocation) {
                 // If a location was specified, validate that it's not out of bounds
@@ -1658,6 +1680,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     break;
                 case 'trap':
                 case 'boulder':
+                case 'coin':
                     if (!argLocation) {
                         if (arg) {
                             throw new Error(`**${arg}** is not a valid location on the map!`);
@@ -1768,6 +1791,9 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             },
             'warp': () => {
                 return Math.ceil(this.getTurn() / 2);
+            },
+            'coin': () => {
+                return 4;
             }
         };
         if (action in actionCosts) {
@@ -2037,6 +2063,22 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                             pushNonCollapsableStatement(`**${player.displayName}** warped to **${this.getDisplayName(nearUserId)}**`);
                         } else {
                             pushNonCollapsableStatement(`**${player.displayName}** avoided warping to **${this.getDisplayName(nearUserId)}**`);
+                        }
+                        return true;
+                    },
+                    coin: (arg) => {
+                        const targetLocation = DungeonCrawler.parseLocationString(arg);
+                        // Emergency fallback (this shouldn't happen)
+                        if (!targetLocation) {
+                            player.stuns = 1;
+                            endTurn = true;
+                            pushNonCollapsableStatement(`**${player.displayName}** tried to place a coin but his coin jar was empty`);
+                            return false;
+                        }
+                        // Place the coin if it doesn't cover any traps
+                        if (!this.isTrap(targetLocation)) {
+                            this.state.map[targetLocation.r][targetLocation.c] = TileType.COIN;
+                            pushNonCollapsableStatement(`**${player.displayName}** placed a coin at **${arg.toUpperCase()}**`);
                         }
                         return true;
                     },
