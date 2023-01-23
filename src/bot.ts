@@ -2720,14 +2720,14 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 await revokeGMChannelAccess([userId]);
                 await logger.log(`Revoked GM channel access for **${msg.member?.displayName ?? msg.author.id}**`);
             }
-            // If someone baited (ignore self-bait) and it's the afternoon, award and notify via DM
+            // If someone baited (ignore self-bait), award and notify via DM
             const bait: Bait | undefined = state.getMostRecentBait();
-            if (!isAm && bait && userId !== bait.userId) {
+            if (bait && userId !== bait.userId) {
                 state.awardPoints(bait.userId, config.defaultAward / 2);
                 await logger.log(`Awarded **${state.getPlayerDisplayName(bait.userId)}** for baiting successfully.`);
                 await messenger.dm(bait.userId, 'Bait successful.', { immediate: true });
-                // If it's the baited's first offense, then reply with some chance
-                if (!isRepeatOffense && chance(0.5)) {
+                // If it's the baited's first offense (and it's the afternoon), then reply with some chance
+                if (!isAm && !isRepeatOffense && chance(0.5)) {
                     await messenger.reply(msg, languageGenerator.generate('{bait.reply?}', { player: `<@${bait.userId}>` }));
                 }
             }

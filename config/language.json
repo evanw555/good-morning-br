@@ -408,7 +408,9 @@
             "Oh {!naw|nah|hell nah} {$player} he really {!done goofed|fumbled|did it|messed up} 😭",
             "My {nouns.alliterativeTitle?}, {!you have|you've} been {!played|clowned} by {$player}",
             "Oh {!dear|deer|my}... {$player} {!got|did|clowned} you good",
-            "{$player}, I think you're gonna {!wanna|want to} see this..."
+            "{$player}, I think you're gonna {!wanna|want to} see this...",
+            "Tisk tisk...",
+            "Should not've said that... Should not've said that..."
         ]
     }
 }
