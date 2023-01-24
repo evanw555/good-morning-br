@@ -876,6 +876,55 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     await dumpState();
 };
 
+const processSubmissionVote = async (userId: Snowflake, event: DailyEvent, submissionCodes: string[], callback: (text: string) => Promise<void>) => {
+    if (!event.votes || !event.submissionOwnersByCode) {
+        await callback('Unable to process your vote, as the required state data is missing. This shouldn\'t happen, please tell an admin!');
+        return;
+    }
+    const submissionCodeSet: Set<string> = new Set(submissionCodes);
+    const validSubmissionCodes: Set<string> = new Set(Object.keys(event.submissionOwnersByCode));
+    // Require at least three votes (or one less than the total number of votes if there aren't enough submissions)
+    // Due to prior validation, there will always be two or more submissions, so this min will always be computed as at least 1
+    const maxRequiredVotes: number = 3;
+    const minRequiredVotes: number = Math.min(maxRequiredVotes, validSubmissionCodes.size - 1);
+    // Do some validation on the vote before processing it further
+    if (submissionCodes.length === 0) {
+        await callback(`I don\'t understand, please tell me which submissions you\'re voting for. Choose from ${naturalJoin([...validSubmissionCodes])}.`);
+    } else if (submissionCodes.length < minRequiredVotes) {
+        await callback(`You must vote for at least **${minRequiredVotes}** submission${minRequiredVotes === 1 ? '' : 's'}!`);
+    } else if (submissionCodes.length > maxRequiredVotes) {
+        await callback(`You cannot vote for more than **${maxRequiredVotes}** submissions!`);
+    } else if (submissionCodeSet.size !== submissionCodes.length) {
+        await callback('You can\'t vote for the same submission twice!');
+    } else {
+        // Ensure that all votes are for valid submissions
+        for (const submissionCode of submissionCodes) {
+            if (!validSubmissionCodes.has(submissionCode)) {
+                await callback(`${submissionCode} is not a valid submission! Choose from ${naturalJoin([...validSubmissionCodes])}.`);
+                return;
+            }
+            if (event.submissionOwnersByCode[submissionCode] === userId) {
+                await callback('You can\'t vote for your own submission!');
+                return;
+            }
+        }
+        // Cast the vote
+        event.votes[userId] = submissionCodes;
+        await dumpState();
+
+        if (state.haveAllSubmittersVoted()) {
+            // If all the votes have been cast, then finalize the voting
+            await callback('Thanks, but you were the last to vote (no penalty, but be quicker next time) 🌚');
+            await finalizeAnonymousSubmissions();
+        } else {
+            // Otherwise, just send confirmation to the voter
+            await callback('Your vote has been cast!');
+            // Notify the admin of how many votes remain
+            await logger.log(`**${state.getPlayerDisplayName(userId)}** just voted, waiting on **${state.getSubmissionDeadbeats().length}** more votes.`);
+        }
+    }
+};
+
 const finalizeAnonymousSubmissions = async () => {
     const event = state.getEvent();
 
@@ -1330,6 +1379,28 @@ const TIMEOUT_CALLBACKS = {
             return;
         }
 
+        const userIds: Snowflake[] = Object.keys(event.submissions);
+
+        // If nobody sent anything at all, abort!
+        if (userIds.length === 0) {
+            await messenger.send(goodMorningChannel, `My inbox is empty... This day, **${toCalendarDate(new Date())}**, shall live in infamy...`);
+            return;
+        }
+
+        // If only one person sent a submission, reward them greatly and abort
+        if (userIds.length === 1) {
+            const soleUserId: Snowflake = userIds[0];
+            // Award the player double the typical 1st place points
+            state.awardPoints(soleUserId, 2 * config.largeAwardsByRank[1]);
+            await awardPrize(soleUserId, 'submissions1', 'Thank you for being the only participant today');
+            await dumpState();
+            // Notify the channel
+            await messenger.send(goodMorningChannel, `My oh my! Looks like <@${soleUserId}> was the only friend to submit anything, so I have rewarded him greatly for his undying loyalty...`);
+            await messenger.send(goodMorningChannel, 'As for the rest of you? Reflect upon your actions, and look to our lone participant as a shining example of brilliant friendship');
+            await messenger.send(goodMorningChannel, 'Remember, for even if we are the last men on Earth seeing the sun rise over the very last morning, we still raise our Good Morning glasses in celebration...');
+            return;
+        }
+
         // Send the initial message
         const rootSubmissionMessage: Message = await messenger.sendAndGet(goodMorningChannel, `Here are your anonymous submissions! ${config.defaultGoodMorningEmoji}`);
         event.rootSubmissionMessage = rootSubmissionMessage.id;
@@ -1337,8 +1408,7 @@ const TIMEOUT_CALLBACKS = {
         event.submissionOwnersByCode = {};
         await dumpState();
 
-        // Get all the relevant user IDs and shuffle them
-        const userIds: Snowflake[] = Object.keys(event.submissions);
+        // Shuffle all the revelant user IDs
         shuffle(userIds);
 
         // For each submission (in shuffled order)...
@@ -1932,41 +2002,9 @@ client.on('interactionCreate', async (interaction): Promise<void> => {
                         interaction.options.getString('second', true),
                         interaction.options.getString('third', true)
                     ];
-                    const submissionCodeSet: Set<string> = new Set(submissionCodes);
-                    const validSubmissionCodes: Set<string> = new Set(Object.keys(event.submissionOwnersByCode));
-                    // Do some validation on the vote before processing it further
-                    if (submissionCodes.length === 0) {
-                        await interaction.editReply(`I don\'t understand, please tell me which submissions you\'re voting for. Choose from ${naturalJoin([...validSubmissionCodes])}.`);
-                    } else if (submissionCodeSet.size !== submissionCodes.length) {
-                        await interaction.editReply('You can\'t vote for the same submission twice!');
-                    } else {
-                        // Ensure that all votes are for valid submissions
-                        for (let i = 0; i < submissionCodes.length; i++) {
-                            const submissionCode: string = submissionCodes[i];
-                            if (!validSubmissionCodes.has(submissionCode)) {
-                                await interaction.editReply(`${submissionCode} is not a valid submission! Choose from ${naturalJoin([...validSubmissionCodes])}.`);
-                                return;
-                            }
-                            if (event.submissionOwnersByCode[submissionCode] === userId) {
-                                await interaction.editReply('You can\'t vote for your own submission!');
-                                return;
-                            }
-                        }
-                        // Cast the vote
-                        event.votes[userId] = submissionCodes;
-                        await dumpState();
-    
-                        if (state.haveAllSubmittersVoted()) {
-                            // If all the votes have been cast, then finalize the voting
-                            await interaction.editReply('Thanks, but you were the last to vote (no penalty, but be quicker next time) 🌚');
-                            await finalizeAnonymousSubmissions();
-                        } else {
-                            // Otherwise, just send confirmation to the voter
-                            await interaction.editReply('Your vote has been cast!');
-                            // Notify the admin of how many votes remain
-                            await logger.log(`**${state.getPlayerDisplayName(userId)}** just voted, waiting on **${state.getSubmissionDeadbeats().length}** more votes.`);
-                        }
-                    }
+                    await processSubmissionVote(userId, event, submissionCodes, async (text: string) => {
+                        await interaction.editReply(text);
+                    });
                 } else {
                     await interaction.editReply('You shouldn\'t be able to vote right now!');
                 }
@@ -2811,41 +2849,9 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 const pattern: RegExp = /[A-Z]+/g;
                 // TODO: Should we validate the exact number of votes? There's no evidence of players griefing without this limitation just yet...
                 const submissionCodes: string[] = [...msg.content.matchAll(pattern)].map(x => x[0]).slice(0, 3);
-                const submissionCodeSet: Set<string> = new Set(submissionCodes);
-                const validSubmissionCodes: Set<string> = new Set(Object.keys(event.submissionOwnersByCode));
-                // Do some validation on the vote before processing it further
-                if (submissionCodes.length === 0) {
-                    await messenger.reply(msg, `I don\'t understand, please tell me which submissions you\'re voting for. Choose from ${naturalJoin([...validSubmissionCodes])}.`);
-                } else if (submissionCodeSet.size !== submissionCodes.length) {
-                    await messenger.reply(msg, 'You can\'t vote for the same submission twice!');
-                } else {
-                    // Ensure that all votes are for valid submissions
-                    for (let i = 0; i < submissionCodes.length; i++) {
-                        const submissionCode: string = submissionCodes[i];
-                        if (!validSubmissionCodes.has(submissionCode)) {
-                            await messenger.reply(msg, `${submissionCode} is not a valid submission! Choose from ${naturalJoin([...validSubmissionCodes])}.`);
-                            return;
-                        }
-                        if (event.submissionOwnersByCode[submissionCode] === userId) {
-                            await messenger.reply(msg, 'You can\'t vote for your own submission!');
-                            return;
-                        }
-                    }
-                    // Cast the vote
-                    event.votes[userId] = submissionCodes;
-                    await dumpState();
-
-                    if (state.haveAllSubmittersVoted()) {
-                        // If all the votes have been cast, then finalize the voting
-                        await messenger.reply(msg, 'Thanks, but you were the last to vote (no penalty, but be quicker next time) 🌚');
-                        await finalizeAnonymousSubmissions();
-                    } else {
-                        // Otherwise, just send confirmation to the voter
-                        await messenger.reply(msg, 'Your vote has been cast!');
-                        // Notify the admin of how many votes remain
-                        await logger.log(`**${state.getPlayerDisplayName(userId)}** just voted, waiting on **${state.getSubmissionDeadbeats().length}** more votes.`);
-                    }
-                }
+                await processSubmissionVote(userId, event, submissionCodes, async (text: string) => {
+                    await messenger.reply(msg, text);
+                });
            } else if (submissions) {
                 const redoSubmission: boolean = userId in submissions;
                 // Add the submission
