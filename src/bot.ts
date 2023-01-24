@@ -877,8 +877,8 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
 };
 
 const processSubmissionVote = async (userId: Snowflake, event: DailyEvent, submissionCodes: string[], callback: (text: string) => Promise<void>) => {
-    if (!event.votes || !event.submissionOwnersByCode) {
-        await callback('Unable to process your vote, as the required state data is missing. This shouldn\'t happen, please tell an admin!');
+    if (!event.votes || !event.submissionOwnersByCode || state.getEventType() !== DailyEventType.AnonymousSubmissions) {
+        await callback('You shouldn\'t be able to vote right now!');
         return;
     }
     const submissionCodeSet: Set<string> = new Set(submissionCodes);
@@ -1439,6 +1439,7 @@ const TIMEOUT_CALLBACKS = {
         await guild.commands.create({
             name: 'vote',
             description: `Vote for a ${event.submissionType}`,
+            // TODO: What do we do if there are 2-3 submissions?
             options: [
                 {
                     type: ApplicationCommandOptionType.String,
@@ -1994,23 +1995,15 @@ client.on('interactionCreate', async (interaction): Promise<void> => {
         const userId: Snowflake = interaction.user.id;
         await interaction.deferReply({ ephemeral: true });
         if (interaction.commandName === 'vote') {
-            if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
-                const event = state.getEvent();
-                if (event.votes && event.submissionOwnersByCode) {
-                    const submissionCodes: string[] = [
-                        interaction.options.getString('first', true),
-                        interaction.options.getString('second', true),
-                        interaction.options.getString('third', true)
-                    ];
-                    await processSubmissionVote(userId, event, submissionCodes, async (text: string) => {
-                        await interaction.editReply(text);
-                    });
-                } else {
-                    await interaction.editReply('You shouldn\'t be able to vote right now!');
-                }
-            } else {
-                await interaction.editReply('You shouldn\'t be able to vote right now!');
-            }
+            // TODO: What do we do if there are 2-3 submissions?
+            const submissionCodes: string[] = [
+                interaction.options.getString('first', true),
+                interaction.options.getString('second', true),
+                interaction.options.getString('third', true)
+            ];
+            await processSubmissionVote(userId, state.getEvent(), submissionCodes, async (text: string) => {
+                await interaction.editReply(text);
+            });
         } else if (interaction.commandName === 'forfeit') {
             if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
                 const event = state.getEvent();
@@ -2843,16 +2836,14 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             const submissions = event.submissions;
             const userId: Snowflake = msg.author.id;
             // Handle voting or submitting depending on what phase of the process we're in
-            // TODO: Remove this once we can prove that the "vote" slash command works as expected
-            // TODO: Temp logic to handle commands being down
             if (event.votes && event.submissionOwnersByCode) {
-                const pattern: RegExp = /[A-Z]+/g;
-                // TODO: Should we validate the exact number of votes? There's no evidence of players griefing without this limitation just yet...
-                const submissionCodes: string[] = [...msg.content.matchAll(pattern)].map(x => x[0]).slice(0, 3);
+                const pattern: RegExp = /[a-zA-Z]+/g;
+                // Grab all possible matches, as the vote processing validates the number of votes
+                const submissionCodes: string[] = [...msg.content.matchAll(pattern)].map(x => x[0].toUpperCase());
                 await processSubmissionVote(userId, event, submissionCodes, async (text: string) => {
                     await messenger.reply(msg, text);
                 });
-           } else if (submissions) {
+            } else if (submissions) {
                 const redoSubmission: boolean = userId in submissions;
                 // Add the submission
                 try {
@@ -2869,7 +2860,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     await messenger.reply(msg, 'Thanks for your submission!');
                     // If we now have a multiple of some number of submissions, notify the server
                     if (numSubmissions % 3 === 0) {
-                        await messenger.send(goodMorningChannel, languageGenerator.generate(`{!We now have|I've received|We're now at|I now count|Currently at|I have} **${numSubmissions}** {!submissions|submissions|entries}! {!DM me|Send me a DM with|Send me} a _${state.getEvent().submissionType}_ to {!participate|be included|join the fun|enter the contest|be a part of the contest}`));
+                        await messenger.send(goodMorningChannel, languageGenerator.generate(`{!We now have|I've received|We're now at|I now count|Currently at|I have|Nice} **${numSubmissions}** {!submissions|submissions|entries}! {!DM me|Send me a DM with|Send me} a _${state.getEvent().submissionType}_ to {!participate|be included|join the fun|enter the contest|be a part of the contest|have a chance to win}`));
                     }
                     // This may be the user's first engagement, so refresh display name here
                     // TODO: is there a better, more unified way to do this?
