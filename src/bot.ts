@@ -1963,11 +1963,13 @@ client.on('shardDisconnect', async (closeEvent, shardId) => {
 });
 
 client.on('shardReconnecting', async (shardId) => {
-    await logger.log(`Shard Reconnecting: \`${shardId}\``);
+    // TODO: Re-enable? Do we have any idea why it's failing to reconnect?
+    // await logger.log(`Shard Reconnecting: \`${shardId}\``);
 });
 
 client.on('shardResume', async (shardId, replayedEvents) => {
-    await logger.log(`Shard Resume: \`${shardId}\` (**${replayedEvents}** replayed events)`);
+    // TODO: Re-enable? Do we have any idea why it's failing to reconnect?
+    // await logger.log(`Shard Resume: \`${shardId}\` (**${replayedEvents}** replayed events)`);
 });
 
 client.on('shardReady', async (shardId, unavailableGuilds) => {
