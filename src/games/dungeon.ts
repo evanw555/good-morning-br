@@ -1360,7 +1360,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     static createOrganic(members: GuildMember[], rows: number, columns: number): DungeonCrawler {
         while (true) {
             const attempt = DungeonCrawler.tryCreateOrganic(members, rows, columns);
-            if (attempt.canAllPlayersReachGoal()) {
+            // Only use this maze if the goal can be pathed to from all 3 non-goal corners
+            if (attempt.searchToGoal(0, 0, { useDoorways: false }).success
+                && attempt.searchToGoal(rows - 1, 0, { useDoorways: false }).success
+                && attempt.searchToGoal(0, columns - 1, { useDoorways: false }).success) {
                 return attempt;
             }
         }
