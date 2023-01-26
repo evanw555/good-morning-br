@@ -2177,6 +2177,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         for (const intermediateLocation of intermediateLocations) {
                             // If this location isn't walkable, knock the player out and end the charge
                             if (!this.isWalkable(intermediateLocation.r, intermediateLocation.c)) {
+                                this.addRenderLine(previousLocation, { r: player.r, c: player.c }, 'red');
                                 pushNonCollapsableStatement(getChargeText(true));
                                 player.stuns = 1;
                                 endTurn = true;
