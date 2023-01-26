@@ -1357,6 +1357,82 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return dungeon;
     }
 
+    static createOrganic(members: GuildMember[], rows: number, columns: number): DungeonCrawler {
+        while (true) {
+            const attempt = DungeonCrawler.tryCreateOrganic(members, rows, columns);
+            if (attempt.canAllPlayersReachGoal()) {
+                return attempt;
+            }
+        }
+    }
+
+    private static tryCreateOrganic(members: GuildMember[], rows: number, columns: number): DungeonCrawler {
+        const map = generateOrganicMaze(rows, columns);
+
+        // Clear spawn section
+        const spawnWidth = Math.ceil(Math.sqrt(2 * (members.length - 0.5)));
+        for (let r = 0; r < spawnWidth; r++) {
+            for (let c = 0; c < spawnWidth; c++) {
+                map[r][c] = TileType.EMPTY;
+            }
+        }
+
+        // Determine all doorway costs
+        const keyHoleCosts: Record<string, number> = {};
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < columns; c++) {
+                if (map[r][c] === TileType.KEY_HOLE) {
+                    keyHoleCosts[DungeonCrawler.getLocationString(r, c)] = randInt(1, 20);
+                }
+            }
+        }
+
+        // Carve out space for goal
+        const goal = {
+            r: rows - 2,
+            c: columns - 2
+        };
+        for (let dr = -1; dr <= 1; dr++) {
+            for (let dc = -1; dc <= 1; dc++) {
+                map[goal.r + dr][goal.c + dc] = TileType.EMPTY;
+            }
+        }
+
+        // Initialize players
+        const players: Record<Snowflake, DungeonPlayerState> = {};
+        for (let j = 0; j < members.length; j++) {
+            const member = members[j];
+            const { r, c } = DungeonCrawler.getInitialLocationSectional(j, spawnWidth);
+            players[member.id] = {
+                r,
+                c,
+                rank: j + 1,
+                avatarUrl: member.user.displayAvatarURL({ size: 32, extension: 'png' }),
+                displayName: member.displayName,
+                points: DungeonCrawler.STARTER_POINTS
+            };
+        }
+
+        const dungeon = new DungeonCrawler({
+            type: 'DUNGEON_GAME_STATE',
+            decisions: {},
+            turn: 0,
+            winners: [],
+            action: 0,
+            rows,
+            columns,
+            map,
+            goal,
+            keyHoleCosts,
+            trapOwners: {},
+            players,
+            lines: []
+        });
+        dungeon.refreshPlayerRanks();
+
+        return dungeon;
+    }
+
     static createBest(members: GuildMember[], attempts: number, minSteps: number = 0): DungeonCrawler {
         let maxFairness = { fairness: 0 };
         let bestMap: DungeonCrawler | null = null;
@@ -2797,3 +2873,200 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         this.state.usingBetaFeatures = usingBetaFeatures;
     }
 }
+
+// TODO: Below is a messy utility for the new organic maze generation
+
+const generateOrganicMaze = (rows: number, columns: number): TileType[][] => {
+    const map: TileType[][] = [];
+
+    const getCornerOffsets = () => {
+        return [[-1, -1], [1, 1], [-1, 1], [1, -1]];
+    };
+    const getRandomCardinalOffsets = () => {
+        return shuffle([[-1, 0], [1, 0], [0, -1], [0, 1]]);
+    };
+    const inBounds = (r: number, c: number): boolean => {
+        return r >= 0 && c >= 0 && r < rows && c < columns;
+    };
+    const isLandLocked = (r: number, c: number): boolean => {
+        let count = 0;
+        for (const dr of [-1, 0, 1]) {
+            for (const dc of [-1, 0, 1]) {
+                if (inBounds(r + dr, c + dc) && map[r + dr][c + dc] === TileType.EMPTY) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    };
+    const isFreeInAdjacents = (r: number, c: number, n: number): boolean => {
+        let count = 0;
+        for (const [dr, dc] of getRandomCardinalOffsets()) {
+            if (inBounds(r + dr, c + dc) && map[r + dr][c + dc] === TileType.EMPTY) {
+                count++;
+            }
+        }
+        return count === n;
+    };
+    const isFreeOnCorners = (r: number, c: number, n: number): boolean => {
+        let count = 0;
+        for (const [dr, dc] of getCornerOffsets()) {
+            if (inBounds(r + dr, c + dc) && map[r + dr][c + dc] === TileType.EMPTY) {
+                count++;
+            }
+        }
+        return count === n;
+    };
+    const isCriticalCorner = (r: number, c: number): boolean => {
+        for (const [dr, dc] of getCornerOffsets()) {
+            if (inBounds(r + dr, c + dc)
+                && map[r + dr][c + dc] !== TileType.EMPTY
+                && map[r][c + dc] !== TileType.EMPTY
+                && map[r + dr][c] !== TileType.EMPTY)
+            {
+                return true;
+            }
+        }
+        return false;
+    };
+    const isWall = (r: number, c: number): boolean => {
+        return !inBounds(r, c) || map[r][c] === TileType.WALL;
+    };
+    const isOpen = (r: number, c: number): boolean => {
+        return inBounds(r, c) && map[r][c] === TileType.EMPTY;
+    };
+    const isPotentialDoorway = (r: number, c: number): boolean => {
+        // Vertical doorway
+        if (isWall(r, c - 1) && isWall(r, c + 1) && isOpen(r - 1, c) && isOpen(r + 1, c)) {
+            return true;
+        }
+        // Horizontal doorway
+        if (isOpen(r, c - 1) && isOpen(r, c + 1) && isWall(r - 1, c) && isWall(r + 1, c)) {
+            return true;
+        }
+        return false;
+    };
+    const is2x2 = (r: number, c: number): boolean => {
+        for (const [dr, dc] of getCornerOffsets()) {
+            if (isWall(r, c) && isWall(r + dr, c) && isWall(r, c + dc) && isWall(r + dr, c + dc)) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    for (let r = 0; r < rows; r++) {
+        map.push([]);
+        for (let c = 0; c < columns; c++) {
+            map[r][c] = TileType.WALL;
+        }
+    }
+
+    const step = (r: number, c: number, prev: [number, number] = [0, 0]) => {
+        // Carve
+        map[r][c] = TileType.EMPTY;
+        const offsets = getRandomCardinalOffsets();
+        while (offsets.length > 0) {
+            const offset = offsets.shift() as [number, number];
+            const [dr, dc] = offset;
+            // If going in a straight line, come to this last
+            if (chance(0.75) && dr === prev[0] && dc === prev[1]) {
+                offsets.push(offset);
+                continue;
+            }
+
+            const nr = r + dr;
+            const nc = c + dc;
+
+            const n2r = r + 2 * dr;
+            const n2c = c + 2 * dc;
+
+            // If going OOB, skip
+            if (!inBounds(nr, nc)) {
+                continue;
+            }
+
+            // If next is already carved, skip
+            if (map[nr][nc] === TileType.EMPTY) {
+                continue;
+            }
+
+            // If next is a critical corner, skip
+            if (isCriticalCorner(nr, nc)) {
+                continue;
+            }
+
+            // If next is free in adjacent tiles, maybe skip
+            if (isFreeInAdjacents(nr, nc, 4)) {
+                if (chance(0.95)) {
+                    continue;
+                }
+            } else if (isFreeInAdjacents(nr, nc, 3)) {
+                if (chance(0.95)) {
+                    continue;
+                }
+            } else if (isFreeInAdjacents(nr, nc, 2)) {
+                if (chance(0.75)) {
+                    continue;
+                }
+            }
+
+            // If next is free in corners, maybe skip
+            if (isFreeOnCorners(nr, nc, 4)) {
+                if (chance(0.95)) {
+                    continue;
+                }
+            } else if (isFreeOnCorners(nr, nc, 3)) {
+                if (chance(0.9)) {
+                    continue;
+                }
+            } else if (isFreeOnCorners(nr, nc, 2)) {
+                if (chance(0.75)) {
+                    continue;
+                }
+            } else if (isFreeOnCorners(nr, nc, 1)) {
+                if (chance(0.6)) {
+                    continue;
+                }
+            }
+
+            // If we're not breaking onto another path, go this way
+            if (chance(0.5) || !inBounds(n2r, n2c) || map[n2r][n2c] !== TileType.EMPTY) {
+                step(nr, nc, offset);
+            }
+        }
+    };
+
+    // Initial step
+    step(0, 0);
+
+    // Find all landlocked tiles and step there
+    for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < columns; c++) {
+            if (isLandLocked(r, c)) {
+                step(r, c);
+            }
+        }
+    }
+
+    // Find all 2x2 chunks and break them up (if they contain no critical corners)
+    // TODO: Randomize indexes
+    for (const r of shuffle([...Array(rows).keys()])) {
+        for (const c of shuffle([...Array(columns).keys()])) {
+            if (is2x2(r, c) && !isCriticalCorner(r, c)) {
+                map[r][c] = TileType.EMPTY;
+            }
+        }
+    }
+
+    // Add doorways
+    for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < columns; c++) {
+            if (chance(0.75) && isWall(r, c) && isPotentialDoorway(r, c)) {
+                map[r][c] = TileType.KEY_HOLE;
+            }
+        }
+    }
+
+    return map;
+};

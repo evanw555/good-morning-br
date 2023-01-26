@@ -2330,7 +2330,8 @@ const processCommands = async (msg: Message): Promise<void> => {
             awaitingGameCommands = true;
             if (sanitizedText.includes('dungeon')) {
                 // tempDungeon = DungeonCrawler.createBest(members, 20, 40);
-                tempDungeon = DungeonCrawler.createSectional(members, { sectionSize: 33, sectionsAcross: 1 }); // Before: size=11,across=3
+                // tempDungeon = DungeonCrawler.createSectional(members, { sectionSize: 33, sectionsAcross: 1 }); // Before: size=11,across=3
+                tempDungeon = DungeonCrawler.createOrganic(members, 33, 33);
                 (tempDungeon as DungeonCrawler).addPlayerItem(msg.author.id, 'trap', 5);
                 (tempDungeon as DungeonCrawler).addPlayerItem(msg.author.id, 'boulder', 3);
                 (tempDungeon as DungeonCrawler).addPlayerItem(msg.author.id, 'seal', 3);
