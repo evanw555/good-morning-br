@@ -2920,7 +2920,7 @@ const generateOrganicMaze = (rows: number, columns: number): TileType[][] => {
     const isCriticalCorner = (r: number, c: number): boolean => {
         for (const [dr, dc] of getCornerOffsets()) {
             if (inBounds(r + dr, c + dc)
-                && map[r + dr][c + dc] !== TileType.EMPTY
+                && map[r + dr][c + dc] === TileType.EMPTY
                 && map[r][c + dc] !== TileType.EMPTY
                 && map[r + dr][c] !== TileType.EMPTY)
             {
