@@ -1,6 +1,6 @@
 import canvas, { Image } from 'canvas';
 import { GuildMember, Snowflake } from "discord.js";
-import { getRankString, naturalJoin, randChoice, randInt, toFixed } from 'evanw555.js';
+import { getRankString, naturalJoin, randChoice, toFixed } from 'evanw555.js';
 import { ClassicGameState, DecisionProcessingResult, Medals, PrizeType } from "../types";
 import { getNormalizedEditDistance, getOrderingUpsets } from '../util';
 import AbstractGame from "./abstract-game";
@@ -38,8 +38,8 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
     getInstructionsText(): string {
         return 'Each week, you can choose one of three actions: **cheer**, **take**, or **peek**! DM me to secretly pick an action, or **cheer** by default.\n'
             + '🌞 **cheer** to spread a little Good Morning cheer! (free point to yourself and a random player below you)\n'
-            + '‼️ **take** to take **2-6** points from GMBR\'s infinite golden coffer.\n'
-            + '👀 **peek** to stop a player from taking. If you stop a player, you steal **2-6** points from them! (e.g. `peek Robert`)';
+            + '‼️ **take** to take **3-5** points from GMBR\'s infinite golden coffer.\n'
+            + '👀 **peek** to stop a player from taking. If you stop a player, you steal **3-5** points from them! (e.g. `peek Robert`)';
     }
 
     getHelpText(): string {
@@ -202,7 +202,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
             summary += `**${cheerers.length}** players spread some Good Morning cheer! `;
         } else if (takers.length > 0) {
             const taker = randChoice(...takers);
-            const amount = randInt(2, 7, 2);
+            const amount = randChoice(3, 4, 5);
             if (taker in peekersByTarget) {
                 const peekers = peekersByTarget[taker];
                 this.addPoints(taker, -amount * peekers.length);

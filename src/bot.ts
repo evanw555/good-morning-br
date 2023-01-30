@@ -562,7 +562,6 @@ const sendGoodMorningMessage = async (): Promise<void> => {
             // Otherwise, send the standard GM message as normal (do a season intro greeting if today is the first day)
             if (state.getSeasonStartedOn() === getTodayDateString()) {
                 const text = `Good morning everyone and welcome to season **${state.getSeasonNumber()}**! `
-                    + 'This season will be very different from seasons past, you\'ll see what I mean on Saturday... '
                     + `I hope to see many familiar faces, and if I\'m lucky maybe even some new ones ${config.defaultGoodMorningEmoji}`;
                 await messenger.send(goodMorningChannel, text);
             } else if (chance(config.goodMorningMessageProbability)) {
