@@ -1963,6 +1963,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                     this.addRenderLine(currentLocation, newLocation, player.invincible ? 'rainbow' : undefined);
                     let skipStepMessage = false;
                     // Handle situations where another user is standing in the way
+                    // TODO: What if multiple players are standing in the way??
                     const blockingUserId: Snowflake | undefined = this.getPlayerAtLocation(nr, nc);
                     if (blockingUserId) {
                         const blockingUser = this.state.players[blockingUserId];
@@ -1996,15 +1997,27 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                                         const shoveLocation = MazeGame.getOffsetLocation(newLocation, shoveOffset);
                                         // TODO: This wouldn't handle shoving a player onto a KO'ed player
                                         // TODO: This should check if the shove location triggered a trap
+                                        // First, if the blocking player can be shoved then shove them!
                                         if (this.isWalkable(shoveLocation.r, shoveLocation.c) && !this.isPlayerAtLocation(shoveLocation)) {
-                                            // If the blocking player can be shoved, shove them!
                                             blockingUser.r = shoveLocation.r;
                                             blockingUser.c = shoveLocation.c;
                                             const shoveDirection = MazeGame.getDirectionByOffset(shoveOffset);
                                             skipStepMessage = true;
                                             pushNonCollapsableStatement(`**${player.displayName}** shoved **${blockingUser.displayName}** ${shoveDirection}ward`);
-                                        } else {
-                                            // Otherwise, just bump and give up
+                                        }
+                                        // Else, if the player has 2+ points, then auto-punch
+                                        // TODO: Should this be configurable? Can players opt-out? Should it be another price?
+                                        else if (this.getPoints(userId) >= 2) {
+                                            // Stun the other player (their turn is over so 1 is sufficient)
+                                            blockingUser.stuns = 1;
+                                            pushNonCollapsableStatement(`**${player.displayName}** slapped **${blockingUser.displayName}** onto the floor`);
+                                            // Consume points
+                                            this.addPoints(userId, -2);
+                                            // Do NOT consume an action this turn
+                                            return false;
+                                        }
+                                        // Otherwise, just bump and give up
+                                        else {
                                             summaryData.consecutiveBumpGoners.push(userId);
                                             endTurn = true;
                                             return false;
