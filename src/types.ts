@@ -129,16 +129,16 @@ export interface DailyEvent {
     wishesReceived?: Record<Snowflake, number>
 }
 
-export interface DungeonLocation {
+export interface MazeLocation {
     r: number,
     c: number
 }
 
-export type DungeonItemName = 'trap' | 'boulder' | 'seal' | 'key' | 'star' | 'charge';
+export type MazeItemName = 'trap' | 'boulder' | 'seal' | 'key' | 'star' | 'charge';
 
-export interface DungeonLine {
-    from: DungeonLocation,
-    to: DungeonLocation,
+export interface MazeLine {
+    from: MazeLocation,
+    to: MazeLocation,
     /**
      * Render this line under players if falsy, over players if truthy.
      */
@@ -149,7 +149,7 @@ export interface DungeonLine {
     special?: 'warp' | 'red' | 'rainbow'
 }
 
-export interface DungeonPlayerState {
+export interface MazePlayerState {
     r: number,
     c: number,
     /**
@@ -161,12 +161,12 @@ export interface DungeonPlayerState {
     displayName: string,
     points: number,
     multiplier?: number,
-    items?: Partial<Record<DungeonItemName, number>>,
-    itemOffers?: DungeonItemName[],
+    items?: Partial<Record<MazeItemName, number>>,
+    itemOffers?: MazeItemName[],
     finished?: boolean,
     stuns?: number,
     invincible?: boolean,
-    originLocation?: DungeonLocation,
+    originLocation?: MazeLocation,
     warped?: boolean
 }
 
@@ -175,8 +175,8 @@ export interface DecisionProcessingResult {
     continueProcessing: boolean
 }
 
-export interface DungeonGameState {
-    type: 'DUNGEON_GAME_STATE',
+export interface MazeGameState {
+    type: 'MAZE_GAME_STATE',
     decisions: Record<Snowflake, string[]>,
     turn: number,
     winners: Snowflake[],
@@ -185,12 +185,12 @@ export interface DungeonGameState {
     rows: number,
     columns: number
     map: number[][],
-    goal: DungeonLocation,
+    goal: MazeLocation,
     homeStretch?: boolean,
-    keyHoleCosts: Record<string, number>,
+    doorwayCosts: Record<string, number>,
     trapOwners: Record<string, Snowflake>,
-    players: Record<Snowflake, DungeonPlayerState>,
-    lines: DungeonLine[],
+    players: Record<Snowflake, MazePlayerState>,
+    lines: MazeLine[],
     // TODO: Temp property to test features for next season
     usingBetaFeatures?: boolean
 }
@@ -208,7 +208,7 @@ export interface ClassicGameState {
     revealedActions: Record<Snowflake, string>
 }
 
-export type GameState = DungeonGameState | ClassicGameState;
+export type GameState = MazeGameState | ClassicGameState;
 
 export interface Bait {
     userId: Snowflake,

@@ -6,10 +6,10 @@ import GoodMorningState from './state';
 import { addReactsSync, chance, FileStorage, generateKMeansClusters, getClockTime, getPollChoiceKeys, getRandomDateBetween,
     getRankString, getRelativeDateTimeString, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger,
     naturalJoin, PastTimeoutStrategy, R9KTextBank, randChoice, randInt, shuffle, sleep, TimeoutManager, toCalendarDate, toFixed, toLetterId } from 'evanw555.js';
-import DungeonCrawler from './games/dungeon';
 import ActivityTracker from './activity-tracker';
 import AbstractGame from './games/abstract-game';
 import ClassicGame from './games/classic';
+import MazeGame from './games/maze';
 
 import logger from './logger';
 
@@ -2067,7 +2067,7 @@ const processCommands = async (msg: Message): Promise<void> => {
         if (msg.content.replace(/^\+/, '').toLowerCase() === 'exit') {
             tempDungeon = null;
             awaitingGameCommands = false;
-            await msg.reply('Exiting temp dungeon mode...');
+            await msg.reply('Exiting temp game mode...');
             return;
         }
         if (tempDungeon) {
@@ -2327,18 +2327,18 @@ const processCommands = async (msg: Message): Promise<void> => {
             const useBetaFeatures = sanitizedText.includes('beta');
             await msg.reply(`Generating new game with **${members.length}** player(s)...` + (useBetaFeatures ? ' (with beta features enabled)' : ''));
             awaitingGameCommands = true;
-            if (sanitizedText.includes('dungeon')) {
+            if (sanitizedText.includes('maze')) {
                 // tempDungeon = DungeonCrawler.createBest(members, 20, 40);
                 // tempDungeon = DungeonCrawler.createSectional(members, { sectionSize: 33, sectionsAcross: 1 }); // Before: size=11,across=3
-                tempDungeon = DungeonCrawler.createOrganic(members, 33, 33);
-                (tempDungeon as DungeonCrawler).addPlayerItem(msg.author.id, 'trap', 5);
-                (tempDungeon as DungeonCrawler).addPlayerItem(msg.author.id, 'boulder', 3);
-                (tempDungeon as DungeonCrawler).addPlayerItem(msg.author.id, 'seal', 3);
-                (tempDungeon as DungeonCrawler).addPlayerItem(msg.author.id, 'key', 2);
-                (tempDungeon as DungeonCrawler).addPlayerItem(msg.author.id, 'star', 1);
-                (tempDungeon as DungeonCrawler).addPlayerItem(msg.author.id, 'charge', 5);
+                tempDungeon = MazeGame.createOrganic(members, 33, 33);
+                (tempDungeon as MazeGame).addPlayerItem(msg.author.id, 'trap', 5);
+                (tempDungeon as MazeGame).addPlayerItem(msg.author.id, 'boulder', 3);
+                (tempDungeon as MazeGame).addPlayerItem(msg.author.id, 'seal', 3);
+                (tempDungeon as MazeGame).addPlayerItem(msg.author.id, 'key', 2);
+                (tempDungeon as MazeGame).addPlayerItem(msg.author.id, 'star', 1);
+                (tempDungeon as MazeGame).addPlayerItem(msg.author.id, 'charge', 5);
                 if (useBetaFeatures) {
-                    (tempDungeon as DungeonCrawler).setUsingBetaFeatures(true);
+                    (tempDungeon as MazeGame).setUsingBetaFeatures(true);
                 }
             } else {
                 tempDungeon = ClassicGame.create(members);
@@ -2354,8 +2354,8 @@ const processCommands = async (msg: Message): Promise<void> => {
             awaitingSubmission = true;
             await msg.reply('Awaiting submission...');
         } else if (sanitizedText.includes('offer')) {
-            if (state.hasGame() && state.getGame() instanceof DungeonCrawler) {
-                const dungeon = state.getGame() as DungeonCrawler;
+            if (state.hasGame() && state.getGame() instanceof MazeGame) {
+                const dungeon = state.getGame() as MazeGame;
                 const prizeTexts = dungeon.awardPrize(msg.author.id, 'submissions1', 'Testing the claim functionality');
                 await dumpState();
                 for (const prizeText of prizeTexts) {
@@ -2363,8 +2363,8 @@ const processCommands = async (msg: Message): Promise<void> => {
                 }
             }
         } else if (sanitizedText.includes('items')) {
-            if (state.hasGame() && state.getGame() instanceof DungeonCrawler) {
-                const dungeon = state.getGame() as DungeonCrawler;
+            if (state.hasGame() && state.getGame() instanceof MazeGame) {
+                const dungeon = state.getGame() as MazeGame;
                 await msg.reply(dungeon.getOrderedPlayers().filter(p => dungeon.playerHasAnyItem(p)).map(p => `**${dungeon.getDisplayName(p)}:** \`${JSON.stringify(dungeon.getPlayerItems(p))}\``).join('\n'));
             }
         } else if (sanitizedText.includes('remove')) {

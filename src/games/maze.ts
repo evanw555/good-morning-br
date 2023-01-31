@@ -1,7 +1,7 @@
 import canvas, { NodeCanvasRenderingContext2D } from 'canvas';
 import { GuildMember, Snowflake } from 'discord.js';
 import { getRankString, getNumberBetween, naturalJoin, randInt, shuffle, toLetterId, fromLetterId, AStarPathFinder, shuffleWithDependencies, toFixed, collapseRedundantStrings, chance, randChoice } from 'evanw555.js';
-import { DecisionProcessingResult, DungeonGameState, DungeonItemName, DungeonLine, DungeonLocation, DungeonPlayerState, PrizeType } from "../types";
+import { DecisionProcessingResult, MazeGameState, MazeItemName, MazeLine, MazeLocation, MazePlayerState, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 
 import logger from '../logger';
@@ -10,8 +10,8 @@ enum TileType {
     INVALID = -1,
     EMPTY = 0,
     WALL = 1,
-    KEY_HOLE = 2,
-    OPENED_KEY_HOLE = 3,
+    DOORWAY = 2,
+    OPENED_DOORWAY = 3,
     CHEST = 4,
     HIDDEN_TRAP = 5,
     TRAP = 6,
@@ -29,9 +29,9 @@ const OFFSETS_BY_DIRECTION: Record<Direction, [number, number]> = {
 };
 
 type BasicActionName = Direction | 'pause' | 'unlock' | 'lock' | 'punch' | 'warp' | 'coin';
-type ActionName = BasicActionName | DungeonItemName;
+type ActionName = BasicActionName | MazeItemName;
 
-const ITEM_NAME_RECORD: Record<DungeonItemName, boolean> = {
+const ITEM_NAME_RECORD: Record<MazeItemName, boolean> = {
     boulder: true,
     seal: true,
     trap: true,
@@ -39,7 +39,7 @@ const ITEM_NAME_RECORD: Record<DungeonItemName, boolean> = {
     star: true,
     charge: true
 };
-const ITEM_NAMES: DungeonItemName[] = Object.keys(ITEM_NAME_RECORD) as DungeonItemName[];
+const ITEM_NAMES: MazeItemName[] = Object.keys(ITEM_NAME_RECORD) as MazeItemName[];
 const VALID_ITEMS: Set<string> = new Set(ITEM_NAMES);
 
 const ACTION_SYMBOLS: Record<ActionName, string> = {
@@ -64,10 +64,10 @@ const ACTION_SYMBOLS: Record<ActionName, string> = {
 interface PathingOptions {
     useDoorways?: boolean,
     addedOccupiedTileCost?: number,
-    obstacles?: DungeonLocation[]
+    obstacles?: MazeLocation[]
 }
 
-export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
+export default class MazeGame extends AbstractGame<MazeGameState> {
     private static readonly TILE_SIZE: number = 24;
     private static readonly STARTER_POINTS: number = 3;
 
@@ -78,7 +78,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     private static readonly STYLE_WARP_PATH: string = 'rgba(98, 11, 212, 0.5)';
     private static readonly STYLE_HEAVY_PATH: string = 'rgba(255, 0, 0, 0.75)';
 
-    constructor(state: DungeonGameState) {
+    constructor(state: MazeGameState) {
         super(state);
         // TODO: Temp logic to fill in missing properties
         if (state.lines === undefined) {
@@ -181,7 +181,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
 
     addPlayer(member: GuildMember): string {
         if (member.id in this.state.players) {
-            logger.log(`Refusing to add **${member.displayName}** to the dungeon, as they're already in it!`);
+            logger.log(`Refusing to add **${member.displayName}** to the maze, as they're already in it!`);
             return `Cannot add **${member.displayName}** (already in-game)`;
         }
         // Get the worst 33% of players based on location
@@ -193,7 +193,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         const spawnR = spawnLocation?.r ?? 0;
         const spawnC = spawnLocation?.c ?? randInt(0, this.state.columns);
         // This new player gets starter points (plus more if later in the game) as a balance
-        const lateStarterPoints: number = DungeonCrawler.STARTER_POINTS + this.getTurn();
+        const lateStarterPoints: number = MazeGame.STARTER_POINTS + this.getTurn();
         // Create the player at this spawn location
         this.state.players[member.id] = {
             r: spawnR,
@@ -206,7 +206,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         // Refresh all player ranks
         this.refreshPlayerRanks();
         // Return log text describing this player being added
-        const locationText: string = spawnLocation ? `near **${this.getDisplayName(spawnLocation.userId)}**` : `at \`${DungeonCrawler.getLocationString(spawnR, spawnC)}\``;
+        const locationText: string = spawnLocation ? `near **${this.getDisplayName(spawnLocation.userId)}**` : `at \`${MazeGame.getLocationString(spawnR, spawnC)}\``;
         return `Added player **${member.displayName}** ${locationText} with **${lateStarterPoints}** starter points`;
     }
 
@@ -225,7 +225,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         // Remove any owned traps
         for (const [ locationString, trapOwnerId ] of Object.entries(this.state.trapOwners)) {
             if (trapOwnerId === userId) {
-                const location = DungeonCrawler.parseLocationString(locationString);
+                const location = MazeGame.parseLocationString(locationString);
                 if (location) {
                     this.state.map[location.r][location.c] = TileType.EMPTY;
                     delete this.state.trapOwners[locationString];
@@ -245,22 +245,22 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     }
 
     async renderState(options?: { showPlayerDecision?: Snowflake, admin?: boolean, season?: number }): Promise<Buffer> {
-        const WIDTH: number = this.state.columns * DungeonCrawler.TILE_SIZE;
-        const HEIGHT: number = this.state.rows * DungeonCrawler.TILE_SIZE;
+        const WIDTH: number = this.state.columns * MazeGame.TILE_SIZE;
+        const HEIGHT: number = this.state.rows * MazeGame.TILE_SIZE;
         const c = canvas.createCanvas(WIDTH, HEIGHT);
         const context = c.getContext('2d');
         const coinImage = await this.loadImage('assets/coin.png');
 
         // Fill the blue sky background
-        context.fillStyle = DungeonCrawler.STYLE_SKY;
+        context.fillStyle = MazeGame.STYLE_SKY;
         context.fillRect(0, 0, WIDTH, HEIGHT);
 
         // Draw the checkerboard pattern
         for (let r = 0; r < this.state.rows; r++) {
             for (let c = 0; c < this.state.columns; c++) {
                 if ((r + c) % 2 == 0) {
-                    context.fillStyle = DungeonCrawler.STYLE_DARK_SKY;
-                    context.fillRect(c * DungeonCrawler.TILE_SIZE, r * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE);
+                    context.fillStyle = MazeGame.STYLE_DARK_SKY;
+                    context.fillRect(c * MazeGame.TILE_SIZE, r * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE, MazeGame.TILE_SIZE);
                 }
             }
         }
@@ -271,12 +271,12 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 if (this.isTileType(r, c, TileType.CHEST)) {
                     // Draw chests
                     context.fillStyle = 'yellow';
-                    context.fillRect(c * DungeonCrawler.TILE_SIZE, r * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE);
+                    context.fillRect(c * MazeGame.TILE_SIZE, r * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE, MazeGame.TILE_SIZE);
                 } else if (this.isTileType(r, c, TileType.TRAP)) {
                     // Draw revealed traps
                     context.fillStyle = 'black';
                     context.beginPath();
-                    context.arc((c + .5) * DungeonCrawler.TILE_SIZE, (r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE / 4, 0, Math.PI * 2, false);
+                    context.arc((c + .5) * MazeGame.TILE_SIZE, (r + .5) * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE / 4, 0, Math.PI * 2, false);
                     context.fill();
                 } else if (this.isTileType(r, c, TileType.BOULDER)) {
                     context.fillStyle = 'dimgray';
@@ -285,44 +285,44 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     context.setLineDash([]);
                     this.drawRandomPolygonOnTile(context, r, c);
                 } else if (this.isTileType(r, c, TileType.COIN)) {
-                    context.drawImage(coinImage, c * DungeonCrawler.TILE_SIZE, r * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE);
+                    context.drawImage(coinImage, c * MazeGame.TILE_SIZE, r * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE, MazeGame.TILE_SIZE);
                 } else if (this.isCloudy(r, c)) {
-                    context.fillStyle = DungeonCrawler.STYLE_CLOUD;
+                    context.fillStyle = MazeGame.STYLE_CLOUD;
                     context.beginPath();
-                    context.arc((c + .5) * DungeonCrawler.TILE_SIZE, (r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE / 2, 0, Math.PI * 2, false);
+                    context.arc((c + .5) * MazeGame.TILE_SIZE, (r + .5) * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE / 2, 0, Math.PI * 2, false);
                     context.fill();
                     // Handle connections
                     if (this.isCloudy(r + 1, c)) {
-                        const radius = randInt(DungeonCrawler.TILE_SIZE * .4, DungeonCrawler.TILE_SIZE * .6);
+                        const radius = randInt(MazeGame.TILE_SIZE * .4, MazeGame.TILE_SIZE * .6);
                         context.beginPath();
-                        context.arc((c + .5) * DungeonCrawler.TILE_SIZE, (r + 1) * DungeonCrawler.TILE_SIZE, radius, 0, Math.PI * 2, false);
+                        context.arc((c + .5) * MazeGame.TILE_SIZE, (r + 1) * MazeGame.TILE_SIZE, radius, 0, Math.PI * 2, false);
                         context.fill();
                     }
                     if (this.isCloudy(r, c + 1)) {
-                        const radius = randInt(DungeonCrawler.TILE_SIZE * .4, DungeonCrawler.TILE_SIZE * .6);
+                        const radius = randInt(MazeGame.TILE_SIZE * .4, MazeGame.TILE_SIZE * .6);
                         context.beginPath();
-                        context.arc((c + 1) * DungeonCrawler.TILE_SIZE, (r + .5) * DungeonCrawler.TILE_SIZE, radius, 0, Math.PI * 2, false);
+                        context.arc((c + 1) * MazeGame.TILE_SIZE, (r + .5) * MazeGame.TILE_SIZE, radius, 0, Math.PI * 2, false);
                         context.fill();
                     }
-                    // context.fillRect(c * DungeonCrawler.TILE_SIZE, r * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE);
-                    if (this.isTileType(r, c, TileType.KEY_HOLE)) {
+                    // context.fillRect(c * MazeGame.TILE_SIZE, r * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE, MazeGame.TILE_SIZE);
+                    if (this.isTileType(r, c, TileType.DOORWAY)) {
                         // Draw key hole cost
-                        context.fillStyle = DungeonCrawler.STYLE_LIGHT_SKY;
-                        context.font = `${DungeonCrawler.TILE_SIZE * .6}px sans-serif`;
-                        this.fillTextOnTile(context, this.state.keyHoleCosts[DungeonCrawler.getLocationString(r, c)].toString(), r, c);
-                        // context.fillRect((c + .4) * DungeonCrawler.TILE_SIZE, (r + .3) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE * .2, DungeonCrawler.TILE_SIZE * .4);
-                    } else if (this.isTileType(r, c, TileType.OPENED_KEY_HOLE)) {
-                        context.fillStyle = DungeonCrawler.STYLE_SKY;
+                        context.fillStyle = MazeGame.STYLE_LIGHT_SKY;
+                        context.font = `${MazeGame.TILE_SIZE * .6}px sans-serif`;
+                        this.fillTextOnTile(context, this.state.doorwayCosts[MazeGame.getLocationString(r, c)].toString(), r, c);
+                        // context.fillRect((c + .4) * MazeGame.TILE_SIZE, (r + .3) * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE * .2, MazeGame.TILE_SIZE * .4);
+                    } else if (this.isTileType(r, c, TileType.OPENED_DOORWAY)) {
+                        context.fillStyle = MazeGame.STYLE_SKY;
                         if (this.isWalkable(r - 1, c) || this.isWalkable(r + 1, c)) {
-                            context.fillRect((c + .1) * DungeonCrawler.TILE_SIZE, r * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE * .8, DungeonCrawler.TILE_SIZE);
+                            context.fillRect((c + .1) * MazeGame.TILE_SIZE, r * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE * .8, MazeGame.TILE_SIZE);
                         }
                         if (this.isWalkable(r, c - 1) || this.isWalkable(r, c + 1)) {
-                            context.fillRect(c * DungeonCrawler.TILE_SIZE, (r + .1) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE * .8);
+                            context.fillRect(c * MazeGame.TILE_SIZE, (r + .1) * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE, MazeGame.TILE_SIZE * .8);
                         }
                         // Draw opened key hole cost
-                        context.fillStyle = DungeonCrawler.STYLE_CLOUD;
-                        context.font = `${DungeonCrawler.TILE_SIZE * .6}px sans-serif`;
-                        this.fillTextOnTile(context, this.state.keyHoleCosts[DungeonCrawler.getLocationString(r, c)].toString(), r, c);
+                        context.fillStyle = MazeGame.STYLE_CLOUD;
+                        context.font = `${MazeGame.TILE_SIZE * .6}px sans-serif`;
+                        this.fillTextOnTile(context, this.state.doorwayCosts[MazeGame.getLocationString(r, c)].toString(), r, c);
                     }
                 } else {
                     context.fillStyle = 'black';
@@ -332,7 +332,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
 
         // Draw the sun at the center
         const sunImage = await this.loadImage('assets/sun4.png');
-        context.drawImage(sunImage, (this.getGoalColumn() - .5) * DungeonCrawler.TILE_SIZE, (this.getGoalRow() - .5) * DungeonCrawler.TILE_SIZE, 2 * DungeonCrawler.TILE_SIZE, 2 * DungeonCrawler.TILE_SIZE);
+        context.drawImage(sunImage, (this.getGoalColumn() - .5) * MazeGame.TILE_SIZE, (this.getGoalRow() - .5) * MazeGame.TILE_SIZE, 2 * MazeGame.TILE_SIZE, 2 * MazeGame.TILE_SIZE);
 
         // Render all "standard" lines (e.g. player steps) before rendering the players themselves
         this.renderLines(context, this.state.lines.filter(line => !line.over));
@@ -354,10 +354,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         // Render admin stuff
         if (options?.admin) {
             // Render trap owners
-            context.font = `${DungeonCrawler.TILE_SIZE * .35}px sans-serif`;
+            context.font = `${MazeGame.TILE_SIZE * .35}px sans-serif`;
             context.fillStyle = 'black';
             for (const [ locationString, trapOwnerId ] of Object.entries(this.state.trapOwners)) {
-                const location = DungeonCrawler.parseLocationString(locationString);
+                const location = MazeGame.parseLocationString(locationString);
                 if (location) {
                     this.fillTextOnTile(context, this.getDisplayName(trapOwnerId), location.r, location.c);
                 }
@@ -368,47 +368,47 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             }
         }
 
-        const SIDEBAR_WIDTH = DungeonCrawler.TILE_SIZE * 11;
-        const TOTAL_WIDTH = WIDTH + DungeonCrawler.TILE_SIZE + SIDEBAR_WIDTH;
-        const TOTAL_HEIGHT = HEIGHT + DungeonCrawler.TILE_SIZE;
+        const SIDEBAR_WIDTH = MazeGame.TILE_SIZE * 11;
+        const TOTAL_WIDTH = WIDTH + MazeGame.TILE_SIZE + SIDEBAR_WIDTH;
+        const TOTAL_HEIGHT = HEIGHT + MazeGame.TILE_SIZE;
         const masterImage = canvas.createCanvas(TOTAL_WIDTH, TOTAL_HEIGHT);
         const c2 = masterImage.getContext('2d');
 
         // Render coordinate labels
-        c2.font = `${DungeonCrawler.TILE_SIZE * .6}px sans-serif`;
+        c2.font = `${MazeGame.TILE_SIZE * .6}px sans-serif`;
         c2.fillStyle = 'black';
         c2.fillRect(0, 0, TOTAL_WIDTH, TOTAL_HEIGHT);
-        c2.drawImage(c, DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE);
+        c2.drawImage(c, MazeGame.TILE_SIZE, MazeGame.TILE_SIZE);
         for (let r = 0; r < this.state.rows; r++) {
             const text = toLetterId(r);
             if (r % 2 === 0) {
                 c2.fillStyle = 'rgb(50,50,50)';
-                c2.fillRect(0, (r + 1) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE);
+                c2.fillRect(0, (r + 1) * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE, MazeGame.TILE_SIZE);
             }
             c2.fillStyle = 'white';
-            c2.fillText(text, (DungeonCrawler.TILE_SIZE - c2.measureText(text).width) / 2, (r + 1.75) * DungeonCrawler.TILE_SIZE);
+            c2.fillText(text, (MazeGame.TILE_SIZE - c2.measureText(text).width) / 2, (r + 1.75) * MazeGame.TILE_SIZE);
         }
         for (let c = 0; c < this.state.columns; c++) {
             const text = (c + 1).toString();
             if (c % 2 === 0) {
                 c2.fillStyle = 'rgb(50,50,50)';
-                c2.fillRect((c + 1) * DungeonCrawler.TILE_SIZE, 0, DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE);
+                c2.fillRect((c + 1) * MazeGame.TILE_SIZE, 0, MazeGame.TILE_SIZE, MazeGame.TILE_SIZE);
             }
             c2.fillStyle = 'white';
-            c2.fillText(text, (c + 1) * DungeonCrawler.TILE_SIZE + (DungeonCrawler.TILE_SIZE - c2.measureText(text).width) / 2, DungeonCrawler.TILE_SIZE * .75);
+            c2.fillText(text, (c + 1) * MazeGame.TILE_SIZE + (MazeGame.TILE_SIZE - c2.measureText(text).width) / 2, MazeGame.TILE_SIZE * .75);
         }
 
         // Determine the number of rows of text we need to render in the sidebar and thus the height per row
         const rowsNeeded = this.getNumPlayers() + Object.keys(this.getChoices()).length + 6;
-        const heightPerRow = Math.floor(DungeonCrawler.TILE_SIZE * Math.min(1, this.state.rows / rowsNeeded));
+        const heightPerRow = Math.floor(MazeGame.TILE_SIZE * Math.min(1, this.state.rows / rowsNeeded));
 
         // Render usernames in order of location
-        const MARGIN = 0.5 * DungeonCrawler.TILE_SIZE;
+        const MARGIN = 0.5 * MazeGame.TILE_SIZE;
         c2.font = `${heightPerRow * .75}px sans-serif`;
         let y = 2;
         c2.fillStyle = 'white';
-        const leftTextX = WIDTH + DungeonCrawler.TILE_SIZE + MARGIN;
-        c2.fillText(`Season ${options?.season ?? '???'}, Week ${this.state.turn}, Action ${this.state.action}`, leftTextX, DungeonCrawler.TILE_SIZE);
+        const leftTextX = WIDTH + MazeGame.TILE_SIZE + MARGIN;
+        c2.fillText(`Season ${options?.season ?? '???'}, Week ${this.state.turn}, Action ${this.state.action}`, leftTextX, MazeGame.TILE_SIZE);
         for (const userId of this.getOrganizedPlayers()) {
             y++;
             const player = this.state.players[userId];
@@ -425,7 +425,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             const textY = y * heightPerRow;
             // Draw the location
             resetTextColor();
-            const leftTextWidth = 1.5 * DungeonCrawler.TILE_SIZE;
+            const leftTextWidth = 1.5 * MazeGame.TILE_SIZE;
             const locationText = player.finished ? ':)' : this.getPlayerLocationString(userId);
             c2.fillText(locationText, leftTextX, textY, leftTextWidth);
             // Set the text to blue just for the points if there's a multiplier
@@ -434,7 +434,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             }
             // Draw the points
             const middleTextX = leftTextX + leftTextWidth + MARGIN;
-            const middleTextWidth = 1.25 * DungeonCrawler.TILE_SIZE;
+            const middleTextWidth = 1.25 * MazeGame.TILE_SIZE;
             c2.fillText(`$${Math.floor(player.points)}`, middleTextX, textY, middleTextWidth);
             // Draw the username
             resetTextColor();
@@ -455,11 +455,11 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             c2.fillStyle = `hsl(360,0%,${y % 2 === 0 ? 85 : 55}%)`;
             const textY = y * heightPerRow;
             // Draw the action name
-            const leftTextWidth = 1.5 * DungeonCrawler.TILE_SIZE;
+            const leftTextWidth = 1.5 * MazeGame.TILE_SIZE;
             c2.fillText(actionName, leftTextX, textY, leftTextWidth);
             // Draw the cost
             const middleTextX = leftTextX + leftTextWidth + MARGIN;
-            const middleTextWidth = 0.75 * DungeonCrawler.TILE_SIZE;
+            const middleTextWidth = 0.75 * MazeGame.TILE_SIZE;
             c2.fillText(`${cost}`, middleTextX, textY, middleTextWidth);
             // Draw the description
             const rightTextX = middleTextX + middleTextWidth + MARGIN;
@@ -474,9 +474,9 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         const player = this.state.players[userId];
 
         // Draw outline (rainbow if invincible, black otherwise)
-        const outlineX = (player.c + .5) * DungeonCrawler.TILE_SIZE;
-        const outlineY = (player.r + .5) * DungeonCrawler.TILE_SIZE;
-        const outlineRadius = DungeonCrawler.TILE_SIZE / 2 + 1;
+        const outlineX = (player.c + .5) * MazeGame.TILE_SIZE;
+        const outlineY = (player.r + .5) * MazeGame.TILE_SIZE;
+        const outlineRadius = MazeGame.TILE_SIZE / 2 + 1;
         if (player.invincible) {
             const n = 32;
             const rotationOffset = randInt(0, n);
@@ -499,12 +499,12 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         // Draw inner stuff
         if (player.avatarUrl.startsWith('http')) {
             const avatarImage = await this.loadImage(player.avatarUrl);
-            await this.drawImageAsCircle(context, avatarImage, this.isPlayerStunned(userId) ? 0.4 : 1, (player.c + .5) * DungeonCrawler.TILE_SIZE, (player.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE / 2);
+            await this.drawImageAsCircle(context, avatarImage, this.isPlayerStunned(userId) ? 0.4 : 1, (player.c + .5) * MazeGame.TILE_SIZE, (player.r + .5) * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE / 2);
         } else {
             // If it's not a URL, assume it's a CSS style
             context.fillStyle = player.avatarUrl;
             context.beginPath();
-            context.arc((player.c + .5) * DungeonCrawler.TILE_SIZE, (player.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE / 2, 0, Math.PI * 2, false);
+            context.arc((player.c + .5) * MazeGame.TILE_SIZE, (player.r + .5) * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE / 2, 0, Math.PI * 2, false);
             context.fill();
         }
 
@@ -512,7 +512,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         if (this.isPlayerStunned(userId)) {
             // If the player has pending decisions, show the stuns left; else just draw an X
             if (this.hasPendingDecisions(userId)) {
-                context.font = `bold ${DungeonCrawler.TILE_SIZE * .85}px arial`;
+                context.font = `bold ${MazeGame.TILE_SIZE * .85}px arial`;
                 context.fillStyle = 'red';
                 this.fillTextOnTile(context,this.getPlayerStuns(userId).toString(), player.r, player.c);
             } else {
@@ -520,10 +520,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 context.lineWidth = 2;
                 context.setLineDash([]);
                 context.beginPath();
-                context.moveTo(player.c * DungeonCrawler.TILE_SIZE, player.r * DungeonCrawler.TILE_SIZE);
-                context.lineTo((player.c + 1) * DungeonCrawler.TILE_SIZE, (player.r + 1) * DungeonCrawler.TILE_SIZE);
-                context.moveTo((player.c + 1) * DungeonCrawler.TILE_SIZE, player.r * DungeonCrawler.TILE_SIZE);
-                context.lineTo(player.c * DungeonCrawler.TILE_SIZE, (player.r + 1) * DungeonCrawler.TILE_SIZE);
+                context.moveTo(player.c * MazeGame.TILE_SIZE, player.r * MazeGame.TILE_SIZE);
+                context.lineTo((player.c + 1) * MazeGame.TILE_SIZE, (player.r + 1) * MazeGame.TILE_SIZE);
+                context.moveTo((player.c + 1) * MazeGame.TILE_SIZE, player.r * MazeGame.TILE_SIZE);
+                context.lineTo(player.c * MazeGame.TILE_SIZE, (player.r + 1) * MazeGame.TILE_SIZE);
                 context.stroke();
             }
         }
@@ -553,11 +553,11 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
 
     private fillTextOnTile(context: NodeCanvasRenderingContext2D, text: string, r: number, c: number): void {
         const width = context.measureText(text).width;
-        const baseX = c * DungeonCrawler.TILE_SIZE;
-        const horizontalMargin = (DungeonCrawler.TILE_SIZE - width) / 2;
+        const baseX = c * MazeGame.TILE_SIZE;
+        const horizontalMargin = (MazeGame.TILE_SIZE - width) / 2;
         const ascent = context.measureText(text).actualBoundingBoxAscent;
-        const baseY = r * DungeonCrawler.TILE_SIZE;
-        const verticalMargin = (DungeonCrawler.TILE_SIZE - ascent) / 2;
+        const baseY = r * MazeGame.TILE_SIZE;
+        const verticalMargin = (MazeGame.TILE_SIZE - ascent) / 2;
         context.fillText(text, baseX + horizontalMargin, baseY + verticalMargin + ascent);
     }
 
@@ -571,12 +571,12 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         for (let i = 0; i < numVertices; i++) {
             vertices.push({
                 angle: 2 * Math.PI * i / numVertices,
-                radius: randInt(Math.floor(DungeonCrawler.TILE_SIZE * minRadius), Math.floor(DungeonCrawler.TILE_SIZE * maxRadius))
+                radius: randInt(Math.floor(MazeGame.TILE_SIZE * minRadius), Math.floor(MazeGame.TILE_SIZE * maxRadius))
             });
         }
 
-        const baseX = (c + 0.5) * DungeonCrawler.TILE_SIZE;
-        const baseY = (r + 0.5) * DungeonCrawler.TILE_SIZE;
+        const baseX = (c + 0.5) * MazeGame.TILE_SIZE;
+        const baseY = (r + 0.5) * MazeGame.TILE_SIZE;
 
         const getVertexCoords = (vertex: { angle: number, radius: number }): { x: number, y: number } => {
             return {
@@ -599,7 +599,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         context.fill();
     }
 
-    private renderLines(context: canvas.CanvasRenderingContext2D, lines: DungeonLine[]): void {
+    private renderLines(context: canvas.CanvasRenderingContext2D, lines: MazeLine[]): void {
         // Use a stateful counter for the hue angle between lines
         let theta = Math.random();
 
@@ -613,10 +613,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     context.beginPath();
                     const r1 = getNumberBetween(line.from.r, line.to.r, i / n);
                     const c1 = getNumberBetween(line.from.c, line.to.c, i / n);
-                    context.moveTo((c1 + .5) * DungeonCrawler.TILE_SIZE, (r1 + .5) * DungeonCrawler.TILE_SIZE);
+                    context.moveTo((c1 + .5) * MazeGame.TILE_SIZE, (r1 + .5) * MazeGame.TILE_SIZE);
                     const r2 = getNumberBetween(line.from.r, line.to.r, (i + 1) / n);
                     const c2 = getNumberBetween(line.from.c, line.to.c, (i + 1) / n);
-                    context.lineTo((c2 + .5) * DungeonCrawler.TILE_SIZE, (r2 + .5) * DungeonCrawler.TILE_SIZE);
+                    context.lineTo((c2 + .5) * MazeGame.TILE_SIZE, (r2 + .5) * MazeGame.TILE_SIZE);
                     context.strokeStyle = `hsl(${Math.floor(theta * 360)},100%,50%)`;
                     theta = (theta + 0.02) % 1;
                     context.stroke();
@@ -627,16 +627,16 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             // TODO: Rather than having types of "special" lines, should we just have the style be explicitly overridden?
             if (line.special) {
                 context.lineWidth = 4;
-                context.strokeStyle = (line.special === 'warp') ? DungeonCrawler.STYLE_WARP_PATH : DungeonCrawler.STYLE_HEAVY_PATH;
-                context.setLineDash([Math.floor(DungeonCrawler.TILE_SIZE / 4), Math.floor(DungeonCrawler.TILE_SIZE / 4)]);
+                context.strokeStyle = (line.special === 'warp') ? MazeGame.STYLE_WARP_PATH : MazeGame.STYLE_HEAVY_PATH;
+                context.setLineDash([Math.floor(MazeGame.TILE_SIZE / 4), Math.floor(MazeGame.TILE_SIZE / 4)]);
             } else {
                 context.lineWidth = 2;
-                context.strokeStyle = DungeonCrawler.STYLE_LIGHT_SKY;
-                context.setLineDash([Math.floor(DungeonCrawler.TILE_SIZE / 12), Math.floor(DungeonCrawler.TILE_SIZE / 12)]);
+                context.strokeStyle = MazeGame.STYLE_LIGHT_SKY;
+                context.setLineDash([Math.floor(MazeGame.TILE_SIZE / 12), Math.floor(MazeGame.TILE_SIZE / 12)]);
             }
             context.beginPath();
-            context.moveTo((line.from.c + .5) * DungeonCrawler.TILE_SIZE, (line.from.r + .5) * DungeonCrawler.TILE_SIZE);
-            context.lineTo((line.to.c + .5) * DungeonCrawler.TILE_SIZE, (line.to.r + .5) * DungeonCrawler.TILE_SIZE);
+            context.moveTo((line.from.c + .5) * MazeGame.TILE_SIZE, (line.from.r + .5) * MazeGame.TILE_SIZE);
+            context.lineTo((line.to.c + .5) * MazeGame.TILE_SIZE, (line.to.r + .5) * MazeGame.TILE_SIZE);
             context.stroke();
         }
     }
@@ -645,37 +645,37 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         const player = this.state.players[userId];
         const decisions: string[] = this.state.decisions[userId] ?? [];
         const tempLocation = { r: player.r, c: player.c };
-        const locations = DungeonCrawler.getSequenceOfLocations(tempLocation, decisions as ActionName[]);
+        const locations = MazeGame.getSequenceOfLocations(tempLocation, decisions as ActionName[]);
         context.strokeStyle = 'red';
         context.lineWidth = 2;
-        context.setLineDash([Math.floor(DungeonCrawler.TILE_SIZE * .25), Math.floor(DungeonCrawler.TILE_SIZE * .25)]);
+        context.setLineDash([Math.floor(MazeGame.TILE_SIZE * .25), Math.floor(MazeGame.TILE_SIZE * .25)]);
         for (let i = 1; i < locations.length; i++) {
             const prev = locations[i - 1];
             const curr = locations[i];
             context.beginPath();
-            context.moveTo((prev.c + .5) * DungeonCrawler.TILE_SIZE, (prev.r + .5) * DungeonCrawler.TILE_SIZE);
-            context.lineTo((curr.c + .5) * DungeonCrawler.TILE_SIZE, (curr.r + .5) * DungeonCrawler.TILE_SIZE);
+            context.moveTo((prev.c + .5) * MazeGame.TILE_SIZE, (prev.r + .5) * MazeGame.TILE_SIZE);
+            context.lineTo((curr.c + .5) * MazeGame.TILE_SIZE, (curr.r + .5) * MazeGame.TILE_SIZE);
             context.stroke();
             // Show the final location
             if (i === locations.length - 1) {
                 // Show a circle at the final location
                 context.setLineDash([]);
                 context.beginPath();
-                context.arc((curr.c + .5) * DungeonCrawler.TILE_SIZE, (curr.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE / 2 + 1, 0, Math.PI * 2, false);
+                context.arc((curr.c + .5) * MazeGame.TILE_SIZE, (curr.r + .5) * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE / 2 + 1, 0, Math.PI * 2, false);
                 context.stroke();
                 // Render the player's avatar faintly
                 const avatarImage = await this.loadImage(player.avatarUrl);
-                await this.drawImageAsCircle(context, avatarImage, 0.35, (curr.c + .5) * DungeonCrawler.TILE_SIZE, (curr.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE / 2);
+                await this.drawImageAsCircle(context, avatarImage, 0.35, (curr.c + .5) * MazeGame.TILE_SIZE, (curr.r + .5) * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE / 2);
             }
         }
         // Show attempted "placement" actions
-        context.font = `${DungeonCrawler.TILE_SIZE * .5}px sans-serif`;
+        context.font = `${MazeGame.TILE_SIZE * .5}px sans-serif`;
         context.lineWidth = 1;
         context.fillStyle = 'red';
         context.setLineDash([]);
         for (const decision of decisions.filter(d => d.startsWith('trap:') || d.startsWith('boulder:') || d.startsWith('coin:'))) {
             const [ action, locationString ] = decision.split(':');
-            const location = DungeonCrawler.parseLocationString(locationString);
+            const location = MazeGame.parseLocationString(locationString);
             if (location) {
                 this.fillTextOnTile(context, action.toUpperCase(), location.r, location.c);
             }
@@ -683,10 +683,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         // Show placed traps
         context.lineWidth = 1;
         context.strokeStyle = 'black';
-        context.setLineDash([Math.floor(DungeonCrawler.TILE_SIZE * .1), Math.floor(DungeonCrawler.TILE_SIZE * .1)]);
+        context.setLineDash([Math.floor(MazeGame.TILE_SIZE * .1), Math.floor(MazeGame.TILE_SIZE * .1)]);
         for (const location of this.getHiddenTrapsForPlayer(userId)) {
             context.beginPath();
-            context.arc((location.c + .5) * DungeonCrawler.TILE_SIZE, (location.r + .5) * DungeonCrawler.TILE_SIZE, DungeonCrawler.TILE_SIZE / 4, 0, Math.PI * 2, false);
+            context.arc((location.c + .5) * MazeGame.TILE_SIZE, (location.r + .5) * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE / 4, 0, Math.PI * 2, false);
             context.stroke();
         }
         context.setLineDash([]);
@@ -754,7 +754,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
 
         // Remove all dangling trap owners
         for (const location of this.getAllLocations()) {
-            const locationString = DungeonCrawler.getLocationString(location.r, location.c);
+            const locationString = MazeGame.getLocationString(location.r, location.c);
             const isTrapTile = this.isTileType(location.r, location.c, TileType.HIDDEN_TRAP) || this.isTileType(location.r, location.c, TileType.TRAP);
             const trapOwnerId = this.getTrapOwner(location);
             if (!isTrapTile && trapOwnerId) {
@@ -784,7 +784,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
 
     addPoints(userId: Snowflake, points: number): void {
         if (isNaN(points)) {
-            logger.log(`WARNING! Tried to award \`${points}\` points to **${this.getDisplayName(userId)}** (dungeon)`);
+            logger.log(`WARNING! Tried to award \`${points}\` points to **${this.getDisplayName(userId)}** (maze)`);
             return;
         }
 
@@ -793,7 +793,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
 
         // TODO: temp logging to see how this plays out
         if (multiplier > 1) {
-            logger.log(`Adding **${points}** points to **${this.getDisplayName(userId)}** with **${multiplier}x** multiplier (dungeon)`);
+            logger.log(`Adding **${points}** points to **${this.getDisplayName(userId)}** with **${multiplier}x** multiplier (maze)`);
         }
 
         this.state.players[userId].points = toFixed(this.getPoints(userId) + (points * multiplier));
@@ -809,7 +809,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             return [];
         }
         // "Good" items are just any item that's not a trap (award boulders/traps if the player is finished)
-        const goodItems: DungeonItemName[] = this.isPlayerFinished(userId) ? ['boulder', 'trap'] : ITEM_NAMES.filter(item => item !== 'trap');
+        const goodItems: MazeItemName[] = this.isPlayerFinished(userId) ? ['boulder', 'trap'] : ITEM_NAMES.filter(item => item !== 'trap');
         switch (type) {
             case 'submissions1':
                 // For first place, let the user pick between two random "good" items
@@ -824,7 +824,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         }
     }
 
-    private awardItem(userId: Snowflake, item: DungeonItemName, intro: string): string[] {
+    private awardItem(userId: Snowflake, item: MazeItemName, intro: string): string[] {
         // If player isn't in the game yet, do nothing
         if (!this.hasPlayer(userId)) {
             return [];
@@ -834,10 +834,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         const numItems = this.getPlayerItemCount(userId, item);
         // Return the notification and instructions text
         logger.log(`Awarded **${item}** to **${this.getDisplayName(userId)}**`);
-        return [`${intro}, you've just been awarded a **${item}**! Your inventory now contains **${numItems}**. ${DungeonCrawler.getItemInstructions(item)}`];
+        return [`${intro}, you've just been awarded a **${item}**! Your inventory now contains **${numItems}**. ${MazeGame.getItemInstructions(item)}`];
     }
 
-    private offerItems(userId: Snowflake, items: DungeonItemName[], intro: string): string[] {
+    private offerItems(userId: Snowflake, items: MazeItemName[], intro: string): string[] {
         // If player isn't in the game yet, do nothing
         if (!this.hasPlayer(userId)) {
             return [];
@@ -849,14 +849,14 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         const texts = [`${intro}, as a reward you may pick one of the follwing items: ${naturalJoin(items, { bold: true, conjunction: 'or' })}. `
             + 'DM me to claim the item of your choice! (e.g. \`claim ITEM\`). This offer is valid until Saturday morning.'];
         for (const item of items) {
-            texts.push(`**${item}:** ${DungeonCrawler.getItemInstructions(item)}`);
+            texts.push(`**${item}:** ${MazeGame.getItemInstructions(item)}`);
         }
         logger.log(`Offered ${naturalJoin(items, { bold: true })} to **${this.getDisplayName(userId)}**`);
         return texts;
     }
 
-    private static getItemInstructions(item: DungeonItemName): string {
-        const itemInstructions: Record<DungeonItemName, string> = {
+    private static getItemInstructions(item: MazeItemName): string {
+        const itemInstructions: Record<MazeItemName, string> = {
             trap: 'You can place a `trap` at a particular location as an action e.g. `trap:b12`. '
                 + 'If a player ends their turn on a trap, they will be sent back to where they started that week\'s turn. '
                 + 'Traps are invisible until triggered. You will be given **1** point each time this trap is triggered.',
@@ -893,14 +893,14 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         }
     }
 
-    private getPlayerLocation(userId: string): DungeonLocation | undefined {
+    private getPlayerLocation(userId: string): MazeLocation | undefined {
         if (userId in this.state.players) {
             return { r: this.state.players[userId].r, c: this.state.players[userId].c };
         }
     }
 
     private getPlayerLocationString(userId: string): string {
-        return DungeonCrawler.getLocationString(this.state.players[userId].r, this.state.players[userId].c);
+        return MazeGame.getLocationString(this.state.players[userId].r, this.state.players[userId].c);
     }
 
     private refreshPlayerRanks(): void {
@@ -1013,8 +1013,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return userIds.map(userId => this.getDisplayName(userId));
     }
 
-    private addRenderLine(from: DungeonLocation, to: DungeonLocation, special?: 'warp' | 'red' | 'rainbow'): void {
-        const line: DungeonLine = { from, to };
+    private addRenderLine(from: MazeLocation, to: MazeLocation, special?: 'warp' | 'red' | 'rainbow'): void {
+        const line: MazeLine = { from, to };
         if (special) {
             line.special = special;
             // TODO: This really needs to be a little more flexible and less hardcoded
@@ -1029,7 +1029,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         const result = [initialLocation];
         let previousLocation = initialLocation;
         for (const action of actions) {
-            const newLocation = DungeonCrawler.getNextLocation(previousLocation, action);
+            const newLocation = MazeGame.getNextLocation(previousLocation, action);
             if (newLocation.r !== previousLocation.r || newLocation.c !== previousLocation.c) {
                 result.push(newLocation);
             }
@@ -1049,7 +1049,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             return { r: location.r, c: location.c + 1 };
         } else if (action.startsWith('charge')) {
             const [actionName, arg] = action.split(':');
-            return DungeonCrawler.parseLocationString(arg) ?? location;
+            return MazeGame.parseLocationString(arg) ?? location;
         } else {
             return location;
         }
@@ -1078,7 +1078,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return [basePosition[0] + offsets[side][0] * magnitude * direction, basePosition[1] + offsets[side][1] * magnitude * direction];
     }
 
-    private static getInitialLocationSectional(seq: number, areaWidth: number): DungeonLocation {
+    private static getInitialLocationSectional(seq: number, areaWidth: number): MazeLocation {
         let r = areaWidth - 1;
         let c = areaWidth - 1;
         let refC = r;
@@ -1108,7 +1108,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         }
     }
 
-    private static createSection(rows: number, columns: number, entrance: DungeonLocation, exit: DungeonLocation): { map: TileType[][], keyHoleCosts: Record<string, number> } {
+    private static createSection(rows: number, columns: number, entrance: MazeLocation, exit: MazeLocation): { map: TileType[][], doorwayCosts: Record<string, number> } {
         // Initialize the map
         const map: number[][] = [];
         for (let r = 0; r < rows; r++) {
@@ -1117,7 +1117,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 map[r][c] = TileType.WALL;
             }
         }
-        const keyHoleCosts = {};
+        const doorwayCosts = {};
 
         const getEuclideanDistanceFromCenter = (r: number, c: number): number => {
             return Math.sqrt(Math.pow((rows / 2) - r, 2) + Math.pow((columns / 2) - c, 2));
@@ -1129,7 +1129,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
 
         const step = (r: number, c: number, prev: [number, number]) => {
             map[r][c] = 0;
-            const l = shuffle(DungeonCrawler.getCardinalOffsets(2));
+            const l = shuffle(MazeGame.getCardinalOffsets(2));
             let pick = 0;
             while (l.length > 0) {
                 const [dr, dc] = l.shift() as [number, number];
@@ -1159,16 +1159,16 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                             map[hnr][hnc] = TileType.EMPTY;
                         } else {
                             if (chance(0.2)) {
-                                map[hnr][hnc] = TileType.KEY_HOLE;
+                                map[hnr][hnc] = TileType.DOORWAY;
                                 // Make the cost more severe near the center of the section
                                 const distanceFromCenter = getEuclideanDistanceFromCenter(hnr, hnc);
                                 const sectionWidth = Math.min(rows, columns);
                                 if (distanceFromCenter < 0.25 * sectionWidth) {
-                                    keyHoleCosts[DungeonCrawler.getLocationString(hnr, hnc)] = Math.max(randInt(1, 16), randInt(1, 16), randInt(1, 16));
+                                    doorwayCosts[MazeGame.getLocationString(hnr, hnc)] = Math.max(randInt(1, 16), randInt(1, 16), randInt(1, 16));
                                 } else if (distanceFromCenter < 0.4 * sectionWidth) {
-                                    keyHoleCosts[DungeonCrawler.getLocationString(hnr, hnc)] = Math.max(randInt(1, 16), randInt(1, 16));
+                                    doorwayCosts[MazeGame.getLocationString(hnr, hnc)] = Math.max(randInt(1, 16), randInt(1, 16));
                                 } else {
-                                    keyHoleCosts[DungeonCrawler.getLocationString(hnr, hnc)] = randInt(1, 16);
+                                    doorwayCosts[MazeGame.getLocationString(hnr, hnc)] = randInt(1, 16);
                                 }
                             }
                         }
@@ -1210,10 +1210,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         placeFormation(rows - 2, 1, TileType.COIN);
         placeFormation(1, columns - 2, TileType.COIN);
 
-        return { map, keyHoleCosts };
+        return { map, doorwayCosts };
     }
 
-    static createSectional(members: GuildMember[], options: { sectionSize: number, sectionsAcross: number }): DungeonCrawler {
+    static createSectional(members: GuildMember[], options: { sectionSize: number, sectionsAcross: number }): MazeGame {
         const columns = (options.sectionSize + 1) * options.sectionsAcross - 1;
         const rows = columns;
 
@@ -1225,18 +1225,18 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 map[r][c] = TileType.WALL;
             }
         }
-        const keyHoleCosts = {};
+        const doorwayCosts = {};
 
-        const placeKeyHole = (_r: number, _c: number, cost: number) => {
-            map[_r][_c] = TileType.KEY_HOLE;
-            keyHoleCosts[DungeonCrawler.getLocationString(_r, _c)] = cost;
+        const placeDoorway = (_r: number, _c: number, cost: number) => {
+            map[_r][_c] = TileType.DOORWAY;
+            doorwayCosts[MazeGame.getLocationString(_r, _c)] = cost;
         };
 
         // Create the sections
         let goal = { r: rows - 1, c: columns - 1 };
         for (let sr = 0; sr < options.sectionsAcross; sr++) {
             for (let sc = 0; sc < options.sectionsAcross; sc++) {
-                const section = DungeonCrawler.createSection(options.sectionSize,
+                const section = MazeGame.createSection(options.sectionSize,
                     options.sectionSize,
                     { r: 0, c: 0 },
                     { r: options.sectionSize - 1, c: options.sectionSize - 1});
@@ -1248,11 +1248,11 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         map[baseR + r][baseC + c] = section.map[r][c];
                     }
                 }
-                // Transform and apply each keyhole cost
-                for (const keyHoleLocation of Object.keys(section.keyHoleCosts)) {
-                    const { r: keyR, c: keyC } = DungeonCrawler.parseLocationString(keyHoleLocation) as DungeonLocation;
-                    const transformedLocation = DungeonCrawler.getLocationString(keyR + baseR, keyC + baseC);
-                    keyHoleCosts[transformedLocation] = section.keyHoleCosts[keyHoleLocation];
+                // Transform and apply each doorway cost
+                for (const doorwayLocation of Object.keys(section.doorwayCosts)) {
+                    const { r: keyR, c: keyC } = MazeGame.parseLocationString(doorwayLocation) as MazeLocation;
+                    const transformedLocation = MazeGame.getLocationString(keyR + baseR, keyC + baseC);
+                    doorwayCosts[transformedLocation] = section.doorwayCosts[doorwayLocation];
                 }
                 // Cut out walkways between each section
                 const evenRow = sr % 2 === 0;
@@ -1275,18 +1275,18 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     if (evenRow) {
                         if (evenColumn) {
                             map[baseR + options.sectionSize - 1][baseC + options.sectionSize] = TileType.EMPTY;
-                            placeKeyHole(baseR, baseC + options.sectionSize, randomCost);
+                            placeDoorway(baseR, baseC + options.sectionSize, randomCost);
                         } else {
                             map[baseR][baseC + options.sectionSize] = TileType.EMPTY;
-                            placeKeyHole(baseR + options.sectionSize - 1, baseC + options.sectionSize, randomCost);
+                            placeDoorway(baseR + options.sectionSize - 1, baseC + options.sectionSize, randomCost);
                         }
                     } else {
                         if (evenColumn) {
                             map[baseR + options.sectionSize - 1][baseC - 1] = TileType.EMPTY;
-                            placeKeyHole(baseR, baseC - 1, randomCost);
+                            placeDoorway(baseR, baseC - 1, randomCost);
                         } else {
                             map[baseR][baseC - 1] = TileType.EMPTY;
-                            placeKeyHole(baseR + options.sectionSize - 1, baseC - 1, randomCost);
+                            placeDoorway(baseR + options.sectionSize - 1, baseC - 1, randomCost);
                         }
                     }
                 }
@@ -1316,29 +1316,29 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         // Remove all dangling doorway costs
         for (let r = 0; r < rows; r++) {
             for (let c = 0; c < columns; c++) {
-                if (map[r][c] !== TileType.KEY_HOLE) {
-                    delete keyHoleCosts[DungeonCrawler.getLocationString(r, c)];
+                if (map[r][c] !== TileType.DOORWAY) {
+                    delete doorwayCosts[MazeGame.getLocationString(r, c)];
                 }
             }
         }
 
         // Initialize players
-        const players: Record<Snowflake, DungeonPlayerState> = {};
+        const players: Record<Snowflake, MazePlayerState> = {};
         for (let j = 0; j < members.length; j++) {
             const member = members[j];
-            const { r, c } = DungeonCrawler.getInitialLocationSectional(j, spawnWidth);
+            const { r, c } = MazeGame.getInitialLocationSectional(j, spawnWidth);
             players[member.id] = {
                 r,
                 c,
                 rank: j + 1,
                 avatarUrl: member.user.displayAvatarURL({ size: 32, extension: 'png' }),
                 displayName: member.displayName,
-                points: DungeonCrawler.STARTER_POINTS
+                points: MazeGame.STARTER_POINTS
             };
         }
 
-        const dungeon = new DungeonCrawler({
-            type: 'DUNGEON_GAME_STATE',
+        const game = new MazeGame({
+            type: 'MAZE_GAME_STATE',
             decisions: {},
             turn: 0,
             winners: [],
@@ -1347,19 +1347,19 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             columns,
             map,
             goal,
-            keyHoleCosts,
+            doorwayCosts,
             trapOwners: {},
             players,
             lines: []
         });
-        dungeon.refreshPlayerRanks();
+        game.refreshPlayerRanks();
 
-        return dungeon;
+        return game;
     }
 
-    static createOrganic(members: GuildMember[], rows: number, columns: number): DungeonCrawler {
+    static createOrganic(members: GuildMember[], rows: number, columns: number): MazeGame {
         while (true) {
-            const attempt = DungeonCrawler.tryCreateOrganic(members, rows, columns);
+            const attempt = MazeGame.tryCreateOrganic(members, rows, columns);
             // Only use this maze if the goal can be pathed to from all 3 non-goal corners
             if (attempt.searchToGoal(0, 0, { useDoorways: false }).success
                 && attempt.searchToGoal(rows - 1, 0, { useDoorways: false }).success
@@ -1369,7 +1369,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         }
     }
 
-    private static tryCreateOrganic(members: GuildMember[], rows: number, columns: number): DungeonCrawler {
+    private static tryCreateOrganic(members: GuildMember[], rows: number, columns: number): MazeGame {
         const map = generateOrganicMaze(rows, columns);
 
         // Clear spawn section
@@ -1381,11 +1381,11 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         }
 
         // Determine all doorway costs
-        const keyHoleCosts: Record<string, number> = {};
+        const doorwayCosts: Record<string, number> = {};
         for (let r = 0; r < rows; r++) {
             for (let c = 0; c < columns; c++) {
-                if (map[r][c] === TileType.KEY_HOLE) {
-                    keyHoleCosts[DungeonCrawler.getLocationString(r, c)] = randInt(1, 20);
+                if (map[r][c] === TileType.DOORWAY) {
+                    doorwayCosts[MazeGame.getLocationString(r, c)] = randInt(1, 20);
                 }
             }
         }
@@ -1402,22 +1402,22 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         }
 
         // Initialize players
-        const players: Record<Snowflake, DungeonPlayerState> = {};
+        const players: Record<Snowflake, MazePlayerState> = {};
         for (let j = 0; j < members.length; j++) {
             const member = members[j];
-            const { r, c } = DungeonCrawler.getInitialLocationSectional(j, spawnWidth);
+            const { r, c } = MazeGame.getInitialLocationSectional(j, spawnWidth);
             players[member.id] = {
                 r,
                 c,
                 rank: j + 1,
                 avatarUrl: member.user.displayAvatarURL({ size: 32, extension: 'png' }),
                 displayName: member.displayName,
-                points: DungeonCrawler.STARTER_POINTS
+                points: MazeGame.STARTER_POINTS
             };
         }
 
-        const dungeon = new DungeonCrawler({
-            type: 'DUNGEON_GAME_STATE',
+        const game = new MazeGame({
+            type: 'MAZE_GAME_STATE',
             decisions: {},
             turn: 0,
             winners: [],
@@ -1426,36 +1426,36 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             columns,
             map,
             goal,
-            keyHoleCosts,
+            doorwayCosts,
             trapOwners: {},
             players,
             lines: []
         });
-        dungeon.refreshPlayerRanks();
+        game.refreshPlayerRanks();
 
-        return dungeon;
+        return game;
     }
 
-    static createBest(members: GuildMember[], attempts: number, minSteps: number = 0): DungeonCrawler {
+    static createBest(members: GuildMember[], attempts: number, minSteps: number = 0): MazeGame {
         let maxFairness = { fairness: 0 };
-        let bestMap: DungeonCrawler | null = null;
+        let bestMap: MazeGame | null = null;
         let validAttempts = 0;
         while (validAttempts < attempts) {
-            const newDungeon = DungeonCrawler.createSectional(members, {
+            const newGame = MazeGame.createSectional(members, {
                 sectionsAcross: 1,
                 sectionSize: 29
             });
-            const fairness = newDungeon.getMapFairness();
+            const fairness = newGame.getMapFairness();
             if (fairness.min >= minSteps) {
                 validAttempts++;
                 if (fairness.fairness > maxFairness.fairness) {
                     maxFairness = fairness;
-                    bestMap = newDungeon;
+                    bestMap = newGame;
                 }
                 console.log(`Attempt ${validAttempts}: ${fairness.description}`);
             }
         }
-        return bestMap as DungeonCrawler;
+        return bestMap as MazeGame;
     }
 
     private getTileAtUser(userId: Snowflake): TileType {
@@ -1482,11 +1482,11 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     }
 
     private isWalkableTileType(t: TileType): boolean {
-        return t === TileType.EMPTY || t === TileType.OPENED_KEY_HOLE || t === TileType.CHEST || t === TileType.HIDDEN_TRAP || t === TileType.TRAP || t === TileType.COIN;
+        return t === TileType.EMPTY || t === TileType.OPENED_DOORWAY || t === TileType.CHEST || t === TileType.HIDDEN_TRAP || t === TileType.TRAP || t === TileType.COIN;
     }
 
     private isSealable(r: number, c: number): boolean {
-        return this.isTileType(r, c, TileType.KEY_HOLE) || this.isTileType(r, c, TileType.OPENED_KEY_HOLE);
+        return this.isTileType(r, c, TileType.DOORWAY) || this.isTileType(r, c, TileType.OPENED_DOORWAY);
     }
 
     private isPlaceable(r: number, c: number): boolean {
@@ -1494,16 +1494,16 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return this.isTileType(r, c, TileType.EMPTY) || this.isTileType(r, c, TileType.HIDDEN_TRAP) || this.isTileType(r, c, TileType.COIN);
     }
 
-    private isTrap(location: DungeonLocation): boolean {
+    private isTrap(location: MazeLocation): boolean {
         return this.isTileType(location.r, location.c, TileType.TRAP) || this.isTileType(location.r, location.c, TileType.HIDDEN_TRAP);
     }
 
     /**
      * @returns True if this location is adjacent to a locked doorway, an unlocked doorway, or a sealed doorway.
      */
-    private isNextToDoorway(location: DungeonLocation): boolean {
+    private isNextToDoorway(location: MazeLocation): boolean {
         for (const { r, c } of this.getAdjacentLocations(location)) {
-            if (this.isInBounds(r, c) && (DungeonCrawler.getLocationString(r, c) in this.state.keyHoleCosts)) {
+            if (this.isInBounds(r, c) && (MazeGame.getLocationString(r, c) in this.state.doorwayCosts)) {
                 return true;
             }
         }
@@ -1513,15 +1513,15 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     /**
      * @returns True if this location is a locked doorway, an unlocked doorway, or a sealed doorway.
      */
-    private isDoorway(location: DungeonLocation): boolean {
-        return this.isInBounds(location.r, location.c) && (DungeonCrawler.getLocationString(location.r, location.c) in this.state.keyHoleCosts);
+    private isDoorway(location: MazeLocation): boolean {
+        return this.isInBounds(location.r, location.c) && (MazeGame.getLocationString(location.r, location.c) in this.state.doorwayCosts);
     }
 
     private isCloudy(r: number, c: number): boolean {
-        return this.isTileType(r, c, TileType.WALL) || this.isTileType(r, c, TileType.KEY_HOLE) || this.isTileType(r, c, TileType.OPENED_KEY_HOLE);
+        return this.isTileType(r, c, TileType.WALL) || this.isTileType(r, c, TileType.DOORWAY) || this.isTileType(r, c, TileType.OPENED_DOORWAY);
     }
 
-    private setSurroundingTiles(location: DungeonLocation, t: TileType): void {
+    private setSurroundingTiles(location: MazeLocation, t: TileType): void {
         for (let dr = -1; dr <= 1; dr++) {
             for (let dc = -1; dc <= 1; dc++) {
                 if (dr !== 0 || dc !== 0) {
@@ -1536,10 +1536,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     }
 
     private getHiddenTrapsForPlayer(userId: Snowflake): { r: number, c: number }[] {
-        const locations: DungeonLocation[] = [];
+        const locations: MazeLocation[] = [];
         for (const [locationString, ownerId] of Object.entries(this.state.trapOwners)) {
             if (ownerId === userId) {
-                const location = DungeonCrawler.parseLocationString(locationString);
+                const location = MazeGame.parseLocationString(locationString);
                 if (location && this.isTileType(location.r, location.c, TileType.HIDDEN_TRAP)) {
                     locations.push(location);
                 }
@@ -1548,8 +1548,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return locations;
     }
 
-    private getTrapOwner(location: DungeonLocation): Snowflake | undefined {
-        const locationString = DungeonCrawler.getLocationString(location.r, location.c);
+    private getTrapOwner(location: MazeLocation): Snowflake | undefined {
+        const locationString = MazeGame.getLocationString(location.r, location.c);
         return this.state.trapOwners[locationString];
     }
 
@@ -1569,7 +1569,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     /**
      * @returns all unfinished players at the given location
      */
-    private getPlayersAtLocation(location: DungeonLocation): Snowflake[] {
+    private getPlayersAtLocation(location: MazeLocation): Snowflake[] {
         const result: Snowflake[] = [];
         // Exclude players who've already finished (since they effectively don't have a location)
         for (const userId of this.getUnfinishedPlayers()) {
@@ -1581,7 +1581,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return result;
     }
 
-    private isPlayerAtLocation(location: DungeonLocation): boolean {
+    private isPlayerAtLocation(location: MazeLocation): boolean {
         return this.getPlayerAtLocation(location.r, location.c) !== undefined;
     }
 
@@ -1663,17 +1663,17 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         if (commands.some(c => c.startsWith('boulder:'))) {
             const boulderLocations = commands.filter(c => c.startsWith('boulder:'))
                 .map(c => c.split(':')[1])
-                .map(l => DungeonCrawler.parseLocationString(l) as DungeonLocation);
+                .map(l => MazeGame.parseLocationString(l) as MazeLocation);
             if (!this.canAllPlayersReachGoal(boulderLocations)) {
                 throw new Error('You can\'t place a boulder in a location that would permanently trap players! Please pick another location...');
             }
         }
 
-        const validateDoorwayAction = (targetLocation: DungeonLocation | undefined, action: ActionName) => {
-            const newLocationString: string = DungeonCrawler.getLocationString(newLocation.r, newLocation.c);
+        const validateDoorwayAction = (targetLocation: MazeLocation | undefined, action: ActionName) => {
+            const newLocationString: string = MazeGame.getLocationString(newLocation.r, newLocation.c);
             // If there's a target location, validate that the target is a doorway and that it's adjacent to the current location
             if (targetLocation) {
-                const targetLocationString: string = DungeonCrawler.getLocationString(targetLocation.r, targetLocation.c);
+                const targetLocationString: string = MazeGame.getLocationString(targetLocation.r, targetLocation.c);
                 if (!this.isDoorway(targetLocation)) {
                     throw new Error(`You can't ${action} **${targetLocationString}**, as it's not a doorway!`);
                 }
@@ -1691,10 +1691,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             const [ dr, dc ] = OFFSETS_BY_DIRECTION[direction];
             const nr = newLocation.r + dr;
             const nc = newLocation.c + dc;
-            if (this.isTileType(nr, nc, TileType.KEY_HOLE)) {
+            if (this.isTileType(nr, nc, TileType.DOORWAY)) {
                 newLocation.r += dr;
                 newLocation.c += dc;
-                warnings.push(`⚠️ Doorway at **${DungeonCrawler.getLocationString(nr, nc)}** must be unlocked, whether by you or someone else.`);
+                warnings.push(`⚠️ Doorway at **${MazeGame.getLocationString(nr, nc)}** must be unlocked, whether by you or someone else.`);
             } else if (this.isWalkable(nr, nc)) {
                 newLocation.r += dr;
                 newLocation.c += dc;
@@ -1713,7 +1713,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 }
             }
             // Parse and validate the location param (if one was provided)
-            const argLocation: DungeonLocation | undefined = DungeonCrawler.parseLocationString(arg);
+            const argLocation: MazeLocation | undefined = MazeGame.parseLocationString(arg);
             if (argLocation) {
                 // If a location was specified, validate that it's not out of bounds
                 if (!this.isInBounds(argLocation.r, argLocation.c)) {
@@ -1741,12 +1741,12 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     validateDoorwayAction(argLocation, 'seal');
                     // Ensure this action wouldn't softlock anyone
                     for (const { r, c } of this.getAdjacentLocationsOrOverride(newLocation, argLocation)) {
-                        const sealableLocations: DungeonLocation[] = [];
+                        const sealableLocations: MazeLocation[] = [];
                         if (this.isSealable(r, c)) {
                             sealableLocations.push({ r, c })
                         }
                         if (!this.canAllPlayersReachGoal(sealableLocations)) {
-                            throw new Error(`Using "seal" at **${DungeonCrawler.getLocationString(newLocation.r, newLocation.c)}** would cause some players to become permanently trapped!`);
+                            throw new Error(`Using "seal" at **${MazeGame.getLocationString(newLocation.r, newLocation.c)}** would cause some players to become permanently trapped!`);
                         }
                     }
                     break;
@@ -1789,7 +1789,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     const intermediateLocations = this.getLocationsBetween(newLocation, argLocation);
                     for (const intermediateLocation of intermediateLocations) {
                         if (!this.isWalkable(intermediateLocation.r, intermediateLocation.c)) {
-                            throw new Error(`You can't charge to **${arg}**, as obstacle at **${DungeonCrawler.getLocationString(intermediateLocation.r, intermediateLocation.c)}** is in the way!`);
+                            throw new Error(`You can't charge to **${arg}**, as obstacle at **${MazeGame.getLocationString(intermediateLocation.r, intermediateLocation.c)}** is in the way!`);
                         }
                     }
                     // Update the new temp location to the target location
@@ -1817,13 +1817,13 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         }
 
         this.state.decisions[userId] = commands;
-        return `Valid actions, your new location will be **${isWarping ? '???' : DungeonCrawler.getLocationString(newLocation.r, newLocation.c)}**. `
+        return `Valid actions, your new location will be **${isWarping ? '???' : MazeGame.getLocationString(newLocation.r, newLocation.c)}**. `
             + `This will consume **${cost}** of your **${Math.floor(playerPoints)}** points if successful. `
             + (warnings.length > 0 ? ' _BUT PLEASE NOTE THE FOLLOWING:_\n' + warnings.join('\n') : '');
     }
 
-    private getActionCost(action: ActionName, location?: DungeonLocation, arg?: string): number {
-        const argLocation: DungeonLocation | undefined = arg ? DungeonCrawler.parseLocationString(arg) : undefined;
+    private getActionCost(action: ActionName, location?: MazeLocation, arg?: string): number {
+        const argLocation: MazeLocation | undefined = arg ? MazeGame.parseLocationString(arg) : undefined;
         const actionCosts: Record<BasicActionName, () => number> = {
             'up': () => {
                 return 1;
@@ -1843,8 +1843,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             'unlock': () => {
                 let cost = 0;
                 for (const { r, c } of this.getAdjacentLocationsOrOverride(location, argLocation)) {
-                    if (this.isTileType(r, c, TileType.KEY_HOLE)) {
-                        cost += this.state.keyHoleCosts[DungeonCrawler.getLocationString(r, c)];
+                    if (this.isTileType(r, c, TileType.DOORWAY)) {
+                        cost += this.state.doorwayCosts[MazeGame.getLocationString(r, c)];
                     }
                 }
                 return cost;
@@ -1852,8 +1852,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
             'lock': () => {
                 let cost = 0;
                 for (const { r, c } of this.getAdjacentLocationsOrOverride(location, argLocation)) {
-                    if (this.isTileType(r, c, TileType.OPENED_KEY_HOLE)) {
-                        cost += this.state.keyHoleCosts[DungeonCrawler.getLocationString(r, c)];
+                    if (this.isTileType(r, c, TileType.OPENED_DOORWAY)) {
+                        cost += this.state.doorwayCosts[MazeGame.getLocationString(r, c)];
                     }
                 }
                 return cost;
@@ -1992,15 +1992,15 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                                     // Otherwise, bumping into a player with no more actions...
                                     // TODO: Un-beta this feature
                                     if (this.isUsingBetaFeatures()) {
-                                        const shoveOffset = DungeonCrawler.getNormalizedOffsetTo(currentLocation, newLocation);
-                                        const shoveLocation = DungeonCrawler.getOffsetLocation(newLocation, shoveOffset);
+                                        const shoveOffset = MazeGame.getNormalizedOffsetTo(currentLocation, newLocation);
+                                        const shoveLocation = MazeGame.getOffsetLocation(newLocation, shoveOffset);
                                         // TODO: This wouldn't handle shoving a player onto a KO'ed player
                                         // TODO: This should check if the shove location triggered a trap
                                         if (this.isWalkable(shoveLocation.r, shoveLocation.c) && !this.isPlayerAtLocation(shoveLocation)) {
                                             // If the blocking player can be shoved, shove them!
                                             blockingUser.r = shoveLocation.r;
                                             blockingUser.c = shoveLocation.c;
-                                            const shoveDirection = DungeonCrawler.getDirectionByOffset(shoveOffset);
+                                            const shoveDirection = MazeGame.getDirectionByOffset(shoveOffset);
                                             skipStepMessage = true;
                                             pushNonCollapsableStatement(`**${player.displayName}** shoved **${blockingUser.displayName}** ${shoveDirection}ward`);
                                         } else {
@@ -2033,15 +2033,15 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     return false;
                 };
                 const doUnlock = (arg: string): number => {
-                    const argLocation: DungeonLocation| undefined = DungeonCrawler.parseLocationString(arg);
+                    const argLocation: MazeLocation| undefined = MazeGame.parseLocationString(arg);
                     let numDoorwaysUnlocked = 0;
                     for (const { r, c } of this.getAdjacentLocationsOrOverride({ r: player.r, c: player.c }, argLocation)) {
-                        if (this.isTileType(r, c, TileType.KEY_HOLE)) {
-                            this.state.map[r][c] = TileType.OPENED_KEY_HOLE;
+                        if (this.isTileType(r, c, TileType.DOORWAY)) {
+                            this.state.map[r][c] = TileType.OPENED_DOORWAY;
                             numDoorwaysUnlocked++;
                             // Halve the cost of the doorway (bottoms out at 1)
-                            const locationString = DungeonCrawler.getLocationString(r, c);
-                            this.state.keyHoleCosts[locationString] = Math.max(1, Math.floor(this.state.keyHoleCosts[locationString] / 2));
+                            const locationString = MazeGame.getLocationString(r, c);
+                            this.state.doorwayCosts[locationString] = Math.max(1, Math.floor(this.state.doorwayCosts[locationString] / 2));
                         }
                     }
                     if (numDoorwaysUnlocked === 1) {
@@ -2072,11 +2072,11 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         return true;
                     },
                     lock: (arg) => {
-                        const argLocation: DungeonLocation | undefined = DungeonCrawler.parseLocationString(arg);
+                        const argLocation: MazeLocation | undefined = MazeGame.parseLocationString(arg);
                         let numDoorwaysLocked = 0;
                         for (const { r, c } of this.getAdjacentLocationsOrOverride({ r: player.r, c: player.c }, argLocation)) {
-                            if (this.isTileType(r, c, TileType.OPENED_KEY_HOLE)) {
-                                this.state.map[r][c] = TileType.KEY_HOLE;
+                            if (this.isTileType(r, c, TileType.OPENED_DOORWAY)) {
+                                this.state.map[r][c] = TileType.DOORWAY;
                                 numDoorwaysLocked++;
                             }
                         }
@@ -2139,7 +2139,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         return true;
                     },
                     coin: (arg) => {
-                        const targetLocation = DungeonCrawler.parseLocationString(arg);
+                        const targetLocation = MazeGame.parseLocationString(arg);
                         // Emergency fallback (this shouldn't happen)
                         if (!targetLocation) {
                             player.stuns = 1;
@@ -2155,7 +2155,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         return true;
                     },
                     trap: (arg) => {
-                        const targetLocation = DungeonCrawler.parseLocationString(arg);
+                        const targetLocation = MazeGame.parseLocationString(arg);
                         // Emergency fallback (this shouldn't happen)
                         if (!targetLocation) {
                             player.stuns = 1;
@@ -2169,7 +2169,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         return true;
                     },
                     boulder: (arg) => {
-                        const targetLocation = DungeonCrawler.parseLocationString(arg);
+                        const targetLocation = MazeGame.parseLocationString(arg);
                         // Emergency fallback (this shouldn't happen)
                         if (!targetLocation) {
                             player.stuns = 1;
@@ -2181,17 +2181,17 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         if (!this.canAllPlayersReachGoal([targetLocation])) {
                             player.stuns = 1;
                             endTurn = true;
-                            pushNonCollapsableStatement(`**${player.displayName}** got knocked out trying to softlock the game (tried to place boulder at **${DungeonCrawler.getLocationString(targetLocation.r, targetLocation.c)}**)`);
+                            pushNonCollapsableStatement(`**${player.displayName}** got knocked out trying to softlock the game (tried to place boulder at **${MazeGame.getLocationString(targetLocation.r, targetLocation.c)}**)`);
                             return false;
                         }
                         // Otherwise, place the boulder
                         this.state.map[targetLocation.r][targetLocation.c] = TileType.BOULDER;
                         this.consumePlayerItem(userId, 'boulder');
-                        pushNonCollapsableStatement(`**${player.displayName}** placed a boulder at **${DungeonCrawler.getLocationString(targetLocation.r, targetLocation.c)}**`);
+                        pushNonCollapsableStatement(`**${player.displayName}** placed a boulder at **${MazeGame.getLocationString(targetLocation.r, targetLocation.c)}**`);
                         return true;
                     },
                     seal: (arg) => {
-                        const argLocation: DungeonLocation | undefined = DungeonCrawler.parseLocationString(arg);
+                        const argLocation: MazeLocation | undefined = MazeGame.parseLocationString(arg);
                         const sealableLocations = this.getAdjacentLocationsOrOverride({ r: player.r, c: player.c }, argLocation).filter(l => this.isSealable(l.r, l.c));
                         // If doing this will softlock the game, knock out the player
                         if (!this.canAllPlayersReachGoal(sealableLocations)) {
@@ -2229,7 +2229,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                         return true;
                     },
                     charge: (arg) => {
-                        const argLocation: DungeonLocation | undefined = DungeonCrawler.parseLocationString(arg);
+                        const argLocation: MazeLocation | undefined = MazeGame.parseLocationString(arg);
                         // Emergency fallback (this shouldn't happen)
                         if (!argLocation) {
                             player.stuns = 1;
@@ -2238,7 +2238,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                             return false;
                         }
                         const previousLocation = { r: player.r, c: player.c };
-                        const direction = DungeonCrawler.getDirectionTo({ r: player.r, c: player.c }, argLocation);
+                        const direction = MazeGame.getDirectionTo({ r: player.r, c: player.c }, argLocation);
                         const intermediateLocations = this.getLocationsBetween({ r: player.r, c: player.c }, argLocation);
                         this.consumePlayerItem(userId, 'charge');
                         const trampledPlayers: Snowflake[] = [];
@@ -2364,7 +2364,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                     if (!player.invincible) {
                         let trapRevealed = false;
                         const trapOwnerId = this.getTrapOwner({ r: player.r, c: player.c });
-                        const locationString = DungeonCrawler.getLocationString(player.r, player.c);
+                        const locationString = MazeGame.getLocationString(player.r, player.c);
                         // Reveal the trap if it's hidden
                         if (this.getTileAtUser(userId) === TileType.HIDDEN_TRAP) {
                             this.state.map[player.r][player.c] = TileType.TRAP;
@@ -2473,7 +2473,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 if (VALID_ITEMS.has(claimedItem)) {
                     // Clear offers and award the claimed item
                     delete player.itemOffers;
-                    return this.awardItem(userId, claimedItem as DungeonItemName, 'Nice choice');
+                    return this.awardItem(userId, claimedItem as MazeItemName, 'Nice choice');
                 } else {
                     // Invalid item name, so let them know the exact options
                     return ['Invalid claim attempt bro, please say ' + naturalJoin(player.itemOffers.map(item => `\`claim ${item}\``), { conjunction: 'or' })];
@@ -2486,7 +2486,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
 
     /**
      * For a given player, returns a set of actions limited by what they can afford.
-     * The actions are determined using a naive search (ignore keyholes).
+     * The actions are determined using a naive search (ignore doorways).
      */
     getNextActionsTowardGoal(userId: Snowflake, n: number = 1): string[] {
         if (!this.hasPlayer(userId)) {
@@ -2497,7 +2497,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return this.searchToGoal(player.r, player.c, { addedOccupiedTileCost: 4 }).semanticSteps.slice(0, n);
     }
 
-    getNumStepsToLocation(from: DungeonLocation, to: DungeonLocation): number {
+    getNumStepsToLocation(from: MazeLocation, to: MazeLocation): number {
         return this.search(from, to, { useDoorways: true }).steps.length;
     }
 
@@ -2518,7 +2518,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return this.search({ r, c }, { r: this.getGoalRow(), c: this.getGoalColumn() }, options);
     }
 
-    search(start: DungeonLocation, goal: DungeonLocation, options?: PathingOptions) {
+    search(start: MazeLocation, goal: MazeLocation, options?: PathingOptions) {
         const finder = new AStarPathFinder(this.toWeightMap(options));
         const result = finder.search({
             start,
@@ -2536,10 +2536,10 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
                 return null;
             }
             // Else, do a more calculation of the realistic cost
-            const locationString = DungeonCrawler.getLocationString(r, c);
-            if (options?.useDoorways && tile === TileType.KEY_HOLE && locationString in this.state.keyHoleCosts) {
-                // Multiply keyhole cost by 2 since it's risky
-                return this.state.keyHoleCosts[locationString] * 2;
+            const locationString = MazeGame.getLocationString(r, c);
+            if (options?.useDoorways && tile === TileType.DOORWAY && locationString in this.state.doorwayCosts) {
+                // Multiply doorway cost by 2 since it's risky
+                return this.state.doorwayCosts[locationString] * 2;
             }
             if (this.isWalkableTileType(tile)) {
                 if (options?.addedOccupiedTileCost && this.isPlayerAtLocation({r, c})) {
@@ -2556,7 +2556,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return [[-n, 0], [n, 0], [0, -n], [0, n]];
     }
 
-    private static getNormalizedOffsetTo(from: DungeonLocation, to: DungeonLocation): [number, number] {
+    private static getNormalizedOffsetTo(from: MazeLocation, to: MazeLocation): [number, number] {
         if (from.r !== to.r && from.c === to.c) {
             if (from.r < to.r) {
                 return [1, 0];
@@ -2583,14 +2583,14 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         throw new Error(`Offset ${offset} cannot be mapped to a cardinal direction!`);
     }
 
-    private static getOffsetLocation(location: DungeonLocation, offset: [number, number]): DungeonLocation {
+    private static getOffsetLocation(location: MazeLocation, offset: [number, number]): MazeLocation {
         return {
             r: location.r + offset[0],
             c: location.c + offset[1]
         };
     }
 
-    private static getDirectionTo(from: DungeonLocation, to: DungeonLocation): Direction {
+    private static getDirectionTo(from: MazeLocation, to: MazeLocation): Direction {
         if (from.r > to.r) {
             return 'up';
         } else if (from.r < to.r) {
@@ -2603,11 +2603,11 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         throw new Error(`Cannot get cardinal direction from ${from} to ${to}`);
     }
 
-    private static locationEquals(a: DungeonLocation, b: DungeonLocation): boolean {
+    private static locationEquals(a: MazeLocation, b: MazeLocation): boolean {
         return a.r === b.r && a.c === b.c;
     }
 
-    private getLocationsBetween(from: DungeonLocation, to: DungeonLocation): DungeonLocation[] {
+    private getLocationsBetween(from: MazeLocation, to: MazeLocation): MazeLocation[] {
         if (from.r !== to.r && from.c !== to.c) {
             throw new Error(`Cannot compute locations between ${from} and ${to}, as they're not in the same row or column`);
         }
@@ -2620,7 +2620,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         let row = from.r;
         let col = from.c;
         const result = [{ r: row, c: col }];
-        const offset = DungeonCrawler.getNormalizedOffsetTo(from, to);
+        const offset = MazeGame.getNormalizedOffsetTo(from, to);
         while (this.isInBounds(row, col)) {
             row += offset[0];
             col += offset[1];
@@ -2635,13 +2635,13 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     /**
      * @returns a list of all in-bound locations adjacent to the given location
      */
-    private getAdjacentLocations(location: DungeonLocation | undefined): DungeonLocation[] {
+    private getAdjacentLocations(location: MazeLocation | undefined): MazeLocation[] {
         // Emergency fallback
         if (!location) {
             return [];
         }
-        const result: DungeonLocation[] = [];
-        for (const [dr, dc] of DungeonCrawler.getCardinalOffsets()) {
+        const result: MazeLocation[] = [];
+        for (const [dr, dc] of MazeGame.getCardinalOffsets()) {
             const nr = location.r + dr;
             const nc = location.c + dc;
             if (this.isInBounds(nr, nc)) {
@@ -2654,7 +2654,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
     /**
      * @returns a list containing just the override location, if it exists; else all in-bound locations adjacent to the given location
      */
-    private getAdjacentLocationsOrOverride(location: DungeonLocation | undefined, override: DungeonLocation | undefined): DungeonLocation[] {
+    private getAdjacentLocationsOrOverride(location: MazeLocation | undefined, override: MazeLocation | undefined): MazeLocation[] {
         // Emergency fallback
         if (!location) {
             return [];
@@ -2665,7 +2665,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return this.getAdjacentLocations(location);
     }
 
-    private isAdjacent(l1: DungeonLocation, l2: DungeonLocation): boolean {
+    private isAdjacent(l1: MazeLocation, l2: MazeLocation): boolean {
         return this.getAdjacentLocations(l1).some(la => la.r === l2.r && la.c === l2.c);
     }
 
@@ -2680,7 +2680,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return { min, max, fairness: min / max, description: `[${min}, ${max}] = ${(100 * min / max).toFixed(1)}%` };
     }
 
-    canAllPlayersReachGoal(obstacles: DungeonLocation[] = []): boolean {
+    canAllPlayersReachGoal(obstacles: MazeLocation[] = []): boolean {
         const simulatedWeightMap = this.toWeightMap({ obstacles, useDoorways: true });
         const finder = new AStarPathFinder(simulatedWeightMap);
         for (const userId of this.getUnfinishedPlayers()) {
@@ -2735,8 +2735,8 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         }
     }
 
-    getAllLocations(): DungeonLocation[] {
-        const results: DungeonLocation[] = [];
+    getAllLocations(): MazeLocation[] {
+        const results: MazeLocation[] = [];
         for (let r = 0; r < this.state.rows; r++) {
             for (let c = 0; c < this.state.columns; c++) {
                 results.push({ r, c });
@@ -2761,7 +2761,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         }
     }
 
-    getRandomVacantLocationsBehindPlayer(userId: Snowflake, n: number): DungeonLocation[] {
+    getRandomVacantLocationsBehindPlayer(userId: Snowflake, n: number): MazeLocation[] {
         // Start by getting all vacant locations (even those in front of the player)
         const vacantLocations = this.getAllLocations().filter(l => this.isTileType(l.r, l.c, TileType.EMPTY) && !this.isPlayerAtLocation(l));
 
@@ -2776,7 +2776,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         const playerCostFromSpawn = totalCost - this.approximateCostToGoalForPlayer(userId);
         const costThreshold = Math.floor(playerCostFromSpawn * 0.75);
 
-        const results: DungeonLocation[] = [];
+        const results: MazeLocation[] = [];
         while (vacantLocations.length > 0 && results.length < n) {
             // Get the next vacant location and compute its cost-to-goal
             const nextLocation = vacantLocations.pop();
@@ -2827,19 +2827,19 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         return ITEM_NAMES.some(item => this.playerHasItem(userId, item));
     }
 
-    playerHasItem(userId: Snowflake, item: DungeonItemName): boolean {
+    playerHasItem(userId: Snowflake, item: MazeItemName): boolean {
         return this.getPlayerItemCount(userId, item) > 0;
     }
 
-    getPlayerItemCount(userId: Snowflake, item: DungeonItemName): number {
+    getPlayerItemCount(userId: Snowflake, item: MazeItemName): number {
         return this.getPlayerItems(userId)[item] ?? 0;
     }
 
-    getPlayerItems(userId: Snowflake): Partial<Record<DungeonItemName, number>> {
+    getPlayerItems(userId: Snowflake): Partial<Record<MazeItemName, number>> {
         return this.state.players[userId]?.items ?? {};
     }
 
-    addPlayerItem(userId: Snowflake, item: DungeonItemName, num: number = 1): void {
+    addPlayerItem(userId: Snowflake, item: MazeItemName, num: number = 1): void {
         const player = this.state.players[userId];
 
         if (player.items === undefined) {
@@ -2849,7 +2849,7 @@ export default class DungeonCrawler extends AbstractGame<DungeonGameState> {
         player.items[item] = (player.items[item] ?? 0) + num;
     }
 
-    consumePlayerItem(userId: Snowflake, item: DungeonItemName): void {
+    consumePlayerItem(userId: Snowflake, item: MazeItemName): void {
         const player = this.state.players[userId];
 
         if (!player.items || !this.playerHasItem(userId, item)) {
@@ -3066,7 +3066,7 @@ const generateOrganicMaze = (rows: number, columns: number): TileType[][] => {
     for (let r = 0; r < rows; r++) {
         for (let c = 0; c < columns; c++) {
             if (chance(0.75) && isWall(r, c) && isPotentialDoorway(r, c)) {
-                map[r][c] = TileType.KEY_HOLE;
+                map[r][c] = TileType.DOORWAY;
             }
         }
     }

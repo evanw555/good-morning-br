@@ -3,7 +3,7 @@ import { getTodayDateString, prettyPrint, toFixed } from "evanw555.js";
 import ActivityTracker from "./activity-tracker";
 import AbstractGame from "./games/abstract-game";
 import ClassicGame from "./games/classic";
-import DungeonCrawler from "./games/dungeon";
+import MazeGame from "./games/maze";
 import logger from "./logger";
 import { Bait, Combo, DailyEvent, DailyEventType, DailyPlayerState, FullDate, GameState, PlayerState, RawGoodMorningState, Season } from "./types";
 
@@ -19,8 +19,8 @@ export default class GoodMorningState {
                 case 'CLASSIC_GAME_STATE':
                     this.game = new ClassicGame(rawState.game);
                     break;
-                case 'DUNGEON_GAME_STATE':
-                    this.game = new DungeonCrawler(rawState.game);
+                case 'MAZE_GAME_STATE':
+                    this.game = new MazeGame(rawState.game);
                     break;
             }
         }
