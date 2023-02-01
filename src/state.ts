@@ -563,20 +563,20 @@ export default class GoodMorningState {
         this.data.goodMorningEmoji = emoji;
     }
 
-    getMagicWord(): string | undefined {
-        return this.data.magicWord;
+    getMagicWords(): string[] {
+        return this.data.magicWords ?? [];
     }
 
-    hasMagicWord(): boolean {
-        return this.data.magicWord !== undefined;
+    hasMagicWords(): boolean {
+        return this.data.magicWords !== undefined && this.data.magicWords.length > 0;
     }
 
-    setMagicWord(word: string): void {
-        this.data.magicWord = word;
+    setMagicWords(words: string[]): void {
+        this.data.magicWords = words;
     }
 
-    clearMagicWord(): void {
-        delete this.data.magicWord;
+    clearMagicWords(): void {
+        delete this.data.magicWords;
     }
 
     getNerfThreshold(): number | undefined {

@@ -222,7 +222,7 @@ export interface RawGoodMorningState {
     isGracePeriod?: boolean,
     isHomeStretch?: boolean,
     goodMorningEmoji: string | string[],
-    magicWord?: string,
+    magicWords?: string[],
     nerfThreshold?: number,
     currentLeader?: Snowflake,
     combo?: Combo,

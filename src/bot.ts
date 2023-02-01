@@ -441,13 +441,14 @@ const awardPrize = async (userId: Snowflake, type: PrizeType, intro: string): Pr
     }
 };
 
-const chooseMagicWord = async (): Promise<string | undefined> => {
+const chooseMagicWords = async (n: number): Promise<string[]> => {
     try {
         const words: string[] = await loadJson('config/words.json');
-        return randChoice(...words);
+        shuffle(words);
+        return words.slice(0, n);
     } catch (err) {
         await logger.log(`Failed to choose a word of the day: \`${err.toString()}\``);
-        return undefined;
+        return [];
     }
 }
 
@@ -738,8 +739,10 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     // Set today's positive react emoji
     state.setGoodMorningEmoji(config.goodMorningEmojiOverrides[toCalendarDate(new Date())] ?? config.defaultGoodMorningEmoji);
 
-    // Give a hint for today's magic word
-    if (state.hasMagicWord()) {
+    // Give a hint for today's magic words
+    if (state.hasMagicWords()) {
+        // Choose a random word to give a hint for
+        const singleMagicWord: string = randChoice(...state.getMagicWords());
         // Get list of all suitable recipients of the magic word (this is a balancing mechanic, so pick players who are behind yet active)
         const potentialMagicWordRecipients: Snowflake[] = state.getPotentialMagicWordRecipients();
         // Determine if we should give out the hint
@@ -748,9 +751,9 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         // If yes, then give out the hint to one randomly selected suitable recipient
         if (shouldGiveHint) {
             const magicWordRecipient: Snowflake = randChoice(...potentialMagicWordRecipients);
-            await messenger.dm(magicWordRecipient, `Psssst.... the magic word of the day is _"${state.getMagicWord()}"_`);
+            await messenger.dm(magicWordRecipient, `Psssst.... a magic word of the day is _"${singleMagicWord}"_`);
             if (magicWordRecipient !== guildOwner.id) {
-                await logger.log(`Magic word _"${state.getMagicWord()}"_ was sent to **${state.getPlayerDisplayName(magicWordRecipient)}**`);
+                await logger.log(`Magic word _"${singleMagicWord}"_ was sent to **${state.getPlayerDisplayName(magicWordRecipient)}** (all: ${naturalJoin(state.getMagicWords(), { bold: true })})`);
             }
         }
     }
@@ -1236,11 +1239,11 @@ const TIMEOUT_CALLBACKS = {
         // Activate the queued up event
         state.dequeueNextEvent();
 
-        // Set tomorrow's magic word (if it's not an abnormal event)
-        state.clearMagicWord();
-        const magicWord = await chooseMagicWord();
-        if (magicWord && !state.isEventAbnormal()) {
-            state.setMagicWord(magicWord);
+        // Set tomorrow's magic words (if it's not an abnormal event)
+        state.clearMagicWords();
+        const magicWords = await chooseMagicWords(randInt(2, 5));
+        if (magicWords.length > 0 && !state.isEventAbnormal()) {
+            state.setMagicWords(magicWords);
         }
 
         // Update player activity counters
@@ -2264,10 +2267,10 @@ const processCommands = async (msg: Message): Promise<void> => {
         }
         // Choose a magic word and show potential recipients
         else if (sanitizedText.includes('magic word')) {
-            const magicWord = await chooseMagicWord();
+            const magicWords = await chooseMagicWords(randInt(2, 5));
             const potentialRecipients: Snowflake[] = state.getPotentialMagicWordRecipients();
             const recipient: string = potentialRecipients.length > 0 ? state.getPlayerDisplayName(randChoice(...potentialRecipients)) : 'N/A';
-            await msg.reply(`The test magic word is _${magicWord ?? '???'}_, and send the hint to **${recipient}** (Out of **${potentialRecipients.length}** choices)`);
+            await msg.reply(`The test magic words are ${naturalJoin(magicWords, { bold: true })}, and send the hint to **${recipient}** (Out of **${potentialRecipients.length}** choices)`);
         }
         // Activity counter simulation/testing
         else if (sanitizedText.includes('activity')) {
@@ -2393,12 +2396,13 @@ const safeProcessCommands = async (msg: Message): Promise<void> => {
     }
 };
 
-const saidMagicWord = (message: Message): boolean => {
-    const magicWord = state.getMagicWord();
-    if (magicWord) {
-        return message.content?.toLowerCase().includes(magicWord.toLowerCase());
+const extractMagicWord = (message: Message): string | undefined => {
+    const magicWords = state.getMagicWords();
+    for (const word in magicWords) {
+        if (message.content.toLowerCase().includes(word.toLowerCase())) {
+            return word;
+        }
     }
-    return false;
 };
 
 client.on('messageCreate', async (msg: Message): Promise<void> => {
@@ -2407,6 +2411,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
         const isAm: boolean = new Date().getHours() < 12;
         const isPlayerNew: boolean = !state.hasPlayer(userId);
         const isQuestion: boolean = msg.content.trim().endsWith('?');
+        const extractedMagicWord: string | undefined = extractMagicWord(msg);
 
         // If the grace period is active, then completely ignore all messages
         if (state.isGracePeriod()) {
@@ -2551,11 +2556,11 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     }
                 }
 
-                // If the player said the magic word, reward them and let them know privately
-                if (saidMagicWord(msg)) {
+                // If the player said a magic word, reward them and let them know privately
+                if (extractedMagicWord) {
                     state.awardPoints(userId, config.bonusAward);
-                    await messenger.dm(userId, `You said _"${state.getMagicWord()}"_, the magic word of the day! Nice 😉`);
-                    logStory += `said the magic word "${state.getMagicWord()}", `;
+                    await messenger.dm(userId, `You said _"${extractedMagicWord}"_, one of today's magic words! Nice 😉`);
+                    logStory += `said a magic word "${extractedMagicWord}", `;
                 }
 
                 // If today is wishful wednesday, cut the generic logic off here
@@ -2689,16 +2694,16 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                         reactToMessage(msg, state.getGoodMorningEmoji());
                     }
                 }
-            } else if (saidMagicWord(msg)) {
-                // If this isn't the user's GM message yet they still said the magic word, let them know...
+            } else if (extractedMagicWord) {
+                // If this isn't the user's GM message yet they still said a magic word, let them know...
                 if (userId !== guildOwner.id) {
-                    await logger.log(`**${state.getPlayerDisplayName(userId)}** just said the magic word _"${state.getMagicWord()}"_, though too late...`);
+                    await logger.log(`**${state.getPlayerDisplayName(userId)}** just said a magic word _"${extractedMagicWord}"_, though too late...`);
                 }
-                await messenger.dm(userId, languageGenerator.generate(`You {!said|just said} the {!magic word|word of the day|secret word|magic word of the day}, {!yet|but|though} {!you're a little too late|it wasn't in your GM message} so it doesn't count...`), { immediate: true });
+                await messenger.dm(userId, languageGenerator.generate(`You {!said|just said} one of today's {!magic words|secret words}, {!yet|but|though} {!you're a little too late|it wasn't in your GM message} so it doesn't count...`), { immediate: true });
             }
 
             // Regardless of whether it's their first message or not, react to the magic word with a small probability
-            if (saidMagicWord(msg) && chance(config.magicWordReactionProbability)) {
+            if (extractedMagicWord && chance(config.magicWordReactionProbability)) {
                 await reactToMessage(msg, ['😉', '😏', '😜', '😛']);
             }
         } else {
