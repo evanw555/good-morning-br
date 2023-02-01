@@ -2005,9 +2005,9 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                                             skipStepMessage = true;
                                             pushNonCollapsableStatement(`**${player.displayName}** shoved **${blockingUser.displayName}** ${shoveDirection}ward`);
                                         }
-                                        // Else, if the player has 2+ points, then auto-punch
+                                        // Else, if the player has 4+ points, then auto-punch (threshold accounts for punching then walking fully past)
                                         // TODO: Should this be configurable? Can players opt-out? Should it be another price?
-                                        else if (this.getPoints(userId) >= 2) {
+                                        else if (this.getPoints(userId) >= 4) {
                                             // Stun the other player (their turn is over so 1 is sufficient)
                                             blockingUser.stuns = 1;
                                             pushNonCollapsableStatement(`**${player.displayName}** slapped **${blockingUser.displayName}** onto the floor`);
