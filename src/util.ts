@@ -269,6 +269,26 @@ export function getNormalizedEditDistance(a: string, b: string): number {
     return levenshtein(a, b) / maxLength;
 }
 
+export function getMostSimilarByNormalizedEditDistance(input: string, values: string[]): { value: string, normalizedDistance: number } | undefined {
+    let minNormalizedDistance = Number.MAX_SAFE_INTEGER;
+    let closest: string | undefined = undefined;
+    const sanitizedInput = input.toLowerCase().trim();
+    for (const x of values) {
+        const sanitizedX = x.toLowerCase().trim();
+        const normalizedDistance = getNormalizedEditDistance(sanitizedInput, sanitizedX);
+        if (normalizedDistance < minNormalizedDistance) {
+            minNormalizedDistance = normalizedDistance;
+            closest = x;
+        }
+    }
+    if (closest) {
+        return {
+            value: closest,
+            normalizedDistance: minNormalizedDistance
+        };
+    }
+}
+
 export function getMessageMentions(msg: Message): Snowflake[] {
     // Ignore bots
     return msg.mentions.users.toJSON().filter(u => !u.bot).map(u => u.id);

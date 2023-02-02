@@ -1,7 +1,7 @@
 import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, Client, DMChannel, GatewayIntentBits, Partials, TextChannel } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discord.js';
 import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, AnonymousSubmission, GameState } from './types';
-import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions } from './util';
+import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, getMostSimilarByNormalizedEditDistance } from './util';
 import GoodMorningState from './state';
 import { addReactsSync, chance, FileStorage, generateKMeansClusters, getClockTime, getPollChoiceKeys, getRandomDateBetween,
     getRankString, getRelativeDateTimeString, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger,
@@ -2405,6 +2405,9 @@ const extractMagicWord = (message: Message): string | undefined => {
     }
 };
 
+// TODO: Temp variable to test normalized edit distance comparison for messages
+const messageContents: string[] = [];
+
 client.on('messageCreate', async (msg: Message): Promise<void> => {
     const userId: Snowflake = msg.author.id;
     if (goodMorningChannel && msg.channel.id === goodMorningChannel.id && !msg.author.bot) {
@@ -2412,6 +2415,15 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
         const isPlayerNew: boolean = !state.hasPlayer(userId);
         const isQuestion: boolean = msg.content.trim().endsWith('?');
         const extractedMagicWord: string | undefined = extractMagicWord(msg);
+
+        // TODO: Compare edit distance to all existing message contents
+        if (msg.content) {
+            const comparisonResult = getMostSimilarByNormalizedEditDistance(msg.content, messageContents);
+            if (comparisonResult) {
+                await logger.log(`Message \`"${msg.content.slice(0, 100)}"\` by **${msg.member?.displayName}** similar with normalized distance of \`${comparisonResult.normalizedDistance.toFixed(4)}\` to message \`"${comparisonResult.value.slice(0, 100)}"\``)
+            }
+            messageContents.push(msg.content);
+        }
 
         // If the grace period is active, then completely ignore all messages
         if (state.isGracePeriod()) {
