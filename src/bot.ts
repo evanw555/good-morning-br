@@ -2414,7 +2414,7 @@ const tokenizeMessage = (content: string): string[] => {
     }
     return content
         // Remove apastrophes
-        .replace(/'/g, '')
+        .replace(/['‘’]/g, '')
         // Lower-case
         .toLowerCase()
         // Split along non-word boundaries
