@@ -1,8 +1,8 @@
 import canvas, { Image } from 'canvas';
 import { GuildMember, Snowflake } from "discord.js";
-import { getRankString, naturalJoin, randChoice, toFixed } from 'evanw555.js';
+import { getMostSimilarByNormalizedEditDistance, getRankString, naturalJoin, randChoice, toFixed } from 'evanw555.js';
 import { ClassicGameState, DecisionProcessingResult, Medals, PrizeType } from "../types";
-import { getNormalizedEditDistance, getOrderingUpsets } from '../util';
+import { getOrderingUpsets } from '../util';
 import AbstractGame from "./abstract-game";
 
 export default class ClassicGame extends AbstractGame<ClassicGameState> {
@@ -263,20 +263,12 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
     }
 
     private getClosestUserByName(input: string): Snowflake | undefined {
-        let minNormalizedDistance = Number.MAX_SAFE_INTEGER;
-        let closestId: Snowflake | undefined = undefined;
-        const sanitizedInput = input.toLowerCase().trim();
-        for (const userId of this.getPlayers()) {
-            if (userId in this.state.names) {
-                const sanitizedName = this.state.names[userId].toLowerCase().trim();
-                const normalizedDistance = getNormalizedEditDistance(sanitizedInput, sanitizedName);
-                if (normalizedDistance < minNormalizedDistance) {
-                    minNormalizedDistance = normalizedDistance;
-                    closestId = userId;
-                }
-            }
+        const userIds: Snowflake[] = this.getPlayers();
+        const sanitizedDisplayNames: string[] = userIds.map(userId => this.getName(userId).toLocaleLowerCase().trim());
+        const result = getMostSimilarByNormalizedEditDistance(input.toLowerCase().trim(), sanitizedDisplayNames);
+        if (result) {
+            return userIds[result.index];
         }
-        return closestId;
     }
 
     private getName(userId: Snowflake): string {

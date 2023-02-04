@@ -1,9 +1,9 @@
 import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, Client, DMChannel, GatewayIntentBits, Partials, TextChannel } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discord.js';
 import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, AnonymousSubmission, GameState } from './types';
-import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, getMostSimilarByNormalizedEditDistance } from './util';
+import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions } from './util';
 import GoodMorningState from './state';
-import { addReactsSync, chance, FileStorage, generateKMeansClusters, getClockTime, getPollChoiceKeys, getRandomDateBetween,
+import { addReactsSync, chance, FileStorage, generateKMeansClusters, getClockTime, getMostSimilarByNormalizedEditDistance, getPollChoiceKeys, getRandomDateBetween,
     getRankString, getRelativeDateTimeString, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger,
     naturalJoin, PastTimeoutStrategy, R9KTextBank, randChoice, randInt, shuffle, sleep, TimeoutManager, toCalendarDate, toFixed, toLetterId } from 'evanw555.js';
 import ActivityTracker from './activity-tracker';
@@ -2210,7 +2210,7 @@ const processCommands = async (msg: Message): Promise<void> => {
         }
         // Schedule the next good morning
         else if (sanitizedText.includes('schedule')) {
-            if (timeoutManager.hasTimeout(TimeoutType.NextGoodMorning)) {
+            if (timeoutManager.hasTimeoutWithType(TimeoutType.NextGoodMorning)) {
                 msg.reply('Good morning timeout has already been scheduled, no action taken.');
             } else {
                 await registerGoodMorningTimeout();
@@ -2405,8 +2405,23 @@ const extractMagicWord = (message: Message): string | undefined => {
     }
 };
 
-// TODO: Temp variable to test normalized edit distance comparison for messages
-const messageContents: string[] = [];
+// TODO: Temp variable to test normalized edit distance comparison for messages (primed with empty message to discourage short messages)
+const previousTokenizedMessages: string[][] = [[]];
+
+const tokenizeMessage = (content: string): string[] => {
+    if (!content) {
+        return [];
+    }
+    return content
+        // Remove apastrophes
+        .replace(/'/g, '')
+        // Lower-case
+        .toLowerCase()
+        // Split along non-word boundaries
+        .split(/\W+/)
+        // Remove all empty entries, just in case
+        .filter(x => x);
+}
 
 client.on('messageCreate', async (msg: Message): Promise<void> => {
     const userId: Snowflake = msg.author.id;
@@ -2418,11 +2433,14 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
 
         // TODO: Compare edit distance to all existing message contents
         if (msg.content) {
-            const comparisonResult = getMostSimilarByNormalizedEditDistance(msg.content, messageContents);
-            if (comparisonResult) {
-                await logger.log(`Message \`"${msg.content.slice(0, 100)}"\` by **${msg.member?.displayName}** similar with normalized distance of \`${comparisonResult.normalizedDistance.toFixed(4)}\` to message \`"${comparisonResult.value.slice(0, 100)}"\``)
+            const tokenizedMessage = tokenizeMessage(msg.content);
+            if (tokenizedMessage.length > 0) {
+                const comparisonResult = getMostSimilarByNormalizedEditDistance(tokenizedMessage, previousTokenizedMessages);
+                if (comparisonResult) {
+                    await logger.log(`Message \`"${JSON.stringify(tokenizedMessage).slice(0, 100)}"\` by **${msg.member?.displayName}** similar with normalized distance of \`${comparisonResult.distance.toFixed(4)}\` to message \`"${JSON.stringify(comparisonResult.value).slice(0, 100)}"\``);
+                }
+                previousTokenizedMessages.push(tokenizedMessage);
             }
-            messageContents.push(msg.content);
         }
 
         // If the grace period is active, then completely ignore all messages
