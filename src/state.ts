@@ -97,7 +97,7 @@ export default class GoodMorningState {
      * @returns sorted list of user IDs
      */
     getOrderedPlayers(): Snowflake[] {
-        const gameOrderedPlayers: Snowflake[] = this.getGame()?.getOrderedPlayers() ?? [];
+        const gameOrderedPlayers: Snowflake[] = this.hasGame() ? this.getGame().getOrderedPlayers() : [];
 
         // The base ordering is purely based on points and participation (doesn't take the game into account)
         const baseOrderedPlayers: Snowflake[] = this.getPlayers().sort((x, y) =>
@@ -667,7 +667,7 @@ export default class GoodMorningState {
             season: this.data.season,
             startedOn: this.data.startedOn,
             finishedOn: getTodayDateString(),
-            winners: this.getGame().getWinners()
+            winners: this.hasGame() ? this.getGame().getWinners() : []
         };
     }
 

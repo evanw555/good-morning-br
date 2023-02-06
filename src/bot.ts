@@ -1128,6 +1128,12 @@ const TIMEOUT_CALLBACKS = {
         await wakeUp(true);
     },
     [TimeoutType.NextPreNoon]: async (): Promise<void> => {
+        // If attempting to invoke this while already asleep, warn the admin and abort
+        if (!state.isMorning()) {
+            logger.log('WARNING! Attempted to trigger pre-noon while `state.isMorning` is `false`');
+            return;
+        }
+
         const minutesEarly: number = state.getEventType() === DailyEventType.EarlyEnd ? (state.getEvent().minutesEarly ?? 0) : 0;
         // Set timeout for when morning ends
         const noonToday: Date = new Date();
