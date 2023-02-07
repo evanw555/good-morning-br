@@ -2404,7 +2404,7 @@ const safeProcessCommands = async (msg: Message): Promise<void> => {
 
 const extractMagicWord = (message: Message): string | undefined => {
     const magicWords = state.getMagicWords();
-    for (const word in magicWords) {
+    for (const word of magicWords) {
         if (message.content.toLowerCase().includes(word.toLowerCase())) {
             return word;
         }
