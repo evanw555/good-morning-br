@@ -2614,6 +2614,9 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                                     // Don't award if they tagged themself
                                     await messenger.reply(msg, 'Who do you think you are? 🌚');
                                 } else {
+                                    // Award the user with a default award
+                                    state.awardPoints(userId, config.defaultAward);
+                                    await reactToMessage(msg, state.getGoodMorningEmoji());
                                     // If tagged multiple users, split up the wishes between them
                                     const wishPoints = toFixed(1 / wishRecipients.length);
                                     for (const wishRecipient of wishRecipients) {
@@ -2621,9 +2624,6 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                                         const oldWishScore = wishesReceived[wishRecipient] ?? 0;
                                         const newWishScore = oldWishScore + wishPoints;
                                         wishesReceived[wishRecipient] = newWishScore;
-                                        // Award the user with a default award
-                                        state.awardPoints(userId, config.defaultAward);
-                                        await reactToMessage(msg, state.getGoodMorningEmoji());
                                         // If this recipient has the most wishes, reply at certain thresholds
                                         const maxWishes = Math.max(0, ...Object.values(wishesReceived));
                                         if (newWishScore === maxWishes) {
