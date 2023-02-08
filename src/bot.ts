@@ -1175,6 +1175,8 @@ const TIMEOUT_CALLBACKS = {
                         const wishRank: number = i + 1;
                         state.awardPoints(userId, config.mediumAwardsByRank[wishRank] ?? config.defaultAward);
                     }
+                    // Fill in missing display names before sending out the message
+                    await refreshStateMemberInfo();
                     // Tag players who received wishes
                     if (winners.length > 0) {
                         await messenger.send(goodMorningChannel, `Today's biggest wish receipient was **${state.getPlayerDisplayName(winners[0])}**, how wonderful ${config.defaultGoodMorningEmoji}`);
