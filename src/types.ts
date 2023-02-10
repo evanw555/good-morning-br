@@ -85,6 +85,7 @@ export enum DailyEventType {
     WritersBlock = 'WRITERS_BLOCK',
     Nightmare = 'NIGHTMARE',
     EarlyEnd = 'EARLY_END',
+    Popcorn = 'POPCORN',
     // Abnormal events (i.e. not the typical "wait-for-GM-then-say-GM" event)
     GuestReveille = 'GUEST_REVEILLE',
     ReverseGoodMorning = 'REVERSE_GOOD_MORNING',

@@ -370,6 +370,9 @@ const chooseEvent = (date: Date): DailyEvent | undefined => {
             {
                 type: DailyEventType.EarlyEnd,
                 minutesEarly: randChoice(1, 2, 5, 10, 15, randInt(3, 20))
+            },
+            {
+                type: DailyEventType.Popcorn
             }
         ];
         // Do the reverse GM event with a smaller likelihood
@@ -521,7 +524,19 @@ const sendGoodMorningMessage = async (): Promise<void> => {
             const when: string = minutesText[minutesEarly] ?? `${minutesEarly} minutes early`;
             await messenger.send(goodMorningChannel, languageGenerator.generate('{earlyEndMorning}', { when }));
             break;
-        case DailyEventType.AnonymousSubmissions:
+        case DailyEventType.Popcorn: {
+            // If there's an overridden message, just send it naively upfront
+            if (overriddenMessage) {
+                await messenger.send(goodMorningChannel, languageGenerator.generate(overriddenMessage));
+            }
+            // Send the standard submission prompt
+            const intro: string = overriddenMessage ? 'There\'s more!' : 'Good morning! It will surely be a fun one.';
+            const text = `${intro} Today we'll be playing _Popcorn_! You may only send a message once you've been called on. `
+             + 'To call on a friend, simply tag them in your message. I\'ll let the first spot be up for grabs... Who wants to start today\'s Good Morning story?';
+            await messenger.send(goodMorningChannel, text, { immediate: overriddenMessage !== undefined });
+            break;
+        }
+        case DailyEventType.AnonymousSubmissions: {
             // If there's an overridden message, just send it naively upfront
             if (overriddenMessage) {
                 await messenger.send(goodMorningChannel, languageGenerator.generate(overriddenMessage));
@@ -531,12 +546,13 @@ const sendGoodMorningMessage = async (): Promise<void> => {
             const text = `${intro} Rather than sending your good morning messages here for all to see, `
                 + `I'd like you to come up with a _${state.getEvent().submissionType}_ and send it directly to me via DM! `
                 + `At 11:00, I'll post them here anonymously and you'll all be voting on your favorites 😉`;
-            await messenger.send(goodMorningChannel, text);
+            await messenger.send(goodMorningChannel, text, { immediate: overriddenMessage !== undefined });
             // Also, let players know they can forfeit
             await sleep(10000);
             await messenger.send(goodMorningChannel, 'If you won\'t be able to vote, then you can use `/forfeit` to avoid the no-vote penalty. '
                 + `Your _${state.getEvent().submissionType}_ will still be presented, but you won't be rewarded if you win big.`);
             break;
+        }
         case DailyEventType.GameDecision:
             // If there's an overridden message, just send it naively upfront
             if (overriddenMessage) {
@@ -2477,7 +2493,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             if (state.isAcceptingBait() && msg.content && userId !== state.getMostRecentBait()?.userId) {
                 // Count this as bait only if it's a novel message
                 if (baitR9K.contains(msg.content)) {
-                    reactToMessage(msg, '🌚');
+                    await reactToMessage(msg, '🌚');
                 } else {
                     baitR9K.add(msg.content);
                     state.setMostRecentBait(msg);
@@ -2488,6 +2504,51 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             // If the event is an anonymous submission day, then completely ignore the message
             if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
                 return;
+            }
+
+            // If the event is popcorn, guarantee they are following the rules before proceeding to process their message
+            if (state.getEventType() === DailyEventType.Popcorn) {
+                const event = state.getEvent();
+                if (event.user && userId !== event.user) {
+                    // This turn belongs to someone else, so penalize the user
+                    await reactToMessage(msg, '🤫');
+                    state.deductPoints(userId, config.defaultAward);
+                    await dumpState();
+                    return;
+                } else {
+                    // This user may talk this turn, so proceed...
+                    const mentionedUserIds = getMessageMentions(msg);
+                    // If the user is breaking the rules, force them to try again and abort
+                    if (mentionedUserIds.length === 0) {
+                        await messenger.reply(msg, 'Call on someone else!');
+                        return;
+                    } else if (mentionedUserIds.includes(userId)) {
+                        await messenger.reply(msg, 'You can\'t popcorn yourself you big dummy! Call on someone else');
+                        return;
+                    }
+                    // React with popcorn to show that the torch has been passed
+                    await reactToMessage(msg, '🍿');
+                    // Pass the torch to someone else...
+                    if (mentionedUserIds.length === 1) {
+                        // Only one other user was mentioned, so pass the torch to them
+                        event.user = mentionedUserIds[0];
+                        // TODO: We should do something special if an unknown player is called on
+                    } else {
+                        // Multiple users were mentioned, so see if ther are players who haven't said GM today and are known
+                        const validUserIds = mentionedUserIds.filter(id => !state.hasDailyRank(id) && state.hasPlayer(id));
+                        if (validUserIds.length === 0) {
+                            // No other ideal players, so let the next turn be up for grabs
+                            delete event.user;
+                            await messenger.reply(msg, 'You called on more than one person... I\'ll let the next turn be up for grabs!');
+                        } else {
+                            // Select a random other ideal player
+                            const randomUserId = randChoice(...validUserIds);
+                            event.user = randomUserId;
+                            await messenger.reply(msg, `You called on more than one person, so let me pick for you: popcorn <@${randomUserId}>!`);
+                        }
+                    }
+                    await dumpState();
+                }
             }
 
             // Reset user's "days since last good morning" counter
@@ -2528,7 +2589,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     messenger.reply(msg, languageGenerator.generate('{goodMorningReply.video?} 🐒'));
                 } else {
                     state.awardPoints(userId, config.defaultAward / 2);
-                    reactToMessage(msg, '🐒');
+                    await reactToMessage(msg, '🐒');
                 }
                 await dumpState();
             }
@@ -2542,9 +2603,9 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     state.deductPoints(userId, penalty);
                     // Disable the grumpy event and dump the state
                     state.getEvent().disabled = true;
-                    dumpState();
+                    await dumpState();
                     // React to the user grumpily
-                    reactToMessage(msg, '😡');
+                    await reactToMessage(msg, '😡');
                     return;
                 }
 
@@ -2690,7 +2751,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     logStory += 'and sent an unoriginal GM message';
                 }
                 dailyVolatileLog.push([new Date(), logStory]);
-                dumpState();
+                await dumpState();
 
                 // Add this user's message to the R9K text bank
                 r9k.add(msg.content);
@@ -2725,9 +2786,9 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     else if (state.getPlayerDaysSinceLGM(userId) > 7) {
                         messenger.reply(msg, languageGenerator.generate('{goodMorningReply.absent?}'));
                     }
-                    // Reply (or react) to the user based on their rank (and chance)
+                    // If this player is one of the first to say GM, reply (or react) specially
                     else if (rank <= config.goodMorningReplyCount) {
-                        if (chance(config.replyViaReactionProbability)) {
+                        if (state.getEventType() === DailyEventType.Popcorn || chance(config.replyViaReactionProbability)) {
                             reactToMessage(msg, state.getGoodMorningEmoji());
                         } else if (isQuestion) {
                             // TODO: Can we more intelligently determine what type of question it is?
@@ -2735,7 +2796,9 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                         } else {
                             messenger.reply(msg, languageGenerator.generate('{goodMorningReply.standard?}'));
                         }
-                    } else {
+                    }
+                    // If there's nothing special about this message, just react
+                    else {
                         reactToMessage(msg, state.getGoodMorningEmoji());
                     }
                 }
