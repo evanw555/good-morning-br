@@ -404,9 +404,9 @@ const chooseEvent = (date: Date): DailyEvent | undefined => {
                 user: guestReveiller
             });
         }
-        // If anyone is qualified to provide the GM message, add writer's block as a potential event (with 50% odds)
-        const potentialWriters: Snowflake[] = state.queryOrderedPlayers({ maxDays: 1, n: 7 });
-        if (potentialWriters.length > 0 && chance(0.5)) {
+        // If anyone has a full activity streak, add an event for one of those players to provide tomorrow's GM message
+        const potentialWriters: Snowflake[] = state.getFullActivityStreakPlayers();
+        if (potentialWriters.length > 0) {
             const guestWriter: Snowflake = randChoice(...potentialWriters);
             potentialEvents.push({
                 type: DailyEventType.WritersBlock,

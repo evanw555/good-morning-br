@@ -303,18 +303,27 @@ export default class GoodMorningState {
     }
 
     /**
+     * @returns Ordered list of user IDs for players who have a full activity streak
+     */
+    getFullActivityStreakPlayers(): Snowflake[] {
+        return this.queryOrderedPlayers({ minActivityStreak: ActivityTracker.CAPACITY });
+    }
+
+    /**
      * Returns an ordered list of player user IDs for high-middle ranked players who have said Good Morning recently.
      * @returns List of user IDs for players who may serve as a potential reveiller
      */
     getPotentialReveillers(): Snowflake[] {
-        // Only players who aren't the leader, yet are in the top 50%, and have said GM today
-        return this.queryOrderedPlayers({ skipPlayers: 1, abovePercentile: 0.5, maxDays: 0 });
+        // Only players who aren't the leader, yet have said GM 5+ days in the row
+        return this.queryOrderedPlayers({ skipPlayers: 1, minActivityStreak: 5 });
     }
     /**
      * @returns List of user IDs for players who are suitable to receive the magic word hint
      */
     getPotentialMagicWordRecipients(): Snowflake[] {
-        return this.queryOrderedPlayers({ belowPercentile: 0.5, maxRelativePoints: 0.5, maxDays: 2 });
+        // Only give the hint to the bottom 50% of players but only if their score is also less than 50% of the top score,
+        // ALSO only to those who have said GM for 3+ days in a row (so as not to bug less active players)
+        return this.queryOrderedPlayers({ belowPercentile: 0.5, maxRelativePoints: 0.5, minActivityStreak: 3 });
     }
 
     /**
@@ -325,6 +334,8 @@ export default class GoodMorningState {
      * @param options.belowPercentile only include players below percentile P in terms of player ordering (after skipPlayers is applied)
      * @param options.maxDays only include players who've said GM in the last N days
      * @param options.minDays only include players who haven't said GM in the last N-1 days
+     * @param options.maxActivityStreak only include players with an activity streak at most N days long
+     * @param options.minActivityStreak only include players with an activity streak at least N days long
      * @param options.maxRelativePoints only include players with at most this relative points
      * @param options.minRelativePoints only include players with at least this relative points
      * @param options.minPoints only include player with at least so many points
@@ -337,6 +348,8 @@ export default class GoodMorningState {
         belowPercentile?: number,
         maxDays?: number,
         minDays?: number,
+        maxActivityStreak?: number,
+        minActivityStreak?: number,
         maxRelativePoints?: number,
         minRelativePoints?: number,
         minPoints?: number,
@@ -362,6 +375,16 @@ export default class GoodMorningState {
         const minDays = options.minDays;
         if (minDays !== undefined) {
             result = result.filter(userId => this.getPlayerDaysSinceLGM(userId) >= minDays)
+        }
+
+        const maxActivityStreak = options.maxActivityStreak;
+        if (maxActivityStreak !== undefined) {
+            result = result.filter(userId => this.getPlayerActivity(userId).getStreak() <= maxActivityStreak)
+        }
+
+        const minActivityStreak = options.minActivityStreak;
+        if (minActivityStreak !== undefined) {
+            result = result.filter(userId => this.getPlayerActivity(userId).getStreak() >= minActivityStreak)
         }
 
         const maxRelativePoints = options.maxRelativePoints;
