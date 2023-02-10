@@ -93,6 +93,12 @@ const getJoinedMentions = (userIds: Snowflake[]): string => {
     return naturalJoin(userIds.map(userId => `<@${userId}>`));
 }
 
+const replaceUserIdsInText = (input: string): string => {
+    return input.replace(/\d{17,}/g, (id) => {
+        return state.hasPlayer(id) ? state.getPlayerDisplayName(id) : id;
+    });
+}
+
 const reactToMessageById = async (messageId: Snowflake, emoji: string | string[]): Promise<void> => {
     try {
         const message = await goodMorningChannel.messages.fetch(messageId);
@@ -2261,7 +2267,8 @@ const processCommands = async (msg: Message): Promise<void> => {
                 // Choose time for this event (have to reset days, annoying)
                 eventTime = chooseGoodMorningTime(event?.type);
                 eventTime.setDate(eventTime.getDate() + i);
-                const eventString = event ? (Object.keys(event).length === 1 ? event.type : JSON.stringify(event)) : 'None'
+                // "None" if there's no event, the event type if there are no params, and the entire JSON object with IDs resolved if it has params
+                const eventString = event ? (Object.keys(event).length === 1 ? event.type : replaceUserIdsInText(JSON.stringify(event))) : 'None';
                 message += `\n${getRelativeDateTimeString(eventTime)}: ${eventString}`;
             }
             await messenger.sendLargeMonospaced(msg.channel, message);
