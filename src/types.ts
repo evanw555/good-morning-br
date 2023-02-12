@@ -203,7 +203,7 @@ export interface ClassicGameState {
     // Custom properties below
     goal: number,
     points: Record<Snowflake, number>,
-    pointDiffs: Record<Snowflake, number>,
+    actionPointDiffs: Record<Snowflake, number>,
     names: Record<Snowflake, string>,
     revealedActions: Record<Snowflake, string>
 }

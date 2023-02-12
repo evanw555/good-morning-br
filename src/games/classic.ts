@@ -25,7 +25,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
             goal: 100,
             names,
             points,
-            pointDiffs: {},
+            actionPointDiffs: {},
             winners: [],
             revealedActions: {}
         });
@@ -79,7 +79,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
     removePlayer(userId: Snowflake): void {
         delete this.state.decisions[userId];
         delete this.state.points[userId];
-        delete this.state.pointDiffs[userId];
+        delete this.state.actionPointDiffs[userId];
         delete this.state.names[userId];
         delete this.state.revealedActions[userId];
     }
@@ -96,7 +96,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
     beginTurn(): void {
         this.state.turn++;
 
-        this.state.pointDiffs = {};
+        this.state.actionPointDiffs = {};
         this.state.revealedActions = {};
 
         // Add default decisions
@@ -123,7 +123,12 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
             throw new Error('Cannot award NaN points!');
         }
         this.state.points[userId] = toFixed((this.state.points[userId] ?? 0) + points);
-        this.state.pointDiffs[userId] = toFixed((this.state.pointDiffs[userId] ?? 0) + points);
+    }
+
+    addPointsFromAction(userId: string, points: number): void {
+        // Validation should be done in this delegated call
+        this.addPoints(userId, points);
+        this.state.actionPointDiffs[userId] = toFixed((this.state.actionPointDiffs[userId] ?? 0) + points);
     }
     
     awardPrize(userId: string, type: PrizeType, intro: string): string[] {
@@ -191,10 +196,10 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
             for (const userId of cheerers) {
                 this.state.revealedActions[userId] = 'cheer';
                 // Award points
-                this.addPoints(userId, 1);
+                this.addPointsFromAction(userId, 1);
                 const recipients = recipientsByCheerer[userId];
                 if (recipients.length > 0) {
-                    this.addPoints(randChoice(...recipients), 1);
+                    this.addPointsFromAction(randChoice(...recipients), 1);
                 }
                 // Remove decision for this player
                 delete this.state.decisions[userId];
@@ -205,10 +210,10 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
             const amount = randChoice(3, 4, 5);
             if (taker in peekersByTarget) {
                 const peekers = peekersByTarget[taker];
-                this.addPoints(taker, -amount * peekers.length);
+                this.addPointsFromAction(taker, -amount * peekers.length);
                 this.state.revealedActions[taker] = 'take-fail';
                 for (const peeker of peekers) {
-                    this.addPoints(peeker, amount);
+                    this.addPointsFromAction(peeker, amount);
                     this.state.revealedActions[peeker] = 'peek';
                 }
                 if (peekers.length === 1) {
@@ -217,7 +222,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
                     summary += `**${this.getName(taker)}** tried to steal from GMBR, but was stopped by ${naturalJoin(peekers.map(u => `**${this.getName(u)}**`), { conjunction: '&' })}! They each plundered **${amount}** points from **${this.getName(taker)}**`;
                 }
             } else {
-                this.addPoints(taker, amount);
+                this.addPointsFromAction(taker, amount);
                 this.state.revealedActions[taker] = 'take';
                 summary += `**${this.getName(taker)}** took **${amount}** points from GMBR! `;
             }
@@ -258,8 +263,8 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         };
     }
 
-    private getPointDiff(userId: Snowflake): number {
-        return this.state.pointDiffs[userId] ?? 0;
+    private getActionPointDiff(userId: Snowflake): number {
+        return this.state.actionPointDiffs[userId] ?? 0;
     }
 
     private getClosestUserByName(input: string): Snowflake | undefined {
@@ -395,11 +400,11 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
 
             // Draw the number of points to the right of the name
             let pointText = `${Math.floor(this.getPoints(userId))}`;
-            const pointDiff = this.getPointDiff(userId);
-            if (pointDiff > 0) {
-                pointText += ` (+${pointDiff})`;
-            } else if (pointDiff < 0) {
-                pointText += ` (${pointDiff})`;
+            const actionPointDiff = this.getActionPointDiff(userId);
+            if (actionPointDiff > 0) {
+                pointText += ` (+${actionPointDiff})`;
+            } else if (actionPointDiff < 0) {
+                pointText += ` (${actionPointDiff})`;
             }
             context.font = `${textHeight * .6}px sans-serif`;
             context.fillText(pointText, textX + textWidth + (1.5 * BAR_PADDING), baseY + 0.7 * BAR_HEIGHT);
