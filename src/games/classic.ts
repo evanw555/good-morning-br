@@ -321,8 +321,8 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
 
         // Load medal images
         const sunIconImage = await this.loadImage('assets/sunicon.png');
-        const greenDollarIcon = await this.loadImage('assets/dollargreen.png');
-        const redDollarIcon = await this.loadImage('assets/dollarred.png');
+        const greenDollarIcon = await this.loadImage('assets/dollargreenicon2.png');
+        const redDollarIcon = await this.loadImage('assets/dollarredicon2.png');
         const eyeImage = await this.loadImage('assets/eye.png');
         const rank1Image = await this.loadImage('assets/rank1.png');
         const rank2Image = await this.loadImage('assets/rank2.png');
