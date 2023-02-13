@@ -2421,22 +2421,22 @@ const extractMagicWord = (message: Message): string | undefined => {
 };
 
 // TODO: Temp variable to test normalized edit distance comparison for messages (primed with empty message to discourage short messages)
-const previousTokenizedMessages: string[][] = [[]];
+// const previousTokenizedMessages: string[][] = [[]];
 
-const tokenizeMessage = (content: string): string[] => {
-    if (!content) {
-        return [];
-    }
-    return content
-        // Remove apastrophes
-        .replace(/['‘’]/g, '')
-        // Lower-case
-        .toLowerCase()
-        // Split along non-word boundaries
-        .split(/\W+/)
-        // Remove all empty entries, just in case
-        .filter(x => x);
-}
+// const tokenizeMessage = (content: string): string[] => {
+//     if (!content) {
+//         return [];
+//     }
+//     return content
+//         // Remove apastrophes
+//         .replace(/['‘’]/g, '')
+//         // Lower-case
+//         .toLowerCase()
+//         // Split along non-word boundaries
+//         .split(/\W+/)
+//         // Remove all empty entries, just in case
+//         .filter(x => x);
+// }
 
 client.on('messageCreate', async (msg: Message): Promise<void> => {
     const userId: Snowflake = msg.author.id;
@@ -2447,16 +2447,16 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
         const extractedMagicWord: string | undefined = extractMagicWord(msg);
 
         // TODO: Compare edit distance to all existing message contents
-        if (msg.content) {
-            const tokenizedMessage = tokenizeMessage(msg.content);
-            if (tokenizedMessage.length > 0) {
-                const comparisonResult = getMostSimilarByNormalizedEditDistance(tokenizedMessage, previousTokenizedMessages);
-                if (comparisonResult) {
-                    await logger.log(`Message \`"${JSON.stringify(tokenizedMessage).slice(0, 100)}"\` by **${msg.member?.displayName}** similar with normalized distance of \`${comparisonResult.distance.toFixed(4)}\` to message \`"${JSON.stringify(comparisonResult.value).slice(0, 100)}"\``);
-                }
-                previousTokenizedMessages.push(tokenizedMessage);
-            }
-        }
+        // if (msg.content) {
+        //     const tokenizedMessage = tokenizeMessage(msg.content);
+        //     if (tokenizedMessage.length > 0) {
+        //         const comparisonResult = getMostSimilarByNormalizedEditDistance(tokenizedMessage, previousTokenizedMessages);
+        //         if (comparisonResult) {
+        //             await logger.log(`Message \`"${JSON.stringify(tokenizedMessage).slice(0, 100)}"\` by **${msg.member?.displayName}** similar with normalized distance of \`${comparisonResult.distance.toFixed(4)}\` to message \`"${JSON.stringify(comparisonResult.value).slice(0, 100)}"\``);
+        //         }
+        //         previousTokenizedMessages.push(tokenizedMessage);
+        //     }
+        // }
 
         // If the grace period is active, then completely ignore all messages
         if (state.isGracePeriod()) {
