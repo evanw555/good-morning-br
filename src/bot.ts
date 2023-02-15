@@ -2203,14 +2203,20 @@ const processCommands = async (msg: Message): Promise<void> => {
         }
         // Return the order info
         else if (sanitizedText.includes('order') || sanitizedText.includes('rank') || sanitizedText.includes('winning') || sanitizedText.includes('standings')) {
+            const fullStreakPlayers = state.getFullActivityStreakPlayers();
+            const potentialReveillers = state.getPotentialReveillers();
+            const potentialMagicWordRecipients = state.getPotentialMagicWordRecipients();
             msg.reply(state.getOrderedPlayers()
                 .map((key) => {
                     const gamePoints = (state.hasGame() && state.getGame().hasPlayer(key)) ? state.getGame().getPoints(key) : '???';
                     return `- <@${key}>: **${gamePoints}/${state.getPlayerPoints(key)}**`
                         + (state.isPlayerInGame(key) ? '' : ' _(NEW)_')
-                        + (state.doesPlayerNeedHandicap(key) ? ' ♿' : '')
                         + (state.getPlayerDaysSinceLGM(key) ? ` ${state.getPlayerDaysSinceLGM(key)}d` : '')
-                        + (state.getPlayerDeductions(key) ? (' -' + state.getPlayerDeductions(key)) : '');
+                        + (state.getPlayerDeductions(key) ? (' -' + state.getPlayerDeductions(key)) : '')
+                        + (state.doesPlayerNeedHandicap(key) ? '♿' : '')
+                        + (fullStreakPlayers.includes(key) ? '🔥' : '')
+                        + (potentialReveillers.includes(key) ? '📯' : '')
+                        + (potentialMagicWordRecipients.includes(key) ? '✨' : '');
                 })
                 .join('\n') || 'None.');
         }
