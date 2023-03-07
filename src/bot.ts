@@ -545,7 +545,7 @@ const sendGoodMorningMessage = async (): Promise<void> => {
             const intro: string = overriddenMessage ? 'There\'s more!' : 'Good morning! Today is a special one.';
             const text = `${intro} Rather than sending your good morning messages here for all to see, `
                 + `I'd like you to come up with a _${state.getEvent().submissionType}_ and send it directly to me via DM! `
-                + `At 11:00, I'll post them here anonymously and you'll all be voting on your favorites 😉`;
+                + `At 10:50, I'll post them here anonymously and you'll all be voting on your favorites 😉`;
             await messenger.send(goodMorningChannel, text, { immediate: overriddenMessage !== undefined });
             // Also, let players know they can forfeit
             await sleep(10000);
@@ -799,7 +799,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
         // Set timeout for anonymous submission reveal
         const submissionRevealTime = new Date();
-        submissionRevealTime.setHours(11, 0, 0, 0);
+        submissionRevealTime.setHours(10, 50, 0, 0);
         // We register this with the "Invoke" strategy since we want it to happen before Pre-Noon (with which it's registered in parallel)
         await timeoutManager.registerTimeout(TimeoutType.AnonymousSubmissionReveal, submissionRevealTime, { pastStrategy: PastTimeoutStrategy.Invoke });
         // Also, create the forfeit command
