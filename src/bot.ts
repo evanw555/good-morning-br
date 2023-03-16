@@ -974,6 +974,13 @@ const finalizeAnonymousSubmissions = async () => {
     delete event.forfeiters;
     await dumpState(); // Just in case anything below fails
 
+    // Cancel any scheduled voting reminders
+    const canceledIds = await timeoutManager.cancelTimeoutsWithType(TimeoutType.AnonymousSubmissionVotingReminder);
+    // TODO: Temp logging to see how this goes
+    if (canceledIds.length > 0) {
+        await logger.log(`Canceled voting reminder timeouts \`${JSON.stringify(canceledIds)}\``);
+    }
+
     // Disable voting and forfeiting by deleting commands
     const guildCommands = await guild.commands.fetch();
     guildCommands.forEach(command => {
@@ -1529,7 +1536,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             + `If you submitted a ${state.getEvent().submissionType}, you _must_ vote otherwise you will be disqualified and penalized.`);
 
         // Schedule voting reminders
-        [[11, 20], [11, 40]].forEach(([hour, minute]) => {
+        [[11, 10], [11, 30]].forEach(([hour, minute]) => {
             const reminderTime: Date = new Date();
             reminderTime.setHours(hour, minute);
             // We register these with the "Delete" strategy since they are terminal and aren't needed if in the past
@@ -2518,6 +2525,12 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             && isAm;
         if (isReveille) {
             await wakeUp(false);
+            // Cancel the scheduled fallback timeout
+            const canceledIds = await timeoutManager.cancelTimeoutsWithType(TimeoutType.GuestReveilleFallback);
+            // TODO: Temp logging to see how this goes
+            if (canceledIds.length > 0) {
+                await logger.log(`Canceled guest reveille fallback timeouts \`${JSON.stringify(canceledIds)}\``);
+            }
         }
 
         if (state.isMorning()) {
