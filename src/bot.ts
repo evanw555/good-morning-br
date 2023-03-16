@@ -1266,9 +1266,6 @@ const TIMEOUT_CALLBACKS = {
         state.setAcceptingBait(false);
         state.clearNerfThreshold();
 
-        // Activate the queued up event
-        state.dequeueNextEvent();
-
         // Set tomorrow's magic words (if it's not an abnormal event)
         state.clearMagicWords();
         const magicWords = await chooseMagicWords(randInt(2, 5));
@@ -1297,6 +1294,18 @@ const TIMEOUT_CALLBACKS = {
             await reactToMessageById(previousBait.messageId, '🤡');
             await logger.log(`Penalized **${state.getPlayerDisplayName(previousBait.userId)}** for being out-baited.`);
         }
+
+        // If today was a popcorn day, penalize and notify if a user failed to take the call
+        if (state.getEventType() === DailyEventType.Popcorn) {
+            const event = state.getEvent();
+            if (event.user) {
+                state.deductPoints(event.user, config.defaultAward);
+                await messenger.send(goodMorningChannel, `Looks like our dear friend <@${event.user}> wasn't able to complete today's Good Morning story... 😔`);
+            }
+        }
+
+        // Activate the queued up event
+        state.dequeueNextEvent();
 
         // Dump state and R9K hashes
         await dumpState();
