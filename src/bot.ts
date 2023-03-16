@@ -1145,7 +1145,7 @@ const finalizeAnonymousSubmissions = async () => {
     await dumpState();
 };
 
-const TIMEOUT_CALLBACKS = {
+const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
     [TimeoutType.NextGoodMorning]: async (): Promise<void> => {
         await wakeUp(true);
     },
@@ -1406,6 +1406,23 @@ const TIMEOUT_CALLBACKS = {
                 await logger.log('Cannot penalize guest reveille, as there\'s no user ID in the event state!');
             }
         }
+    },
+    [TimeoutType.PopcornFallback]:  async (): Promise<void> => {
+        if (state.getEventType() !== DailyEventType.Popcorn) {
+            await logger.log(`WARNING! Attempted to trigger popcorn fallback with the event as \`${state.getEventType()}\``);
+            return;
+        }
+        const event = state.getEvent();
+
+        // Abort if it's no longer morning or if there's no current popcorn user
+        if (!state.isMorning() || !event.user) {
+            return;
+        }
+
+        // Clear the current turn and notify
+        delete event.user;
+        await dumpState();
+        await messenger.send(goodMorningChannel, 'I don\'t think we\'re gonna hear back... next turn is up for grabs!');
     },
     [TimeoutType.AnonymousSubmissionReveal]: async (): Promise<void> => {
         if (state.getEventType() !== DailyEventType.AnonymousSubmissions) {
@@ -2543,26 +2560,44 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     }
                     // React with popcorn to show that the torch has been passed
                     await reactToMessage(msg, '🍿');
+                    // Cancel any existing popcorn fallback timeouts
+                    const canceledIds = await timeoutManager.cancelTimeoutsWithType(TimeoutType.PopcornFallback);
+                    // TODO: Temp logging to see how this goes
+                    if (canceledIds.length > 0) {
+                        await logger.log(`Canceled popcorn fallback timeouts \`${JSON.stringify(canceledIds)}\``);
+                    }
                     // Pass the torch to someone else...
                     if (mentionedUserIds.length === 1) {
                         // Only one other user was mentioned, so pass the torch to them
                         event.user = mentionedUserIds[0];
                         // TODO: We should do something special if an unknown player is called on
                     } else {
-                        // Multiple users were mentioned, so see if ther are players who haven't said GM today and are known
-                        const validUserIds = mentionedUserIds.filter(id => !state.hasDailyRank(id) && state.hasPlayer(id));
-                        if (validUserIds.length === 0) {
-                            // No other ideal players, so let the next turn be up for grabs
+                        // Multiple users were mentioned, so see if there are players who haven't said GM today and are known
+                        const preferredUserIds = mentionedUserIds.filter(id => !state.hasDailyRank(id) && state.hasPlayer(id));
+                        if (preferredUserIds.length === 0) {
+                            // No other preferred players, so let the next turn be up for grabs
                             delete event.user;
                             await messenger.reply(msg, 'You called on more than one person... I\'ll let the next turn be up for grabs!');
                         } else {
-                            // Select a random other ideal player
-                            const randomUserId = randChoice(...validUserIds);
+                            // Select a random other preferred player
+                            const randomUserId = randChoice(...preferredUserIds);
                             event.user = randomUserId;
                             await messenger.reply(msg, `You called on more than one person, so let me pick for you: popcorn <@${randomUserId}>!`);
                         }
                     }
                     await dumpState();
+                    // If a user was selected, schedule a fallback timeout
+                    if (event.user) {
+                        // If the player is more active, give them more time (5-10 default, +5-10 when in-game, +1m for each day of streak)
+                        let fallbackDate = new Date();
+                        fallbackDate.setMinutes(fallbackDate.getMinutes() + randInt(5, 10));
+                        if (state.hasPlayer(event.user)) {
+                            fallbackDate.setMinutes(fallbackDate.getMinutes() + randInt(5, 10) + state.getPlayerActivity(event.user).getStreak());
+                        }
+                        await timeoutManager.registerTimeout(TimeoutType.PopcornFallback, fallbackDate, { pastStrategy: PastTimeoutStrategy.Invoke});
+                        // TODO: Temp logging to see how this goes
+                        await logger.log(`Scheduled popcorn fallback for **${state.getPlayerDisplayName(event.user)}** at **${getRelativeDateTimeString(fallbackDate)}**`);
+                    }
                 }
             }
 

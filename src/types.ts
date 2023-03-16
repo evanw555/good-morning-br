@@ -7,6 +7,7 @@ export enum TimeoutType {
     NextNoon = 'NEXT_NOON',
     // Non-standard events
     GuestReveilleFallback = 'GUEST_REVEILLE_FALLBACK',
+    PopcornFallback = 'POPCORN_FALLBACK',
     AnonymousSubmissionReveal = 'ANONYMOUS_SUBMISSION_REVEAL',
     AnonymousSubmissionVotingReminder = 'ANONYMOUS_SUBMISSION_VOTING_REMINDER',
     AnonymousSubmissionTypePollStart = 'ANONYMOUS_SUBMISSION_TYPE_POLL_START',
