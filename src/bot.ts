@@ -1433,16 +1433,24 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
     },
     [TimeoutType.AnonymousSubmissionReveal]: async (): Promise<void> => {
         if (state.getEventType() !== DailyEventType.AnonymousSubmissions) {
-            await logger.log(`WARNING! Attempted to trigger anonymous submission reveal with the event as \`${state.getEventType()}\``);
+            await logger.log(`WARNING! Attempted to trigger anonymous submission reveal with the event as \`${state.getEventType()}\`, aborting...`);
             return;
         }
         const event = state.getEvent();
 
         // Validate that the submissions map exists
         if (!event.submissions) {
-            await logger.log('WARNING! Attempted to trigger anonymous submission reveal with no submissions map!');
+            await logger.log('WARNING! Attempted to trigger anonymous submission reveal with no submissions map, aborting...');
             return;
         }
+
+        // Initialize the votes map now to ensure this process can't be triggered again
+        if (event.votes) {
+            await logger.log(`WARNING! Attempted to trigger anonymous submission reveal with votes map initialized (duplicate timeout?), aborting...`);
+            return;
+        }
+        event.votes = {};
+        await dumpState();
 
         const userIds: Snowflake[] = Object.keys(event.submissions);
 
@@ -1469,7 +1477,6 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         // Send the initial message
         const rootSubmissionMessage: Message = await messenger.sendAndGet(goodMorningChannel, `Here are your anonymous submissions! ${config.defaultGoodMorningEmoji}`);
         event.rootSubmissionMessage = rootSubmissionMessage.id;
-        event.votes = {};
         event.submissionOwnersByCode = {};
         await dumpState();
 
