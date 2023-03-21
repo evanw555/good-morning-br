@@ -805,7 +805,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         // Also, create the forfeit command
         await guild.commands.create({
             name: 'forfeit',
-            description: `Forfeit the ${state.getEvent().submissionType} contest to avoid a penalty`
+            description: `Forfeit the ${state.getEvent().submissionType?.slice(0, 50)} contest to avoid a penalty`
         });
     }
 
@@ -1503,7 +1503,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         const choices = Object.keys(event.submissionOwnersByCode).map(c => { return { name: `Submission ${c}`, value: c }; });
         await guild.commands.create({
             name: 'vote',
-            description: `Vote for a ${event.submissionType}`,
+            description: `Vote for a ${event.submissionType?.slice(0, 50)}`,
             // TODO: What do we do if there are 2-3 submissions?
             options: [
                 {
