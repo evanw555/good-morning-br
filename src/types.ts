@@ -261,3 +261,8 @@ export interface GoodMorningHistory {
     // Keyed by UserId of sungazer councilmembers, value is the number of seasons they have remaining in their term
     sungazers: Record<Snowflake, number>
 }
+
+export interface Wordle {
+    solution: string,
+    guesses: string[]
+}

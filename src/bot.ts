@@ -1,6 +1,6 @@
 import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, Client, ComponentType, DMChannel, GatewayIntentBits, Partials, TextChannel } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discord.js';
-import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, AnonymousSubmission, GameState } from './types';
+import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, AnonymousSubmission, GameState, Wordle } from './types';
 import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions } from './util';
 import GoodMorningState from './state';
 import { addReactsSync, chance, FileStorage, generateKMeansClusters, getClockTime, getMostSimilarByNormalizedEditDistance, getPollChoiceKeys, getRandomDateBetween,
@@ -12,6 +12,7 @@ import ClassicGame from './games/classic';
 import MazeGame from './games/maze';
 
 import logger from './logger';
+import { renderWordleState } from './wordle';
 
 const auth = loadJson('config/auth.json');
 const config: GoodMorningConfig = loadJson('config/config.json');
@@ -2157,10 +2158,6 @@ client.on('interactionCreate', async (interaction): Promise<void> => {
 });
 
 // TODO: Temp wordle game data
-interface Wordle {
-    solution: string,
-    guesses: string[]
-}
 let tempWordle: Wordle | null = null;
 
 let tempDungeon: AbstractGame<GameState> | null = null;
@@ -2192,23 +2189,24 @@ const processCommands = async (msg: Message): Promise<void> => {
         const guess = msg.content.trim().toUpperCase();
         if (guess.length !== tempWordle.solution.length) {
             await msg.reply('Incorrect length!');
+            return;
         }
-        // Compute the diff
+        // Add this guess
+        tempWordle.guesses.push(guess);
+        // If this guess is correct, end the game
         if (tempWordle.solution === guess) {
-            await msg.reply('Correct! ' + guess);
+            await msg.reply({
+                content: 'Correct!',
+                files: [new AttachmentBuilder(await renderWordleState(tempWordle)).setName('wordle.png')]
+            });
             tempWordle = null;
             return;
         }
-        const response = guess.split('').map((letter, i) => {
-            if (tempWordle?.solution[i] === letter) {
-                return '🟩';
-            }
-            else if (tempWordle?.solution.includes(letter)) {
-                return '🟨';
-            }
-            return '🟥';
-        }).join('');
-        await msg.reply(response);
+        // Otherwise, reply with updated state
+        await msg.reply({
+            content: `Guess ${tempWordle.guesses.length}`,
+            files: [new AttachmentBuilder(await renderWordleState(tempWordle)).setName('wordle.png')]
+        });
         return;
     }
     if (awaitingGameCommands) {
