@@ -935,7 +935,7 @@ const processSubmissionVote = async (userId: Snowflake, event: DailyEvent, submi
             await finalizeAnonymousSubmissions();
         } else {
             // Otherwise, just send confirmation to the voter
-            await callback('Your vote has been cast!');
+            await callback('Your vote has been cast! ' + naturalJoin(submissionCodes, { bold: true, conjunction: 'then' }));
             // Notify the admin of how many votes remain
             await logger.log(`**${state.getPlayerDisplayName(userId)}** just voted, waiting on **${state.getSubmissionDeadbeats().length}** more votes.`);
         }
