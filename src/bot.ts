@@ -959,13 +959,25 @@ const finalizeAnonymousSubmissions = async () => {
     const forfeiters: Snowflake[] = event.forfeiters ?? [];
     const deadbeatSet: Set<Snowflake> = new Set(deadbeats);
     const disqualifiedCodes: string[] = allCodes.filter(code => deadbeatSet.has(submissionOwnersByCode[code]));
+    const selectSubmissionMessageId: Snowflake | undefined = event.selectSubmissionMessage;
 
     // Now that all the data has been gathered, delete everything from the state to prevent further action
     delete event.votes;
     delete event.submissions;
     delete event.submissionOwnersByCode;
+    delete event.selectSubmissionMessage;
     delete event.forfeiters;
     await dumpState(); // Just in case anything below fails
+
+    // Delete the select submission message, if it exists
+    if (selectSubmissionMessageId) {
+        try {
+            const selectSubmissionMessage = await goodMorningChannel.messages.fetch(selectSubmissionMessageId);
+            await selectSubmissionMessage.delete();
+        } catch (err) {
+            await logger.log(`Unable to fetch/delete select submission message: \`${err}\``);
+        }
+    }
 
     // Cancel any scheduled voting reminders
     const canceledIds = await timeoutManager.cancelTimeoutsWithType(TimeoutType.AnonymousSubmissionVotingReminder);
@@ -1534,6 +1546,32 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         await messenger.send(goodMorningChannel,
             `Alright, that's all of them! Use the \`/vote\` command to vote for your 3 favorite submissions. `
             + `If you submitted a ${state.getEvent().submissionType}, you _must_ vote otherwise you will be disqualified and penalized.`);
+        // TODO: Remove try-catch once we're sure this works
+        try {
+            const selectSubmissionMessage = await goodMorningChannel.send({
+                content: 'Alternatively, you can vote using this peculiar menu',
+                components: [{
+                    type: ComponentType.ActionRow,
+                    components: [{
+                        type: ComponentType.StringSelect,
+                        customId: 'selectAnonymousSubmissions',
+                        options: Object.keys(event.submissionOwnersByCode).map(c => {
+                            return {
+                                label: `Submission ${c}`,
+                                value: c,
+                                description: event.submissions ? event.submissions[c].text?.slice(0, 30) : undefined
+                            };
+                        }),
+                        maxValues: 3,
+                        minValues: 3
+                    }]
+                }]
+            });
+            event.selectSubmissionMessage = selectSubmissionMessage.id;
+            await dumpState();
+        } catch (err) {
+            await logger.log(`Failed to send select submission message: \`${err}\``);
+        }
 
         // Schedule voting reminders
         [[11, 10], [11, 30]].forEach(([hour, minute]) => {
@@ -2059,14 +2097,14 @@ client.on('invalidated', async () => {
 
 client.on('interactionCreate', async (interaction): Promise<void> => {
     if (interaction.isSelectMenu() && interaction.applicationId === client.application?.id) {
-        if (interaction.customId === 'selecty') {
-            await interaction.reply({
-                content: `Selected: ${interaction.values}`,
-                ephemeral: true
+        const userId: Snowflake = interaction.user.id;
+        await interaction.deferReply({ ephemeral: true });
+        if (interaction.customId === 'selectAnonymousSubmissions') {
+            await processSubmissionVote(userId, state.getEvent(), interaction.values, async (text: string) => {
+                await interaction.editReply(text);
             });
         }
-    }
-    if (interaction.isChatInputCommand() && interaction.applicationId === client.application?.id) {
+    } else if (interaction.isChatInputCommand() && interaction.applicationId === client.application?.id) {
         const userId: Snowflake = interaction.user.id;
         await interaction.deferReply({ ephemeral: true });
         if (interaction.commandName === 'vote') {
@@ -2509,28 +2547,6 @@ const processCommands = async (msg: Message): Promise<void> => {
                 };
                 await msg.reply('Game begin!');
             }
-        } else if (sanitizedText.includes('select')) {
-            await msg.reply({
-                content: 'Select string input.',
-                components: [{
-                    type: ComponentType.ActionRow,
-                    components: [{
-                        type: ComponentType.StringSelect,
-                        customId: 'selecty',
-                        options: [{
-                            label: 'Hello',
-                            description: 'This is hello',
-                            value: 'hello'
-                        }, {
-                            label: 'World',
-                            description: 'This is world',
-                            value: 'world'
-                        }],
-                        maxValues: 2,
-                        minValues: 1
-                    }]
-                }]
-            });
         }
     }
 };
