@@ -1,4 +1,4 @@
-import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, Client, DMChannel, GatewayIntentBits, Partials, TextChannel } from 'discord.js';
+import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, Client, ComponentType, DMChannel, GatewayIntentBits, Partials, TextChannel } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discord.js';
 import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, AnonymousSubmission, GameState } from './types';
 import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions } from './util';
@@ -2058,6 +2058,14 @@ client.on('invalidated', async () => {
 });
 
 client.on('interactionCreate', async (interaction): Promise<void> => {
+    if (interaction.isSelectMenu() && interaction.applicationId === client.application?.id) {
+        if (interaction.customId === 'selecty') {
+            await interaction.reply({
+                content: `Selected: ${interaction.values}`,
+                ephemeral: true
+            });
+        }
+    }
     if (interaction.isChatInputCommand() && interaction.applicationId === client.application?.id) {
         const userId: Snowflake = interaction.user.id;
         await interaction.deferReply({ ephemeral: true });
@@ -2501,6 +2509,28 @@ const processCommands = async (msg: Message): Promise<void> => {
                 };
                 await msg.reply('Game begin!');
             }
+        } else if (sanitizedText.includes('select')) {
+            await msg.reply({
+                content: 'Select string input.',
+                components: [{
+                    type: ComponentType.ActionRow,
+                    components: [{
+                        type: ComponentType.StringSelect,
+                        customId: 'selecty',
+                        options: [{
+                            label: 'Hello',
+                            description: 'This is hello',
+                            value: 'hello'
+                        }, {
+                            label: 'World',
+                            description: 'This is world',
+                            value: 'world'
+                        }],
+                        maxValues: 2,
+                        minValues: 1
+                    }]
+                }]
+            });
         }
     }
 };
