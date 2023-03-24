@@ -90,6 +90,7 @@ export enum DailyEventType {
     // Abnormal events (i.e. not the typical "wait-for-GM-then-say-GM" event)
     GuestReveille = 'GUEST_REVEILLE',
     ReverseGoodMorning = 'REVERSE_GOOD_MORNING',
+    Wordle = 'WORDLE',
     AnonymousSubmissions = 'ANONYMOUS_SUBMISSIONS',
     // 2.0 events
     GameDecision = 'GAME_DECISION',
@@ -129,7 +130,9 @@ export interface DailyEvent {
     // Used specifically for the "early end" event
     minutesEarly?: number,
     // Used specifically for the "wishful wednesday" event
-    wishesReceived?: Record<Snowflake, number>
+    wishesReceived?: Record<Snowflake, number>,
+    // Used specifically for the "wordle" event
+    wordle?: Wordle
 }
 
 export interface MazeLocation {

@@ -304,7 +304,7 @@ const advanceSeason = async (): Promise<{ gold?: Snowflake, silver?: Snowflake, 
     return winners;
 };
 
-const chooseEvent = (date: Date): DailyEvent | undefined => {
+const chooseEvent = async (date: Date): Promise<DailyEvent | undefined> => {
     // Sunday: Game Update
     if (date.getDay() === 0) {
         return {
@@ -374,6 +374,14 @@ const chooseEvent = (date: Date): DailyEvent | undefined => {
             },
             {
                 type: DailyEventType.Popcorn
+            },
+            {
+                type: DailyEventType.Wordle,
+                wordle: {
+                    // TODO: Is this foolproof?
+                    solution: await chooseMagicWords(1, 6)[0],
+                    guesses: []
+                }
             }
         ];
         // Do the reverse GM event with a smaller likelihood
@@ -523,10 +531,22 @@ const sendGoodMorningMessage = async (): Promise<void> => {
             if (overriddenMessage) {
                 await messenger.send(goodMorningChannel, languageGenerator.generate(overriddenMessage));
             }
-            // Send the standard submission prompt
+            // Send the popcorn intro
             const intro: string = overriddenMessage ? 'There\'s more!' : 'Good morning! It will surely be a fun one.';
             const text = `${intro} Today we'll be playing _Popcorn_! You may only send a message once you've been called on. `
              + 'To call on a friend, simply tag them in your message. I\'ll let the first spot be up for grabs... Who wants to start today\'s Good Morning story?';
+            await messenger.send(goodMorningChannel, text, { immediate: overriddenMessage !== undefined });
+            break;
+        }
+        case DailyEventType.Wordle: {
+            // If there's an overridden message, just send it naively upfront
+            if (overriddenMessage) {
+                await messenger.send(goodMorningChannel, languageGenerator.generate(overriddenMessage));
+            }
+            // Send the wordle intro
+            const intro: string = overriddenMessage ? 'There\'s more!' : 'Good morning! ';
+            const text = `${intro} Today I have a special puzzle for you... we'll be playing my own proprietary morningtime game called _Wordle_! `
+             + `I'm thinking of a **${state.getEvent().wordle?.solution.length ?? '???'}**-letter word, and you each get only one guess! You'll earn points for each new _green_ letter you reveal. Good luck!`;
             await messenger.send(goodMorningChannel, text, { immediate: overriddenMessage !== undefined });
             break;
         }
@@ -1240,7 +1260,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         }
 
         // Determine event for tomorrow
-        const nextEvent = chooseEvent(getTomorrow());
+        const nextEvent = await chooseEvent(getTomorrow());
         if (nextEvent && !state.isSeasonGoalReached()) {
             state.setNextEvent(nextEvent);
             // TODO: temporary message to tell admin when a special event has been selected, remove this soon
@@ -2401,7 +2421,7 @@ const processCommands = async (msg: Message): Promise<void> => {
                 // Choose event for i days in the future
                 let eventTime: Date = new Date();
                 eventTime.setDate(eventTime.getDate() + i);
-                const event: DailyEvent | undefined = chooseEvent(eventTime);
+                const event: DailyEvent | undefined = await chooseEvent(eventTime);
                 // Choose time for this event (have to reset days, annoying)
                 eventTime = chooseGoodMorningTime(event?.type);
                 eventTime.setDate(eventTime.getDate() + i);
@@ -2765,6 +2785,42 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     return;
                 }
 
+                // If today is wordle and the game is still active, cut the user off if their guess isn't the right length
+                if (state.getEventType() === DailyEventType.Wordle) {
+                    const event = state.getEvent();
+                    if (event.wordle) {
+                        const wordleGuess = msg.content.trim().toUpperCase();
+                        // Cut the user off if their guess isn't the right length
+                        if (wordleGuess.length !== event.wordle.solution.length) {
+                            await messenger.reply(msg, `Try again but with a **${event.wordle.solution.length}**-letter word`);
+                            return;
+                        }
+                        // Get progress of this guess in relation to the current state of the puzzle
+                        const progress = getProgressOfGuess(event.wordle, wordleGuess);
+                        // Add this guess
+                        event.wordle.guesses.push(wordleGuess);
+                        // If this guess is correct, end the game
+                        if (event.wordle.solution === wordleGuess) {
+                            await msg.reply({
+                                content: 'Congrats, you\'ve solved the puzzle!',
+                                files: [new AttachmentBuilder(await renderWordleState(event.wordle)).setName('wordle.png')]
+                            });
+                            delete event.wordle;
+                        } else {
+                            await msg.reply({
+                                content: progress ? `You've revealed ${progress} new letter${progress === 1 ? '' : 's'}!` : 'Hmmmmm...',
+                                files: [new AttachmentBuilder(await renderWordleState(event.wordle)).setName('wordle.png')]
+                            });
+                        }
+                        // Award points (1 default + 1 for each new tile + 1 for winning)
+                        state.awardPoints(userId, config.defaultAward * (1 + progress + (event.wordle ? 0 : 1)));
+                        // Assign rank (to prevent further action from this player)
+                        state.setDailyRank(userId, state.getNextDailyRank());
+                        await dumpState();
+                        return;
+                    }
+                }
+
                 // Compute and set this player's daily rank
                 const rank: number = state.getNextDailyRank();
                 state.setDailyRank(userId, rank);
@@ -2892,6 +2948,9 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 if (state.getEventType() === DailyEventType.ReverseGoodMorning) {
                     state.awardPoints(userId, config.defaultAward / 2);
                     logStory += 'and said GM after the reverse cutoff';
+                } else if (state.getEventType() === DailyEventType.Wordle) {
+                    state.awardPoints(userId, config.defaultAward / 2);
+                    logStory += 'and said GM after the wordle cutoff';
                 } else if (isNovelMessage) {
                     const rankedPoints: number = config.awardsByRank[rank] ?? config.defaultAward;
                     const activityPoints: number = config.defaultAward + state.getPlayerActivity(userId).getRating();
