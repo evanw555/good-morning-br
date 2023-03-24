@@ -374,14 +374,6 @@ const chooseEvent = async (date: Date): Promise<DailyEvent | undefined> => {
             },
             {
                 type: DailyEventType.Popcorn
-            },
-            {
-                type: DailyEventType.Wordle,
-                wordle: {
-                    // TODO: Is this foolproof?
-                    solution: await chooseMagicWords(1, 6)[0],
-                    guesses: []
-                }
             }
         ];
         // Do the reverse GM event with a smaller likelihood
@@ -396,6 +388,17 @@ const chooseEvent = async (date: Date): Promise<DailyEvent | undefined> => {
             potentialEvents.push({
                 type: DailyEventType.Nightmare,
                 disabled: true
+            });
+        }
+        // Add the wordle event if words can be found
+        const wordleWords = await chooseMagicWords(1, 6);
+        if (wordleWords.length > 0) {
+            potentialEvents.push({
+                type: DailyEventType.Wordle,
+                wordle: {
+                    solution: wordleWords[0],
+                    guesses: []
+                }
             });
         }
         // If someone should be beckoned, add beckoning as a potential event
