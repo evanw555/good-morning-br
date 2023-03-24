@@ -1,10 +1,23 @@
-import canvas, { Image } from 'canvas';
+import canvas from 'canvas';
 import { Wordle } from "./types";
+
+export function getProgressOfGuess(wordle: Wordle, guess: string): number {
+    const NUM_LETTERS = wordle.solution.length;
+    let num = 0;
+    for (let i = 0; i < NUM_LETTERS; i++) {
+        const isCorrect = wordle.solution[i] === guess[i];
+        const isNew = !wordle.guesses.some(g => wordle.solution[i] === g[i]);
+        if (isCorrect && isNew) {
+            num++;
+        }
+    }
+    return num;
+}
 
 export async function renderWordleState(wordle: Wordle): Promise<Buffer> {
     const NUM_LETTERS = wordle.solution.length;
     const NUM_GUESSES = wordle.guesses.length;
-    const TILE_SIZE = 64;
+    const TILE_SIZE = 48;
     const TILE_MARGIN = 4;
     const WIDTH = NUM_LETTERS * TILE_SIZE + (NUM_LETTERS + 1) * TILE_MARGIN;
     const HEIGHT = NUM_GUESSES * TILE_SIZE + (NUM_GUESSES + 1) * TILE_MARGIN;
@@ -26,14 +39,14 @@ export async function renderWordleState(wordle: Wordle): Promise<Buffer> {
             if (wordle.solution[j] === letter) {
                 context.fillStyle = 'green';
             } else if (wordle.solution.includes(letter)) {
-                context.fillStyle = 'gold';
+                context.fillStyle = 'goldenrod';
             } else {
                 context.fillStyle = 'gray';
             }
             // Fill rect
             context.fillRect(x, y, TILE_SIZE, TILE_SIZE);
             // Draw letter
-            context.font = `${TILE_SIZE * .8}px sans-serif`;
+            context.font = `${TILE_SIZE * .9}px sans-serif`;
             context.strokeStyle = 'white';
             context.lineWidth = TILE_MARGIN / 2;
             const width = context.measureText(letter).width;

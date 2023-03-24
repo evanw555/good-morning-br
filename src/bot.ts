@@ -12,7 +12,7 @@ import ClassicGame from './games/classic';
 import MazeGame from './games/maze';
 
 import logger from './logger';
-import { renderWordleState } from './wordle';
+import { getProgressOfGuess, renderWordleState } from './wordle';
 
 const auth = loadJson('config/auth.json');
 const config: GoodMorningConfig = loadJson('config/config.json');
@@ -2191,6 +2191,8 @@ const processCommands = async (msg: Message): Promise<void> => {
             await msg.reply('Incorrect length!');
             return;
         }
+        // Get progress of this guess in relation to the current state of the puzzle
+        const progress = getProgressOfGuess(tempWordle, guess);
         // Add this guess
         tempWordle.guesses.push(guess);
         // If this guess is correct, end the game
@@ -2204,7 +2206,7 @@ const processCommands = async (msg: Message): Promise<void> => {
         }
         // Otherwise, reply with updated state
         await msg.reply({
-            content: `Guess ${tempWordle.guesses.length}`,
+            content: `Guess ${tempWordle.guesses.length}, you revealed ${progress || 'no'} new letter(s)!`,
             files: [new AttachmentBuilder(await renderWordleState(tempWordle)).setName('wordle.png')]
         });
         return;
