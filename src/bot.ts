@@ -443,11 +443,11 @@ const awardPrize = async (userId: Snowflake, type: PrizeType, intro: string): Pr
     }
 };
 
-const chooseMagicWords = async (n: number): Promise<string[]> => {
+const chooseMagicWords = async (n: number, characters?: number): Promise<string[]> => {
     try {
         const words: string[] = await loadJson('config/words.json');
         shuffle(words);
-        return words.slice(0, n);
+        return words.filter(w => !characters || w.length === characters).slice(0, n);
     } catch (err) {
         await logger.log(`Failed to choose a word of the day: \`${err.toString()}\``);
         return [];
@@ -2110,6 +2110,13 @@ client.on('interactionCreate', async (interaction): Promise<void> => {
     }
 });
 
+// TODO: Temp wordle game data
+interface Wordle {
+    solution: string,
+    guesses: string[]
+}
+let tempWordle: Wordle | null = null;
+
 let tempDungeon: AbstractGame<GameState> | null = null;
 let awaitingGameCommands = false;
 let awaitingSubmission = false;
@@ -2126,6 +2133,36 @@ const processCommands = async (msg: Message): Promise<void> => {
             await msg.reply((err as Error).message);
         }
         awaitingSubmission = false;
+        return;
+    }
+    if (tempWordle) {
+        // Emergency abort
+        if (msg.content.replace(/^\+/, '').toLowerCase() === 'exit') {
+            tempDungeon = null;
+            awaitingGameCommands = false;
+            await msg.reply('Exiting temp wordle mode...');
+            return;
+        }
+        const guess = msg.content.trim().toUpperCase();
+        if (guess.length !== tempWordle.solution.length) {
+            await msg.reply('Incorrect length!');
+        }
+        // Compute the diff
+        if (tempWordle.solution === guess) {
+            await msg.reply('Correct! ' + guess);
+            tempWordle = null;
+            return;
+        }
+        const response = guess.split('').map((letter, i) => {
+            if (tempWordle?.solution[i] === letter) {
+                return '🟩';
+            }
+            else if (tempWordle?.solution.includes(letter)) {
+                return '🟨';
+            }
+            return '🟥';
+        }).join('');
+        await msg.reply(response);
         return;
     }
     if (awaitingGameCommands) {
@@ -2453,6 +2490,16 @@ const processCommands = async (msg: Message): Promise<void> => {
                 }
             } else {
                 await msg.reply(`\`${id}\` is NOT in the state!`);
+            }
+        } else if (sanitizedText.includes('wordle')) {
+            const words = await chooseMagicWords(1, 6);
+            if (words.length > 0) {
+                const word = words[0].toUpperCase();
+                tempWordle = {
+                    solution: word,
+                    guesses: []
+                };
+                await msg.reply('Game begin!');
             }
         }
     }
