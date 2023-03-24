@@ -259,7 +259,8 @@
             "{!Salutations|Greetings}, my {adjectives.beautiful?} {!friend|buddy|dog|pal|morning-time colleague}!",
             "Good morning, how are you {!feeling|faring} {!today|this morning}?",
             "Good morning, any plans for today?",
-            "Good morning, such a pleasure hearing from you today, my {nouns.alliterativeTitle?}"
+            "Good morning, such a pleasure hearing from you today, my {nouns.alliterativeTitle?}",
+            "Greetings!"
         ],
         "question": [
             "Good question!",
@@ -269,7 +270,10 @@
             "Yes! Yes! Yes!",
             "I {!think|believe} so!",
             "I don't {!think|believe} so",
-            "Most certainly not!"
+            "Most certainly not!",
+            "Probably, but I'm not quite sure",
+            "I'm a little doubtful...",
+            "My dear friend, I'm sure of it!"
         ],
         "new": [
             "Good morning, {!glad|happy} to {!hear from you|see you around here}!",
