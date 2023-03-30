@@ -59,7 +59,7 @@ export default abstract class AbstractGame<T extends GameState> {
     abstract removePlayer(userId: Snowflake): void
     abstract doesPlayerNeedHandicap(userId: Snowflake): boolean
     abstract renderState(options?: { showPlayerDecision?: Snowflake, admin?: boolean, season?: number }): Promise<Buffer>
-    abstract beginTurn(): void
+    abstract beginTurn(): string[]
     abstract getPoints(userId: Snowflake): number
     abstract addPoints(userId: Snowflake, points: number): void
     abstract awardPrize(userId: Snowflake, type: PrizeType, intro: string): string[]

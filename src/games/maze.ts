@@ -706,7 +706,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         };
     }
 
-    beginTurn(): void {
+    beginTurn(): string[] {
         // Increment turn and reset action counter
         this.state.turn++;
         this.state.action = 0;
@@ -776,6 +776,8 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                 }
             }
         }
+
+        return [];
     }
 
     getPoints(userId: Snowflake): number {

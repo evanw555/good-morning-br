@@ -93,25 +93,32 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         return await this.createMidSeasonUpdateImage({}, options?.season);
     }
 
-    beginTurn(): void {
+    beginTurn(): string[] {
         this.state.turn++;
 
         this.state.actionPointDiffs = {};
         this.state.revealedActions = {};
 
-        // Add default decisions
-        for (const userId of this.getPlayers()) {
+        const messages: string[] = [];
+        for (const userId of this.getOrderedPlayers()) {
+            // Add default decision
             this.state.decisions[userId] = ['cheer'];
 
-            // if (chance(0.1)) {
-            //     this.state.decisions[userId] = ['cheer'];
-            // } else if (chance(0.5)) {
-            //     this.state.decisions[userId] = ['take'];
-            // } else {
-            //     const targetId = randChoice(...this.getPlayers());
-            //     this.state.decisions[userId] = ['peek:' + targetId];
-            // }
+            // If this user's points exceed the goal, then add them as a winner
+            if (this.getPoints(userId) >= this.state.goal) {
+                const added = this.addWinner(userId);
+                if (added) {
+                    messages.push(`**${this.getName(userId)}** finished for _${getRankString(this.state.winners.length)} place_!`);
+                }
+            }
         }
+
+        // If anyone won during this time, add a prefix message
+        if (messages.length > 0) {
+            messages.unshift('But wait! Looks like we have some new winners since last week...');
+        }
+
+        return messages;
     }
 
     getPoints(userId: string): number {
@@ -242,7 +249,6 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         if (upsetString) {
             // summary += ' ' + upsetString;
         }
-
 
         for (const userId of this.getOrderedPlayers()) {
             // If this user's points exceed the goal, then add them as a winner

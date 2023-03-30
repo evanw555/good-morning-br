@@ -747,6 +747,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
 
     // If today is a decision day
     const newlyAddedPlayers: Snowflake[] = [];
+    let beginTurnMessages: string[] = [];
     if (state.getEventType() === DailyEventType.GameDecision && state.hasGame()) {
         // First, attempt to refresh state member info
         await refreshStateMemberInfo();
@@ -764,7 +765,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         }
         await logger.log(addPlayerLogs.join('\n') || 'No new players were added this week.');
         // Begin this week's turn
-        state.getGame().beginTurn();
+        beginTurnMessages = state.getGame().beginTurn();
         // Start accepting game decisions
         state.setAcceptingGameDecisions(true);
     } else {
@@ -860,6 +861,13 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         await messenger.send(goodMorningChannel, `Let's all give a warm welcome to ${getJoinedMentions(newlyAddedPlayers)}, for this puppy is joining the game this week!`)
     } else if (newlyAddedPlayers.length > 1) {
         await messenger.send(goodMorningChannel, `Let's all give a warm welcome to ${getJoinedMentions(newlyAddedPlayers)}, for they are joining the game this week!`);
+    }
+
+    // If there are any extra begin-turn messages, send them now
+    if (beginTurnMessages.length > 0) {
+        for (const beginTurnMessage of beginTurnMessages) {
+            await messenger.send(goodMorningChannel, beginTurnMessage);
+        }
     }
 
     // Send any game-related DMs, if any
