@@ -20,7 +20,7 @@ export default abstract class AbstractGame<T extends GameState> {
     /**
      * Text sent out to the channel before the very first game decision of the season.
      */
-    abstract getIntroductionText(): string
+    abstract getIntroductionText(): string[]
     /**
      * Text sent out to the channel at the beginning of the weekly game decision.
      */

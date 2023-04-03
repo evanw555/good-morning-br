@@ -31,8 +31,8 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         });
     }
 
-    getIntroductionText(): string {
-        return 'I know you all must be exhausted, so this season will just be classic GMBR! Say Good Morning and get points, have fun!';
+    getIntroductionText(): string[] {
+        return ['I know you all must be exhausted, so this season will just be classic GMBR! Say Good Morning and get points, have fun!'];
     }
 
     getInstructionsText(): string {

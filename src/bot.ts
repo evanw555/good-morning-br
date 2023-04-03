@@ -576,14 +576,24 @@ const sendGoodMorningMessage = async (): Promise<void> => {
                 await messenger.send(goodMorningChannel, languageGenerator.generate(overriddenMessage));
             }
             // Send the game state plus header text and basic instructions
-            let decisionHeader = `Turn **${state.getGame().getTurn()}** has begun!`;
+            const attachment = new AttachmentBuilder(await state.getGame().renderState({ season: state.getSeasonNumber() })).setName(`game-turn${state.getGame().getTurn()}-decision.png`);
             if (state.getGame().getTurn() === 1) {
-                decisionHeader = state.getGame().getIntroductionText();
+                const introductionText: string[] = state.getGame().getIntroductionText();
+                await goodMorningChannel.send({
+                    content: introductionText.shift(),
+                    files: [attachment]
+                });
+                // Send any subsequent messages, if any
+                for (const text of introductionText) {
+                    // TODO: Can we somehow add the typing delay while also having the morning start?
+                    await goodMorningChannel.send(text);
+                }
+            } else {
+                await goodMorningChannel.send({
+                    content: `Turn **${state.getGame().getTurn()}** has begun!`,
+                    files: [attachment]
+                });
             }
-            await goodMorningChannel.send({
-                content: decisionHeader,
-                files: [new AttachmentBuilder(await state.getGame().renderState({ season: state.getSeasonNumber() })).setName(`game-turn${state.getGame().getTurn()}-decision.png`)]
-            });
             // Send this immediately because it's technically not morning yet and a message has already been sent
             await messenger.send(goodMorningChannel, state.getGame().getInstructionsText(), { immediate: true });
             break;

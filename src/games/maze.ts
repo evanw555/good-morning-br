@@ -86,21 +86,23 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         }
     }
 
-    getIntroductionText(): string {
-        return 'My dear dogs... Welcome to the Clouded Labyrinth of the Shining Idol! '
-            + 'This season, you will all be traversing this silver-lined dungeon in search of bright mornings. '
-            + 'The first, second, and third pups to reach me at the end will be crowned victorious. '
-            + 'Each Saturday, you will have all day to choose your moves, each costing some amount of points. '
-            + 'Some moves are secret and can only be performed once unlocked. '
-            + 'The next day (Sunday), your moves will be performed one-by-one.'
-        // Temp text indicating new features for this season
-        // TODO: Split this up into a separate message, since it may get too long
-            + '\n\n_CHANGES IN THIS SEASON:_'
-            + '\n⭐ The maze has been shortened, with more branching paths!'
-            + '\n⭐ You can choose more actions than you can afford, but running out of points will KO you.'
-            + '\n⭐ Rather than awarding just one point, traps will award more points for sending players farther!'
-            + '\n⭐ Most turn-ending KOs have been replaced with temporary stuns (e.g. punching stuns a player for 3 actions)'
-            + '\n⭐ If you bump into a player with no remaining actions, you\'ll shove them forward rather than giving up (if possible)';
+    getIntroductionText(): string[] {
+        return [
+            'My dear dogs... Welcome to the Clouded Labyrinth of the Shining Idol! '
+                + 'This season, you will all be traversing this silver-lined dungeon in search of bright mornings. '
+                + 'The first, second, and third pups to reach me at the end will be crowned victorious. '
+                + 'Each Saturday, you will have all day to choose your moves, each costing some amount of points. '
+                + 'Some moves are secret and can only be performed once unlocked. '
+                + 'The next day (Sunday), your moves will be performed one-by-one.',
+            // Temp text indicating new features for this season
+            '_CHANGES IN THIS SEASON:_'
+                + '\n⭐ The maze has been shortened, with more branching paths!'
+                + '\n⭐ You can choose more actions than you can afford, but running out of points will KO you.'
+                + '\n⭐ Rather than awarding just one point, traps will award more points for sending players farther! (1 point for each "step" back)'
+                + '\n⭐ Most turn-ending KOs have been replaced with temporary stuns (e.g. punching stuns a player for 3 actions)'
+                + '\n⭐ If you bump into a player with no remaining actions, you\'ll shove them forward rather than giving up. '
+                    + 'If a player cannot be shoved, you\'ll auto-punch them (if you have enough points).'
+        ];
     }
 
     getInstructionsText(): string {
