@@ -747,7 +747,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         // Create the game using these initial members
         // TODO (2.0): Eventually, this should be more generic for other game types (don't hardcode this)
         // const dungeon = DungeonCrawler.createSectional(members, { sectionSize: 11, sectionsAcross: 3 });
-        const newGame = MazeGame.createOrganic(members, 30, 30);
+        const newGame = MazeGame.createOrganic(members, 40, 20);
         // const newGame = ClassicGame.create(members);
         state.setGame(newGame);
         // For all starting players, add the points they earned before the game was instantiated
@@ -2528,7 +2528,7 @@ const processCommands = async (msg: Message): Promise<void> => {
             if (sanitizedText.includes('maze')) {
                 // tempDungeon = DungeonCrawler.createBest(members, 20, 40);
                 // tempDungeon = DungeonCrawler.createSectional(members, { sectionSize: 33, sectionsAcross: 1 }); // Before: size=11,across=3
-                tempDungeon = MazeGame.createOrganic(members, 30, 20);
+                tempDungeon = MazeGame.createOrganic(members, 40, 20);
                 (tempDungeon as MazeGame).addPlayerItem(msg.author.id, 'trap', 5);
                 (tempDungeon as MazeGame).addPlayerItem(msg.author.id, 'boulder', 3);
                 (tempDungeon as MazeGame).addPlayerItem(msg.author.id, 'seal', 3);
