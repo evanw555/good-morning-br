@@ -101,7 +101,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                 + '\n⭐ Rather than awarding just one point, traps will award more points for sending players farther! (1 point for each "step" back)'
                 + '\n⭐ Most turn-ending KOs have been replaced with temporary stuns (e.g. punching stuns a player for 3 actions)'
                 + '\n⭐ If you bump into a player with no remaining actions, you\'ll shove them forward rather than giving up. '
-                    + 'If a player cannot be shoved, you\'ll auto-punch them (if you have enough points).'
+                    + 'If a player cannot be shoved, you\'ll auto-punch them for 2 points (if you have 4+ points).'
         ];
     }
 
@@ -133,7 +133,9 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                 + '3. You cannot walk over/past other players unless they are KO\'ed or you are walking into each other head-on.\n'
                 + '4. Players starting their turn with less than one point are KO\'ed the entire turn.\n'
                 + '5. If you somehow walk into a wall, your turn is ended.\n'
-                + '6. If you walk into another player, your turn is ended if they have no more actions remaining.\n'
+                + '6. If you walk into another player and they have no more actions remaining, you will shove them forward. '
+                    + 'If you cannot shove them, you will auto-punch them for 2 points (if you have 4+ points). '
+                    + 'If you cannot afford to auto-punch, your turn will be ended early.\n'
                 + '7. If your turn is ended early due to any of these reasons, you will only lose points for each action taken.\n'
                 + '8. If you warp, you will be KO\'ed at the end of your turn so that others can walk past you.\n'
                 + '9. If you warp multiple times in one turn, all subsequent warps will only go through if it brings you closer to the goal.\n\n'
@@ -863,7 +865,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         const itemInstructions: Record<MazeItemName, string> = {
             trap: 'You can place a `trap` at a particular location as an action e.g. `trap:b12`. '
                 + 'If a player ends their turn on a trap, they will be sent back to where they started that week\'s turn. '
-                + 'Traps are invisible until triggered. You will be given **1** point each time this trap is triggered.',
+                + 'Traps are invisible until triggered. Each time this trap is triggered, you will be given **1** point for each "step" back your victim has to travel.',
             boulder: 'You can place a `boulder` at a particular location as an action e.g. `boulder:b12`. '
                 + 'The boulder will act as a immovable barrier that cannot be destroyed, unless it causes players to become permanently trapped.',
             seal: 'You can use `seal` as an action to permanently seal any locked/unlocked doorway in the 4 squares adjacent to you. '
@@ -1811,13 +1813,9 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
             }
         }
 
+        // Warn the player if they may run out of points
         if (cost > playerPoints) {
-            // TODO: Un-beta this next season
-            if (this.isUsingBetaFeatures()) {
-                warnings.push(`⚠️ You currently have **${Math.floor(playerPoints)}** points, yet these actions cost **${cost}**. Unless you collect points mid-turn, you'll be KO'ed when you run out of points.`);
-            } else {
-                throw new Error(`You can't afford these actions. It would cost **${cost}** points, yet you only have **${Math.floor(playerPoints)}**.`);
-            }
+            warnings.push(`⚠️ You currently have **${Math.floor(playerPoints)}** points, yet these actions cost **${cost}**. Unless you collect points mid-turn, you'll be KO'ed when you run out of points.`);
         }
 
         this.state.decisions[userId] = commands;
@@ -1934,25 +1932,22 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
             flushCollapsableStatements();
             summaryData.statements.push(s);
         };
-        // TODO: Un-beta this feature next season
-        if (this.isUsingBetaFeatures()) {
-            // First, tick down all stunned players who still have pending decisions
-            const playersRegainingConsciousness: Snowflake[] = [];
-            for (const userId of this.getUnfinishedPlayers()) {
-                if (this.hasPendingDecisions(userId) && this.isPlayerStunned(userId)) {
-                    this.consumePlayerStun(userId);
-                    // If all stuns have been consumed, notify
-                    if (!this.isPlayerStunned(userId)) {
-                        playersRegainingConsciousness.push(userId);
-                    }
+        // First, tick down all stunned players who still have pending decisions
+        const playersRegainingConsciousness: Snowflake[] = [];
+        for (const userId of this.getUnfinishedPlayers()) {
+            if (this.hasPendingDecisions(userId) && this.isPlayerStunned(userId)) {
+                this.consumePlayerStun(userId);
+                // If all stuns have been consumed, notify
+                if (!this.isPlayerStunned(userId)) {
+                    playersRegainingConsciousness.push(userId);
                 }
             }
-            if (playersRegainingConsciousness.length > 0) {
-                pushNonCollapsableStatement(`${naturalJoin(this.getDisplayNames(playersRegainingConsciousness), { bold: true })} regained consciousness`);
-            }
         }
+        if (playersRegainingConsciousness.length > 0) {
+            pushNonCollapsableStatement(`${naturalJoin(this.getDisplayNames(playersRegainingConsciousness), { bold: true })} regained consciousness`);
+        }
+        // Then, process one decision from each player
         const bumpers: Record<Snowflake, Snowflake> = {};
-        // Process one decision from each player
         let numPlayersProcessed: number = 0;
         for (const userId of this.getDecisionShuffledPlayers()) {
             const player = this.state.players[userId];
@@ -1995,39 +1990,31 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                                     return false;
                                 } else {
                                     // Otherwise, bumping into a player with no more actions...
-                                    // TODO: Un-beta this feature
-                                    if (this.isUsingBetaFeatures()) {
-                                        const shoveOffset = MazeGame.getNormalizedOffsetTo(currentLocation, newLocation);
-                                        const shoveLocation = MazeGame.getOffsetLocation(newLocation, shoveOffset);
-                                        // TODO: This wouldn't handle shoving a player onto a KO'ed player
-                                        // TODO: This should check if the shove location triggered a trap
-                                        // First, if the blocking player can be shoved then shove them!
-                                        if (this.isWalkable(shoveLocation.r, shoveLocation.c) && !this.isPlayerAtLocation(shoveLocation)) {
-                                            blockingUser.r = shoveLocation.r;
-                                            blockingUser.c = shoveLocation.c;
-                                            const shoveDirection = MazeGame.getDirectionByOffset(shoveOffset);
-                                            skipStepMessage = true;
-                                            pushNonCollapsableStatement(`**${player.displayName}** shoved **${blockingUser.displayName}** ${shoveDirection}ward`);
-                                        }
-                                        // Else, if the player has 4+ points, then auto-punch (threshold accounts for punching then walking fully past)
-                                        // TODO: Should this be configurable? Can players opt-out? Should it be another price?
-                                        else if (this.getPoints(userId) >= 4) {
-                                            // Stun the other player (their turn is over so 1 is sufficient)
-                                            blockingUser.stuns = 1;
-                                            pushNonCollapsableStatement(`**${player.displayName}** slapped **${blockingUser.displayName}** onto the floor`);
-                                            // Consume points
-                                            this.addPoints(userId, -2);
-                                            // Do NOT consume an action this turn
-                                            return false;
-                                        }
-                                        // Otherwise, just bump and give up
-                                        else {
-                                            summaryData.consecutiveBumpGoners.push(userId);
-                                            endTurn = true;
-                                            return false;
-                                        }
-                                    } else {
-                                        // Bump and give up
+                                    const shoveOffset = MazeGame.getNormalizedOffsetTo(currentLocation, newLocation);
+                                    const shoveLocation = MazeGame.getOffsetLocation(newLocation, shoveOffset);
+                                    // TODO: This wouldn't handle shoving a player onto a KO'ed player
+                                    // TODO: This should check if the shove location triggered a trap
+                                    // First, if the blocking player can be shoved then shove them!
+                                    if (this.isWalkable(shoveLocation.r, shoveLocation.c) && !this.isPlayerAtLocation(shoveLocation)) {
+                                        blockingUser.r = shoveLocation.r;
+                                        blockingUser.c = shoveLocation.c;
+                                        const shoveDirection = MazeGame.getDirectionByOffset(shoveOffset);
+                                        skipStepMessage = true;
+                                        pushNonCollapsableStatement(`**${player.displayName}** shoved **${blockingUser.displayName}** ${shoveDirection}ward`);
+                                    }
+                                    // Else, if the player has 4+ points, then auto-punch (threshold accounts for punching then walking fully past)
+                                    // TODO: Should this be configurable? Can players opt-out? Should it be another price?
+                                    else if (this.getPoints(userId) >= 4) {
+                                        // Stun the other player (their turn is over so 1 is sufficient)
+                                        blockingUser.stuns = 1;
+                                        pushNonCollapsableStatement(`**${player.displayName}** slapped **${blockingUser.displayName}** onto the floor`);
+                                        // Consume points
+                                        this.addPoints(userId, -2);
+                                        // Do NOT consume an action this turn
+                                        return false;
+                                    }
+                                    // Otherwise, just bump and give up
+                                    else {
                                         summaryData.consecutiveBumpGoners.push(userId);
                                         endTurn = true;
                                         return false;
@@ -2300,16 +2287,8 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                 };
 
                 if (this.isPlayerStunned(userId)) {
-                    // TODO: Un-beta this feature next season
-                    if (this.isUsingBetaFeatures()) {
-                        // Skip processing this player's decisions
-                        continue;
-                    } else {
-                        // This player is knocked out yet still has pending decisions (likely knocked out by another player),
-                        // thus we need to end their turn. We can't let players wipe the decisions of other players because
-                        // we need to process turn-end logic for all players (e.g. punching another player, then letting them trigger a trap)
-                        endTurn = true;
-                    }
+                    // Skip processing this player's decisions
+                    continue;
                 }
 
                 // Unless this player's turn should end, process their next action
@@ -2415,12 +2394,10 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                             } else {
                                 pushNonCollapsableStatement(`**${player.displayName}** stepped on ${trapText} and was sent back to **${this.getPlayerLocationString(userId)}**`);
                             }
-                            // If the trap has an owner, reward the owner
+                            // If the trap has an owner, reward the owner (1 point for each "step" back)
                             if (trapOwnerId) {
-                                // TODO: Un-beta this feature next season
-                                const trapperPoints = this.isUsingBetaFeatures() ? progressLost : 1;
-                                this.addPoints(trapOwnerId, trapperPoints);
-                                pushNonCollapsableStatement(`**${this.getDisplayName(trapOwnerId)}** earned **$${trapperPoints}** for trapping`);
+                                this.addPoints(trapOwnerId, progressLost);
+                                pushNonCollapsableStatement(`**${this.getDisplayName(trapOwnerId)}** earned **$${progressLost}** for trapping`);
                             }
                         }
                     }
