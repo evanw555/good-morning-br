@@ -3080,7 +3080,7 @@ const generateOrganicMaze = (rows: number, columns: number): TileType[][] => {
     // Add doorways
     for (let r = 0; r < rows; r++) {
         for (let c = 0; c < columns; c++) {
-            if (chance(0.75) && isWall(r, c) && isPotentialDoorway(r, c)) {
+            if (chance(0.66) && isWall(r, c) && isPotentialDoorway(r, c)) {
                 map[r][c] = TileType.DOORWAY;
             }
         }
