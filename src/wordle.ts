@@ -96,7 +96,7 @@ export async function renderWordleState(wordle: Wordle, members?: Record<Snowfla
                     try {
                         const avatarUrl = member.displayAvatarURL({ size: 64, extension: 'png' });
                         const avatar = await canvas.loadImage(avatarUrl);
-                        const x = TILE_MARGIN + NUM_LETTERS * (TILE_SIZE + TILE_MARGIN);
+                        const x = TILE_MARGIN + j * (TILE_SIZE + TILE_MARGIN);
                         const y = TILE_MARGIN + NUM_GUESSES * (TILE_SIZE + TILE_MARGIN);
                         context.drawImage(avatar, x, y, TILE_SIZE, TILE_SIZE);
                     } catch (err) {
