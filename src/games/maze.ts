@@ -1379,9 +1379,17 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         const map = generateOrganicMaze(rows, columns);
 
         // Clear spawn section
-        const spawnWidth = Math.ceil(Math.sqrt(2 * (members.length - 0.5)));
-        for (let r = 0; r < spawnWidth; r++) {
-            for (let c = 0; c < spawnWidth; c++) {
+        // TODO: Re-enable if we want to add them to the top left corner again
+        // const spawnWidth = Math.ceil(Math.sqrt(2 * (members.length - 0.5)));
+        // for (let r = 0; r < spawnWidth; r++) {
+        //     for (let c = 0; c < spawnWidth; c++) {
+        //         map[r][c] = TileType.EMPTY;
+        //     }
+        // }
+        // The spawn area is along the top of the map
+        const spawnHeight = Math.ceil(members.length * 2 / columns)
+        for (let r = 0; r < spawnHeight; r++) {
+            for (let c = 0; c < columns; c++) {
                 map[r][c] = TileType.EMPTY;
             }
         }
@@ -1396,10 +1404,10 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
             }
         }
 
-        // Carve out space for goal
+        // Carve out space for goal (at bottom center)
         const goal = {
             r: rows - 2,
-            c: columns - 2
+            c: Math.floor(columns / 2)
         };
         for (let dr = -1; dr <= 1; dr++) {
             for (let dc = -1; dc <= 1; dc++) {
@@ -1411,10 +1419,12 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         const players: Record<Snowflake, MazePlayerState> = {};
         for (let j = 0; j < members.length; j++) {
             const member = members[j];
-            const { r, c } = MazeGame.getInitialLocationSectional(j, spawnWidth);
+            // TODO: Re-enable to make the spawn area in the top-left again
+            // const { r, c } = MazeGame.getInitialLocationSectional(j, spawnWidth);
+            const positions = j * 2;
             players[member.id] = {
-                r,
-                c,
+                r: spawnHeight - 1 - Math.floor(positions / columns),
+                c: positions % columns,
                 rank: j + 1,
                 avatarUrl: member.user.displayAvatarURL({ size: 32, extension: 'png' }),
                 displayName: member.displayName,
@@ -1460,6 +1470,23 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                 }
                 console.log(`Attempt ${validAttempts}: ${fairness.description}`);
             }
+        }
+        return bestMap as MazeGame;
+    }
+
+    static createOrganicBest(members: GuildMember[], attempts: number, rows: number, columns: number): MazeGame {
+        let maxFairness = { fairness: 0 };
+        let bestMap: MazeGame | null = null;
+        let validAttempts = 0;
+        while (validAttempts < attempts) {
+            const newGame = MazeGame.createOrganic(members, rows, columns);
+            const fairness = newGame.getMapFairness();
+            validAttempts++;
+            if (fairness.fairness > maxFairness.fairness) {
+                maxFairness = fairness;
+                bestMap = newGame;
+            }
+            console.log(`Attempt ${validAttempts}: ${fairness.description}`);
         }
         return bestMap as MazeGame;
     }
