@@ -267,5 +267,6 @@ export interface GoodMorningHistory {
 
 export interface Wordle {
     solution: string,
-    guesses: string[]
+    guesses: string[],
+    guessOwners: Snowflake[]
 }

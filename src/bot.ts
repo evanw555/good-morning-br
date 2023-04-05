@@ -1,4 +1,4 @@
-import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, Client, ComponentType, DMChannel, GatewayIntentBits, Partials, TextChannel } from 'discord.js';
+import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, Client, ComponentType, DMChannel, GatewayIntentBits, Partials, TextChannel, User } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discord.js';
 import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, AnonymousSubmission, GameState, Wordle } from './types';
 import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions } from './util';
@@ -79,9 +79,18 @@ const fetchMember = async (userId: Snowflake): Promise<GuildMember | undefined> 
 
 const fetchMembers = async (userIds: Snowflake[]): Promise<Record<Snowflake, GuildMember>> => {
     const members = await guild.members.fetch({ user: userIds });
-    const result = {};
+    const result: Record<Snowflake, GuildMember> = {};
     for (const [userId, member] of members.entries()) {
         result[userId] = member;
+    }
+    return result;
+}
+
+const fetchUsers = async (userIds: Snowflake[]): Promise<Record<Snowflake, User>> => {
+    const members = await guild.members.fetch({ user: userIds });
+    const result: Record<Snowflake, User> = {};
+    for (const [userId, member] of members.entries()) {
+        result[userId] = member.user;
     }
     return result;
 }
@@ -397,7 +406,8 @@ const chooseEvent = async (date: Date): Promise<DailyEvent | undefined> => {
                 type: DailyEventType.Wordle,
                 wordle: {
                     solution: wordleWords[0],
-                    guesses: []
+                    guesses: [],
+                    guessOwners: []
                 }
             });
         }
@@ -2237,11 +2247,12 @@ const processCommands = async (msg: Message): Promise<void> => {
         const progress = getProgressOfGuess(tempWordle, guess);
         // Add this guess
         tempWordle.guesses.push(guess);
+        tempWordle.guessOwners.push(msg.author.id);
         // If this guess is correct, end the game
         if (tempWordle.solution === guess) {
             await msg.reply({
                 content: 'Correct!',
-                files: [new AttachmentBuilder(await renderWordleState(tempWordle)).setName('wordle.png')]
+                files: [new AttachmentBuilder(await renderWordleState(tempWordle, await fetchUsers(tempWordle.guessOwners))).setName('wordle.png')]
             });
             tempWordle = null;
             return;
@@ -2249,7 +2260,10 @@ const processCommands = async (msg: Message): Promise<void> => {
         // Otherwise, reply with updated state
         await msg.reply({
             content: `Guess ${tempWordle.guesses.length}, you revealed ${progress || 'no'} new letter(s)!`,
-            files: [new AttachmentBuilder(await renderWordleState(tempWordle)).setName('wordle.png')]
+            files: [
+                new AttachmentBuilder(await renderWordleState(tempWordle)).setName('wordle.png'),
+                new AttachmentBuilder(await renderWordleState(tempWordle, await fetchUsers(tempWordle.guessOwners))).setName('wordle-avatars.png')
+            ]
         });
         return;
     }
@@ -2585,7 +2599,8 @@ const processCommands = async (msg: Message): Promise<void> => {
                 const word = words[0].toUpperCase();
                 tempWordle = {
                     solution: word,
-                    guesses: []
+                    guesses: [],
+                    guessOwners: []
                 };
                 await msg.reply('Game begin!');
             }
@@ -2821,17 +2836,23 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                         const progress = getProgressOfGuess(event.wordle, wordleGuess);
                         // Add this guess
                         event.wordle.guesses.push(wordleGuess);
+                        event.wordle.guessOwners.push(userId);
                         // If this guess is correct, end the game
                         if (event.wordle.solution === wordleGuess) {
                             await msg.reply({
                                 content: 'Congrats, you\'ve solved the puzzle!',
-                                files: [new AttachmentBuilder(await renderWordleState(event.wordle)).setName('wordle.png')]
+                                files: [new AttachmentBuilder(await renderWordleState(event.wordle, await fetchUsers(event.wordle.guessOwners))).setName('wordle.png')]
                             });
                             delete event.wordle;
                         } else {
                             await msg.reply({
                                 content: progress ? `You've revealed ${progress} new letter${progress === 1 ? '' : 's'}!` : 'Hmmmmm...',
                                 files: [new AttachmentBuilder(await renderWordleState(event.wordle)).setName('wordle.png')]
+                            });
+                            // TODO: temp logging to show how the member rendering logic is working
+                            await guildOwnerDmChannel.send({
+                                content: 'State of the game so far',
+                                files: [new AttachmentBuilder(await renderWordleState(event.wordle, await fetchUsers(event.wordle.guessOwners))).setName('wordle.png')]
                             });
                         }
                         // Award points (1 default + 1 for each new tile + 1 for winning)
