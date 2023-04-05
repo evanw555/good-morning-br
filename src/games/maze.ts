@@ -1399,7 +1399,8 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         for (let r = 0; r < rows; r++) {
             for (let c = 0; c < columns; c++) {
                 if (map[r][c] === TileType.DOORWAY) {
-                    doorwayCosts[MazeGame.getLocationString(r, c)] = randInt(1, 20);
+                    // Since the map is tall, have doorway costs correspond to row number
+                    doorwayCosts[MazeGame.getLocationString(r, c)] = randInt(1, r + 2);
                 }
             }
         }
