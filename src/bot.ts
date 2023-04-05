@@ -2233,8 +2233,7 @@ const processCommands = async (msg: Message): Promise<void> => {
     if (tempWordle) {
         // Emergency abort
         if (msg.content.replace(/^\+/, '').toLowerCase() === 'exit') {
-            tempDungeon = null;
-            awaitingGameCommands = false;
+            tempWordle = null;
             await msg.reply('Exiting temp wordle mode...');
             return;
         }
