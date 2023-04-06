@@ -37,6 +37,7 @@ export async function renderWordleState(wordle: Wordle, members?: Record<Snowfla
     for (let j = 0; j < NUM_LETTERS; j++) {
         letterOwners.push(null);
     }
+    let winnerId: Snowflake | null = null;
 
     // Draw the guesses
     for (let i = 0; i < NUM_GUESSES; i++) {
@@ -52,6 +53,10 @@ export async function renderWordleState(wordle: Wordle, members?: Record<Snowfla
                 // If this letter hasn't been claimed yet, claim it for this user
                 if (letterOwners[j] === null) {
                     letterOwners[j] = ownerId;
+                }
+                // If this was the winning guess, set them as the winner
+                if (guess === wordle.solution) {
+                    winnerId = ownerId;
                 }
             } else if (wordle.solution.includes(letter)) {
                 context.fillStyle = 'goldenrod';
@@ -102,6 +107,21 @@ export async function renderWordleState(wordle: Wordle, members?: Record<Snowfla
                     } catch (err) {
                         // TODO: Fallback?
                     }
+                }
+            }
+        }
+        // If showing members, render the winner's avatar
+        if (winnerId) {
+            const member = members[winnerId];
+            if (member) {
+                try {
+                    const avatarUrl = member.displayAvatarURL({ size: 64, extension: 'png' });
+                    const avatar = await canvas.loadImage(avatarUrl);
+                    const x = TILE_MARGIN + NUM_LETTERS * (TILE_SIZE + TILE_MARGIN);
+                    const y = TILE_MARGIN + NUM_GUESSES * (TILE_SIZE + TILE_MARGIN);
+                    context.drawImage(avatar, x, y, TILE_SIZE, TILE_SIZE);
+                } catch (err) {
+                    // TODO: Fallback?
                 }
             }
         }

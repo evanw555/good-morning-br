@@ -2843,6 +2843,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                                 files: [new AttachmentBuilder(await renderWordleState(event.wordle, await fetchUsers(event.wordle.guessOwners))).setName('wordle.png')]
                             });
                             delete event.wordle;
+                            await messenger.send(msg.channel, `Count how many times your avatar appears, that's how many points you've earned ${config.defaultGoodMorningEmoji}`);
                         } else {
                             await msg.reply({
                                 content: progress ? `You've revealed ${progress} new letter${progress === 1 ? '' : 's'}!` : 'Hmmmmm...',
