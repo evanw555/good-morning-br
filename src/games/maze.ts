@@ -1114,6 +1114,28 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         }
     }
 
+    private static getInitialLocationsAlongTop(seq: number, columns: number, spawnHeight: number): MazeLocation {
+        let r = spawnHeight - 1;
+        let c = Math.floor(columns / 2) + (r % 2);
+        let dc = 0;
+        for (let i = 0; i < seq; i++) {
+            if (dc > 0) {
+                dc += 2;
+            } else {
+                dc -= 2;
+            }
+            c += dc;
+            dc *= -1;
+            // If out of bounds, move up one row
+            if (c < 0 || c >= columns) {
+                r--;
+                c = Math.floor(columns / 2) + (r % 2);
+                dc = 0;
+            }
+        }
+        return { r, c };
+    }
+
     private static createSection(rows: number, columns: number, entrance: MazeLocation, exit: MazeLocation): { map: TileType[][], doorwayCosts: Record<string, number> } {
         // Initialize the map
         const map: number[][] = [];
@@ -1422,10 +1444,10 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
             const member = members[j];
             // TODO: Re-enable to make the spawn area in the top-left again
             // const { r, c } = MazeGame.getInitialLocationSectional(j, spawnWidth);
-            const positions = j * 2;
+            const { r, c } = MazeGame.getInitialLocationsAlongTop(j, columns, spawnHeight);
             players[member.id] = {
-                r: spawnHeight - 1 - Math.floor(positions / columns),
-                c: positions % columns,
+                r,
+                c,
                 rank: j + 1,
                 avatarUrl: member.user.displayAvatarURL({ size: 32, extension: 'png' }),
                 displayName: member.displayName,

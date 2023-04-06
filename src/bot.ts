@@ -2531,6 +2531,8 @@ const processCommands = async (msg: Message): Promise<void> => {
         } else if (sanitizedText.includes('temp')) {
             await msg.reply('Populating members...');
             const members = (await guild.members.list({ limit: randInt(10, 20) })).toJSON();
+            // Sort by display name just so it's easy to figure out what the ordering is supposed to be
+            members.sort((x, y) => x.displayName.localeCompare(y.displayName));
             // Add self if not already in the fetched members list
             if (members.every(m => m.id !== msg.author.id)) {
                 members.push(await guild.members.fetch(msg.author.id));
@@ -2560,7 +2562,7 @@ const processCommands = async (msg: Message): Promise<void> => {
                 await msg.channel.sendTyping();
             } catch (err) {}
             const attachment = new AttachmentBuilder(await tempDungeon.renderState({ season: 99 })).setName('dungeon.png');
-            await msg.channel.send({ content: `Map Fairness: ${(tempDungeon as MazeGame).getMapFairness().description}`, files: [attachment] });
+            await msg.channel.send({ content: 'Here is the game', files: [attachment] }); // Map Fairness: ${(tempDungeon as MazeGame).getMapFairness().description}
         } else if (sanitizedText.includes('submission')) {
             awaitingSubmission = true;
             await msg.reply('Awaiting submission...');
