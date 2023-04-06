@@ -132,7 +132,8 @@ export interface DailyEvent {
     // Used specifically for the "wishful wednesday" event
     wishesReceived?: Record<Snowflake, number>,
     // Used specifically for the "wordle" event
-    wordle?: Wordle
+    wordle?: Wordle,
+    wordleHiScores?: Record<Snowflake, number>
 }
 
 export interface MazeLocation {

@@ -3,7 +3,7 @@ import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discor
 import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, AnonymousSubmission, GameState, Wordle } from './types';
 import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions } from './util';
 import GoodMorningState from './state';
-import { addReactsSync, chance, FileStorage, generateKMeansClusters, getClockTime, getMostSimilarByNormalizedEditDistance, getPollChoiceKeys, getRandomDateBetween,
+import { addReactsSync, chance, FileStorage, generateKMeansClusters, getClockTime, getPollChoiceKeys, getRandomDateBetween,
     getRankString, getRelativeDateTimeString, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger,
     naturalJoin, PastTimeoutStrategy, R9KTextBank, randChoice, randInt, shuffle, sleep, TimeoutManager, toCalendarDate, toFixed, toLetterId } from 'evanw555.js';
 import ActivityTracker from './activity-tracker';
@@ -400,7 +400,7 @@ const chooseEvent = async (date: Date): Promise<DailyEvent | undefined> => {
             });
         }
         // Add the wordle event if words can be found
-        const wordleWords = await chooseMagicWords(1, 6);
+        const wordleWords = await chooseMagicWords(1, 5);
         if (wordleWords.length > 0) {
             potentialEvents.push({
                 type: DailyEventType.Wordle,
@@ -408,7 +408,8 @@ const chooseEvent = async (date: Date): Promise<DailyEvent | undefined> => {
                     solution: wordleWords[0].toUpperCase(),
                     guesses: [],
                     guessOwners: []
-                }
+                },
+                wordleHiScores: {}
             });
         }
         // If someone should be beckoned, add beckoning as a potential event
@@ -1338,13 +1339,6 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             state.setMagicWords(magicWords);
         }
 
-        // Update player activity counters
-        const newStreakUsers: Snowflake[] = state.incrementPlayerActivities();
-        // Award prizes to all players who just achieved full streaks
-        for (const userId of newStreakUsers) {
-            await awardPrize(userId, 'streak', `Thank you for bringing us Good Morning cheer for **${ActivityTracker.CAPACITY}** consecutive days`);
-        }
-
         // If someone baited, then award the most recent baiter
         const bait: Bait | undefined = state.getMostRecentBait();
         if (bait) {
@@ -1360,6 +1354,26 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             await logger.log(`Penalized **${state.getPlayerDisplayName(previousBait.userId)}** for being out-baited.`);
         }
 
+        // If today was a Wordle day, award points using the hi-scores map
+        if (state.getEventType() === DailyEventType.Wordle) {
+            const event = state.getEvent();
+            if (event && event.wordleHiScores) {
+                const log: string[] = [];
+                for (const userId of Object.keys(event.wordleHiScores)) {
+                    state.awardPoints(userId, event.wordleHiScores[userId]);
+                    log.push(`Award **${event.wordleHiScores[userId]}** points to **${state.getPlayerDisplayName(userId)}**`);
+                }
+                await logger.log('**Wordle Results:**\n' + log.join('\n'));
+            }
+        }
+
+        // Update player activity counters (this can only be done after all things which can possibly award points)
+        const newStreakUsers: Snowflake[] = state.incrementPlayerActivities();
+        // Award prizes to all players who just achieved full streaks
+        for (const userId of newStreakUsers) {
+            await awardPrize(userId, 'streak', `Thank you for bringing us Good Morning cheer for **${ActivityTracker.CAPACITY}** consecutive days`);
+        }
+
         // If today was a popcorn day, penalize and notify if a user failed to take the call
         if (state.getEventType() === DailyEventType.Popcorn) {
             const event = state.getEvent();
@@ -1369,7 +1383,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             }
         }
 
-        // Activate the queued up event
+        // Activate the queued up event (this can only be done after all thing which process the morning's event)
         state.dequeueNextEvent();
 
         // Dump state and R9K hashes
@@ -2251,17 +2265,41 @@ const processCommands = async (msg: Message): Promise<void> => {
         if (tempWordle.solution === guess) {
             await msg.reply({
                 content: 'Correct!',
-                files: [new AttachmentBuilder(await renderWordleState(tempWordle, await fetchUsers(tempWordle.guessOwners))).setName('wordle.png')]
+                files: [new AttachmentBuilder(await renderWordleState(tempWordle, {
+                    members: await fetchUsers(tempWordle.guessOwners),
+                    hiScores: { [msg.author.id]: 1 }
+                })).setName('wordle.png')]
             });
-            tempWordle = null;
+            // Restart the game
+            const newPuzzleLength = tempWordle.solution.length + 1;
+            const words = await chooseMagicWords(1, newPuzzleLength);
+            if (words.length > 0) {
+                const word = words[0].toUpperCase();
+                tempWordle = {
+                    solution: word,
+                    guesses: [],
+                    guessOwners: []
+                };
+            } else {
+                await msg.channel.send(`Couldn't find a word of length **${newPuzzleLength}**, aborting...`);
+                tempWordle = null;
+            }
             return;
         }
         // Otherwise, reply with updated state
         await msg.reply({
             content: `Guess ${tempWordle.guesses.length}, you revealed ${progress || 'no'} new letter(s)!`,
             files: [
-                new AttachmentBuilder(await renderWordleState(tempWordle)).setName('wordle.png'),
-                new AttachmentBuilder(await renderWordleState(tempWordle, await fetchUsers(tempWordle.guessOwners))).setName('wordle-avatars.png')
+                new AttachmentBuilder(await renderWordleState(tempWordle)).setName('wordle.png')
+            ]
+        });
+        await msg.channel.send({
+            content: 'With avatars',
+            files: [
+                new AttachmentBuilder(await renderWordleState(tempWordle, {
+                    members: await fetchUsers(tempWordle.guessOwners),
+                    hiScores: { [msg.author.id]: 1 }
+                })).setName('wordle-avatars.png')
             ]
         });
         return;
@@ -2768,14 +2806,18 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 }
             }
 
-
             // If today is wordle and the game is still active, process the message here (don't process it as a normal message)
             if (state.getEventType() === DailyEventType.Wordle) {
                 const event = state.getEvent();
+                // Initialize the hi-score map if it somehow doesn't exist
+                if (!event.wordleHiScores) {
+                    event.wordleHiScores = {};
+                }
                 if (event.wordle) {
                     // If this user hasn't guessed yet for this puzzle, process their guess
                     if (!event.wordle.guessOwners.includes(userId)) {
                         const wordleGuess = msg.content.trim().toUpperCase();
+                        let solved = false;
                         // Cut the user off if their guess isn't the right length
                         if (wordleGuess.length !== event.wordle.solution.length) {
                             await messenger.reply(msg, `Try again but with a **${event.wordle.solution.length}**-letter word`);
@@ -2788,12 +2830,33 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                         event.wordle.guessOwners.push(userId);
                         // If this guess is correct, end the game
                         if (event.wordle.solution === wordleGuess) {
+                            // Note that this user solved the puzzle (so they get points)
+                            solved = true;
+                            // Notify the channel
                             await msg.reply({
                                 content: 'Congrats, you\'ve solved the puzzle!',
-                                files: [new AttachmentBuilder(await renderWordleState(event.wordle, await fetchUsers(event.wordle.guessOwners))).setName('wordle.png')]
+                                files: [new AttachmentBuilder(await renderWordleState(event.wordle, {
+                                    members: await fetchUsers(event.wordle.guessOwners),
+                                    hiScores: event.wordleHiScores
+                                })).setName('wordle.png')]
                             });
-                            delete event.wordle;
                             await messenger.send(msg.channel, `Count how many times your avatar appears, that's how many points you've earned ${config.defaultGoodMorningEmoji}`);
+                            // Try and find a longer word for the next puzzle
+                            const nextPuzzleLength = event.wordle.solution.length + 1;
+                            const nextPuzzleWords = await chooseMagicWords(1, nextPuzzleLength);
+                            if (nextPuzzleWords.length > 0) {
+                                // If a word was found, restart the puzzle and notify the channel
+                                event.wordle = {
+                                    solution: nextPuzzleWords[0],
+                                    guesses: [],
+                                    guessOwners: []
+                                };
+                                await messenger.send(goodMorningChannel, `Now, let's solve a harder puzzle! If you get a better score, it will overwrite your previous score. Someone give me a **${nextPuzzleLength}**-letter word`);
+                            } else {
+                                // If a new word somehow couldn't be found, end the game here
+                                delete event.wordle;
+                                await messenger.send(goodMorningChannel, 'Well, that\'s it for today!');
+                            }
                         } else {
                             await msg.reply({
                                 content: progress ? `You've revealed ${progress} new letter${progress === 1 ? '' : 's'}!` : 'Hmmmmm...',
@@ -2802,13 +2865,15 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                             // TODO: temp logging to show how the member rendering logic is working
                             await guildOwnerDmChannel.send({
                                 content: 'State of the game so far',
-                                files: [new AttachmentBuilder(await renderWordleState(event.wordle, await fetchUsers(event.wordle.guessOwners))).setName('wordle.png')]
+                                files: [new AttachmentBuilder(await renderWordleState(event.wordle, {
+                                    members: await fetchUsers(event.wordle.guessOwners),
+                                    hiScores: event.wordleHiScores
+                                })).setName('wordle.png')]
                             });
                         }
-                        // Award points (1 default + 1 for each new tile + 1 for winning)
-                        state.awardPoints(userId, config.defaultAward * (1 + progress + (event.wordle ? 0 : 1)));
-                        // Assign rank (to prevent further action from this player)
-                        state.setDailyRank(userId, state.getNextDailyRank());
+                        // Determine this user's score (1 default + 1 for each new tile + 1 for winning)
+                        const score = config.defaultAward * (1 + progress + (solved ? 1 : 0));
+                        event.wordleHiScores[userId] = Math.max(event.wordleHiScores[userId] ?? 0, score);
                         await dumpState();
                     }
                 }
