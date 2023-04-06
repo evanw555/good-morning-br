@@ -405,7 +405,7 @@ const chooseEvent = async (date: Date): Promise<DailyEvent | undefined> => {
             potentialEvents.push({
                 type: DailyEventType.Wordle,
                 wordle: {
-                    solution: wordleWords[0],
+                    solution: wordleWords[0].toUpperCase(),
                     guesses: [],
                     guessOwners: []
                 }
