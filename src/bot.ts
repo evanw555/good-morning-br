@@ -2702,6 +2702,9 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 return;
             }
 
+            // Reset user's "days since last good morning" counter
+            state.resetDaysSinceLGM(userId);
+
             // If the event is popcorn, guarantee they are following the rules before proceeding to process their message
             if (state.getEventType() === DailyEventType.Popcorn) {
                 const event = state.getEvent();
@@ -2765,8 +2768,52 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 }
             }
 
-            // Reset user's "days since last good morning" counter
-            state.resetDaysSinceLGM(userId);
+
+            // If today is wordle and the game is still active, process the message here (don't process it as a normal message)
+            if (state.getEventType() === DailyEventType.Wordle) {
+                const event = state.getEvent();
+                if (event.wordle) {
+                    // If this user hasn't guessed yet for this puzzle, process their guess
+                    if (!event.wordle.guessOwners.includes(userId)) {
+                        const wordleGuess = msg.content.trim().toUpperCase();
+                        // Cut the user off if their guess isn't the right length
+                        if (wordleGuess.length !== event.wordle.solution.length) {
+                            await messenger.reply(msg, `Try again but with a **${event.wordle.solution.length}**-letter word`);
+                            return;
+                        }
+                        // Get progress of this guess in relation to the current state of the puzzle
+                        const progress = getProgressOfGuess(event.wordle, wordleGuess);
+                        // Add this guess
+                        event.wordle.guesses.push(wordleGuess);
+                        event.wordle.guessOwners.push(userId);
+                        // If this guess is correct, end the game
+                        if (event.wordle.solution === wordleGuess) {
+                            await msg.reply({
+                                content: 'Congrats, you\'ve solved the puzzle!',
+                                files: [new AttachmentBuilder(await renderWordleState(event.wordle, await fetchUsers(event.wordle.guessOwners))).setName('wordle.png')]
+                            });
+                            delete event.wordle;
+                            await messenger.send(msg.channel, `Count how many times your avatar appears, that's how many points you've earned ${config.defaultGoodMorningEmoji}`);
+                        } else {
+                            await msg.reply({
+                                content: progress ? `You've revealed ${progress} new letter${progress === 1 ? '' : 's'}!` : 'Hmmmmm...',
+                                files: [new AttachmentBuilder(await renderWordleState(event.wordle)).setName('wordle.png')]
+                            });
+                            // TODO: temp logging to show how the member rendering logic is working
+                            await guildOwnerDmChannel.send({
+                                content: 'State of the game so far',
+                                files: [new AttachmentBuilder(await renderWordleState(event.wordle, await fetchUsers(event.wordle.guessOwners))).setName('wordle.png')]
+                            });
+                        }
+                        // Award points (1 default + 1 for each new tile + 1 for winning)
+                        state.awardPoints(userId, config.defaultAward * (1 + progress + (event.wordle ? 0 : 1)));
+                        // Assign rank (to prevent further action from this player)
+                        state.setDailyRank(userId, state.getNextDailyRank());
+                        await dumpState();
+                    }
+                }
+                return;
+            }
 
             // Determine whether a "nerf" should be applied to this player before his points are altered
             const nerfThreshold = state.getNerfThreshold();
@@ -2821,49 +2868,6 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     // React to the user grumpily
                     await reactToMessage(msg, '😡');
                     return;
-                }
-
-                // If today is wordle and the game is still active, cut the user off if their guess isn't the right length
-                if (state.getEventType() === DailyEventType.Wordle) {
-                    const event = state.getEvent();
-                    if (event.wordle) {
-                        const wordleGuess = msg.content.trim().toUpperCase();
-                        // Cut the user off if their guess isn't the right length
-                        if (wordleGuess.length !== event.wordle.solution.length) {
-                            await messenger.reply(msg, `Try again but with a **${event.wordle.solution.length}**-letter word`);
-                            return;
-                        }
-                        // Get progress of this guess in relation to the current state of the puzzle
-                        const progress = getProgressOfGuess(event.wordle, wordleGuess);
-                        // Add this guess
-                        event.wordle.guesses.push(wordleGuess);
-                        event.wordle.guessOwners.push(userId);
-                        // If this guess is correct, end the game
-                        if (event.wordle.solution === wordleGuess) {
-                            await msg.reply({
-                                content: 'Congrats, you\'ve solved the puzzle!',
-                                files: [new AttachmentBuilder(await renderWordleState(event.wordle, await fetchUsers(event.wordle.guessOwners))).setName('wordle.png')]
-                            });
-                            delete event.wordle;
-                            await messenger.send(msg.channel, `Count how many times your avatar appears, that's how many points you've earned ${config.defaultGoodMorningEmoji}`);
-                        } else {
-                            await msg.reply({
-                                content: progress ? `You've revealed ${progress} new letter${progress === 1 ? '' : 's'}!` : 'Hmmmmm...',
-                                files: [new AttachmentBuilder(await renderWordleState(event.wordle)).setName('wordle.png')]
-                            });
-                            // TODO: temp logging to show how the member rendering logic is working
-                            await guildOwnerDmChannel.send({
-                                content: 'State of the game so far',
-                                files: [new AttachmentBuilder(await renderWordleState(event.wordle, await fetchUsers(event.wordle.guessOwners))).setName('wordle.png')]
-                            });
-                        }
-                        // Award points (1 default + 1 for each new tile + 1 for winning)
-                        state.awardPoints(userId, config.defaultAward * (1 + progress + (event.wordle ? 0 : 1)));
-                        // Assign rank (to prevent further action from this player)
-                        state.setDailyRank(userId, state.getNextDailyRank());
-                        await dumpState();
-                        return;
-                    }
                 }
 
                 // Compute and set this player's daily rank
@@ -2993,9 +2997,6 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 if (state.getEventType() === DailyEventType.ReverseGoodMorning) {
                     state.awardPoints(userId, config.defaultAward / 2);
                     logStory += 'and said GM after the reverse cutoff';
-                } else if (state.getEventType() === DailyEventType.Wordle) {
-                    state.awardPoints(userId, config.defaultAward / 2);
-                    logStory += 'and said GM after the wordle cutoff';
                 } else if (isNovelMessage) {
                     const rankedPoints: number = config.awardsByRank[rank] ?? config.defaultAward;
                     const activityPoints: number = config.defaultAward + state.getPlayerActivity(userId).getRating();
