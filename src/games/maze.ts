@@ -1518,14 +1518,14 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         return bestMap as MazeGame;
     }
 
-    static createOrganicBest(members: GuildMember[], attempts: number, rows: number, columns: number, minSteps: number = 0): MazeGame {
+    static createOrganicBest(members: GuildMember[], attempts: number, rows: number, columns: number, minNaive: number = 0): MazeGame {
         let maxFairness = { fairness: 0 };
         let bestMap: MazeGame | null = null;
         let validAttempts = 0;
         while (validAttempts < attempts) {
             const newGame = MazeGame.createOrganic(members, rows, columns);
             const fairness = newGame.getMapFairness();
-            if (fairness.min >= minSteps) {
+            if (fairness.naive >= minNaive) {
                 validAttempts++;
                 if (fairness.fairness > maxFairness.fairness) {
                     maxFairness = fairness;
@@ -2736,7 +2736,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         return this.getAdjacentLocations(l1).some(la => la.r === l2.r && la.c === l2.c);
     }
 
-    getMapFairness(): { min: number, max: number, fairness: number, description: string } {
+    getMapFairness(): { min: number, max: number, naive: number, fairness: number, description: string } {
         let min = Number.MAX_SAFE_INTEGER;
         let max = -1;
         for (const userId of this.getPlayers()) {
@@ -2744,7 +2744,10 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
             max = Math.max(max, cost);
             min = Math.min(min, cost);
         }
-        return { min, max, fairness: min / max, description: `[${min}, ${max}] = ${(100 * min / max).toFixed(1)}%` };
+        // TODO: Use the real "start" location when that data is defined
+        const dummyStart: MazeLocation = { r: 0, c: Math.floor(this.state.columns / 2) };
+        const naive = this.searchToGoal(dummyStart.r, dummyStart.c).cost;
+        return { min, max, naive, fairness: min / max, description: `[${min}, ${max}] = ${(100 * min / max).toFixed(1)}% [naive ${naive}]` };
     }
 
     canAllPlayersReachGoal(obstacles: MazeLocation[] = []): boolean {
