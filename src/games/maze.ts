@@ -1518,19 +1518,21 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         return bestMap as MazeGame;
     }
 
-    static createOrganicBest(members: GuildMember[], attempts: number, rows: number, columns: number): MazeGame {
+    static createOrganicBest(members: GuildMember[], attempts: number, rows: number, columns: number, minSteps: number = 0): MazeGame {
         let maxFairness = { fairness: 0 };
         let bestMap: MazeGame | null = null;
         let validAttempts = 0;
         while (validAttempts < attempts) {
             const newGame = MazeGame.createOrganic(members, rows, columns);
             const fairness = newGame.getMapFairness();
-            validAttempts++;
-            if (fairness.fairness > maxFairness.fairness) {
-                maxFairness = fairness;
-                bestMap = newGame;
+            if (fairness.min >= minSteps) {
+                validAttempts++;
+                if (fairness.fairness > maxFairness.fairness) {
+                    maxFairness = fairness;
+                    bestMap = newGame;
+                }
+                console.log(`Attempt ${validAttempts}: ${fairness.description}`);
             }
-            console.log(`Attempt ${validAttempts}: ${fairness.description}`);
         }
         return bestMap as MazeGame;
     }
