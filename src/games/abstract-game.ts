@@ -29,7 +29,14 @@ export default abstract class AbstractGame<T extends GameState> {
      * Text sent directly to users who request help during the game decision phase.
      */
     abstract getHelpText(): string
+    /**
+     * Text describing the state of the game, possibly including decisions.
+     */
     abstract getDebugText(): string
+    /**
+     * A string describing the overall game at the time of game creation.
+     */
+    abstract getDebugString(): string
     /**
      * Returns a number in the range [0, 1] representing the approximate completion of this game.
      * If the season is complete, then the value should always be 1.

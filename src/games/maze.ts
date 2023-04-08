@@ -150,6 +150,10 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                 .join('\n')
     }
 
+    getDebugString(): string {
+        return this.getMapFairness().description;
+    }
+
     getSeasonCompletion(): number {
         if (this.isSeasonComplete()) {
             return 1;
@@ -370,6 +374,17 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
             for (const userId of Object.keys(this.state.players)) {
                 await this.renderPlayerDecision(context, userId);
             }
+            // Render the overall shortest path from the start to the finish
+            // TODO: Use the real "start" location when that data is defined
+            const dummyStart: MazeLocation = { r: 0, c: Math.floor(this.state.columns / 2) };
+            const actionsToGoal: Direction[] = this.searchToGoal(dummyStart.r, dummyStart.c).semanticSteps;
+            const locationsToGoal: MazeLocation[] = MazeGame.getSequenceOfLocations(dummyStart, actionsToGoal);
+            context.strokeStyle = 'green';
+            context.lineWidth = 3;
+            context.setLineDash([]);
+            context.globalAlpha = 0.75;
+            this.renderPath(context, locationsToGoal);
+            context.globalAlpha = 1;
         }
 
         const SIDEBAR_WIDTH = MazeGame.TILE_SIZE * 11;
@@ -649,28 +664,23 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         const player = this.state.players[userId];
         const decisions: string[] = this.state.decisions[userId] ?? [];
         const tempLocation = { r: player.r, c: player.c };
+        // Render the movement path
         const locations = MazeGame.getSequenceOfLocations(tempLocation, decisions as ActionName[]);
         context.strokeStyle = 'red';
         context.lineWidth = 2;
         context.setLineDash([Math.floor(MazeGame.TILE_SIZE * .25), Math.floor(MazeGame.TILE_SIZE * .25)]);
-        for (let i = 1; i < locations.length; i++) {
-            const prev = locations[i - 1];
-            const curr = locations[i];
+        this.renderPath(context, locations);
+        // Show the final location
+        const finalLocation = locations[locations.length - 1];
+        if (finalLocation) {
+            // Show a circle at the final location
+            context.setLineDash([]);
             context.beginPath();
-            context.moveTo((prev.c + .5) * MazeGame.TILE_SIZE, (prev.r + .5) * MazeGame.TILE_SIZE);
-            context.lineTo((curr.c + .5) * MazeGame.TILE_SIZE, (curr.r + .5) * MazeGame.TILE_SIZE);
+            context.arc((finalLocation.c + .5) * MazeGame.TILE_SIZE, (finalLocation.r + .5) * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE / 2 + 1, 0, Math.PI * 2, false);
             context.stroke();
-            // Show the final location
-            if (i === locations.length - 1) {
-                // Show a circle at the final location
-                context.setLineDash([]);
-                context.beginPath();
-                context.arc((curr.c + .5) * MazeGame.TILE_SIZE, (curr.r + .5) * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE / 2 + 1, 0, Math.PI * 2, false);
-                context.stroke();
-                // Render the player's avatar faintly
-                const avatarImage = await this.loadImage(player.avatarUrl);
-                await this.drawImageAsCircle(context, avatarImage, 0.35, (curr.c + .5) * MazeGame.TILE_SIZE, (curr.r + .5) * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE / 2);
-            }
+            // Render the player's avatar faintly
+            const avatarImage = await this.loadImage(player.avatarUrl);
+            await this.drawImageAsCircle(context, avatarImage, 0.35, (finalLocation.c + .5) * MazeGame.TILE_SIZE, (finalLocation.r + .5) * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE / 2);
         }
         // Show attempted "placement" actions
         context.font = `${MazeGame.TILE_SIZE * .5}px sans-serif`;
@@ -694,6 +704,17 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
             context.stroke();
         }
         context.setLineDash([]);
+    }
+
+    private renderPath(context: canvas.CanvasRenderingContext2D, locations: MazeLocation[]) {
+        for (let i = 1; i < locations.length; i++) {
+            const prev = locations[i - 1];
+            const curr = locations[i];
+            context.beginPath();
+            context.moveTo((prev.c + .5) * MazeGame.TILE_SIZE, (prev.r + .5) * MazeGame.TILE_SIZE);
+            context.lineTo((curr.c + .5) * MazeGame.TILE_SIZE, (curr.r + .5) * MazeGame.TILE_SIZE);
+            context.stroke();
+        }
     }
 
     private getChoices(): Partial<Record<ActionName, { cost: number | string, description: string }>> {
@@ -746,7 +767,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
             }
             // If the player has one or more points, choose a default sequence of actions for the user
             if (this.getPoints(userId) >= 1) {
-                const actions: string[] = this.getNextActionsTowardGoal(userId, Math.floor(player.points));
+                const actions: Direction[] = this.getNextActionsTowardGoal(userId, Math.floor(player.points));
                 if (actions.length > 0) {
                     this.state.decisions[userId] = actions;
                 }
@@ -2532,7 +2553,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
      * For a given player, returns a set of actions limited by what they can afford.
      * The actions are determined using a naive search (ignore doorways).
      */
-    getNextActionsTowardGoal(userId: Snowflake, n: number = 1): string[] {
+    getNextActionsTowardGoal(userId: Snowflake, n: number = 1): Direction[] {
         if (!this.hasPlayer(userId)) {
             throw new Error(`Cannot get next actions toward goal for nonexistent player \`${userId}\``);
         }

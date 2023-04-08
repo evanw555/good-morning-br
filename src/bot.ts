@@ -2600,7 +2600,7 @@ const processCommands = async (msg: Message): Promise<void> => {
                 await msg.channel.sendTyping();
             } catch (err) {}
             const attachment = new AttachmentBuilder(await tempDungeon.renderState({ season: 99 })).setName('dungeon.png');
-            await msg.channel.send({ content: 'Here is the game', files: [attachment] }); // Map Fairness: ${(tempDungeon as MazeGame).getMapFairness().description}
+            await msg.channel.send({ content: tempDungeon.getDebugString(), files: [attachment] });
         } else if (sanitizedText.includes('submission')) {
             awaitingSubmission = true;
             await msg.reply('Awaiting submission...');

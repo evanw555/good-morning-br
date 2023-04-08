@@ -50,6 +50,10 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         return 'Classic Game';
     }
 
+    getDebugString(): string {
+        return 'Classic game';
+    }
+
     getSeasonCompletion(): number {
         return Math.max(...Object.values(this.state.points)) / this.state.goal;
     }
