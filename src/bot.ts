@@ -2599,7 +2599,7 @@ const processCommands = async (msg: Message): Promise<void> => {
             try { // TODO: refactor typing event to somewhere else?
                 await msg.channel.sendTyping();
             } catch (err) {}
-            const attachment = new AttachmentBuilder(await tempDungeon.renderState({ season: 99 })).setName('dungeon.png');
+            const attachment = new AttachmentBuilder(await tempDungeon.renderState({ season: 99, admin: true })).setName('dungeon.png');
             await msg.channel.send({ content: tempDungeon.getDebugString(), files: [attachment] });
         } else if (sanitizedText.includes('submission')) {
             awaitingSubmission = true;
