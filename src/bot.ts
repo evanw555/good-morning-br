@@ -2847,7 +2847,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                             if (nextPuzzleWords.length > 0) {
                                 // If a word was found, restart the puzzle and notify the channel
                                 event.wordle = {
-                                    solution: nextPuzzleWords[0],
+                                    solution: nextPuzzleWords[0].toUpperCase(),
                                     guesses: [],
                                     guessOwners: []
                                 };
