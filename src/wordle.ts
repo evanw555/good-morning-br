@@ -86,6 +86,11 @@ export async function renderWordleState(wordle: Wordle, options?: { members: Rec
         const y = TILE_MARGIN + i * (TILE_SIZE + TILE_MARGIN);
         const ownerId = wordle.guessOwners[i];
         currentPlayerScores[ownerId] = 1;
+        // If this was the winning guess, set them as the winner
+        if (guess === wordle.solution) {
+            winnerId = ownerId;
+            currentPlayerScores[ownerId]++;
+        }
         for (let j = 0; j < NUM_LETTERS; j++) {
             const letter = guess[j];
             const x = TILE_MARGIN + j * (TILE_SIZE + TILE_MARGIN);
@@ -95,11 +100,6 @@ export async function renderWordleState(wordle: Wordle, options?: { members: Rec
                 // If this letter hasn't been claimed yet, claim it for this user
                 if (letterOwners[j] === null) {
                     letterOwners[j] = ownerId;
-                    currentPlayerScores[ownerId]++;
-                }
-                // If this was the winning guess, set them as the winner
-                if (guess === wordle.solution) {
-                    winnerId = ownerId;
                     currentPlayerScores[ownerId]++;
                 }
             } else if (wordle.solution.includes(letter)) {
