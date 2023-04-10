@@ -2817,6 +2817,10 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     // If this user hasn't guessed yet for this puzzle, process their guess
                     if (!event.wordle.guessOwners.includes(userId)) {
                         const wordleGuess = msg.content.trim().toUpperCase();
+                        // Ignore this guess if it isn't one single word
+                        if (!wordleGuess.match(/^[A-Z]+$/)) {
+                            return;
+                        }
                         // Cut the user off if their guess isn't the right length
                         if (wordleGuess.length !== event.wordle.solution.length) {
                             await messenger.reply(msg, `Try again but with a **${event.wordle.solution.length}**-letter word`);
