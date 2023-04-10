@@ -8,6 +8,7 @@ export enum TimeoutType {
     // Non-standard events
     GuestReveilleFallback = 'GUEST_REVEILLE_FALLBACK',
     PopcornFallback = 'POPCORN_FALLBACK',
+    WordleRestart = 'WORDLE_RESTART',
     AnonymousSubmissionReveal = 'ANONYMOUS_SUBMISSION_REVEAL',
     AnonymousSubmissionVotingReminder = 'ANONYMOUS_SUBMISSION_VOTING_REMINDER',
     AnonymousSubmissionTypePollStart = 'ANONYMOUS_SUBMISSION_TYPE_POLL_START',

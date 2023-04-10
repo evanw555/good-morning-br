@@ -1034,11 +1034,7 @@ const finalizeAnonymousSubmissions = async () => {
     }
 
     // Cancel any scheduled voting reminders
-    const canceledIds = await timeoutManager.cancelTimeoutsWithType(TimeoutType.AnonymousSubmissionVotingReminder);
-    // TODO: Temp logging to see how this goes
-    if (canceledIds.length > 0) {
-        await logger.log(`Canceled voting reminder timeouts \`${JSON.stringify(canceledIds)}\``);
-    }
+    await cancelTimeoutsWithType(TimeoutType.AnonymousSubmissionVotingReminder);
 
     // Disable voting and forfeiting by deleting commands
     const guildCommands = await guild.commands.fetch();
@@ -1356,6 +1352,9 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
 
         // If today was a Wordle day, award points using the hi-scores map
         if (state.getEventType() === DailyEventType.Wordle) {
+            // Cancel any timeouts for subsequent rounds
+            await cancelTimeoutsWithType(TimeoutType.WordleRestart);
+            // Award points
             const event = state.getEvent();
             if (event && event.wordleHiScores) {
                 const log: string[] = [];
@@ -1486,7 +1485,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             }
         }
     },
-    [TimeoutType.PopcornFallback]:  async (): Promise<void> => {
+    [TimeoutType.PopcornFallback]: async (): Promise<void> => {
         if (state.getEventType() !== DailyEventType.Popcorn) {
             await logger.log(`WARNING! Attempted to trigger popcorn fallback with the event as \`${state.getEventType()}\``);
             return;
@@ -1502,6 +1501,47 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         delete event.user;
         await dumpState();
         await messenger.send(goodMorningChannel, 'I don\'t think we\'re gonna hear back... next turn is up for grabs!');
+    },
+    [TimeoutType.WordleRestart]: async (arg: any): Promise<void> => {
+        if (state.getEventType() !== DailyEventType.Wordle) {
+            await logger.log(`WARNING! Attempted to trigger wordle restart with the event as \`${state.getEventType()}\``);
+            return;
+        }
+        const event = state.getEvent();
+
+        // Abort if it's no longer morning
+        if (!state.isMorning()) {
+            await logger.log('WARNING! Attempted to trigger wordle restart when it\'s not morning. Aborting...');
+            return;
+        }
+
+        // Abort if there's already a round in progress
+        if (event.wordle) {
+            await logger.log('WARNING! Attempted to trigger wordle restart with Wordle round already in progress. Aborting...');
+            return;
+        }
+
+        // Abort if there's no length argument to the timeout
+        if (typeof arg !== 'number') {
+            await logger.log(`WARNING! Attempted to trigger wordle restart with arg \`${arg}\` of non-number type. Aborting...`);
+            return;
+        }
+        const nextPuzzleLength: number = arg;
+
+        // Try to find some words of the correct length
+        const nextPuzzleWords = await chooseMagicWords(1, nextPuzzleLength);
+        if (nextPuzzleWords.length > 0) {
+            // If a word was found, restart the puzzle and notify the channel
+            event.wordle = {
+                solution: nextPuzzleWords[0].toUpperCase(),
+                guesses: [],
+                guessOwners: []
+            };
+            await dumpState();
+            await messenger.send(goodMorningChannel, `Now, let's solve a harder puzzle! If you get a better score, it will overwrite your previous score. Someone give me a **${nextPuzzleLength}**-letter word`);
+        } else {
+            await logger.log(`Unable to find a **${nextPuzzleLength}**-letter word, ending Wordle for today...`);
+        }
     },
     [TimeoutType.AnonymousSubmissionReveal]: async (): Promise<void> => {
         if (state.getEventType() !== DailyEventType.AnonymousSubmissions) {
@@ -1941,6 +1981,14 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
 };
 
 const timeoutManager = new TimeoutManager(storage, TIMEOUT_CALLBACKS);
+
+const cancelTimeoutsWithType = async (type: TimeoutType): Promise<void> => {
+    const canceledIds = await timeoutManager.cancelTimeoutsWithType(type);
+    if (canceledIds.length > 0) {
+        await logger.log(`Canceled \`${type}\` timeouts \`${JSON.stringify(canceledIds)}\``);
+    }
+
+}
 
 const loadState = async (): Promise<void> => {
     try {
@@ -2715,11 +2763,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
         if (isReveille) {
             await wakeUp(false);
             // Cancel the scheduled fallback timeout
-            const canceledIds = await timeoutManager.cancelTimeoutsWithType(TimeoutType.GuestReveilleFallback);
-            // TODO: Temp logging to see how this goes
-            if (canceledIds.length > 0) {
-                await logger.log(`Canceled guest reveille fallback timeouts \`${JSON.stringify(canceledIds)}\``);
-            }
+            await cancelTimeoutsWithType(TimeoutType.GuestReveilleFallback);
         }
 
         if (state.isMorning()) {
@@ -2766,11 +2810,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     // React with popcorn to show that the torch has been passed
                     await reactToMessage(msg, '🍿');
                     // Cancel any existing popcorn fallback timeouts
-                    const canceledIds = await timeoutManager.cancelTimeoutsWithType(TimeoutType.PopcornFallback);
-                    // TODO: Temp logging to see how this goes
-                    if (canceledIds.length > 0) {
-                        await logger.log(`Canceled popcorn fallback timeouts \`${JSON.stringify(canceledIds)}\``);
-                    }
+                    await cancelTimeoutsWithType(TimeoutType.PopcornFallback);
                     // Pass the torch to someone else...
                     if (mentionedUserIds.length === 1) {
                         // Only one other user was mentioned, so pass the torch to them
@@ -2849,22 +2889,11 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                                 })).setName('wordle.png')]
                             });
                             await messenger.send(msg.channel, `Count how many times your avatar appears, that's how many points you've earned ${config.defaultGoodMorningEmoji}`);
-                            // Try and find a longer word for the next puzzle
+                            // Schedule the next round with a longer word (the longer the word, the longer the delay)
                             const nextPuzzleLength = previousWordle.solution.length + 1;
-                            const nextPuzzleWords = await chooseMagicWords(1, nextPuzzleLength);
-                            if (nextPuzzleWords.length > 0) {
-                                // If a word was found, restart the puzzle and notify the channel
-                                event.wordle = {
-                                    solution: nextPuzzleWords[0].toUpperCase(),
-                                    guesses: [],
-                                    guessOwners: []
-                                };
-                                await messenger.send(goodMorningChannel, `Now, let's solve a harder puzzle! If you get a better score, it will overwrite your previous score. Someone give me a **${nextPuzzleLength}**-letter word`);
-                            } else {
-                                // If a new word somehow couldn't be found, end the game here
-                                delete event.wordle;
-                                await messenger.send(goodMorningChannel, 'Well, that\'s it for today!');
-                            }
+                            const wordleRestartDate = new Date();
+                            wordleRestartDate.setMinutes(wordleRestartDate.getMinutes() + randInt(nextPuzzleLength, nextPuzzleLength * 4));
+                            await timeoutManager.registerTimeout(TimeoutType.WordleRestart, wordleRestartDate, { arg: nextPuzzleLength, pastStrategy: PastTimeoutStrategy.Delete});
                         } else {
                             // Determine this user's score (1 default + 1 for each new tile)
                             const score = config.defaultAward * (1 + progress);
