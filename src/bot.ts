@@ -2829,6 +2829,9 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                         event.wordle.guessOwners.push(userId);
                         // If this guess is correct, end the game
                         if (event.wordle.solution === wordleGuess) {
+                            // Wipe the round data to prevent further action until the next round starts (race conditions)
+                            const previousWordle = event.wordle;
+                            delete event.wordle;
                             // Determine this user's score (1 default + 1 for each new tile + 1 for winning)
                             // We must do this before we show the solved puzzle so their hi-score is reflected accurately.
                             const score = config.defaultAward * (2 + progress);
@@ -2836,14 +2839,14 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                             // Notify the channel
                             await msg.reply({
                                 content: 'Congrats, you\'ve solved the puzzle!',
-                                files: [new AttachmentBuilder(await renderWordleState(event.wordle, {
-                                    members: await fetchUsers(event.wordle.guessOwners),
+                                files: [new AttachmentBuilder(await renderWordleState(previousWordle, {
+                                    members: await fetchUsers(previousWordle.guessOwners),
                                     hiScores: event.wordleHiScores
                                 })).setName('wordle.png')]
                             });
                             await messenger.send(msg.channel, `Count how many times your avatar appears, that's how many points you've earned ${config.defaultGoodMorningEmoji}`);
                             // Try and find a longer word for the next puzzle
-                            const nextPuzzleLength = event.wordle.solution.length + 1;
+                            const nextPuzzleLength = previousWordle.solution.length + 1;
                             const nextPuzzleWords = await chooseMagicWords(1, nextPuzzleLength);
                             if (nextPuzzleWords.length > 0) {
                                 // If a word was found, restart the puzzle and notify the channel
