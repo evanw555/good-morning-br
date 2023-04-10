@@ -468,7 +468,7 @@ const awardPrize = async (userId: Snowflake, type: PrizeType, intro: string): Pr
 
 const chooseMagicWords = async (n: number, characters?: number): Promise<string[]> => {
     try {
-        const words: string[] = await loadJson('config/words.json');
+        const words: string[] = await loadJson('config/words2.json');
         shuffle(words);
         return words.filter(w => !characters || w.length === characters).slice(0, n);
     } catch (err) {
@@ -2681,7 +2681,7 @@ const processCommands = async (msg: Message): Promise<void> => {
                 await msg.reply(`\`${id}\` is NOT in the state!`);
             }
         } else if (sanitizedText.includes('wordle')) {
-            const words = await chooseMagicWords(1, 6);
+            const words = await chooseMagicWords(1, 4);
             if (words.length > 0) {
                 const word = words[0].toUpperCase();
                 tempWordle = {
