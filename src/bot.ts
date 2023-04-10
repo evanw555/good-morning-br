@@ -2817,7 +2817,6 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     // If this user hasn't guessed yet for this puzzle, process their guess
                     if (!event.wordle.guessOwners.includes(userId)) {
                         const wordleGuess = msg.content.trim().toUpperCase();
-                        let solved = false;
                         // Cut the user off if their guess isn't the right length
                         if (wordleGuess.length !== event.wordle.solution.length) {
                             await messenger.reply(msg, `Try again but with a **${event.wordle.solution.length}**-letter word`);
@@ -2830,8 +2829,10 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                         event.wordle.guessOwners.push(userId);
                         // If this guess is correct, end the game
                         if (event.wordle.solution === wordleGuess) {
-                            // Note that this user solved the puzzle (so they get points)
-                            solved = true;
+                            // Determine this user's score (1 default + 1 for each new tile + 1 for winning)
+                            // We must do this before we show the solved puzzle so their hi-score is reflected accurately.
+                            const score = config.defaultAward * (2 + progress);
+                            event.wordleHiScores[userId] = Math.max(event.wordleHiScores[userId] ?? 0, score);
                             // Notify the channel
                             await msg.reply({
                                 content: 'Congrats, you\'ve solved the puzzle!',
@@ -2858,6 +2859,10 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                                 await messenger.send(goodMorningChannel, 'Well, that\'s it for today!');
                             }
                         } else {
+                            // Determine this user's score (1 default + 1 for each new tile)
+                            const score = config.defaultAward * (1 + progress);
+                            event.wordleHiScores[userId] = Math.max(event.wordleHiScores[userId] ?? 0, score);
+                            // Reply letting them know how many letter they've revealed
                             await msg.reply({
                                 content: progress ? `You've revealed ${progress} new letter${progress === 1 ? '' : 's'}!` : 'Hmmmmm...',
                                 files: [new AttachmentBuilder(await renderWordleState(event.wordle)).setName('wordle.png')]
@@ -2871,9 +2876,6 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                                 })).setName('wordle.png')]
                             });
                         }
-                        // Determine this user's score (1 default + 1 for each new tile + 1 for winning)
-                        const score = config.defaultAward * (1 + progress + (solved ? 1 : 0));
-                        event.wordleHiScores[userId] = Math.max(event.wordleHiScores[userId] ?? 0, score);
                         await dumpState();
                     }
                 }
