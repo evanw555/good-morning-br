@@ -1666,7 +1666,9 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                             return {
                                 label: `Submission ${c}`,
                                 value: c,
-                                description: event.submissions ? event.submissions[c].text?.slice(0, 30) : undefined
+                                description: (event.submissions && event.submissionOwnersByCode)
+                                    ? event.submissions[event.submissionOwnersByCode[c]]?.text?.slice(0, 30)
+                                    : undefined
                             };
                         }),
                         maxValues: 3,
