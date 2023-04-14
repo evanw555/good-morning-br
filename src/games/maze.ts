@@ -519,7 +519,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         }
 
         // Draw inner stuff
-        const avatarImage = await imageLoader.loadImage(userId);
+        const avatarImage = await imageLoader.loadAvatar(userId);
         await this.drawImageAsCircle(context, avatarImage, this.isPlayerStunned(userId) ? 0.4 : 1, (player.c + .5) * MazeGame.TILE_SIZE, (player.r + .5) * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE / 2);
 
         // If the user is stunned, draw something to indicate this
@@ -674,7 +674,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
             context.arc((finalLocation.c + .5) * MazeGame.TILE_SIZE, (finalLocation.r + .5) * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE / 2 + 1, 0, Math.PI * 2, false);
             context.stroke();
             // Render the player's avatar faintly
-            const avatarImage = await imageLoader.loadImage(userId);
+            const avatarImage = await imageLoader.loadAvatar(userId);
             await this.drawImageAsCircle(context, avatarImage, 0.35, (finalLocation.c + .5) * MazeGame.TILE_SIZE, (finalLocation.r + .5) * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE / 2);
         }
         // Show attempted "placement" actions
