@@ -6,13 +6,14 @@ import GoodMorningState from './state';
 import { addReactsSync, chance, FileStorage, generateKMeansClusters, getClockTime, getPollChoiceKeys, getRandomDateBetween,
     getRankString, getRelativeDateTimeString, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger,
     naturalJoin, PastTimeoutStrategy, R9KTextBank, randChoice, randInt, shuffle, sleep, TimeoutManager, toCalendarDate, toFixed, toLetterId } from 'evanw555.js';
+import { getProgressOfGuess, renderWordleState } from './wordle';
 import ActivityTracker from './activity-tracker';
 import AbstractGame from './games/abstract-game';
 import ClassicGame from './games/classic';
 import MazeGame from './games/maze';
 
 import logger from './logger';
-import { getProgressOfGuess, renderWordleState } from './wordle';
+import imageLoader from './image-loader';
 
 const auth = loadJson('config/auth.json');
 const config: GoodMorningConfig = loadJson('config/config.json');
@@ -2163,6 +2164,9 @@ client.on('ready', async (): Promise<void> => {
     // Attempt to refresh state member info
     await refreshStateMemberInfo();
 
+    // Set the user manager for the image loader
+    imageLoader.setUserManager(client.users);
+
     // Update the bot's status
     await setStatus(state.isMorning());
 });
@@ -2316,7 +2320,6 @@ const processCommands = async (msg: Message): Promise<void> => {
             await msg.reply({
                 content: 'Correct!',
                 files: [new AttachmentBuilder(await renderWordleState(tempWordle, {
-                    members: await fetchUsers(tempWordle.guessOwners),
                     hiScores: { [msg.author.id]: 1 }
                 })).setName('wordle.png')]
             });
@@ -2347,7 +2350,6 @@ const processCommands = async (msg: Message): Promise<void> => {
             content: 'With avatars',
             files: [
                 new AttachmentBuilder(await renderWordleState(tempWordle, {
-                    members: await fetchUsers(tempWordle.guessOwners),
                     hiScores: { [msg.author.id]: 1 }
                 })).setName('wordle-avatars.png')
             ]
@@ -2886,7 +2888,6 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                             await msg.reply({
                                 content: 'Congrats, you\'ve solved the puzzle!',
                                 files: [new AttachmentBuilder(await renderWordleState(previousWordle, {
-                                    members: await fetchUsers(previousWordle.guessOwners),
                                     hiScores: event.wordleHiScores
                                 })).setName('wordle.png')]
                             });
@@ -2909,7 +2910,6 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                             await guildOwnerDmChannel.send({
                                 content: 'State of the game so far',
                                 files: [new AttachmentBuilder(await renderWordleState(event.wordle, {
-                                    members: await fetchUsers(event.wordle.guessOwners),
                                     hiScores: event.wordleHiScores
                                 })).setName('wordle.png')]
                             });

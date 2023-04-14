@@ -5,6 +5,8 @@ import { ClassicGameState, DecisionProcessingResult, Medals, PrizeType } from ".
 import { getOrderingUpsets } from '../util';
 import AbstractGame from "./abstract-game";
 
+import imageLoader from '../image-loader';
+
 export default class ClassicGame extends AbstractGame<ClassicGameState> {
 
     constructor(state: ClassicGameState) {
@@ -335,21 +337,21 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         const orderedUserIds: string[] = this.getOrderedPlayers();
 
         // Load medal images
-        const sunIconImage = await this.loadImage('assets/sunicon.png');
-        const greenDollarIcon = await this.loadImage('assets/dollargreenicon2.png');
-        const redDollarIcon = await this.loadImage('assets/dollarredicon2.png');
-        const eyeImage = await this.loadImage('assets/eye.png');
-        const rank1Image = await this.loadImage('assets/rank1.png');
-        const rank2Image = await this.loadImage('assets/rank2.png');
-        const rank3Image = await this.loadImage('assets/rank3.png');
-        const rankLastImage = await this.loadImage('assets/ranklast.png');
+        const sunIconImage = await imageLoader.loadImage('assets/sunicon.png');
+        const greenDollarIcon = await imageLoader.loadImage('assets/dollargreenicon2.png');
+        const redDollarIcon = await imageLoader.loadImage('assets/dollarredicon2.png');
+        const eyeImage = await imageLoader.loadImage('assets/eye.png');
+        const rank1Image = await imageLoader.loadImage('assets/rank1.png');
+        const rank2Image = await imageLoader.loadImage('assets/rank2.png');
+        const rank3Image = await imageLoader.loadImage('assets/rank3.png');
+        const rankLastImage = await imageLoader.loadImage('assets/ranklast.png');
 
         // Draw the smiling sun graphic
         let sunImage: Image;
         try {
-            sunImage = await this.loadImage(`assets/${options?.sunImageName ?? 'sun3.png'}`);
+            sunImage = await imageLoader.loadImage(`assets/${options?.sunImageName ?? 'sun3.png'}`);
         } catch (err) {
-            sunImage = await this.loadImage(`assets/sun3.png`);
+            sunImage = await imageLoader.loadImage(`assets/sun3.png`);
         }
         const sunHeight = HEADER_HEIGHT + BAR_HEIGHT;
         const sunWidth = sunHeight * sunImage.width / sunImage.height;

@@ -1,6 +1,7 @@
 import canvas from 'canvas';
 import { Wordle } from "./types";
 import { Snowflake, User } from 'discord.js';
+import imageLoader from './image-loader';
 
 export function getProgressOfGuess(wordle: Wordle, guess: string): number {
     const NUM_LETTERS = wordle.solution.length;
@@ -15,12 +16,11 @@ export function getProgressOfGuess(wordle: Wordle, guess: string): number {
     return num;
 }
 
-export async function renderWordleState(wordle: Wordle, options?: { members: Record<Snowflake, User>, hiScores: Record<Snowflake, number> }): Promise<Buffer> {
-    const showMembers: boolean = options !== undefined;
+export async function renderWordleState(wordle: Wordle, options?: { hiScores: Record<Snowflake, number> }): Promise<Buffer> {
     const NUM_LETTERS = wordle.solution.length;
-    const NUM_COLUMNS = NUM_LETTERS + (showMembers ? 1 : 0);
+    const NUM_COLUMNS = NUM_LETTERS + (options ? 1 : 0);
     const NUM_GUESSES = wordle.guesses.length;
-    const NUM_ROWS = NUM_GUESSES + (showMembers ? 1 : 0);
+    const NUM_ROWS = NUM_GUESSES + (options ? 1 : 0);
     const TILE_SIZE = 48;
     const TILE_MARGIN = 4;
     const WIDTH = NUM_COLUMNS * TILE_SIZE + (NUM_COLUMNS + 1) * TILE_MARGIN;
@@ -41,41 +41,37 @@ export async function renderWordleState(wordle: Wordle, options?: { members: Rec
     const currentPlayerScores: Record<Snowflake, number> = {};
 
     const drawAvatar = async (userId: Snowflake, xIndex: number, yIndex: number) => {
-        if (showMembers && options) {
-            const member = options.members[userId];
-            if (member) {
-                try {
-                    const avatarUrl = member.displayAvatarURL({ size: 64, extension: 'png' });
-                    const avatar = await canvas.loadImage(avatarUrl);
-                    // If this wasn't the player's high score, render their avatar faintly
-                    const isHiScore = currentPlayerScores[userId] === options.hiScores[userId];
-                    context.globalAlpha = isHiScore ? 1 : 0.5;
-                    context.drawImage(avatar,
-                        TILE_MARGIN + xIndex * (TILE_SIZE + TILE_MARGIN),
-                        TILE_MARGIN + yIndex * (TILE_SIZE + TILE_MARGIN),
-                        TILE_SIZE,
-                        TILE_SIZE);
-                    // Reset the global alpha to ensure it doesn't affect other renderings
-                    context.globalAlpha = 1;
-                    // If this wasn't their high score, render a red X through the avatar
-                    if (!isHiScore) {
-                        const xLeft = TILE_MARGIN + xIndex * (TILE_SIZE + TILE_MARGIN);
-                        const xRight = TILE_MARGIN + xIndex * (TILE_SIZE + TILE_MARGIN) + TILE_SIZE;
-                        const yTop = TILE_MARGIN + yIndex * (TILE_SIZE + TILE_MARGIN);
-                        const yBottom = TILE_MARGIN + yIndex * (TILE_SIZE + TILE_MARGIN) + TILE_SIZE;
-                        context.strokeStyle = 'red';
-                        context.lineWidth = 3;
-                        context.setLineDash([]);
-                        context.beginPath();
-                        context.moveTo(xLeft, yTop);
-                        context.lineTo(xRight, yBottom);
-                        context.moveTo(xLeft, yBottom);
-                        context.lineTo(xRight, yTop);
-                        context.stroke();
-                    }
-                } catch (err) {
-                    // TODO: Fallback?
+        if (options) {
+            try {
+                const avatar = await imageLoader.loadAvatar(userId, 64);
+                // If this wasn't the player's high score, render their avatar faintly
+                const isHiScore = currentPlayerScores[userId] === options.hiScores[userId];
+                context.globalAlpha = isHiScore ? 1 : 0.5;
+                context.drawImage(avatar,
+                    TILE_MARGIN + xIndex * (TILE_SIZE + TILE_MARGIN),
+                    TILE_MARGIN + yIndex * (TILE_SIZE + TILE_MARGIN),
+                    TILE_SIZE,
+                    TILE_SIZE);
+                // Reset the global alpha to ensure it doesn't affect other renderings
+                context.globalAlpha = 1;
+                // If this wasn't their high score, render a red X through the avatar
+                if (!isHiScore) {
+                    const xLeft = TILE_MARGIN + xIndex * (TILE_SIZE + TILE_MARGIN);
+                    const xRight = TILE_MARGIN + xIndex * (TILE_SIZE + TILE_MARGIN) + TILE_SIZE;
+                    const yTop = TILE_MARGIN + yIndex * (TILE_SIZE + TILE_MARGIN);
+                    const yBottom = TILE_MARGIN + yIndex * (TILE_SIZE + TILE_MARGIN) + TILE_SIZE;
+                    context.strokeStyle = 'red';
+                    context.lineWidth = 3;
+                    context.setLineDash([]);
+                    context.beginPath();
+                    context.moveTo(xLeft, yTop);
+                    context.lineTo(xRight, yBottom);
+                    context.moveTo(xLeft, yBottom);
+                    context.lineTo(xRight, yTop);
+                    context.stroke();
                 }
+            } catch (err) {
+                // TODO: Fallback?
             }
         }
     };

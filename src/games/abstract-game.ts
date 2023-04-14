@@ -4,12 +4,9 @@ import { DecisionProcessingResult, GameState, PrizeType } from "../types";
 
 export default abstract class AbstractGame<T extends GameState> {
     protected readonly state: T;
-    private readonly imageCache: Record<string, canvas.Image>;
-    private static readonly BROKEN_IMAGE_PATH: string = 'assets/broken.jpeg';
 
     constructor(state: T) {
         this.state = state;
-        this.imageCache = {};
 
         // TODO (2.0): Temp logic to ensure the list exists after being loaded (remove this)
         if (this.state.winners === undefined) {
@@ -119,22 +116,5 @@ export default abstract class AbstractGame<T extends GameState> {
             return true;
         }
         return false;
-    }
-
-    protected async loadImage(key: string): Promise<canvas.Image> {
-        if (key in this.imageCache) {
-            return this.imageCache[key];
-        }
-
-        try {
-            const image = await canvas.loadImage(key);
-            this.imageCache[key] = image;
-            return image;
-        } catch (err) {
-            if (key !== AbstractGame.BROKEN_IMAGE_PATH) {
-                return this.loadImage(AbstractGame.BROKEN_IMAGE_PATH);
-            }
-            throw err;
-        }
     }
 }

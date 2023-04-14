@@ -5,6 +5,7 @@ import { DecisionProcessingResult, MazeGameState, MazeItemName, MazeLine, MazeLo
 import AbstractGame from "./abstract-game";
 
 import logger from '../logger';
+import imageLoader from '../image-loader';
 
 enum TileType {
     INVALID = -1,
@@ -80,9 +81,13 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
 
     constructor(state: MazeGameState) {
         super(state);
-        // TODO: Temp logic to fill in missing properties
-        if (state.lines === undefined) {
-            state.lines = [];
+        // TODO: Temp logic to remove removed properties
+        if (state.players) {
+            for (const userId of Object.keys(state.players)) {
+                if ('avatarUrl' in state.players[userId]) {
+                    delete state.players[userId]['avatarUrl'];
+                }
+            }
         }
     }
 
@@ -208,8 +213,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
             c: spawnC,
             rank: this.getNumPlayers() + 1,
             points: lateStarterPoints,
-            displayName: member.displayName,
-            avatarUrl: member.user.displayAvatarURL({ size: 32, extension: 'png' })
+            displayName: member.displayName
         };
         // Refresh all player ranks
         this.refreshPlayerRanks();
@@ -222,7 +226,6 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         if (this.hasPlayer(member.id)) {
             const player = this.state.players[member.id];
             player.displayName = member.displayName;
-            player.avatarUrl = member.user.displayAvatarURL({ size: 32, extension: 'png' });
         }
     }
 
@@ -257,7 +260,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         const HEIGHT: number = this.state.rows * MazeGame.TILE_SIZE;
         const c = canvas.createCanvas(WIDTH, HEIGHT);
         const context = c.getContext('2d');
-        const coinImage = await this.loadImage('assets/coin.png');
+        const coinImage = await imageLoader.loadImage('assets/coin.png');
 
         // Fill the blue sky background
         context.fillStyle = MazeGame.STYLE_SKY;
@@ -339,7 +342,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         }
 
         // Draw the sun at the center
-        const sunImage = await this.loadImage('assets/sun4.png');
+        const sunImage = await imageLoader.loadImage('assets/sun4.png');
         context.drawImage(sunImage, (this.getGoalColumn() - .5) * MazeGame.TILE_SIZE, (this.getGoalRow() - .5) * MazeGame.TILE_SIZE, 2 * MazeGame.TILE_SIZE, 2 * MazeGame.TILE_SIZE);
 
         // Render all "standard" lines (e.g. player steps) before rendering the players themselves
@@ -516,16 +519,8 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         }
 
         // Draw inner stuff
-        if (player.avatarUrl.startsWith('http')) {
-            const avatarImage = await this.loadImage(player.avatarUrl);
-            await this.drawImageAsCircle(context, avatarImage, this.isPlayerStunned(userId) ? 0.4 : 1, (player.c + .5) * MazeGame.TILE_SIZE, (player.r + .5) * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE / 2);
-        } else {
-            // If it's not a URL, assume it's a CSS style
-            context.fillStyle = player.avatarUrl;
-            context.beginPath();
-            context.arc((player.c + .5) * MazeGame.TILE_SIZE, (player.r + .5) * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE / 2, 0, Math.PI * 2, false);
-            context.fill();
-        }
+        const avatarImage = await imageLoader.loadImage(userId);
+        await this.drawImageAsCircle(context, avatarImage, this.isPlayerStunned(userId) ? 0.4 : 1, (player.c + .5) * MazeGame.TILE_SIZE, (player.r + .5) * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE / 2);
 
         // If the user is stunned, draw something to indicate this
         if (this.isPlayerStunned(userId)) {
@@ -679,7 +674,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
             context.arc((finalLocation.c + .5) * MazeGame.TILE_SIZE, (finalLocation.r + .5) * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE / 2 + 1, 0, Math.PI * 2, false);
             context.stroke();
             // Render the player's avatar faintly
-            const avatarImage = await this.loadImage(player.avatarUrl);
+            const avatarImage = await imageLoader.loadImage(userId);
             await this.drawImageAsCircle(context, avatarImage, 0.35, (finalLocation.c + .5) * MazeGame.TILE_SIZE, (finalLocation.r + .5) * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE / 2);
         }
         // Show attempted "placement" actions
@@ -1380,7 +1375,6 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                 r,
                 c,
                 rank: j + 1,
-                avatarUrl: member.user.displayAvatarURL({ size: 32, extension: 'png' }),
                 displayName: member.displayName,
                 points: MazeGame.STARTER_POINTS
             };
@@ -1470,7 +1464,6 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                 r,
                 c,
                 rank: j + 1,
-                avatarUrl: member.user.displayAvatarURL({ size: 32, extension: 'png' }),
                 displayName: member.displayName,
                 points: MazeGame.STARTER_POINTS
             };

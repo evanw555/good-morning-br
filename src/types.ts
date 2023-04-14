@@ -165,7 +165,6 @@ export interface MazePlayerState {
      * Each player should have a unique value, and all values should be consecutive beginning at 1.
      */
     rank: number,
-    avatarUrl: string,
     displayName: string,
     points: number,
     multiplier?: number,
