@@ -2053,7 +2053,8 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                                 // Otherwise, deal with colliding into a non-stunned player
                                 if (this.hasPendingDecisions(blockingUserId)) {
                                     // If they've got actions left, just bump and wait
-                                    pushNonCollapsableStatement(`**${player.displayName}** bumped into someone`);
+                                    // TODO: Should this be re-enabled? It seemed to cause a lot of spam
+                                    // pushNonCollapsableStatement(`**${player.displayName}** bumped into someone`);
                                     return false;
                                 } else {
                                     // Otherwise, bumping into a player with no more actions...
