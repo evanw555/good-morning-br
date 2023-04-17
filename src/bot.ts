@@ -2620,7 +2620,7 @@ const processCommands = async (msg: Message): Promise<void> => {
             }
         } else if (sanitizedText.includes('temp')) {
             await msg.reply('Populating members...');
-            const members = shuffle((await guild.members.list()).toJSON()).slice(0, randInt(10, 20));
+            const members = shuffle((await guild.members.list({ limit: 50 })).toJSON()).slice(0, randInt(10, 20));
             // Sort by display name just so it's easy to figure out what the ordering is supposed to be
             members.sort((x, y) => x.displayName.localeCompare(y.displayName));
             // Add self if not already in the fetched members list
