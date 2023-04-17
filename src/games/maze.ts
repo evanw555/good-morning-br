@@ -139,7 +139,8 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                 + '4. Players starting their turn with less than one point are KO\'ed the entire turn.\n'
                 + '5. If you somehow walk into a wall, your turn is ended.\n'
                 + '6. If you walk into another player and they have no more actions remaining, you will shove them forward. '
-                    + 'If you cannot shove them, you will auto-punch them for 2 points (if you have 4+ points). '
+                    + 'If you cannot shove them forward, you will shove them to either side. '
+                    + 'If neither side is vacant, you will auto-punch them for 2 points (if you have 4+ points). '
                     + 'If you cannot afford to auto-punch, your turn will be ended early.\n'
                 + '7. If your turn is ended early due to any of these reasons, you will only lose points for each action taken.\n'
                 + '8. If you warp, you will be KO\'ed at the end of your turn so that others can walk past you.\n'
@@ -2058,6 +2059,8 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                                     // Otherwise, bumping into a player with no more actions...
                                     const shoveOffset = MazeGame.getNormalizedOffsetTo(currentLocation, newLocation);
                                     const shoveLocation = MazeGame.getOffsetLocation(newLocation, shoveOffset);
+                                    const orthogonalShoveLocations = MazeGame.getOrthogonalOffsetLocations(newLocation, shoveOffset)
+                                        .filter(l => this.isWalkable(l.r, l.c) && !this.isPlayerAtLocation(l));
                                     // TODO: This wouldn't handle shoving a player onto a KO'ed player
                                     // TODO: This should check if the shove location triggered a trap
                                     // First, if the blocking player can be shoved then shove them!
@@ -2067,6 +2070,15 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                                         const shoveDirection = MazeGame.getDirectionByOffset(shoveOffset);
                                         skipStepMessage = true;
                                         pushNonCollapsableStatement(`**${player.displayName}** shoved **${blockingUser.displayName}** ${shoveDirection}ward`);
+                                    }
+                                    // Else, if they can be shoved to either side then shove them to a random vacant side
+                                    else if (orthogonalShoveLocations.length > 0) {
+                                        shuffle(orthogonalShoveLocations);
+                                        const sideLocation = orthogonalShoveLocations[0];
+                                        blockingUser.r = sideLocation.r;
+                                        blockingUser.c = sideLocation.c;
+                                        skipStepMessage = true;
+                                        pushNonCollapsableStatement(`**${player.displayName}** shoved **${blockingUser.displayName}** to the side`)
                                     }
                                     // Else, if the player has 4+ points, then auto-punch (threshold accounts for punching then walking fully past)
                                     // TODO: Should this be configurable? Can players opt-out? Should it be another price?
@@ -2648,6 +2660,16 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
             r: location.r + offset[0],
             c: location.c + offset[1]
         };
+    }
+
+    private static getOrthogonalOffsetLocations(location: MazeLocation, offset: [number, number]): MazeLocation[] {
+        return [{
+            r: location.r + offset[1],
+            c: location.c - offset[0]
+        }, {
+            r: location.r - offset[1],
+            c: location.c + offset[0]
+        }]
     }
 
     private static getDirectionTo(from: MazeLocation, to: MazeLocation): Direction {
