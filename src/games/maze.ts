@@ -645,7 +645,8 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                 context.strokeStyle = (line.special === 'warp') ? MazeGame.STYLE_WARP_PATH : MazeGame.STYLE_HEAVY_PATH;
                 context.setLineDash([Math.floor(MazeGame.TILE_SIZE / 4), Math.floor(MazeGame.TILE_SIZE / 4)]);
             } else {
-                context.lineWidth = 2;
+                // Draw dashed movement lines
+                context.lineWidth = 3;
                 context.strokeStyle = MazeGame.STYLE_LIGHT_SKY;
                 context.setLineDash([Math.floor(MazeGame.TILE_SIZE / 12), Math.floor(MazeGame.TILE_SIZE / 12)]);
             }
@@ -1658,6 +1659,14 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         return this.getPlayerAtLocation(location.r, location.c) !== undefined;
     }
 
+    /**
+     * @param location Some location
+     * @returns True if the given location is walkable and is not occupied by another player
+     */
+    private isLocationShovable(location: MazeLocation): boolean {
+        return this.isWalkable(location.r, location.c) && !this.isPlayerAtLocation(location);
+    }
+
     getWeeklyDecisionDMs(): Record<Snowflake, string> {
         const results: Record<Snowflake, string> = {};
         for (const userId of this.getPlayers()) {
@@ -2060,12 +2069,11 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                                     // Otherwise, bumping into a player with no more actions...
                                     const shoveOffset = MazeGame.getNormalizedOffsetTo(currentLocation, newLocation);
                                     const shoveLocation = MazeGame.getOffsetLocation(newLocation, shoveOffset);
-                                    const orthogonalShoveLocations = MazeGame.getOrthogonalOffsetLocations(newLocation, shoveOffset)
-                                        .filter(l => this.isWalkable(l.r, l.c) && !this.isPlayerAtLocation(l));
+                                    const orthogonalShoveLocations = MazeGame.getOrthogonalOffsetLocations(newLocation, shoveOffset).filter(l => this.isLocationShovable(l));
                                     // TODO: This wouldn't handle shoving a player onto a KO'ed player
                                     // TODO: This should check if the shove location triggered a trap
                                     // First, if the blocking player can be shoved then shove them!
-                                    if (this.isWalkable(shoveLocation.r, shoveLocation.c) && !this.isPlayerAtLocation(shoveLocation)) {
+                                    if (this.isLocationShovable(shoveLocation)) {
                                         blockingUser.r = shoveLocation.r;
                                         blockingUser.c = shoveLocation.c;
                                         const shoveDirection = MazeGame.getDirectionByOffset(shoveOffset);
