@@ -116,7 +116,8 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
             // TODO: Temp message to notify players of changes, remove this after 4/22/23
             + '\n**Changes since last week:**'
             + '\n⭐ If you cannot shove a player forward, you will attempt to shove them to the side before resorting to an auto-punch.'
-            + '\n⭐ When you punch a player using `punch`, there\'s a chance some of their money will fall onto the floor nearby';
+            + '\n⭐ When you punch a player using `punch`, there\'s a chance some of their money will fall onto the floor nearby'
+            + '\n⭐ If you end your turn on another player, you will move to a random adjacent tile if any are vacant';
     }
 
     getHelpText(): string {
@@ -2486,6 +2487,21 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                             if (trapOwnerId) {
                                 this.addPoints(trapOwnerId, progressLost);
                                 pushNonCollapsableStatement(`**${this.getDisplayName(trapOwnerId)}** earned **$${progressLost}** for trapping`);
+                            }
+                        }
+                    }
+                    // Finally, move to an adjacent vacant spot if the turn ended on another player
+                    if (this.getPlayersAtLocation(player).length > 1) {
+                        const someOtherPlayerId = this.getPlayersAtLocation(player).filter(id => id !== userId)[0];
+                        const adjacentVacantLocations = this.getAdjacentLocations(player).filter(l => this.isLocationShovable(l));
+                        if (adjacentVacantLocations.length > 0) {
+                            const randomLocation = randChoice(...adjacentVacantLocations);
+                            player.r = randomLocation.r;
+                            player.c = randomLocation.c;
+                            if (player.stuns) {
+                                pushNonCollapsableStatement(`**${player.displayName}'s** corpse rolled off **${this.getDisplayName(someOtherPlayerId)}'s** and over to the side`);
+                            } else {
+                                pushNonCollapsableStatement(`**${player.displayName}** got off the shoulders of **${this.getDisplayName(someOtherPlayerId)}** and stepped aside`);
                             }
                         }
                     }
