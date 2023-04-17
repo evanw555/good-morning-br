@@ -99,14 +99,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                 + 'Each Saturday, you will have all day to choose your moves, each costing some amount of points. '
                 + 'Some moves are secret and can only be performed once unlocked. '
                 + 'The next day (Sunday), your moves will be performed one-by-one.',
-            // Temp text indicating new features for this season
-            '_CHANGES IN THIS SEASON:_'
-                + '\n⭐ The maze has been shortened, with more branching paths!'
-                + '\n⭐ You can choose more actions than you can afford, but running out of points will KO you.'
-                + '\n⭐ Rather than awarding just one point, traps will award more points for sending players farther! (1 point for each "step" back)'
-                + '\n⭐ Most turn-ending KOs have been replaced with temporary stuns (e.g. punching stuns a player for 3 actions)'
-                + '\n⭐ If you bump into a player with no remaining actions, you\'ll shove them forward rather than giving up. '
-                    + 'If a player cannot be shoved, you\'ll auto-punch them for 2 points (if you have 4+ points).'
+            // TODO: Add temp text indicating new features for this season
         ];
     }
 
@@ -121,7 +114,9 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         }
         return 'Choose your moves by sending me a DM with your desired sequence of actions. You have until tomorrow morning to choose. DM me _"help"_ for more info.'
             // TODO: Temp message to notify players of changes, remove this after 4/22/23
-            + '\n⭐ **Change since last week:** if you cannot shove a player forward, you will attempt to shove them to the side before resorting to an auto-punch.'
+            + '\n**Changes since last week:**'
+            + '\n⭐ If you cannot shove a player forward, you will attempt to shove them to the side before resorting to an auto-punch.'
+            + '\n⭐ When you punch a player using `punch`, there\'s a chance some of their money will fall onto the floor nearby';
     }
 
     getHelpText(): string {
@@ -130,7 +125,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                 + '`up`, `down`, `left`, `right`: move one step in such direction. Costs `1`\n'
                 + '`unlock`: open all doorways adjacent to you (or just one e.g. `unlock:b12`). Cost is denoted on each doorway, and is reduced with each unlock\n'
                 + '`lock`: close all doorways adjacent to you (or just one e.g. `lock:b12`). Cost is denoted on each doorway\n'
-                + '`punch`: 75% chance of knocking out any player adjacent to you, ending their turn. Costs `2`\n'
+                + '`punch`: 75% chance of knocking out any player adjacent to you, stunning them for `3` moves. Some of their money may fall onto the floor around them. Costs `2`\n'
                 + '`warp`: warp to a random player. Costs `0.5` for each week that has elapsed\n'
                 + '`pause`: do nothing. Free\n\n'
             + 'Misc Rules:\n'
@@ -2194,8 +2189,24 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                                     if (otherPlayer.invincible) {
                                         pushNonCollapsableStatement(`**${player.displayName}** threw fists at the invincible **${otherPlayer.displayName}** to no avail`);
                                     } else if (chance(0.75)) {
+                                        // Stun the other player
                                         otherPlayer.stuns = 3;
-                                        pushNonCollapsableStatement(`**${player.displayName}** knocked out **${otherPlayer.displayName}**`);
+                                        // Get a random number of coins to spawn limited by (1) the number of possible locations, and (2) the other player's points
+                                        const possibleLocations = this.getAdjacentLocations(otherPlayer).filter(l => this.isTileType(l.r, l.c, TileType.EMPTY) && !this.isPlayerAtLocation(l));
+                                        const numCoins = randInt(0, 1 + Math.min(possibleLocations.length, Math.floor(this.getPoints(otherPlayerId))))
+                                        if (numCoins > 0) {
+                                            // Place coins onto a random selection of those locations
+                                            shuffle(possibleLocations);
+                                            const coinSpawnLocations = possibleLocations.slice(0, numCoins);
+                                            for (const location of coinSpawnLocations) {
+                                                this.state.map[location.r][location.c] = TileType.COIN;
+                                            }
+                                            // Deduct points from the other player
+                                            this.addPoints(otherPlayerId, -numCoins);
+                                            pushNonCollapsableStatement(`**${player.displayName}** knocked out **${otherPlayer.displayName}** (shaking **$${numCoins}** from his pockets onto the floor)`);
+                                        } else {
+                                            pushNonCollapsableStatement(`**${player.displayName}** knocked out **${otherPlayer.displayName}**`);
+                                        }
                                     } else {
                                         pushNonCollapsableStatement(`**${player.displayName}** tried to punch **${otherPlayer.displayName}** and missed`);
                                     }
