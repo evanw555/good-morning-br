@@ -1005,7 +1005,8 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                 const [ dr, dc ] = OFFSETS_BY_DIRECTION[nextDecision];
                 const player = this.state.players[userId];
                 // Check if there's a player blocking that direction...
-                const blockingUserId = this.getPlayerAtLocation(player.r + dr, player.c + dc);
+                // TODO: Can we account for multiple players on a tile when constructing the dependencies map?
+                const blockingUserId = this.getPlayersAtLocation({ r: player.r + dr, c: player.c + dc })[0];
                 // If there's a blocking player, then the blocking player must be earlier in the list than this player
                 // Also, only add this dependency if it doesn't create a cycle
                 if (blockingUserId && dependencies[blockingUserId] !== userId) {
@@ -1625,19 +1626,6 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
     }
 
     /**
-     * @returns an unfinished player at the given location, else undefined if no player exists at this location
-     */
-    private getPlayerAtLocation(r: number, c: number): Snowflake | undefined {
-        // Exclude players who've already finished (since they effectively don't have a location)
-        for (const userId of this.getUnfinishedPlayers()) {
-            const player = this.state.players[userId];
-            if (player.r === r && player.c === c) {
-                return userId;
-            }
-        }
-    }
-
-    /**
      * @returns all unfinished players at the given location
      */
     private getPlayersAtLocation(location: MazeLocation): Snowflake[] {
@@ -1653,7 +1641,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
     }
 
     private isPlayerAtLocation(location: MazeLocation): boolean {
-        return this.getPlayerAtLocation(location.r, location.c) !== undefined;
+        return this.getPlayersAtLocation(location).length > 0;
     }
 
     /**
@@ -2035,8 +2023,8 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                     this.addRenderLine(currentLocation, newLocation, player.invincible ? 'rainbow' : undefined);
                     let skipStepMessage = false;
                     // Handle situations where another user is standing in the way
-                    // TODO: What if multiple players are standing in the way??
-                    const blockingUserId: Snowflake | undefined = this.getPlayerAtLocation(nr, nc);
+                    // TODO: What if multiple players are standing in the way?? HANDLE ALL PLAYERS!
+                    const blockingUserId: Snowflake | undefined = this.getPlayersAtLocation(newLocation)[0];
                     if (blockingUserId) {
                         const blockingUser = this.state.players[blockingUserId];
                         if (player.invincible && !blockingUser.invincible) {
@@ -2836,7 +2824,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         for (const [dr, dc] of offsets) {
             const nr = player.r + dr;
             const nc = player.c + dc;
-            if (this.isWalkable(nr, nc) && !this.getPlayerAtLocation(nr, nc) && !this.isGoal(nr, nc)) {
+            if (this.isWalkable(nr, nc) && !this.isPlayerAtLocation({ r: nr, c: nc }) && !this.isGoal(nr, nc)) {
                 return { r: nr, c: nc };
             }
         }
