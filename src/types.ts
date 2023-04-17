@@ -242,7 +242,8 @@ export interface RawGoodMorningState {
     dailyStatus: Record<Snowflake, DailyPlayerState>,
     players: Record<Snowflake, PlayerState>,
     game?: GameState,
-    acceptingGameDecisions?: boolean
+    acceptingGameDecisions?: boolean,
+    birthdayBoys?: Snowflake[]
 }
 
 export interface Season {

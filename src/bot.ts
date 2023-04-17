@@ -19,6 +19,7 @@ const auth = loadJson('config/auth.json');
 const config: GoodMorningConfig = loadJson('config/config.json');
 
 const storage = new FileStorage('./data/');
+const sharedStorage = new FileStorage('/home/pi/.mcmp/');
 const languageConfig = loadJson('config/language.json');
 const languageGenerator = new LanguageGenerator(languageConfig);
 languageGenerator.setLogger((message) => {
@@ -801,6 +802,17 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
 
     // Set today's positive react emoji
     state.setGoodMorningEmoji(config.goodMorningEmojiOverrides[toCalendarDate(new Date())] ?? config.defaultGoodMorningEmoji);
+
+    // Set today's birthday boys
+    try {
+        const birthdays: Record<Snowflake, string> = await sharedStorage.readJson('birthdays.json');
+        state.setBirthdayBoys(Object.keys(birthdays).filter(id => birthdays[id] === toCalendarDate(new Date())));
+        if (state.getBirthdayBoys().length > 0) {
+            await logger.log(`Today's birthday boys: ${getBoldNames(state.getBirthdayBoys())}`);
+        }
+    } catch (err) {
+        await logger.log(`Failed to load up today's birthday boys: \`${err}\``);
+    }
 
     // Give a hint for today's magic words
     if (state.hasMagicWords()) {

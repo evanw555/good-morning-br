@@ -799,6 +799,14 @@ export default class GoodMorningState {
         }
     }
 
+    setBirthdayBoys(birthdayBoys: Snowflake[]) {
+        this.data.birthdayBoys = birthdayBoys;
+    }
+
+    getBirthdayBoys(): Snowflake[] {
+        return this.data.birthdayBoys ?? [];
+    }
+
     toJson(): string {
         return JSON.stringify(this.data, null, 2);
     }
