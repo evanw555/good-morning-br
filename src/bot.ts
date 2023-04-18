@@ -2297,6 +2297,19 @@ let awaitingGameCommands = false;
 let awaitingSubmission = false;
 
 const processCommands = async (msg: Message): Promise<void> => {
+    // First thing's first: force timeout commands
+    const forceTimeoutPattern = /^\+?FORCE_TIMEOUT\(([A-Z_]+)\)/;
+    const forceTimeoutMatch = msg.content.match(forceTimeoutPattern);
+    if (forceTimeoutMatch) {
+        const timeoutName = forceTimeoutMatch[1];
+        if (timeoutName && timeoutName in TIMEOUT_CALLBACKS) {
+            await msg.reply(`Invoking timeout \`${timeoutName}\`...`);
+            await TIMEOUT_CALLBACKS[timeoutName]();
+        } else {
+            await msg.reply(`Invalid timeout name \`${timeoutName || 'N/A'}\``);
+        }
+        return;
+    }
     if (awaitingSubmission) {
         try {
             const submission = toSubmission(msg);
