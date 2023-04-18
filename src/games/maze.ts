@@ -2281,7 +2281,9 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                                         otherPlayer.stuns = 3;
                                         // Get a random number of coins to spawn limited by (1) the number of possible locations, and (2) the other player's points
                                         const possibleLocations = this.getAdjacentLocations(otherPlayer).filter(l => this.isTileType(l.r, l.c, TileType.EMPTY) && !this.isPlayerAtLocation(l));
-                                        const numCoins = randInt(0, 1 + Math.min(possibleLocations.length, Math.floor(this.getPoints(otherPlayerId))))
+                                        const maxNumCoins = Math.min(possibleLocations.length, Math.floor(this.getPoints(otherPlayerId)));
+                                        // TODO: Is it OP to keep this at max? Uncomment the RNG if so
+                                        const numCoins = maxNumCoins; // randInt(0, 1 + maxNumCoins);
                                         if (numCoins > 0) {
                                             // Place coins onto a random selection of those locations
                                             shuffle(possibleLocations);
