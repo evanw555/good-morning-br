@@ -116,8 +116,9 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
             // TODO: Temp message to notify players of changes, remove this after 4/22/23
             + '\n**Changes since last week:**'
             + '\n⭐ If you cannot shove a player forward, you will attempt to shove them to the side before resorting to an auto-punch.'
-            + '\n⭐ When you punch a player using `punch`, there\'s a chance some of their money will fall onto the floor nearby'
-            + '\n⭐ If you end your turn on another player, you will move to a random adjacent tile if any are vacant';
+            + '\n⭐ When you punch a player using `punch`, some of their money will fall onto the floor nearby'
+            + '\n⭐ If you end your turn on another player, you will move to a random adjacent tile if any are vacant'
+            + '\n⭐ Players can be shoved into traps, coins, the goal, etc.';
     }
 
     getHelpText(): string {
@@ -202,8 +203,8 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         // Choose a random vacant spawn location around any of these players
         const spawnLocation = this.getSpawnableLocationAroundPlayers(worstPlayers);
         // If there was no available spawn location, then just choose a random tile in the top row
-        const spawnR = spawnLocation?.r ?? 0;
-        const spawnC = spawnLocation?.c ?? randInt(0, this.state.columns);
+        const spawnR = spawnLocation?.location.r ?? 0;
+        const spawnC = spawnLocation?.location.c ?? randInt(0, this.state.columns);
         // This new player gets starter points (plus more if later in the game) as a balance
         const lateStarterPoints: number = MazeGame.STARTER_POINTS + this.getTurn();
         // Create the player at this spawn location
@@ -1994,6 +1995,100 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
             flushCollapsableStatements();
             summaryData.statements.push(s);
         };
+        const movePlayerTo = (userId: Snowflake, location: MazeLocation) => {
+            const player = this.state.players[userId]
+            // If the player is finished, no movement actions should be processed on them
+            if (!player || player.finished) {
+                return;
+            }
+            // Move the player
+            player.r = location.r;
+            player.c = location.c;
+            // Check to see if the player has collected any coins
+            if (this.isTileType(player.r, player.c, TileType.COIN)) {
+                // Set the tile back to empty
+                this.state.map[player.r][player.c] = TileType.EMPTY;
+                // Award the user and notify
+                const coinValue = randChoice(1, 2, 2, 3, 3, 4);
+                this.addPoints(userId, coinValue);
+                pushNonCollapsableStatement(`**${this.getDisplayName(userId)}** collected a gold coin worth **$${coinValue}**`);
+            }
+            // Check if the player is at the goal
+            if (this.isGoal(player.r, player.c)) {
+                // Mark the player as finished
+                player.finished = true;
+                // Add to list of finished players
+                this.addWinner(userId);
+                // Add to log and end the turn
+                pushNonCollapsableStatement(`**${this.getDisplayName(userId)}** reached the goal for _${getRankString(this.state.winners.length)} place_`);
+                return;
+            }
+            // If this player's turn is already over...
+            if (!this.hasPendingDecisions(userId)) {
+                // Handle hidden traps if not invincible
+                if (!player.invincible) {
+                    let trapRevealed = false;
+                    const trapOwnerId = this.getTrapOwner({ r: player.r, c: player.c });
+                    const locationString = MazeGame.getLocationString(player.r, player.c);
+                    // Reveal the trap if it's hidden
+                    if (this.getTileAtUser(userId) === TileType.HIDDEN_TRAP) {
+                        this.state.map[player.r][player.c] = TileType.TRAP;
+                        trapRevealed = true;
+                        if (trapOwnerId) {
+                            pushNonCollapsableStatement(`**${player.displayName}** revealed a hidden trap placed by **${this.getDisplayName(trapOwnerId)}**`);
+                        } else {
+                            pushNonCollapsableStatement(`**${player.displayName}** revealed a hidden trap`);
+                        }
+                    }
+                    // Handle revealed traps (this will trigger if the above condition is triggered)
+                    if (this.getTileAtUser(userId) === TileType.TRAP) {
+                        // Track how much "progress" was lost (steps back to the origin location)
+                        let progressLost = 1;
+                        if (player.originLocation) {
+                            this.addRenderLine({ r: player.r, c: player.c }, player.originLocation, 'red');
+                            // TODO: What if the path doesn't exist? Zero points?
+                            progressLost = this.getNumStepsToLocation(player.originLocation, { r: player.r, c: player.c });
+                            // To prevent an infinite loop, only move them if the location is different
+                            if (player.r !== player.originLocation.r || player.c !== player.originLocation.c) {
+                                movePlayerTo(userId, player.originLocation);
+                            }
+                        } else {
+                            logger.log(`Unable to send \`${userId}\` back to origin location (it doesn't exist!)`);
+                        }
+                        // Stun the player
+                        player.stuns = 1;
+                        // Add a statement about this trap being triggered
+                        const trapText = !trapOwnerId ? 'a trap' : `**${this.getDisplayName(trapOwnerId)}'s** trap`;
+                        logger.log(`\`${this.getDisplayName(userId)}\` triggered ${trapText} at \`${locationString}\` (progress lost: **${progressLost}**)`);
+                        if (trapRevealed) {
+                            pushNonCollapsableStatement(`was sent back to **${this.getPlayerLocationString(userId)}**`);
+                        } else {
+                            pushNonCollapsableStatement(`**${player.displayName}** stepped on ${trapText} and was sent back to **${this.getPlayerLocationString(userId)}**`);
+                        }
+                        // If the trap has an owner, reward the owner (1 point for each "step" back)
+                        if (trapOwnerId) {
+                            this.addPoints(trapOwnerId, progressLost);
+                            pushNonCollapsableStatement(`**${this.getDisplayName(trapOwnerId)}** earned **$${progressLost}** for trapping`);
+                        }
+                    }
+                }
+                // Finally, move to an adjacent vacant spot if the turn ended on another player
+                if (this.getPlayersAtLocation(player).length > 1) {
+                    const someOtherPlayerId = this.getPlayersAtLocation(player).filter(id => id !== userId)[0];
+                    // Find adjacent locations that are walkable, vacant, and NOT traps (because that would be unfair...)
+                    const adjacentVacantLocations = this.getAdjacentLocations(player).filter(l => this.isLocationShovable(l) && !this.isTrap(l));
+                    if (adjacentVacantLocations.length > 0) {
+                        const randomLocation = randChoice(...adjacentVacantLocations);
+                        if (player.stuns) {
+                            pushNonCollapsableStatement(`**${player.displayName}'s** corpse rolled off **${this.getDisplayName(someOtherPlayerId)}'s** and over to the side`);
+                        } else {
+                            pushNonCollapsableStatement(`**${player.displayName}** got off the shoulders of **${this.getDisplayName(someOtherPlayerId)}** and stepped aside`);
+                        }
+                        movePlayerTo(userId, randomLocation);
+                    }
+                }
+            }
+        };
         // First, tick down all stunned players who still have pending decisions
         const playersRegainingConsciousness: Snowflake[] = [];
         for (const userId of this.getUnfinishedPlayers()) {
@@ -2013,6 +2108,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         let numPlayersProcessed: number = 0;
         for (const userId of this.getDecisionShuffledPlayers()) {
             const player = this.state.players[userId];
+            const startedFinished = player.finished ?? false;
             if (this.hasPendingDecisions(userId)) {
                 numPlayersProcessed++;
                 let endTurn = false;
@@ -2021,7 +2117,6 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                     const nc = player.c + dc;
                     const currentLocation = { r: player.r, c: player.c };
                     const newLocation = { r: nr, c: nc };
-                    this.addRenderLine(currentLocation, newLocation, player.invincible ? 'rainbow' : undefined);
                     let skipStepMessage = false;
                     // Handle situations where another user is standing in the way
                     // TODO: What if multiple players are standing in the way?? HANDLE ALL PLAYERS!
@@ -2060,20 +2155,18 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                                     // TODO: This should check if the shove location triggered a trap
                                     // First, if the blocking player can be shoved then shove them!
                                     if (this.isLocationShovable(shoveLocation)) {
-                                        blockingUser.r = shoveLocation.r;
-                                        blockingUser.c = shoveLocation.c;
                                         const shoveDirection = MazeGame.getDirectionByOffset(shoveOffset);
                                         skipStepMessage = true;
                                         pushNonCollapsableStatement(`**${player.displayName}** shoved **${blockingUser.displayName}** ${shoveDirection}ward`);
+                                        movePlayerTo(blockingUserId, shoveLocation);
                                     }
                                     // Else, if they can be shoved to either side then shove them to a random vacant side
                                     else if (orthogonalShoveLocations.length > 0) {
                                         shuffle(orthogonalShoveLocations);
                                         const sideLocation = orthogonalShoveLocations[0];
-                                        blockingUser.r = sideLocation.r;
-                                        blockingUser.c = sideLocation.c;
                                         skipStepMessage = true;
-                                        pushNonCollapsableStatement(`**${player.displayName}** shoved **${blockingUser.displayName}** to the side`)
+                                        pushNonCollapsableStatement(`**${player.displayName}** shoved **${blockingUser.displayName}** to the side`);
+                                        movePlayerTo(blockingUserId, sideLocation);
                                     }
                                     // Else, if the player has 4+ points, then auto-punch (threshold accounts for punching then walking fully past)
                                     // TODO: Should this be configurable? Can players opt-out? Should it be another price?
@@ -2098,11 +2191,11 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                     }
                     // If the logic hasn't returned by now, then attempt to walk to the new location
                     if (this.isWalkable(nr, nc)) {
-                        player.r += dr;
-                        player.c += dc;
                         if (!skipStepMessage) {
                             summaryData.consecutiveStepUsers.push(player.displayName);
                         }
+                        this.addRenderLine(currentLocation, newLocation, player.invincible ? 'rainbow' : undefined);
+                        movePlayerTo(userId, newLocation);
                         return true;
                     }
                     pushNonCollapsableStatement(`**${player.displayName}** walked into a wall and gave up`);
@@ -2216,16 +2309,15 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                             pushNonCollapsableStatement(`**${player.displayName}** tried to warp but forgot to jump into the wormhole because he was watching webMs`);
                             return false;
                         }
-                        const { r: newR, c: newC, userId: nearUserId } = warpableLocation;
+                        const { location: newLocation, userId: nearUserId } = warpableLocation;
                         const isFirstWarp: boolean = !player.warped;
-                        const isCloser: boolean = this.approximateCostToGoal(newR, newC) < this.approximateCostToGoal(player.r, player.c);
+                        const isCloser: boolean = this.approximateCostToGoal(newLocation.r, newLocation.c) < this.approximateCostToGoal(player.r, player.c);
                         // If it's the user's first warp of the turn or the warp is closer to the goal, do it
                         if (isFirstWarp || isCloser) {
-                            this.addRenderLine({ r: player.r, c: player.c }, { r: newR, c: newC }, 'warp');
-                            player.r = newR;
-                            player.c = newC;
+                            this.addRenderLine({ r: player.r, c: player.c }, newLocation, 'warp');
                             player.warped = true;
                             pushNonCollapsableStatement(`**${player.displayName}** warped to **${this.getDisplayName(nearUserId)}**`);
+                            movePlayerTo(userId, newLocation);
                         } else {
                             pushNonCollapsableStatement(`**${player.displayName}** avoided warping to **${this.getDisplayName(nearUserId)}**`);
                         }
@@ -2365,8 +2457,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                                 }
                             }
                             // Move to the new location
-                            player.r = intermediateLocation.r;
-                            player.c = intermediateLocation.c;
+                            movePlayerTo(userId, intermediateLocation);
                             spacesMoved++;
                         }
                         this.addRenderLine(previousLocation, { r: player.r, c: player.c }, 'red');
@@ -2410,24 +2501,9 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                         }
                     }
 
-                    // Check to see if the player has collected any coins
-                    if (this.isTileType(player.r, player.c, TileType.COIN)) {
-                        // Set the tile back to empty
-                        this.state.map[player.r][player.c] = TileType.EMPTY;
-                        // Award the user and notify
-                        const coinValue = randChoice(1, 2, 2, 3, 3, 4);
-                        this.addPoints(userId, coinValue);
-                        pushNonCollapsableStatement(`**${this.getDisplayName(userId)}** collected a gold coin worth **$${coinValue}**`);
-                    }
-
-                    // Check if the player is at the goal
-                    if (!player.finished && this.isGoal(player.r, player.c)) {
-                        // Mark the player as finished
-                        player.finished = true;
-                        // Add to list of finished players
-                        this.addWinner(userId);
-                        // Add to log and end the turn
-                        pushNonCollapsableStatement(`**${this.getDisplayName(userId)}** reached the goal for _${getRankString(this.state.winners.length)} place_`)
+                    // If the player started unfinished but is now finished, end their turn now
+                    // TODO: Do we need to do this? Can we just skip-yet-consume certain actions for finished players?
+                    if (!startedFinished && player.finished) {
                         endTurn = true;
                     }
                 }
@@ -2445,66 +2521,9 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                     if (player.warped) {
                         player.stuns = 1;
                     }
-                    // Handle hidden traps if not invincible
-                    if (!player.invincible) {
-                        let trapRevealed = false;
-                        const trapOwnerId = this.getTrapOwner({ r: player.r, c: player.c });
-                        const locationString = MazeGame.getLocationString(player.r, player.c);
-                        // Reveal the trap if it's hidden
-                        if (this.getTileAtUser(userId) === TileType.HIDDEN_TRAP) {
-                            this.state.map[player.r][player.c] = TileType.TRAP;
-                            trapRevealed = true;
-                            if (trapOwnerId) {
-                                pushNonCollapsableStatement(`**${player.displayName}** revealed a hidden trap placed by **${this.getDisplayName(trapOwnerId)}**`);
-                            } else {
-                                pushNonCollapsableStatement(`**${player.displayName}** revealed a hidden trap`);
-                            }
-                        }
-                        // Handle revealed traps (this will trigger if the above condition is triggered)
-                        if (this.getTileAtUser(userId) === TileType.TRAP) {
-                            // Track how much "progress" was lost (steps back to the origin location)
-                            let progressLost = 1;
-                            if (player.originLocation) {
-                                this.addRenderLine({ r: player.r, c: player.c }, player.originLocation, 'red');
-                                // TODO: What if the path doesn't exist? Zero points?
-                                progressLost = this.getNumStepsToLocation(player.originLocation, { r: player.r, c: player.c });
-                                player.r = player.originLocation.r;
-                                player.c = player.originLocation.c;
-                            } else {
-                                logger.log(`Unable to send \`${userId}\` back to origin location (it doesn't exist!)`);
-                            }
-                            // Stun the player
-                            player.stuns = 1;
-                            // Add a statement about this trap being triggered
-                            const trapText = !trapOwnerId ? 'a trap' : `**${this.getDisplayName(trapOwnerId)}'s** trap`;
-                            logger.log(`\`${this.getDisplayName(userId)}\` triggered ${trapText} at \`${locationString}\` (progress lost: **${progressLost}**)`);
-                            if (trapRevealed) {
-                                pushNonCollapsableStatement(`was sent back to **${this.getPlayerLocationString(userId)}**`);
-                            } else {
-                                pushNonCollapsableStatement(`**${player.displayName}** stepped on ${trapText} and was sent back to **${this.getPlayerLocationString(userId)}**`);
-                            }
-                            // If the trap has an owner, reward the owner (1 point for each "step" back)
-                            if (trapOwnerId) {
-                                this.addPoints(trapOwnerId, progressLost);
-                                pushNonCollapsableStatement(`**${this.getDisplayName(trapOwnerId)}** earned **$${progressLost}** for trapping`);
-                            }
-                        }
-                    }
-                    // Finally, move to an adjacent vacant spot if the turn ended on another player
-                    if (this.getPlayersAtLocation(player).length > 1) {
-                        const someOtherPlayerId = this.getPlayersAtLocation(player).filter(id => id !== userId)[0];
-                        const adjacentVacantLocations = this.getAdjacentLocations(player).filter(l => this.isLocationShovable(l));
-                        if (adjacentVacantLocations.length > 0) {
-                            const randomLocation = randChoice(...adjacentVacantLocations);
-                            player.r = randomLocation.r;
-                            player.c = randomLocation.c;
-                            if (player.stuns) {
-                                pushNonCollapsableStatement(`**${player.displayName}'s** corpse rolled off **${this.getDisplayName(someOtherPlayerId)}'s** and over to the side`);
-                            } else {
-                                pushNonCollapsableStatement(`**${player.displayName}** got off the shoulders of **${this.getDisplayName(someOtherPlayerId)}** and stepped aside`);
-                            }
-                        }
-                    }
+                    // Hack to handle end-of-turn movement triggers e.g. traps
+                    // (since decisions aren't consumed until after the action is processed, so the final step didn't trigger this)
+                    movePlayerTo(userId, player);
                 }
             } else {
                 // Emergency fallback just in case the player has an empty decision list
@@ -2860,14 +2879,14 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
      * Given a list of players, return a random location that a user may spawn in in a 3x3 box around any of the players.
      * If no such tile exists for any of the players, return nothing.
      */
-    getSpawnableLocationAroundPlayers(userIds: Snowflake[]): { r: number, c: number, userId: Snowflake } | undefined {
+    getSpawnableLocationAroundPlayers(userIds: Snowflake[]): { location: MazeLocation, userId: Snowflake } | undefined {
         // Make sure to clone it first
         const shuffledUserIds: Snowflake[] = userIds.slice();
         shuffle(shuffledUserIds);
         for (const userId of shuffledUserIds) {
             const location = this.getSpawnableLocationAroundPlayer(userId);
             if (location) {
-                return { r: location.r, c: location.c, userId };
+                return { location, userId };
             }
         }
     }
