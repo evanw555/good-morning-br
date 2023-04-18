@@ -2072,19 +2072,25 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                         }
                     }
                 }
-                // Finally, move to an adjacent vacant spot if the turn ended on another player
+                // Finally, move to the best adjacent vacant spot (with no traps) if the turn ended on another player
                 if (this.getPlayersAtLocation(player).length > 1) {
                     const someOtherPlayerId = this.getPlayersAtLocation(player).filter(id => id !== userId)[0];
-                    // Find adjacent locations that are walkable, vacant, and NOT traps (because that would be unfair...)
-                    const adjacentVacantLocations = this.getAdjacentLocations(player).filter(l => this.isLocationShovable(l) && !this.isTrap(l));
-                    if (adjacentVacantLocations.length > 0) {
-                        const randomLocation = randChoice(...adjacentVacantLocations);
+                    const adjacentVacantLocation = this.getBestVacantAdjacentLocation(player);
+                    if (adjacentVacantLocation) {
                         if (player.stuns) {
-                            pushNonCollapsableStatement(`**${player.displayName}'s** corpse rolled off **${this.getDisplayName(someOtherPlayerId)}'s** and over to the side`);
+                            if (this.getPlayerStuns(someOtherPlayerId)) {
+                                pushNonCollapsableStatement(`**${player.displayName}'s** corpse rolled off **${this.getDisplayName(someOtherPlayerId)}'s** and over to the side`);
+                            } else {
+                                pushNonCollapsableStatement(`**${this.getDisplayName(someOtherPlayerId)}** kicked **${player.displayName}'s** lifeless body over to the side`);
+                            }
                         } else {
-                            pushNonCollapsableStatement(`**${player.displayName}** got off the shoulders of **${this.getDisplayName(someOtherPlayerId)}** and stepped aside`);
+                            if (this.getPlayerStuns(someOtherPlayerId)) {
+                                pushNonCollapsableStatement(`**${player.displayName}** got off **${this.getDisplayName(someOtherPlayerId)}'s** lifeless body and stepped aside`);
+                            } else {
+                                pushNonCollapsableStatement(`**${player.displayName}** got off the shoulders of **${this.getDisplayName(someOtherPlayerId)}** and stepped aside`);
+                            }
                         }
-                        movePlayerTo(userId, randomLocation);
+                        movePlayerTo(userId, adjacentVacantLocation);
                     }
                 }
             }
@@ -2790,6 +2796,30 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
             return [override];
         }
         return this.getAdjacentLocations(location);
+    }
+
+    /**
+     * @returns The adjacent walkable, vacant, and trapless location with the lowest cost to the goal (if it exists)
+     */
+    private getBestVacantAdjacentLocation(location: MazeLocation | undefined): MazeLocation | undefined {
+        // Emergency fallback
+        if (!location) {
+            return undefined;
+        }
+        let bestLocation: MazeLocation | undefined = undefined;
+        let lowestCostToGoal: number = Number.POSITIVE_INFINITY;
+        for (const adjacentLocation of this.getAdjacentLocations(location)) {
+            // Only consider locations that are walkable, vacant, and not traps (because that would be unfair...)
+            if (this.isLocationShovable(adjacentLocation) && !this.isTrap(adjacentLocation)) {
+                // If the cost is the lowest so far, use it...
+                const costToGoal = this.approximateCostToGoal(adjacentLocation.r, adjacentLocation.c);
+                if (costToGoal < lowestCostToGoal) {
+                    bestLocation = adjacentLocation;
+                    lowestCostToGoal = costToGoal;
+                }
+            }
+        }
+        return bestLocation;
     }
 
     private isAdjacent(l1: MazeLocation, l2: MazeLocation): boolean {
