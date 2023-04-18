@@ -2645,7 +2645,7 @@ const processCommands = async (msg: Message): Promise<void> => {
             }
         } else if (sanitizedText.includes('temp')) {
             await msg.reply('Populating members...');
-            const members = shuffle((await guild.members.list({ limit: 50 })).toJSON()).slice(0, randInt(10, 20));
+            const members = shuffle((await guild.members.list({ limit: 75 })).toJSON()).slice(0, randInt(10, 20));
             // Sort by display name just so it's easy to figure out what the ordering is supposed to be
             members.sort((x, y) => x.displayName.localeCompare(y.displayName));
             // Add self if not already in the fetched members list
@@ -2658,7 +2658,7 @@ const processCommands = async (msg: Message): Promise<void> => {
             if (sanitizedText.includes('maze')) {
                 // tempDungeon = DungeonCrawler.createBest(members, 20, 40);
                 // tempDungeon = DungeonCrawler.createSectional(members, { sectionSize: 33, sectionsAcross: 1 }); // Before: size=11,across=3
-                tempDungeon = MazeGame.createOrganicBest(members, 20, 43, 19, 90);
+                tempDungeon = MazeGame.createOrganicBest(members, 20, 33, 19, 80);
                 (tempDungeon as MazeGame).addPlayerItem(msg.author.id, 'trap', 5);
                 (tempDungeon as MazeGame).addPlayerItem(msg.author.id, 'boulder', 3);
                 (tempDungeon as MazeGame).addPlayerItem(msg.author.id, 'seal', 3);

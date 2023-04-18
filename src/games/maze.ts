@@ -2124,6 +2124,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                     const currentLocation = { r: player.r, c: player.c };
                     const newLocation = { r: nr, c: nc };
                     let skipStepMessage = false;
+                    this.addRenderLine(currentLocation, newLocation, player.invincible ? 'rainbow' : undefined);
                     // Handle situations where another user is standing in the way
                     // TODO: What if multiple players are standing in the way?? HANDLE ALL PLAYERS!
                     const blockingUserId: Snowflake | undefined = this.getPlayersAtLocation(newLocation)[0];
@@ -2164,15 +2165,20 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                                         const shoveDirection = MazeGame.getDirectionByOffset(shoveOffset);
                                         skipStepMessage = true;
                                         pushNonCollapsableStatement(`**${player.displayName}** shoved **${blockingUser.displayName}** ${shoveDirection}ward`);
+                                        // Move this player first so their location is accurate when the blocking player's movement triggers are processed
+                                        movePlayerTo(userId, newLocation);
                                         movePlayerTo(blockingUserId, shoveLocation);
+                                        return true;
                                     }
                                     // Else, if they can be shoved to either side then shove them to a random vacant side
                                     else if (orthogonalShoveLocations.length > 0) {
                                         shuffle(orthogonalShoveLocations);
                                         const sideLocation = orthogonalShoveLocations[0];
-                                        skipStepMessage = true;
                                         pushNonCollapsableStatement(`**${player.displayName}** shoved **${blockingUser.displayName}** to the side`);
+                                        // Move this player first so their location is accurate when the blocking player's movement triggers are processed
+                                        movePlayerTo(userId, newLocation);
                                         movePlayerTo(blockingUserId, sideLocation);
+                                        return true;
                                     }
                                     // Else, if the player has 4+ points, then auto-punch (threshold accounts for punching then walking fully past)
                                     // TODO: Should this be configurable? Can players opt-out? Should it be another price?
@@ -2200,7 +2206,6 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                         if (!skipStepMessage) {
                             summaryData.consecutiveStepUsers.push(player.displayName);
                         }
-                        this.addRenderLine(currentLocation, newLocation, player.invincible ? 'rainbow' : undefined);
                         movePlayerTo(userId, newLocation);
                         return true;
                     }
