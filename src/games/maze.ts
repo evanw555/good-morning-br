@@ -815,9 +815,9 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         const multiplier = (points > 0) ? this.getPlayerMultiplier(userId) : 1;
 
         // TODO: temp logging to see how this plays out
-        if (multiplier > 1) {
-            logger.log(`Adding **${points}** points to **${this.getDisplayName(userId)}** with **${multiplier}x** multiplier (maze)`);
-        }
+        // if (multiplier > 1) {
+        //     logger.log(`Adding **${points}** points to **${this.getDisplayName(userId)}** with **${multiplier}x** multiplier (maze)`);
+        // }
 
         this.state.players[userId].points = toFixed(this.getPoints(userId) + (points * multiplier));
     }
@@ -2042,33 +2042,33 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                     }
                     // Handle revealed traps (this will trigger if the above condition is triggered)
                     if (this.getTileAtUser(userId) === TileType.TRAP) {
-                        // Track how much "progress" was lost (steps back to the origin location)
-                        let progressLost = 1;
-                        if (player.originLocation) {
-                            this.addRenderLine({ r: player.r, c: player.c }, player.originLocation, 'red');
-                            // TODO: What if the path doesn't exist? Zero points?
-                            progressLost = this.getNumStepsToLocation(player.originLocation, { r: player.r, c: player.c });
-                            // To prevent an infinite loop, only move them if the location is different
-                            if (player.r !== player.originLocation.r || player.c !== player.originLocation.c) {
-                                movePlayerTo(userId, player.originLocation);
+                        // Only trigger this trap if the user has an origin location which is different than their current location.
+                        // This is prevent an infinite loop (and situations which don't make sense)
+                        const trapDestination = player.originLocation;
+                        if (trapDestination && !(player.r === trapDestination.r && player.c === trapDestination.c)) {
+                            // Track how much "progress" was lost (steps back to the origin location)
+                            const destinationString = MazeGame.getLocationString(trapDestination.r, trapDestination.c);
+                            const progressLost = this.getNumStepsToLocation(trapDestination, player) || 1;
+                            // Stun the player
+                            player.stuns = 1;
+                            // Add a statement about this trap being triggered
+                            const trapText = !trapOwnerId ? 'a trap' : `**${this.getDisplayName(trapOwnerId)}'s** trap`;
+                            logger.log(`\`${this.getDisplayName(userId)}\` triggered ${trapText} at \`${locationString}\` (progress lost: **${progressLost}**)`);
+                            if (trapRevealed) {
+                                pushNonCollapsableStatement(`was sent back to **${destinationString}**`);
+                            } else {
+                                pushNonCollapsableStatement(`**${player.displayName}** stepped on ${trapText} and was sent back to **${destinationString}**`);
                             }
+                            // If the trap has an owner, reward the owner (1 point for each "step" back)
+                            if (trapOwnerId) {
+                                this.addPoints(trapOwnerId, progressLost);
+                                pushNonCollapsableStatement(`**${this.getDisplayName(trapOwnerId)}** earned **$${progressLost}** for trapping`);
+                            }
+                            // We move the player last so that any resulting movement triggers are after the log statements are added
+                            this.addRenderLine({ r: player.r, c: player.c }, trapDestination, 'red');
+                            movePlayerTo(userId, trapDestination);
                         } else {
-                            logger.log(`Unable to send \`${userId}\` back to origin location (it doesn't exist!)`);
-                        }
-                        // Stun the player
-                        player.stuns = 1;
-                        // Add a statement about this trap being triggered
-                        const trapText = !trapOwnerId ? 'a trap' : `**${this.getDisplayName(trapOwnerId)}'s** trap`;
-                        logger.log(`\`${this.getDisplayName(userId)}\` triggered ${trapText} at \`${locationString}\` (progress lost: **${progressLost}**)`);
-                        if (trapRevealed) {
-                            pushNonCollapsableStatement(`was sent back to **${this.getPlayerLocationString(userId)}**`);
-                        } else {
-                            pushNonCollapsableStatement(`**${player.displayName}** stepped on ${trapText} and was sent back to **${this.getPlayerLocationString(userId)}**`);
-                        }
-                        // If the trap has an owner, reward the owner (1 point for each "step" back)
-                        if (trapOwnerId) {
-                            this.addPoints(trapOwnerId, progressLost);
-                            pushNonCollapsableStatement(`**${this.getDisplayName(trapOwnerId)}** earned **$${progressLost}** for trapping`);
+                            logger.log(`Unable to trigger trap for \`${this.getDisplayName(userId)}\` (origin=\`${JSON.stringify(player.originLocation)}\`)`);
                         }
                     }
                 }
