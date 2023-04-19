@@ -554,6 +554,14 @@ export default class GoodMorningState {
         this.getOrCreateDailyStatus(userId).videoRank = videoRank;
     }
 
+    hasSaidHappyBirthday(userId: Snowflake): boolean {
+        return this.getDailyStatus(userId)?.saidHappyBirthday ?? false;
+    }
+
+    setSaidHappyBirthday(userId: Snowflake, saidHappyBirthday: boolean) {
+        this.getOrCreateDailyStatus(userId).saidHappyBirthday = saidHappyBirthday;
+    }
+
     getCurrentLeader(): Snowflake | undefined {
         return this.data.currentLeader;
     }
@@ -805,6 +813,10 @@ export default class GoodMorningState {
 
     getBirthdayBoys(): Snowflake[] {
         return this.data.birthdayBoys ?? [];
+    }
+
+    hasBirthdayBoys(): boolean {
+        return this.getBirthdayBoys().length > 0;
     }
 
     toJson(): string {

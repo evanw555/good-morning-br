@@ -807,11 +807,12 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     try {
         const birthdays: Record<Snowflake, string> = await sharedStorage.readJson('birthdays.json');
         state.setBirthdayBoys(Object.keys(birthdays).filter(id => birthdays[id] === toCalendarDate(new Date())));
-        if (state.getBirthdayBoys().length > 0) {
+        if (state.hasBirthdayBoys()) {
             await logger.log(`Today's birthday boys: ${getBoldNames(state.getBirthdayBoys())}`);
         }
     } catch (err) {
         await logger.log(`Failed to load up today's birthday boys: \`${err}\``);
+        state.setBirthdayBoys([]);
     }
 
     // Give a hint for today's magic words
@@ -903,6 +904,11 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         for (const beginTurnMessage of beginTurnMessages) {
             await messenger.send(goodMorningChannel, beginTurnMessage);
         }
+    }
+
+    // Notify the channel of any birthdays today
+    if (state.hasBirthdayBoys()) {
+        await messenger.send(goodMorningChannel, `Everyone please wish a very _happy birthday_ to our very own ${getJoinedMentions(state.getBirthdayBoys())}! 🎁`);
     }
 
     // Send any game-related DMs, if any
@@ -2806,6 +2812,16 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     state.setMostRecentBait(msg);
                     await dumpState();
                 }
+            }
+
+            // Reward the user for saying happy birthday (if there are any birthdays today and they haven't already)
+            // TODO: Can we detect this better?
+            if (state.hasBirthdayBoys() && !state.hasSaidHappyBirthday(userId) && msg.content.toLocaleLowerCase().includes('happy birthday')) {
+                state.setSaidHappyBirthday(userId, true);
+                // Award the default award as a bonus
+                state.awardPoints(userId, config.defaultAward);
+                // React specially so they know they were rewarded
+                await reactToMessage(msg, '🎁');
             }
 
             // If the event is an anonymous submission day, then completely ignore the message

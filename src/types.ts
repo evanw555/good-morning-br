@@ -55,6 +55,7 @@ export interface DailyPlayerState {
     rank?: number,
     videoRank?: number,
     pointsLost?: number,
+    saidHappyBirthday?: boolean,
     pointsEarned: number
 }
 
