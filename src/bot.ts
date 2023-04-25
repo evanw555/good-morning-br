@@ -1672,34 +1672,35 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         await messenger.send(goodMorningChannel,
             `Alright, that's all of them! Use the \`/vote\` command to vote for your 3 favorite submissions. `
             + `If you submitted a ${state.getEvent().submissionType}, you _must_ vote otherwise you will be disqualified and penalized.`);
+        // TODO: Enable if we can figure out why this breaks
         // TODO: Remove try-catch once we're sure this works
-        try {
-            const selectSubmissionMessage = await goodMorningChannel.send({
-                content: 'Alternatively, you can vote using this peculiar menu',
-                components: [{
-                    type: ComponentType.ActionRow,
-                    components: [{
-                        type: ComponentType.StringSelect,
-                        customId: 'selectAnonymousSubmissions',
-                        options: Object.keys(event.submissionOwnersByCode).map(c => {
-                            return {
-                                label: `Submission ${c}`,
-                                value: c,
-                                description: (event.submissions && event.submissionOwnersByCode)
-                                    ? event.submissions[event.submissionOwnersByCode[c]]?.text?.slice(0, 30)
-                                    : undefined
-                            };
-                        }),
-                        maxValues: 3,
-                        minValues: 3
-                    }]
-                }]
-            });
-            event.selectSubmissionMessage = selectSubmissionMessage.id;
-            await dumpState();
-        } catch (err) {
-            await logger.log(`Failed to send select submission message: \`${err}\``);
-        }
+        // try {
+        //     const selectSubmissionMessage = await goodMorningChannel.send({
+        //         content: 'Alternatively, you can vote using this peculiar menu',
+        //         components: [{
+        //             type: ComponentType.ActionRow,
+        //             components: [{
+        //                 type: ComponentType.StringSelect,
+        //                 customId: 'selectAnonymousSubmissions',
+        //                 options: Object.keys(event.submissionOwnersByCode).map(c => {
+        //                     return {
+        //                         label: `Submission ${c}`,
+        //                         value: c,
+        //                         description: (event.submissions && event.submissionOwnersByCode)
+        //                             ? event.submissions[event.submissionOwnersByCode[c]]?.text?.slice(0, 30)
+        //                             : undefined
+        //                     };
+        //                 }),
+        //                 maxValues: 3,
+        //                 minValues: 3
+        //             }]
+        //         }]
+        //     });
+        //     event.selectSubmissionMessage = selectSubmissionMessage.id;
+        //     await dumpState();
+        // } catch (err) {
+        //     await logger.log(`Failed to send select submission message: \`${err}\``);
+        // }
 
         // Schedule voting reminders
         [[11, 10], [11, 30]].forEach(([hour, minute]) => {
