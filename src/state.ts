@@ -124,6 +124,10 @@ export default class GoodMorningState {
         return this.getPlayers().filter(userId => this.isPlayerMuted(userId));
     }
 
+    getPlayersOnVotingProbation(): Snowflake[] {
+        return this.getPlayers().filter(userId => this.isPlayerOnVotingProbation(userId));
+    }
+
     getPlayerStates(): Record<Snowflake, PlayerState> {
         return this.data.players;
     }
@@ -228,6 +232,18 @@ export default class GoodMorningState {
             this.getOrCreatePlayer(userId).muted = true;
         } else {
             delete this.getOrCreatePlayer(userId).muted;
+        }
+    }
+
+    isPlayerOnVotingProbation(userId: Snowflake): boolean {
+        return this.getPlayer(userId)?.votingProbation ?? false;
+    }
+
+    setPlayerVotingProbation(userId: Snowflake, votingProbation: boolean) {
+        if (votingProbation) {
+            this.getOrCreatePlayer(userId).votingProbation = true;
+        } else {
+            delete this.getOrCreatePlayer(userId).votingProbation;
         }
     }
 
@@ -733,7 +749,7 @@ export default class GoodMorningState {
     }
 
     /**
-     * @returns True if every user who has submitted something has either voted or submitted.
+     * @returns True if every user who has submitted something has either (1) voted, (2) forfeited, or (3) is on probation.
      */
     haveAllSubmittersVoted(): boolean {
         if (this.getEventType() !== DailyEventType.AnonymousSubmissions) {
@@ -745,7 +761,7 @@ export default class GoodMorningState {
         if (!submissions || !votes) {
             return false;
         }
-        return Object.keys(submissions).every(userId => (userId in votes) || this.hasUserForfeited(userId));
+        return Object.keys(submissions).every(userId => (userId in votes) || this.hasUserForfeited(userId) || this.isPlayerOnVotingProbation(userId));
     }
 
     hasUserForfeited(userId: Snowflake): boolean {
@@ -754,6 +770,7 @@ export default class GoodMorningState {
 
     /**
      * Get the list of all users who have sent in a submission, yet haven't voted and haven't forfeited.
+     * Even users on probation will be considered deadbeats, despite their vote not being required to satisfy "have all submitters voted".
      */
     getSubmissionDeadbeats(): Snowflake[] {
         if (this.getEventType() !== DailyEventType.AnonymousSubmissions) {

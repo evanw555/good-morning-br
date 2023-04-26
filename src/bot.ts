@@ -1000,6 +1000,12 @@ const processSubmissionVote = async (userId: Snowflake, event: DailyEvent, submi
         }
         // Cast the vote
         event.votes[userId] = submissionCodes;
+        // If the player is on voting probation, take them off
+        let takenOffProbation = false;
+        if (state.isPlayerOnVotingProbation(userId)) {
+            state.setPlayerVotingProbation(userId, false);
+            takenOffProbation = true;
+        }
         await dumpState();
 
         if (state.haveAllSubmittersVoted()) {
@@ -1008,9 +1014,11 @@ const processSubmissionVote = async (userId: Snowflake, event: DailyEvent, submi
             await finalizeAnonymousSubmissions();
         } else {
             // Otherwise, just send confirmation to the voter
-            await callback('Your vote has been cast! ' + naturalJoin(submissionCodes, { bold: true, conjunction: 'then' }));
+            await callback('Your vote has been cast! '
+                + naturalJoin(submissionCodes, { bold: true, conjunction: 'then' })
+                + (takenOffProbation ? ' (you have been taken off probation, nice job 👍)' : ''));
             // Notify the admin of how many votes remain
-            await logger.log(`**${state.getPlayerDisplayName(userId)}** just voted, waiting on **${state.getSubmissionDeadbeats().length}** more votes.`);
+            await logger.log(`**${state.getPlayerDisplayName(userId)}** just voted, waiting on **${state.getSubmissionDeadbeats().length}** more votes. ${takenOffProbation ? '**(off probation)**' : ''}`);
         }
     }
 };
@@ -1032,7 +1040,8 @@ const finalizeAnonymousSubmissions = async () => {
     const forfeiters: Snowflake[] = event.forfeiters ?? [];
     const deadbeatSet: Set<Snowflake> = new Set(deadbeats);
     const disqualifiedCodes: string[] = allCodes.filter(code => deadbeatSet.has(submissionOwnersByCode[code]));
-    const selectSubmissionMessageId: Snowflake | undefined = event.selectSubmissionMessage;
+    const deadbeatsOnProbation: Snowflake[] = deadbeats.filter(userId => state.isPlayerOnVotingProbation(userId));
+    // const selectSubmissionMessageId: Snowflake | undefined = event.selectSubmissionMessage;
 
     // Now that all the data has been gathered, delete everything from the state to prevent further action
     delete event.votes;
@@ -1043,14 +1052,15 @@ const finalizeAnonymousSubmissions = async () => {
     await dumpState(); // Just in case anything below fails
 
     // Delete the select submission message, if it exists
-    if (selectSubmissionMessageId) {
-        try {
-            const selectSubmissionMessage = await goodMorningChannel.messages.fetch(selectSubmissionMessageId);
-            await selectSubmissionMessage.delete();
-        } catch (err) {
-            await logger.log(`Unable to fetch/delete select submission message: \`${err}\``);
-        }
-    }
+    // TODO: Enable this if we figure out how to solve the select menu error
+    // if (selectSubmissionMessageId) {
+    //     try {
+    //         const selectSubmissionMessage = await goodMorningChannel.messages.fetch(selectSubmissionMessageId);
+    //         await selectSubmissionMessage.delete();
+    //     } catch (err) {
+    //         await logger.log(`Unable to fetch/delete select submission message: \`${err}\``);
+    //     }
+    // }
 
     // Cancel any scheduled voting reminders
     await cancelTimeoutsWithType(TimeoutType.AnonymousSubmissionVotingReminder);
@@ -1090,7 +1100,10 @@ const finalizeAnonymousSubmissions = async () => {
 
     // Penalize the submitters who didn't vote (but didn't forfeit)
     for (const userId of deadbeats) {
+        // Deduct points
         state.deductPoints(userId, config.defaultAward);
+        // Put them on voting probation
+        state.setPlayerVotingProbation(userId, true);
     }
 
     // Then, assign points based on rank in score (excluding those who didn't vote or forfeit)
@@ -1117,7 +1130,11 @@ const finalizeAnonymousSubmissions = async () => {
     await dumpState(); // Just in case anything below fails
 
     // Reveal the winners (and losers) to the channel
-    await messenger.send(goodMorningChannel, 'Now, time to reveal the results...');
+    if (deadbeatsOnProbation.length > 0) {
+        await messenger.send(goodMorningChannel, `I'm waiting on ${getJoinedMentions(deadbeatsOnProbation)}, but they're on probation so let's go ahead and reveal the results...`);
+    } else {
+        await messenger.send(goodMorningChannel, 'Now, time to reveal the results...');
+    }
     if (deadbeats.length > 0) {
         await sleep(10000);
         await messenger.send(goodMorningChannel, `Before anything else, say hello to the deadbeats who were disqualified for not voting! ${getJoinedMentions(deadbeats)} 👋`);
@@ -1213,6 +1230,10 @@ const finalizeAnonymousSubmissions = async () => {
         await messenger.send(sungazersChannel, scoringDetails);
         // Let them know how the score is calculated
         await messenger.send(sungazersChannel, `(\`score = ${GOLD_VOTE_VALUE}🥇 + ${SILVER_VOTE_VALUE}🥈 + ${BRONZE_VOTE_VALUE}🥉 + ${GAZER_TERM_BONUS}🌞\`)`);
+        // Let them know who's on probation, if anyone
+        if (state.getPlayersOnVotingProbation().length > 0) {
+            await messenger.send(sungazersChannel, `Players currently on voting probation: ${getBoldNames(state.getPlayersOnVotingProbation())}`);
+        }
     } catch (err) {
         await messenger.send(sungazersChannel, 'Nvm, my brain is melting');
         await logger.log(`Failed to compute and send voting/scoring log: \`${err}\``);
@@ -3381,6 +3402,10 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     await messenger.reply(msg, 'Thanks for the update, I\'ll use this submission instead of your previous one.');
                 } else {
                     await messenger.reply(msg, 'Thanks for your submission!');
+                    // If the user is on probation, warn them about it
+                    if (state.isPlayerOnVotingProbation(userId)) {
+                        await messenger.reply(msg, '**BEWARNED!** Since you didn\'t vote last time, you are on _voting probation_! This means I won\'t wait for your vote today, so vote quickly or else 🌚', { immediate: true });
+                    }
                     // If we now have a multiple of some number of submissions, notify the server
                     if (numSubmissions % 3 === 0) {
                         await messenger.send(goodMorningChannel, languageGenerator.generate(`{!We now have|I've received|We're now at|I now count|Currently at|I have|Nice} **${numSubmissions}** {!submissions|submissions|entries}! {!DM me|Send me a DM with|Send me} a _${state.getEvent().submissionType}_ to {!participate|be included|join the fun|enter the contest|be a part of the contest|have a chance to win}`));
@@ -3388,7 +3413,8 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     // This may be the user's first engagement, so refresh display name here
                     // TODO: is there a better, more unified way to do this?
                     state.setPlayerDisplayName(userId, await getDisplayName(userId));
-                    logger.log(`Received submission from player **${state.getPlayerDisplayName(userId)}**, now at **${numSubmissions}** submissions`);
+                    await logger.log(`Received submission from player **${state.getPlayerDisplayName(userId)}${state.isPlayerOnVotingProbation(userId) ? ' (PROBATION)' : ''}**, `
+                        + `now at **${numSubmissions}** submissions`);
                 }
                 await dumpState();
             } else {
