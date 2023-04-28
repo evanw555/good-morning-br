@@ -815,21 +815,28 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         state.setBirthdayBoys([]);
     }
 
-    // Give a hint for today's magic words
+    // Give hints for today's magic words
     if (state.hasMagicWords()) {
-        // Choose a random word to give a hint for
-        const singleMagicWord: string = randChoice(...state.getMagicWords());
         // Get list of all suitable recipients of the magic word (this is a balancing mechanic, so pick players who are behind yet active)
         const potentialMagicWordRecipients: Snowflake[] = state.getPotentialMagicWordRecipients();
-        // Determine if we should give out the hint
+        // Determine if we should give out the hints
         const shouldGiveHint: boolean = potentialMagicWordRecipients.length > 0
             && state.getEventType() !== DailyEventType.BeginHomeStretch;
-        // If yes, then give out the hint to one randomly selected suitable recipient
+        // If yes, then give out the hints to random suitable recipients
         if (shouldGiveHint) {
-            const magicWordRecipient: Snowflake = randChoice(...potentialMagicWordRecipients);
-            await messenger.dm(magicWordRecipient, `Psssst.... a magic word of the day is _"${singleMagicWord}"_`);
-            if (magicWordRecipient !== guildOwner.id) {
-                await logger.log(`Magic word _"${singleMagicWord}"_ was sent to **${state.getPlayerDisplayName(magicWordRecipient)}** (all: ${naturalJoin(state.getMagicWords(), { bold: true })})`);
+            // Give out as many hints as possible so long as each recipient receives a different magic word
+            const magicWords = state.getMagicWords();
+            const numHints = Math.min(magicWords.length, potentialMagicWordRecipients.length);
+            // Shuffle the recipients so the recipients are random in case it's limited
+            shuffle(potentialMagicWordRecipients);
+            // For each recipient/word pair, send out the hint via DM
+            for (let i = 0; i < numHints; i++) {
+                const singleMagicWord = magicWords[i];
+                const singleRecipient: Snowflake = potentialMagicWordRecipients[i];
+                await messenger.dm(singleRecipient, `Psssst.... a magic word of the day is _"${singleMagicWord}"_`);
+                if (singleRecipient !== guildOwner.id) {
+                    await logger.log(`Magic word _"${singleMagicWord}"_ was sent to **${state.getPlayerDisplayName(singleRecipient)}** (all: ${naturalJoin(magicWords, { bold: true })})`);
+                }
             }
         }
     }
