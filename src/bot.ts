@@ -1368,13 +1368,6 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         state.setAcceptingBait(false);
         state.clearNerfThreshold();
 
-        // Set tomorrow's magic words (if it's not an abnormal event)
-        state.clearMagicWords();
-        const magicWords = await chooseMagicWords(randInt(2, 8));
-        if (magicWords.length > 0 && !state.isEventAbnormal()) {
-            state.setMagicWords(magicWords);
-        }
-
         // If someone baited, then award the most recent baiter
         const bait: Bait | undefined = state.getMostRecentBait();
         if (bait) {
@@ -1424,6 +1417,13 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
 
         // Activate the queued up event (this can only be done after all thing which process the morning's event)
         state.dequeueNextEvent();
+
+        // Set tomorrow's magic words (if it's not an abnormal event tomorrow)
+        state.clearMagicWords();
+        const magicWords = await chooseMagicWords(randInt(2, 8));
+        if (magicWords.length > 0 && !state.isEventAbnormal()) {
+            state.setMagicWords(magicWords);
+        }
 
         // Dump state and R9K hashes
         await dumpState();
