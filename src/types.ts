@@ -241,6 +241,7 @@ export interface RawGoodMorningState {
     previousBait?: Bait
     event?: DailyEvent,
     nextEvent?: DailyEvent,
+    nextSubmissionPrompt?: string,
     dailyStatus: Record<Snowflake, DailyPlayerState>,
     players: Record<Snowflake, PlayerState>,
     game?: GameState,

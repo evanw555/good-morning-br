@@ -789,6 +789,26 @@ export default class GoodMorningState {
             .filter(userId => !votes[userId]);
     }
 
+    getNextSubmissionPrompt(): string | undefined {
+        return this.data.nextSubmissionPrompt;
+    }
+
+    hasNextSubmissionPrompt(): boolean {
+        return this.data.nextSubmissionPrompt !== undefined;
+    }
+
+    setNextSubmissionPrompt(nextSubmissionPrompt: string) {
+        if (nextSubmissionPrompt) {
+            this.data.nextSubmissionPrompt = nextSubmissionPrompt;
+        } else {
+            this.clearNextSubmissionPrompt();
+        }
+    }
+
+    clearNextSubmissionPrompt() {
+        delete this.data.nextSubmissionPrompt;
+    }
+
     getGame(): AbstractGame<GameState> {
         if (!this.game) {
             throw new Error('Cannot get game, there is no game!');
