@@ -1,6 +1,6 @@
 import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, Client, ComponentType, DMChannel, GatewayIntentBits, Partials, TextChannel, User } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discord.js';
-import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, AnonymousSubmission, GameState, Wordle } from './types';
+import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, AnonymousSubmission, GameState, Wordle, SubmissionPromptHistory } from './types';
 import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions } from './util';
 import GoodMorningState from './state';
 import { addReactsSync, chance, FileStorage, generateKMeansClusters, getClockTime, getPollChoiceKeys, getRandomDateBetween,
@@ -326,13 +326,7 @@ const chooseEvent = async (date: Date): Promise<DailyEvent | undefined> => {
     if (date.getDay() === 2) {
         return {
             type: DailyEventType.AnonymousSubmissions,
-            // TODO: Add new ones such as "short story", "motivational message" once this has happened a couple times
-            submissionType: randChoice(
-                // 50% chance to suggest a text prompt
-                randChoice("haiku", "limerick", "poem (ABAB)", "2-sentence horror story", "fake movie title", `${randInt(6, 12)}-word story`),
-                // 50% chance to suggest an image prompt
-                randChoice("pic that goes hard", "cursed image", "dummy stupid pic", "pic that goes adorable", randChoice("pic that goes ruh", "pic that goes buh"))
-            ),
+            submissionType: await chooseRandomUnusedSubmissionPrompt(),
             submissions: {}
         };
     }
@@ -477,7 +471,63 @@ const chooseMagicWords = async (n: number, characters?: number): Promise<string[
         await logger.log(`Failed to choose a word of the day: \`${err.toString()}\``);
         return [];
     }
-}
+};
+
+const loadSubmissionPromptHistory = async (): Promise<SubmissionPromptHistory> => {
+    try {
+        return await storage.readJson('prompts.json') as SubmissionPromptHistory;
+    } catch (err) {
+        if (err.code === 'ENOENT') {
+            return {
+                used: [],
+                unused: []
+            };
+        }
+        throw err;
+    }
+};
+
+const updateSubmissionPromptHistory = async (used: string[], unused: string[]) => {
+    try {
+        const promptHistory: SubmissionPromptHistory = await loadSubmissionPromptHistory();
+        // Update the used prompts
+        const usedSet: Set<string> = new Set(promptHistory.used);
+        for (const prompt of used) {
+            usedSet.add(prompt);
+        }
+        promptHistory.used = Array.from(usedSet).sort();
+        // Update the unused prompts
+        const unusedSet: Set<string> = new Set(promptHistory.unused);
+        for (const prompt of unused) {
+            unusedSet.add(prompt);
+        }
+        promptHistory.unused = Array.from(unusedSet).filter(p => !usedSet.has(p)).sort();
+        // Dump it
+        await storage.write('prompts.json', JSON.stringify(promptHistory, null, 2));
+        // TODO: Temp logging
+        await messenger.sendLargeMonospaced(guildOwnerDmChannel, JSON.stringify(promptHistory, null, 2));
+    } catch (err) {
+        await logger.log(`Unhandled exception while updating prompts file:\n\`\`\`${err.message}\`\`\``);
+    }
+};
+
+const chooseRandomUnusedSubmissionPrompt = async (): Promise<string> => {
+    try {
+        const choices = (await loadSubmissionPromptHistory()).unused;
+        if (choices.length > 0) {
+            return randChoice(...choices);
+        }
+    } catch (err) {
+        await logger.log(`Unhandled exception while choosing random unused prompt:\n\`\`\`${err.message}\`\`\``);
+    }
+    // Random fallback
+    return randChoice(
+        // 50% chance to suggest a text prompt
+        randChoice("haiku", "limerick", "poem (ABAB)", "2-sentence horror story", "fake movie title", `${randInt(6, 12)}-word story`),
+        // 50% chance to suggest an image prompt
+        randChoice("pic that goes hard", "cursed image", "dummy stupid pic", "pic that goes adorable", randChoice("pic that goes ruh", "pic that goes buh"))
+    );
+};
 
 const sendGoodMorningMessage = async (): Promise<void> => {
     // Get the overridden message for today, if it exists (some events may use this instead)
@@ -1924,8 +1974,12 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         }
 
         // Update the next submission prompt in the state
-        state.setNextSubmissionPrompt(randChoice(...winningChoices));
+        const chosenPrompt = randChoice(...winningChoices)
+        state.setNextSubmissionPrompt(chosenPrompt);
         await dumpState();
+
+        // Update the submission prompt history
+        await updateSubmissionPromptHistory([chosenPrompt], Object.values(arg.choices));
 
         // Notify the channel
         await pollMessage.reply(`The results are in, everyone will be sending me a _${state.getNextSubmissionPrompt()}_ ${config.defaultGoodMorningEmoji}`);

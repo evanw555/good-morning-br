@@ -275,3 +275,8 @@ export interface Wordle {
     guesses: string[],
     guessOwners: Snowflake[]
 }
+
+export interface SubmissionPromptHistory {
+    used: string[],
+    unused: string[]
+}
