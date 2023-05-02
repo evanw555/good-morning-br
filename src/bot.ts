@@ -1490,10 +1490,10 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             }
             // Alternatively, if it's the first Saturday of the month then start a high-effort submissions prompt poll
             else if (new Date().getDay() === 6 && new Date().getDate() <= 7) {
-                // Accept suggestions for 4 hours
+                // Accept suggestions for 5 hours
                 const pollStartDate = new Date();
-                pollStartDate.setHours(pollStartDate.getHours() + 4);
-                // In 4 hours, fetch replies to this message and start a poll for the submission type
+                pollStartDate.setHours(pollStartDate.getHours() + 5);
+                // In 5 hours, fetch replies to this message and start a poll for the submission type
                 const fyiText: string = `Hello gazers, this upcoming Tuesday will be this month's _high-effort_ submissions contest! Reply to this message before **${getRelativeDateTimeString(pollStartDate)}** to suggest a prompt ${config.defaultGoodMorningEmoji}`;
                 const fyiMessage = await sungazersChannel.send(fyiText);
                 // Use the delete strategy because it's not required and we want to ensure it's before the morning date
@@ -1870,9 +1870,13 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             choices[choiceKeys[i]] = proposedTypes[i];
         }
 
-        // Determine the poll end time
+        // Determine the poll end time (extend it longer if it's a high-effort submission poll)
         const pollEndDate = new Date();
-        pollEndDate.setHours(pollEndDate.getHours() + 5);
+        if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
+            pollEndDate.setHours(pollEndDate.getHours() + 5);
+        } else {
+            pollEndDate.setHours(pollEndDate.getHours() + 8);
+        }
 
         // Send the poll message and prime the choices
         const pollMessage = await sungazersChannel.send(`What should people submit tomorrow? (poll ends **${getRelativeDateTimeString(pollEndDate)}**)\n`
