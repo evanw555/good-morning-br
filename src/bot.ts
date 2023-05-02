@@ -1879,7 +1879,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         }
 
         // Send the poll message and prime the choices
-        const pollMessage = await sungazersChannel.send(`What should people submit tomorrow? (poll ends **${getRelativeDateTimeString(pollEndDate)}**)\n`
+        const pollMessage = await sungazersChannel.send(`What should people submit? (poll ends **${getRelativeDateTimeString(pollEndDate)}**)\n`
             + Object.entries(choices).map(([key, value]) => `${key} _${value}_`).join('\n'));
         await addReactsSync(pollMessage, choiceKeys, { delay: 500 });
 
