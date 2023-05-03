@@ -745,6 +745,7 @@ export default class GoodMorningState {
     isEventAbnormal(): boolean {
         return this.getEventType() === DailyEventType.GuestReveille
             || this.getEventType() === DailyEventType.ReverseGoodMorning
+            || this.getEventType() === DailyEventType.Wordle
             || this.getEventType() === DailyEventType.AnonymousSubmissions;
     }
 
