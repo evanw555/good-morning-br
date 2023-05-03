@@ -750,6 +750,7 @@ const chooseGoodMorningTime = (eventType: DailyEventType | undefined): Date => {
         [DailyEventType.SleepyMorning]: [11, 30],
         [DailyEventType.ReverseGoodMorning]: [11, 15],
         [DailyEventType.AnonymousSubmissions]: [8, 0],
+        [DailyEventType.Popcorn]: [9, 15],
         [DailyEventType.GameUpdate]: [9, 0]
     };
     const MIN_HOUR: [number, number] = MIN_HOURS[eventType ?? 'default'] ?? MIN_HOURS.default;
