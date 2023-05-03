@@ -142,9 +142,11 @@ export function toSubmission(message: Message): AnonymousSubmission {
     return submission;
 }
 
+/**
+ * @returns The user IDs of all non-bot users directly mentioned in this message (replying doesn't count as a mention)
+ */
 export function getMessageMentions(msg: Message): Snowflake[] {
-    // Ignore bots
-    return msg.mentions.users.toJSON().filter(u => !u.bot).map(u => u.id);
+    return msg.mentions.parsedUsers.toJSON().filter(u => !u.bot).map(u => u.id);
 }
 
 /**

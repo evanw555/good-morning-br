@@ -3235,7 +3235,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     if (wishesReceived) {
                         // TODO: Remove this try-catch once we're sure this works
                         try {
-                            // The wish recipient is the first mention in the message (if any)
+                            // The wish recipient are the ones tagged in the message
                             const wishRecipients: Snowflake[] = getMessageMentions(msg);
                             if (wishRecipients.length > 0) {
                                 if (wishRecipients.includes(userId)) {
