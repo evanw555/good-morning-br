@@ -1488,7 +1488,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                     state.awardPoints(userId, config.mediumAwardsByRank[rank] ?? config.defaultAward);
                     rows.push(`_${getRankString(rank)}:_ **${score}** <@${userId}>`);
                 }
-                await messenger.send(goodMorningChannel, 'Wordle Results:\n' + rows.join('\n') + '\n(_Disclaimer:_ these are not your literal points earned)');
+                await messenger.send(goodMorningChannel, '__Wordle Results:__\n' + rows.join('\n') + '\n(_Disclaimer:_ these are not your literal points earned)');
             }
         }
 
