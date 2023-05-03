@@ -81,7 +81,8 @@ export async function renderWordleState(wordle: Wordle, options?: { hiScores: Re
         const guess = wordle.guesses[i];
         const y = TILE_MARGIN + i * (TILE_SIZE + TILE_MARGIN);
         const ownerId = wordle.guessOwners[i];
-        currentPlayerScores[ownerId] = 1;
+        // Generally, there should only be one guess per player, but this handles players with multiple guesses just in case...
+        currentPlayerScores[ownerId] = (currentPlayerScores[ownerId] ?? 0) + 1;
         // If this was the winning guess, set them as the winner
         if (guess === wordle.solution) {
             winnerId = ownerId;
