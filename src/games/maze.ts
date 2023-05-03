@@ -112,13 +112,10 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                 return `**${this.getDisplayName(this.getWinners()[0])}** and **${this.getDisplayName(this.getWinners()[1])}** have already reached the goal, so the race for 3rd is on! ${text}`;
             }
         }
-        return 'Choose your moves by sending me a DM with your desired sequence of actions. You have until tomorrow morning to choose. DM me _"help"_ for more info.'
+        return 'Choose your moves by sending me a DM with your desired sequence of actions. You have until tomorrow morning to choose. DM me _"help"_ for more info.';
             // TODO: Temp message to notify players of changes, remove this after 4/22/23
-            + '\n**Changes since last week:**'
-            + '\n⭐ If you cannot shove a player forward, you will attempt to shove them to the side before resorting to an auto-punch.'
-            + '\n⭐ When you punch a player using `punch`, some of their money will fall onto the floor nearby'
-            + '\n⭐ If you end your turn on another player, you will move to a random adjacent tile if any are vacant'
-            + '\n⭐ Players can be shoved into traps, coins, the goal, etc.';
+            // + '\n**Changes since last week:**'
+            // + '\n⭐ TODO';
     }
 
     getHelpText(): string {
