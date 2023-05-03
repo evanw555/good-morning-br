@@ -36,6 +36,7 @@ export interface GoodMorningConfig {
     magicWordReactionProbability: number,
     goodMorningReplyCount: number,
     awardsByRank: Record<string, number>,
+    smallAwardsByRank: Record<string, number>,
     mediumAwardsByRank: Record<string, number>,
     largeAwardsByRank: Record<string, number>,
     defaultAward: number,

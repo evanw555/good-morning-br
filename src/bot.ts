@@ -1007,7 +1007,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
             for (let i = 0; i < mostRecentUsers.length; i++) {
                 const userId: Snowflake = mostRecentUsers[i];
                 const rank: number = i + 1;
-                const rankedPoints: number = config.mediumAwardsByRank[rank] ?? config.defaultAward;
+                const rankedPoints: number = config.smallAwardsByRank[rank] ?? config.defaultAward;
                 // Dump the rank info into the daily status map and assign points accordingly
                 state.awardPoints(userId, rankedPoints);
                 state.setDailyRank(userId, rank);
@@ -1361,7 +1361,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                     for (let i = 0; i < winners.length; i++) {
                         const userId: Snowflake = winners[i];
                         const wishRank: number = i + 1;
-                        state.awardPoints(userId, config.mediumAwardsByRank[wishRank] ?? config.defaultAward);
+                        state.awardPoints(userId, config.smallAwardsByRank[wishRank] ?? config.defaultAward);
                     }
                     // Fill in missing display names before sending out the message
                     await refreshStateMemberInfo();
@@ -1477,12 +1477,18 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             // Award points
             const event = state.getEvent();
             if (event && event.wordleHiScores) {
-                const log: string[] = [];
-                for (const userId of Object.keys(event.wordleHiScores)) {
-                    state.awardPoints(userId, event.wordleHiScores[userId]);
-                    log.push(`Award **${event.wordleHiScores[userId]}** points to **${state.getPlayerDisplayName(userId)}**`);
+                const scores = event.wordleHiScores;
+                const sortedUserIds: Snowflake[] = Object.keys(scores).sort((x, y) => (scores[y] ?? 0) - (scores[x] ?? 0));
+                const rows: string[] = [];
+                // Award players points based on their score ranking
+                for (let i = 0; i < sortedUserIds.length; i++) {
+                    const rank = i + 1;
+                    const userId = sortedUserIds[i];
+                    const score = scores[userId] ?? 0;
+                    state.awardPoints(userId, config.mediumAwardsByRank[rank] ?? config.defaultAward);
+                    rows.push(`_${getRankString(rank)}:_ **${score}** <@${userId}>`);
                 }
-                await logger.log('**Wordle Results:**\n' + log.join('\n'));
+                await messenger.send(goodMorningChannel, 'Wordle Results:\n' + rows.join('\n') + '\n(_Disclaimer:_ these are not your literal points earned)');
             }
         }
 
@@ -3086,7 +3092,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                                     hiScores: event.wordleHiScores
                                 })).setName('wordle.png')]
                             });
-                            await messenger.send(msg.channel, `Count how many times your avatar appears, that's how many points you've earned ${config.defaultGoodMorningEmoji}`);
+                            await messenger.send(msg.channel, `Count how many times your avatar appears, that's your score ${config.defaultGoodMorningEmoji}`);
                             // Schedule the next round with a longer word (the longer the word, the longer the delay)
                             const nextPuzzleLength = previousWordle.solution.length + 1;
                             const wordleRestartDate = new Date();
