@@ -1,7 +1,7 @@
 import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, Client, ComponentType, DMChannel, GatewayIntentBits, Partials, TextChannel, User } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discord.js';
 import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, AnonymousSubmission, GameState, Wordle, SubmissionPromptHistory } from './types';
-import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions } from './util';
+import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, canonicalizeText } from './util';
 import GoodMorningState from './state';
 import { addReactsSync, chance, FileStorage, generateKMeansClusters, getClockTime, getPollChoiceKeys, getRandomDateBetween,
     getRankString, getRelativeDateTimeString, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger,
@@ -1374,6 +1374,19 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                 }
             } catch (err) {
                 await logger.log(`Wishful Wednesday wrapup logic failed: \`${err}\``);
+            }
+        }
+
+        // If it's a popcorn day, prompt the end of the story
+        if (state.getEventType() === DailyEventType.Popcorn) {
+            const event = state.getEvent();
+            // "Disabling" the event allows the current user to end the story, and if there's no user then it prevents further action
+            event.disabled = true;
+            // Prompt the user to end the story or cut it off there
+            if (event.user) {
+                await messenger.send(goodMorningChannel, `<@${event.user}> my friend, pass the torch to someone else or complete this story by ending your message with _"The End"_!`);
+            } else {
+                await messenger.send(goodMorningChannel, languageGenerator.generate('My, what a truly {adjectives.positive?} story! Thank you all for weaving the threads of imagination this morning...'));
             }
         }
 
@@ -2970,8 +2983,19 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     state.deductPoints(userId, config.defaultAward);
                     await dumpState();
                     return;
+                }
+                // The user may talk this turn, so proceed...
+                if (event.disabled && !event.user) {
+                    // The story is OVER, so don't process this message specially...
+                    // TODO: Temp logging
+                    await logger.log(`Post-story message by **${state.getPlayerDisplayName(userId)}**`);
+                } else if (event.disabled && event.user && canonicalizeText(msg.content).endsWith('theend')) {
+                    // If the selected user says "the end" near the end of the morning, end the story!
+                    // Delete the user to prevent further action
+                    delete event.user;
+                    // Notify the channel
+                    await messenger.reply(msg, 'Thank you for a wonderful end to such a wonderful story! Hope you all enjoyed it as much as I did');
                 } else {
-                    // This user may talk this turn, so proceed...
                     const mentionedUserIds = getMessageMentions(msg);
                     // If the user is breaking the rules, force them to try again and abort
                     if (mentionedUserIds.length === 0) {

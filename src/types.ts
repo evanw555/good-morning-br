@@ -124,7 +124,7 @@ export interface DailyEvent {
     rootSubmissionMessage?: Snowflake, // MessageId
     selectSubmissionMessage?: Snowflake, // MessageId
     forfeiters?: Snowflake[], // List of UserIds
-    // Used specifically for the "grumpy morning" / "nightmare" events
+    // Used specifically for the "grumpy morning" / "nightmare" / "popcorn" events
     disabled?: boolean,
     // Used specifically for the "writer's block" event
     customMessage?: string,

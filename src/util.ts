@@ -146,3 +146,12 @@ export function getMessageMentions(msg: Message): Snowflake[] {
     // Ignore bots
     return msg.mentions.users.toJSON().filter(u => !u.bot).map(u => u.id);
 }
+
+/**
+ * @returns The given text in lower-case with all non-alphanumeric characters removed
+ */
+export function canonicalizeText(text: string): string {
+    return text.toLowerCase()
+        // Remove non-alphanumeric characters
+        .replace(/[^0-9a-zA-Z]/g, '');
+}
