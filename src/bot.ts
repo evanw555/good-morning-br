@@ -330,11 +330,28 @@ const chooseEvent = async (date: Date): Promise<DailyEvent | undefined> => {
             submissions: {}
         };
     }
-    // Friday: Monkey Friday
+    // Friday: Friday high-focus event
     if (date.getDay() === 5) {
-        return {
+        const fridayEvents: DailyEvent[] = [{
             type: DailyEventType.MonkeyFriday
-        };
+        }, {
+            type: DailyEventType.Popcorn
+        }];
+        // Add the wordle event if words can be found
+        const wordleWords = await chooseMagicWords(1, 5);
+        if (wordleWords.length > 0) {
+            fridayEvents.push({
+                type: DailyEventType.Wordle,
+                wordle: {
+                    solution: wordleWords[0].toUpperCase(),
+                    guesses: [],
+                    guessOwners: []
+                },
+                wordleHiScores: {}
+            });
+        }
+        // Return a random one of these high-focus events
+        return randChoice(...fridayEvents);
     }
     // Saturday: Game Decision
     if (date.getDay() === 6) {
@@ -366,19 +383,15 @@ const chooseEvent = async (date: Date): Promise<DailyEvent | undefined> => {
     if (chance(0.95)) {
         // Compile a list of potential events (include default events)
         const potentialEvents: DailyEvent[] = [
-            // TODO (2.0): Should I re-enable these?
-            // {
-            //     type: DailyEventType.GrumpyMorning
-            // },
+            {
+                type: DailyEventType.GrumpyMorning
+            },
             {
                 type: DailyEventType.SleepyMorning
             },
             {
                 type: DailyEventType.EarlyEnd,
                 minutesEarly: randChoice(1, 2, 5, 10, 15, randInt(3, 20))
-            },
-            {
-                type: DailyEventType.Popcorn
             }
         ];
         // Do the reverse GM event with a smaller likelihood
@@ -393,19 +406,6 @@ const chooseEvent = async (date: Date): Promise<DailyEvent | undefined> => {
             potentialEvents.push({
                 type: DailyEventType.Nightmare,
                 disabled: true
-            });
-        }
-        // Add the wordle event if words can be found
-        const wordleWords = await chooseMagicWords(1, 5);
-        if (wordleWords.length > 0) {
-            potentialEvents.push({
-                type: DailyEventType.Wordle,
-                wordle: {
-                    solution: wordleWords[0].toUpperCase(),
-                    guesses: [],
-                    guessOwners: []
-                },
-                wordleHiScores: {}
             });
         }
         // If someone should be beckoned, add beckoning as a potential event
