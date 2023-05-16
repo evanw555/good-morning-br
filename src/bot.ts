@@ -1683,7 +1683,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                 guessOwners: []
             };
             await dumpState();
-            await messenger.send(goodMorningChannel, `Now, let's solve a harder puzzle! If you get a better score, it will overwrite your previous score. Someone give me a **${nextPuzzleLength}**-letter word`);
+            await messenger.send(goodMorningChannel, `Let's solve another puzzle! If you get a better score, it will overwrite your previous score. Someone give me a **${nextPuzzleLength}**-letter word`);
         } else {
             await logger.log(`Unable to find a **${nextPuzzleLength}**-letter word, ending Wordle for today...`);
         }
@@ -3093,8 +3093,8 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                                 })).setName('wordle.png')]
                             });
                             await messenger.send(msg.channel, `Count how many times your avatar appears, that's your score ${config.defaultGoodMorningEmoji}`);
-                            // Schedule the next round with a longer word (the longer the word, the longer the delay)
-                            const nextPuzzleLength = previousWordle.solution.length + 1;
+                            // Schedule the next round, potentially with a longer word (the longer the word, the longer the delay)
+                            const nextPuzzleLength = previousWordle.solution.length + (chance(0.5) ? 1 : 0);
                             const wordleRestartDate = new Date();
                             wordleRestartDate.setMinutes(wordleRestartDate.getMinutes() + randInt(nextPuzzleLength, nextPuzzleLength * 4));
                             await timeoutManager.registerTimeout(TimeoutType.WordleRestart, wordleRestartDate, { arg: nextPuzzleLength, pastStrategy: PastTimeoutStrategy.Delete});
