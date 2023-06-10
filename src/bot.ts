@@ -1,7 +1,7 @@
 import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, Client, ComponentType, DMChannel, GatewayIntentBits, Partials, TextChannel, User } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discord.js';
 import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, AnonymousSubmission, GameState, Wordle, SubmissionPromptHistory } from './types';
-import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, canonicalizeText } from './util';
+import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, canonicalizeText, getScaledPoints } from './util';
 import GoodMorningState from './state';
 import { addReactsSync, chance, FileStorage, generateKMeansClusters, getClockTime, getPollChoiceKeys, getRandomDateBetween,
     getRankString, getRelativeDateTimeString, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger,
@@ -1003,16 +1003,14 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         if (reverseGMRanks) {
             const mostRecentUsers: Snowflake[] = Object.keys(reverseGMRanks);
             mostRecentUsers.sort((x, y) => reverseGMRanks[y] - reverseGMRanks[x]);
-            // Process the users in order of most recent reverse GM message
-            for (let i = 0; i < mostRecentUsers.length; i++) {
-                const userId: Snowflake = mostRecentUsers[i];
-                const rank: number = i + 1;
-                const rankedPoints: number = config.smallAwardsByRank[rank] ?? config.defaultAward;
+            const scaledPoints = getScaledPoints(mostRecentUsers, { maxPoints: config.miniGameAward, order: 2 });
+            for (const scaledPointsEntry of scaledPoints) {
+                const { userId, points, rank } = scaledPointsEntry;
                 // Dump the rank info into the daily status map and assign points accordingly
-                state.awardPoints(userId, rankedPoints);
+                state.awardPoints(userId, points);
                 state.setDailyRank(userId, rank);
                 state.resetDaysSinceLGM(userId);
-                dailyVolatileLog.push([new Date(), `<@${userId}> was ${getRankString(rank)}-to-last = \`${rankedPoints}\``]);
+                dailyVolatileLog.push([new Date(), `<@${userId}> was ${getRankString(rank)}-to-last = \`${points}\``]);
             }
             // Send a message to the channel tagging the respective players
             if (mostRecentUsers.length >= 3) {
@@ -1173,13 +1171,12 @@ const finalizeAnonymousSubmissions = async () => {
     // Then, assign points based on rank in score (excluding those who didn't vote or forfeit)
     const validCodesSorted: string[] = allCodes.filter(code => !deadbeatSet.has(submissionOwnersByCode[code]));
     validCodesSorted.sort((x, y) => scores[y] - scores[x]);
-    const winners: Snowflake[] = [];
+    const winners: Snowflake[] = validCodesSorted.map(code => submissionOwnersByCode[code]);
+    const scaledPoints = getScaledPoints(winners, { maxPoints: config.grandContestAward, order: 3 });
     const handicapReceivers: Set<string> = new Set();
-    for (let i = 0; i < validCodesSorted.length; i++) {
-        const submissionCode: string = validCodesSorted[i];
-        const rank: number = i + 1;
-        const userId: Snowflake = submissionOwnersByCode[submissionCode];
-        const pointsEarned: number = forfeiters.includes(userId) ? config.defaultAward : config.largeAwardsByRank[rank] ?? config.defaultAward;
+    for (const scaledPointsEntry of scaledPoints) {
+        const { userId, points, rank } = scaledPointsEntry;
+        const pointsEarned = forfeiters.includes(userId) ? config.defaultAward : points;
         // If the player placed in the top 3 and needs a handicap, give them double points
         if (rank <= 3 && state.doesPlayerNeedHandicap(userId)) {
             state.awardPoints(userId, 2 * pointsEarned);
@@ -1189,7 +1186,6 @@ const finalizeAnonymousSubmissions = async () => {
         }
         state.setDailyRank(userId, rank);
         state.resetDaysSinceLGM(userId);
-        winners.push(userId);
     }
     await dumpState(); // Just in case anything below fails
 
@@ -1358,10 +1354,10 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                     const winners = Object.keys(wishesReceived).sort((x, y) => (wishesReceived[y] ?? 0) - (wishesReceived[x] ?? 0));
                     await logger.log('Wishful wednesday results:\n' + winners.map(u => `**${state.getPlayerDisplayName(u)}:** ${wishesReceived[u]}`));
                     // Award points based on number of wishes received
-                    for (let i = 0; i < winners.length; i++) {
-                        const userId: Snowflake = winners[i];
-                        const wishRank: number = i + 1;
-                        state.awardPoints(userId, config.smallAwardsByRank[wishRank] ?? config.defaultAward);
+                    const scaledPoints = getScaledPoints(winners, { maxPoints: config.miniGameAward, order: 2 });
+                    for (const scaledPointsEntry of scaledPoints) {
+                        const { userId, points } = scaledPointsEntry;
+                        state.awardPoints(userId, points);
                     }
                     // Fill in missing display names before sending out the message
                     await refreshStateMemberInfo();
@@ -1479,13 +1475,13 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             if (event && event.wordleHiScores) {
                 const scores = event.wordleHiScores;
                 const sortedUserIds: Snowflake[] = Object.keys(scores).sort((x, y) => (scores[y] ?? 0) - (scores[x] ?? 0));
+                const scaledPoints = getScaledPoints(sortedUserIds, { maxPoints: config.focusGameAward, order: 2 });
                 const rows: string[] = [];
                 // Award players points based on their score ranking
-                for (let i = 0; i < sortedUserIds.length; i++) {
-                    const rank = i + 1;
-                    const userId = sortedUserIds[i];
+                for (const scaledPointsEntry of scaledPoints) {
+                    const { userId, points, rank } = scaledPointsEntry;
                     const score = scores[userId] ?? 0;
-                    state.awardPoints(userId, config.mediumAwardsByRank[rank] ?? config.defaultAward);
+                    state.awardPoints(userId, points);
                     rows.push(`_${getRankString(rank)}:_ **${score}** <@${userId}>`);
                 }
                 await messenger.send(goodMorningChannel, '__Wordle Results:__\n' + rows.join('\n') + '\n(_Disclaimer:_ these are not your literal points earned)');
@@ -1720,8 +1716,8 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         // If only one person sent a submission, reward them greatly and abort
         if (userIds.length === 1) {
             const soleUserId: Snowflake = userIds[0];
-            // Award the player double the typical 1st place points
-            state.awardPoints(soleUserId, 2 * config.largeAwardsByRank[1]);
+            // Award the player double the grand contest award
+            state.awardPoints(soleUserId, 2 * config.grandContestAward);
             await awardPrize(soleUserId, 'submissions1', 'Thank you for being the only participant today');
             await dumpState();
             // Notify the channel
@@ -2875,6 +2871,11 @@ const processCommands = async (msg: Message): Promise<void> => {
                 };
                 await msg.reply('Game begin!');
             }
+        } else if (sanitizedText.includes('scaled')) {
+            const [ n, baseline, maxPoints, order ] = sanitizedText.replace('scaled', '').replace('?', '').replace(/\s+/g, ' ').trim().split(' ').map(s => parseInt(s));
+            const userIds = state.queryOrderedPlayers({ n });
+            const result = getScaledPoints(userIds, { baseline, maxPoints, order });
+            await msg.channel.send('Sample result of scaled points:\n' + result.map(r => `**${getRankString(r.rank)}:** _${state.getPlayerDisplayName(r.userId)}_ **${toFixed(r.points)}**`).join('\n'));
         }
     }
 };

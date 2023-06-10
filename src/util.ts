@@ -1,6 +1,8 @@
 import { APIEmbed, Message, Snowflake } from "discord.js";
-import { randChoice, randInt } from "evanw555.js";
+import { randChoice, randInt, loadJson } from "evanw555.js";
 import { AnonymousSubmission, GoodMorningConfig } from "./types";
+
+const config: GoodMorningConfig = loadJson('config/config.json');
 
 export function validateConfig(config: GoodMorningConfig): void {
     if (config.goodMorningChannelId === undefined) {
@@ -156,4 +158,32 @@ export function canonicalizeText(text: string): string {
     return text.toLowerCase()
         // Remove non-alphanumeric characters
         .replace(/[^0-9a-zA-Z]/g, '');
+}
+
+interface ScaledPointsOutputEntry {
+    userId: Snowflake,
+    points: number,
+    rank: number
+}
+
+export function getScaledPoints(userIds: Snowflake[], options?: { baseline?: number, maxPoints?: number, order?: number }): ScaledPointsOutputEntry[] {
+    const baseline: number = options?.baseline ?? config.defaultAward;
+    const maxPoints: number = options?.maxPoints ?? config.defaultAward;
+    const order: number = options?.order ?? 1;
+
+    const n = userIds.length;
+
+    const results:ScaledPointsOutputEntry[] = [];
+    for (let i = 0; i < n; i++) {
+        const userId = userIds[i];
+        const x = 1 - (i / (n - 1));
+        const points = baseline + (maxPoints - baseline) * Math.pow(x, order);
+        results.push({
+            userId,
+            points,
+            rank: i + 1
+        });
+    }
+
+    return results;
 }
