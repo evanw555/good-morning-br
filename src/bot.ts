@@ -1514,14 +1514,15 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             state.setMagicWords(magicWords);
         }
 
+        // Revoke access for all players who should be muted (based on their track record / penalty history)
+        // Must be done before dumping the state because it sets player mute properties
+        await revokeGMChannelAccess(state.getDelinquentPlayers());
+
         // Dump state and R9K hashes
         await dumpState();
         await dumpR9KHashes();
         await dumpBaitR9KHashes();
         await dumpYouTubeIds();
-
-        // Revoke access for all players who should be muted (based on their track record / penalty history)
-        await revokeGMChannelAccess(state.getDelinquentPlayers());
 
         // If the season is still going...
         if (!state.isSeasonGoalReached()) {
