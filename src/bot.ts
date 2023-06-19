@@ -2362,8 +2362,10 @@ client.on('shardResume', async (shardId, replayedEvents) => {
 
 client.on('shardReady', async (shardId, unavailableGuilds) => {
     await logger.log(`Shard Ready: \`${shardId}\` (**${unavailableGuilds?.size ?? 'N/A'}** unavailable guilds), restarting bot...`);
-    // This event typically results in the bot becoming unreachable/disconnected for some reason, so just reboot
-    process.exit(0);
+    // This event typically results in the bot becoming unreachable/disconnected for some reason, so just reboot (but not on reboot)
+    if (guildOwnerDmChannel && goodMorningChannel) {
+        process.exit(0);
+    }
 });
 
 client.on('guildUnavailable', async (guild) => {
