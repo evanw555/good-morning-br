@@ -192,7 +192,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
 
         const anyCheerDecisions = Object.values(this.state.decisions).some(d => d.includes('cheer'));
         const takers = Object.keys(this.state.decisions).filter(userId => this.state.decisions[userId].includes('take'));
-        const peekersByTarget = {};
+        const peekersByTarget: Record<string, string[]> = {};
         for (const userId of Object.keys(this.state.decisions)) {
             const decision = this.state.decisions[userId];
             if (decision && decision[0] && decision[0].startsWith('peek:')) {
@@ -228,6 +228,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
             const taker = randChoice(...takers);
             const amount = randChoice(3, 4, 5);
             if (taker in peekersByTarget) {
+                // Taker was peeked by one or more players!
                 const peekers = peekersByTarget[taker];
                 this.addPointsFromAction(taker, -amount * peekers.length);
                 this.state.revealedActions[taker] = 'take-fail';
@@ -241,9 +242,16 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
                     summary += `**${this.getName(taker)}** tried to steal from GMBR, but was stopped by ${naturalJoin(peekers.map(u => `**${this.getName(u)}**`), { conjunction: '&' })}! They each plundered **${amount}** points from **${this.getName(taker)}**`;
                 }
             } else {
+                // Taker was not peeked
                 this.addPointsFromAction(taker, amount);
                 this.state.revealedActions[taker] = 'take';
                 summary += `**${this.getName(taker)}** took **${amount}** points from GMBR! `;
+                // The taker also needs a handicap
+                if (this.doesPlayerNeedHandicap(taker)) {
+                    const tipAmount = randChoice(3, 4, 5);
+                    this.addPointsFromAction(taker, tipAmount);
+                    summary += `He turned the iPad and GMBR tipped him **${tipAmount}** more points out of pity... `;
+                }
             }
             // Delete the decisions
             delete this.state.decisions[taker];
