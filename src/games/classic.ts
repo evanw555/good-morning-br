@@ -8,6 +8,7 @@ import AbstractGame from "./abstract-game";
 import imageLoader from '../image-loader';
 
 export default class ClassicGame extends AbstractGame<ClassicGameState> {
+    private static NERFED_TAKE_AMOUNT = 3;
 
     constructor(state: ClassicGameState) {
         super(state);
@@ -101,6 +102,13 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         return this.getSeasonCompletion() > 0.2 && this.getPoints(userId) > (this.getMaxPoints() * 0.9);
     }
 
+    /**
+     * @returns True if the player is within 10% of the goal
+     */
+    private isPlayerNearGoal(userId: string): boolean {
+        return this.getPoints(userId) >= (this.state.goal * 0.9);
+    }
+
     async renderState(options?: { showPlayerDecision?: string; admin?: boolean, season?: number }): Promise<Buffer> {
         return await this.createMidSeasonUpdateImage({}, options?.season);
     }
@@ -166,10 +174,14 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
             return 'Good choice! You will spread Good Morning **cheer** to your dear dogs';
         } else if (sanitizedDecision === 'take') {
             this.state.decisions[userId] = ['take'];
-            return 'Oooooh risky choice! You will **take**, let\'s see if it pays off...';
+            // If the player is near the goal, let them know their take will be nerfed
+            if (this.isPlayerNearGoal(userId)) {
+                return `You will **take**, but you're close to finishing so the amount will be exactly **${ClassicGame.NERFED_TAKE_AMOUNT}** points to avoid randomness in the winning condition`;
+            } else {
+                return 'Oooooh risky choice! You will **take**, let\'s see if it pays off...';
+            }
         } else if (sanitizedDecision.startsWith('peek')) {
             const targetName  = sanitizedDecision.replace(/^peek\s*/, '');
-            console.log('peek at ' + targetName);
             if (targetName) {
                 const targetId = this.getClosestUserByName(targetName);
                 if (targetId) {
@@ -226,7 +238,8 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
             summary += `**${cheerers.length}** players spread some Good Morning cheer! `;
         } else if (takers.length > 0) {
             const taker = randChoice(...takers);
-            const amount = randChoice(3, 4, 5);
+            // If the taker is near the goal, use a constant value to (1) nerf them and (2) prevent unfair winning conditions
+            const amount = this.isPlayerNearGoal(taker) ? ClassicGame.NERFED_TAKE_AMOUNT : randChoice(3, 4, 5);
             if (taker in peekersByTarget) {
                 // Taker was peeked by one or more players!
                 const peekers = peekersByTarget[taker];
@@ -270,18 +283,22 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
             // summary += ' ' + upsetString;
         }
 
-        for (const userId of this.getOrderedPlayers()) {
-            // If this user's points exceed the goal, then add them as a winner
-            if (this.getPoints(userId) >= this.state.goal) {
-                const added = this.addWinner(userId);
-                if (added) {
-                    summary += `**${this.getName(userId)}** finished for _${getRankString(this.state.winners.length)} place_! `;
+        // End the turn if the only thing remaining are unfulfilled peek actions
+        const endTurn = Object.values(this.state.decisions).every(d => d[0] && d[0].startsWith('peek:'));
+
+        // If the turn is over, evaluate the winners all at once.
+        // This is done to prevent winners be determined by the random order of taking
+        if (endTurn) {
+            for (const userId of this.getOrderedPlayers()) {
+                // If this user's points exceed the goal, then add them as a winner
+                if (this.getPoints(userId) >= this.state.goal) {
+                    const added = this.addWinner(userId);
+                    if (added) {
+                        summary += `**${this.getName(userId)}** finished for _${getRankString(this.state.winners.length)} place_! `;
+                    }
                 }
             }
         }
-
-        // End the turn if the only thing remaining are unfulfilled peek actions
-        const endTurn = Object.values(this.state.decisions).every(d => d[0] && d[0].startsWith('peek:'));
 
         return {
             summary,
