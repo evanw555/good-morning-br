@@ -91,8 +91,8 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
     }
 
     override doesPlayerNeedHandicap(userId: Snowflake): boolean {
-        // Player needs handicap if below 25% of the top player's points
-        return this.getPoints(userId) < (this.getMaxPoints() * 0.25);
+        // Player needs handicap if below 35% of the top player's points
+        return this.getPoints(userId) < (this.getMaxPoints() * 0.35);
     }
 
     override doesPlayerNeedNerf(userId: string): boolean {
