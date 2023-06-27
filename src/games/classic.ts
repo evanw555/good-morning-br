@@ -110,7 +110,12 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
     }
 
     async renderState(options?: { showPlayerDecision?: string; admin?: boolean, season?: number }): Promise<Buffer> {
-        return await this.createMidSeasonUpdateImage({}, options?.season);
+        // If within 10% of the goal, show a more ominous image...
+        if (this.getSeasonCompletion() > 0.9) {
+            return await this.createHomeStretchImage({}, options?.season);
+        } else {
+            return await this.createMidSeasonUpdateImage({}, options?.season);
+        }
     }
 
     beginTurn(): string[] {
@@ -325,15 +330,13 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
 
     private async createHomeStretchImage(medals: Record<Snowflake, Medals>, season?: number): Promise<Buffer> {
         return await this.createImage(medals, {
-            title: 'We\'re almost there!\n  The final days are upon us',
-            sunImageName: 'sun_spooky.png',
-            showMultiplier: true
+            title: `It's week ${this.state.turn} of season ${season ?? '???'}\n  The final days are upon us`,
+            sunImageName: 'sun_spooky.png'
         });
     }
 
     private async createMidSeasonUpdateImage(medals: Record<Snowflake, Medals>, season?: number): Promise<Buffer> {
         return await this.createImage(medals, {
-            // title: `We're ${getNumberOfDaysSince(state.getSeasonStartedOn())} days into season ${state.getSeasonNumber()}\n  What a blessed experience!`
             title: `It's week ${this.state.turn} of season ${season ?? '???'}\n  What a blessed experience!`
         });
     }
@@ -343,7 +346,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
     }
 
     // TODO: This logic is horrible, please clean it up
-    private async createImage(medals: Record<Snowflake, Medals>, options?: { title?: string, sunImageName?: string, showMultiplier?: boolean }): Promise<Buffer> {
+    private async createImage(medals: Record<Snowflake, Medals>, options?: { title?: string, sunImageName?: string }): Promise<Buffer> {
         const HEADER_HEIGHT = 150;
         const BAR_WIDTH = 735;
         const BAR_HEIGHT = 36;
