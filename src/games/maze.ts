@@ -246,10 +246,15 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         // TODO: Remove from winners too?
     }
 
-    doesPlayerNeedHandicap(userId: Snowflake): boolean {
+    override doesPlayerNeedHandicap(userId: Snowflake): boolean {
         // True if this player is in the bottom half of players and has fewer than 20 points
         const player = this.state.players[userId];
         return player && player.rank > Math.floor(this.getNumPlayers() / 2) && player.points < 20;
+    }
+
+    override doesPlayerNeedNerf(userId: string): boolean {
+        // Player needs nerf if we're 20% into the season and player is in the top 3 ranks
+        return this.getSeasonCompletion() > 0.2 && this.getPlayerRank(userId) <= 3;
     }
 
     async renderState(options?: { showPlayerDecision?: Snowflake, admin?: boolean, season?: number }): Promise<Buffer> {
@@ -2959,6 +2964,10 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
 
     isPlayerFinished(userId: Snowflake): boolean {
         return this.state.players[userId]?.finished ?? false;
+    }
+
+    getPlayerRank(userId: Snowflake): number {
+        return this.state.players[userId]?.rank ?? Number.MAX_SAFE_INTEGER;
     }
 
     getPlayerStuns(userId: Snowflake): number {

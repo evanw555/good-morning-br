@@ -987,15 +987,6 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         }
     }
 
-    // If we're 20% of the way through the season, determine the nerf threshold for today
-    // TODO (2.0): Do we want this?
-    // if (state.getSeasonCompletion() > 0.2) {
-    //     // Threshold is 2 top awards below the top score
-    //     const nerfThreshold: number = toFixed(state.getTopScore() - (2 * config.bonusAward));
-    //     state.setNerfThreshold(nerfThreshold);
-    //     dailyVolatileLog.push([new Date(), `Set nerf threshold to ${nerfThreshold}`]);
-    // }
-
     // Process "reverse" GM ranks
     if (state.getEventType() === DailyEventType.ReverseGoodMorning) {
         const event = state.getEvent();
@@ -1449,7 +1440,6 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         // Update basic state properties
         state.setMorning(false);
         state.setAcceptingBait(false);
-        state.clearNerfThreshold();
 
         // If someone baited, then award the most recent baiter
         const bait: Bait | undefined = state.getMostRecentBait();
@@ -2656,6 +2646,7 @@ const processCommands = async (msg: Message): Promise<void> => {
                         + (state.getPlayerDaysSinceLGM(key) ? ` ${state.getPlayerDaysSinceLGM(key)}d` : '')
                         + (state.getPlayerDeductions(key) ? (' -' + state.getPlayerDeductions(key)) : '')
                         + (state.doesPlayerNeedHandicap(key) ? '♿' : '')
+                        + (state.doesPlayerNeedNerf(key) ? '🎾' : '')
                         + (fullStreakPlayers.includes(key) ? '🔥' : '')
                         + (potentialReveillers.includes(key) ? '📯' : '')
                         + (potentialMagicWordRecipients.includes(key) ? '✨' : '');
@@ -3127,10 +3118,6 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 return;
             }
 
-            // Determine whether a "nerf" should be applied to this player before his points are altered
-            const nerfThreshold = state.getNerfThreshold();
-            const applyLeaderNerf: boolean = nerfThreshold !== undefined && state.getPlayerPoints(userId) > nerfThreshold;
-
             // Determine some properties related to the contents of the message
             const messageHasVideo: boolean = hasVideo(msg);
             const messageHasText: boolean = msg.content.trim().length !== 0;
@@ -3312,7 +3299,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 } else if (isNovelMessage) {
                     const rankedPoints: number = config.awardsByRank[rank] ?? config.defaultAward;
                     const activityPoints: number = config.defaultAward + state.getPlayerActivity(userId).getRating();
-                    if (applyLeaderNerf) {
+                    if (state.doesPlayerNeedNerf(userId)) {
                         state.awardPoints(userId, Math.min(rankedPoints, activityPoints));
                         logStory += `and was awarded \`min(${rankedPoints}, ${activityPoints})\` with leader nerf`;
                     } else {

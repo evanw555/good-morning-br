@@ -233,7 +233,6 @@ export interface RawGoodMorningState {
     isHomeStretch?: boolean,
     goodMorningEmoji: string | string[],
     magicWords?: string[],
-    nerfThreshold?: number,
     currentLeader?: Snowflake,
     combo?: Combo,
     maxCombo?: Combo,

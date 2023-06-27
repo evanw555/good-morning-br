@@ -61,7 +61,20 @@ export default abstract class AbstractGame<T extends GameState> {
     abstract addPlayer(member: GuildMember): string
     abstract updatePlayer(member: GuildMember): void
     abstract removePlayer(userId: Snowflake): void
-    abstract doesPlayerNeedHandicap(userId: Snowflake): boolean
+
+    /**
+     * @returns True if the player needs a handicap (e.g. buffed contest award) for core GMBR activities.
+     */
+    doesPlayerNeedHandicap(userId: Snowflake): boolean {
+        return false;
+    }
+    /**
+     * @returns True if the player needs a nerf (e.g. min vs max daily activity points) for core GMBR activities.
+     */
+    doesPlayerNeedNerf(userId: Snowflake): boolean {
+        return false;
+    }
+
     abstract renderState(options?: { showPlayerDecision?: Snowflake, admin?: boolean, season?: number }): Promise<Buffer>
     abstract beginTurn(): string[]
     abstract getPoints(userId: Snowflake): number

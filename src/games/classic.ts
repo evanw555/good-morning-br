@@ -90,9 +90,15 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         delete this.state.revealedActions[userId];
     }
 
-    doesPlayerNeedHandicap(userId: Snowflake): boolean {
+    override doesPlayerNeedHandicap(userId: Snowflake): boolean {
         // Player needs handicap if below 25% of the top player's points
         return this.getPoints(userId) < (this.getMaxPoints() * 0.25);
+    }
+
+    override doesPlayerNeedNerf(userId: string): boolean {
+        // Player needs nerf if we're 20% into the season and player is above 90% of the top player's points
+        // TODO: This is dynamic so it can have weird results depending on the ordering of points awarded in a day
+        return this.getSeasonCompletion() > 0.2 && this.getPoints(userId) > (this.getMaxPoints() * 0.9);
     }
 
     async renderState(options?: { showPlayerDecision?: string; admin?: boolean, season?: number }): Promise<Buffer> {

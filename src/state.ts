@@ -259,6 +259,10 @@ export default class GoodMorningState {
         return this.hasGame() && this.getGame().doesPlayerNeedHandicap(userId);
     }
 
+    doesPlayerNeedNerf(userId: Snowflake): boolean {
+        return this.hasGame() && this.getGame().doesPlayerNeedNerf(userId);
+    }
+
     getPlayerDeductions(userId: Snowflake): number {
         return this.getPlayer(userId)?.deductions ?? 0;
     }
@@ -624,22 +628,6 @@ export default class GoodMorningState {
 
     clearMagicWords(): void {
         delete this.data.magicWords;
-    }
-
-    getNerfThreshold(): number | undefined {
-        return this.data.nerfThreshold;
-    }
-
-    hasNerfThreshold(): boolean {
-        return this.data.nerfThreshold !== undefined;
-    }
-
-    setNerfThreshold(nerfThreshold: number): void {
-        this.data.nerfThreshold = nerfThreshold;
-    }
-
-    clearNerfThreshold(): void {
-        delete this.data.nerfThreshold;
     }
 
     getCombo(): Combo | undefined {
