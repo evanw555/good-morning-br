@@ -77,6 +77,15 @@ export default abstract class AbstractGame<T extends GameState> {
 
     abstract renderState(options?: { showPlayerDecision?: Snowflake, admin?: boolean, season?: number }): Promise<Buffer>
     abstract beginTurn(): string[]
+    
+    /**
+     * Triggers turn-end logic. This is run after the final round of decisions are processed.
+     * @returns List of messages to send to the GM channel on turn-end
+     */
+    endTurn(): string[] {
+        return [];
+    }
+
     abstract getPoints(userId: Snowflake): number
     abstract addPoints(userId: Snowflake, points: number): void
     abstract awardPrize(userId: Snowflake, type: PrizeType, intro: string): string[]

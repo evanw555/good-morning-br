@@ -205,6 +205,22 @@ export interface MazeGameState {
     usingBetaFeatures?: boolean
 }
 
+export interface IslandPlayerState {
+    displayName: string,
+    points: number,
+    eliminated?: true,
+    immunity?: true
+}
+
+export interface IslandGameState {
+    type: 'ISLAND_GAME_STATE',
+    decisions: Record<Snowflake, string[]>,
+    turn: number,
+    winners: Snowflake[],
+    // Custom properties below
+    players: Record<Snowflake, IslandPlayerState>
+}
+
 export interface ClassicGameState {
     type: 'CLASSIC_GAME_STATE',
     decisions: Record<Snowflake, string[]>,
@@ -218,7 +234,7 @@ export interface ClassicGameState {
     revealedActions: Record<Snowflake, string>
 }
 
-export type GameState = MazeGameState | ClassicGameState;
+export type GameState = MazeGameState | IslandGameState | ClassicGameState;
 
 export interface Bait {
     userId: Snowflake,

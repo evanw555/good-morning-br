@@ -14,6 +14,7 @@ import MazeGame from './games/maze';
 
 import logger from './logger';
 import imageLoader from './image-loader';
+import IslandGame from './games/island';
 
 const auth = loadJson('config/auth.json');
 const config: GoodMorningConfig = loadJson('config/config.json');
@@ -2131,8 +2132,15 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             }
             await timeoutManager.registerTimeout(TimeoutType.ProcessGameDecisions, nextProcessDate, { pastStrategy: PastTimeoutStrategy.Invoke });
         } else {
-            // Otherwise, let the people know that the turn is over
+            // Trigger turn-end logic and send turn-end messages
+            const turnEndMessages = game.endTurn();
+            for (const text of turnEndMessages) {
+                await messenger.send(goodMorningChannel, text);
+            }
+            // Send the universal turn-end message
+            // TODO: Should this be provided as a default in the abstract game class?
             await messenger.send(goodMorningChannel, languageGenerator.generate('{!Well|Alright,} that\'s {!all|it} for this {!week|turn}! Are you all {!proud of your actions|happy with the outcome|optimistic|feeling good}?'));
+            
         }
     }
 };
@@ -2815,6 +2823,8 @@ const processCommands = async (msg: Message): Promise<void> => {
                 if (useBetaFeatures) {
                     (tempDungeon as MazeGame).setUsingBetaFeatures(true);
                 }
+            } else if (sanitizedText.includes('island')) {
+                tempDungeon = IslandGame.create(members);
             } else {
                 tempDungeon = ClassicGame.create(members);
             }
