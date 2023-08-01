@@ -2140,7 +2140,6 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             // Send the universal turn-end message
             // TODO: Should this be provided as a default in the abstract game class?
             await messenger.send(goodMorningChannel, languageGenerator.generate('{!Well|Alright,} that\'s {!all|it} for this {!week|turn}! Are you all {!proud of your actions|happy with the outcome|optimistic|feeling good}?'));
-            
         }
     }
 };

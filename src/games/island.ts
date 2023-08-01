@@ -4,6 +4,7 @@ import { DecisionProcessingResult, IslandGameState, IslandPlayerState, PrizeType
 import AbstractGame from "./abstract-game";
 import logger from "../logger";
 import { getMostSimilarByNormalizedEditDistance, toFixed } from "evanw555.js";
+import imageLoader from "../image-loader";
 
 export default class IslandGame extends AbstractGame<IslandGameState> {
 
@@ -77,6 +78,14 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
         return this.getRemainingPlayers().length;
     }
 
+    private getEliminatedPlayers(): Snowflake[] {
+        return this.getPlayers().filter(id => this.isPlayerEliminated(id));
+    }
+
+    private getNumEliminatedPlayers(): number {
+        return this.getEliminatedPlayers().length;
+    }
+
     hasPlayer(userId: string): boolean {
         return userId in this.state.players;
     }
@@ -110,14 +119,35 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
     }
 
     async renderState(options?: { showPlayerDecision?: string | undefined; admin?: boolean | undefined; season?: number | undefined; } | undefined): Promise<Buffer> {
-        const WIDTH = 100;
-        const HEIGHT = 100;
+        const MARGIN = 16;
+        const HEADER_WIDTH = 700;
+        const HEADER_HEIGHT = 100;
+        const WIDTH = HEADER_WIDTH + MARGIN * 2;
+
+        // Load images
+        const islandImage = await imageLoader.loadImage('assets/island.png');
+
+        const HEIGHT = HEADER_HEIGHT * 2 + islandImage.height + MARGIN * 4;
         const c = canvas.createCanvas(WIDTH, HEIGHT);
         const context = c.getContext('2d');
 
         // Fill the blue sky background
         context.fillStyle = 'rgba(100,157,250,1)';
         context.fillRect(0, 0, WIDTH, HEIGHT);
+
+        // Fill the sea
+        context.fillStyle = 'rgba(28,50,138,1)';
+        const horizonY = HEADER_HEIGHT + MARGIN * 2 + islandImage.height * 0.6;
+        context.fillRect(0, horizonY, WIDTH, HEIGHT - horizonY);
+
+        // Draw the island image
+        context.drawImage(islandImage, MARGIN, HEADER_HEIGHT + MARGIN * 2);
+
+        // Write the header text
+        context.fillStyle = 'rgb(221,231,239)';
+        const TITLE_FONT_SIZE = Math.floor(HEADER_HEIGHT / 2);
+        context.font = `${TITLE_FONT_SIZE}px sans-serif`;
+        context.fillText('Hello! Welcome to Island\nEnjoy your stay! Yeahhhh', MARGIN, MARGIN + TITLE_FONT_SIZE);
 
         return c.toBuffer();
     }
