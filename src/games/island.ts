@@ -152,7 +152,7 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
         return c.toBuffer();
     }
 
-    beginTurn(): string[] {
+    override beginTurn(): string[] {
         this.state.turn++;
 
         for (const userId of this.getOrderedPlayers()) {

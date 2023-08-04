@@ -798,6 +798,26 @@ export default class GoodMorningState {
         delete this.data.nextSubmissionPrompt;
     }
 
+    getLastSubmissionWinner(): Snowflake | undefined {
+        return this.data.lastSubmissionWinner;
+    }
+
+    hasLastSubmissionWinner(): boolean {
+        return this.data.lastSubmissionWinner !== undefined;
+    }
+
+    setLastSubmissionWinner(lastSubmissionWinner: Snowflake) {
+        if (lastSubmissionWinner) {
+            this.data.lastSubmissionWinner = lastSubmissionWinner;
+        } else {
+            this.clearLastSubmissionWinner();
+        }
+    }
+
+    clearLastSubmissionWinner() {
+        delete this.data.lastSubmissionWinner;
+    }
+
     getGame(): AbstractGame<GameState> {
         if (!this.game) {
             throw new Error('Cannot get game, there is no game!');

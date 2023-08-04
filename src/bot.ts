@@ -820,6 +820,11 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         for (const userId of participatingUserIds) {
             state.getGame().addPoints(userId, state.getPlayerPoints(userId));
         }
+        // Award a prize upfront for this week's submission winner
+        const lastSubmissionWinner = state.getLastSubmissionWinner();
+        if (lastSubmissionWinner) {
+            await awardPrize(lastSubmissionWinner, 'submissions1', 'Congrats on winning the first contest of the season (a few days ago)');
+        }
     }
 
     // If today is a decision day
@@ -1256,6 +1261,8 @@ const finalizeAnonymousSubmissions = async () => {
     // Award special prizes and notify via DM
     if (winners[0]) {
         await awardPrize(winners[0], 'submissions1', 'Congrats on your victory');
+        // Set the winner as the "last submission winner" for the next week
+        state.setLastSubmissionWinner(winners[0]);
     }
     if (winners[1]) {
         await awardPrize(winners[1], 'submissions2', 'Congrats on snagging 2nd place');
@@ -2135,6 +2142,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         } else {
             // Trigger turn-end logic and send turn-end messages
             const turnEndMessages = game.endTurn();
+            await dumpState();
             for (const text of turnEndMessages) {
                 await messenger.send(goodMorningChannel, text);
             }
@@ -2383,7 +2391,7 @@ client.on('invalidated', async () => {
 });
 
 client.on('interactionCreate', async (interaction): Promise<void> => {
-    if (interaction.isSelectMenu() && interaction.applicationId === client.application?.id) {
+    if (interaction.isStringSelectMenu() && interaction.applicationId === client.application?.id) {
         const userId: Snowflake = interaction.user.id;
         await interaction.deferReply({ ephemeral: true });
         if (interaction.customId === 'selectAnonymousSubmissions') {

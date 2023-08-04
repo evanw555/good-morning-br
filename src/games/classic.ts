@@ -118,7 +118,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         }
     }
 
-    beginTurn(): string[] {
+    override beginTurn(): string[] {
         this.state.turn++;
 
         this.state.actionPointDiffs = {};
@@ -144,6 +144,24 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         }
 
         return messages;
+    }
+
+    override endTurn(): string[] {
+        const result: string[] = [];
+
+        // Evaluate the winners all at once at the end of the turn.
+        // This is done to prevent winners from being determined by the random order of taking
+        for (const userId of this.getOrderedPlayers()) {
+            // If this user's points exceed the goal, then add them as a winner
+            if (this.getPoints(userId) >= this.state.goal) {
+                const added = this.addWinner(userId);
+                if (added) {
+                    result.push(`**${this.getName(userId)}** finished for _${getRankString(this.state.winners.length)} place_!`);
+                }
+            }
+        }
+
+        return result;
     }
 
     getPoints(userId: string): number {
@@ -290,20 +308,6 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
 
         // End the turn if the only thing remaining are unfulfilled peek actions
         const endTurn = Object.values(this.state.decisions).every(d => d[0] && d[0].startsWith('peek:'));
-
-        // If the turn is over, evaluate the winners all at once.
-        // This is done to prevent winners be determined by the random order of taking
-        if (endTurn) {
-            for (const userId of this.getOrderedPlayers()) {
-                // If this user's points exceed the goal, then add them as a winner
-                if (this.getPoints(userId) >= this.state.goal) {
-                    const added = this.addWinner(userId);
-                    if (added) {
-                        summary += `**${this.getName(userId)}** finished for _${getRankString(this.state.winners.length)} place_! `;
-                    }
-                }
-            }
-        }
 
         return {
             summary,

@@ -729,7 +729,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         };
     }
 
-    beginTurn(): string[] {
+    override beginTurn(): string[] {
         // Increment turn and reset action counter
         this.state.turn++;
         this.state.action = 0;
@@ -750,7 +750,6 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
             const player = this.state.players[userId];
             // Reset per-turn metadata and statuses
             player.originLocation = { r: player.r, c: player.c };
-            delete player.itemOffers;
             delete player.stuns;
             delete player.invincible;
             delete player.warped;
@@ -798,6 +797,16 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                     this.state.map[coinLocation.r][coinLocation.c] = TileType.COIN;
                 }
             }
+        }
+
+        return [];
+    }
+
+    override endTurn(): string[] {
+        // It's Sunday, so wipe all the item offers
+        for (const userId of this.getPlayers()) {
+            const player = this.state.players[userId];
+            delete player.itemOffers;
         }
 
         return [];
@@ -871,8 +880,8 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         const player = this.state.players[userId];
         player.itemOffers = items;
         // Return text about this
-        const texts = [`${intro}, as a reward you may pick one of the follwing items: ${naturalJoin(items, { bold: true, conjunction: 'or' })}. `
-            + 'DM me to claim the item of your choice! (e.g. \`claim ITEM\`). This offer is valid until Saturday morning.'];
+        const texts = [`${intro}, as a reward you may pick one of the following items: ${naturalJoin(items, { bold: true, conjunction: 'or' })}. `
+            + 'DM me to claim the item of your choice! (e.g. \`claim ITEM\`). This offer is valid until Sunday morning.'];
         for (const item of items) {
             texts.push(`**${item}:** ${MazeGame.getItemInstructions(item)}`);
         }
