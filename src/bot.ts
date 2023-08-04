@@ -2678,6 +2678,7 @@ const processCommands = async (msg: Message): Promise<void> => {
                         + (state.isPlayerInGame(key) ? '' : ' _(NEW)_')
                         + (state.getPlayerDaysSinceLGM(key) ? ` ${state.getPlayerDaysSinceLGM(key)}d` : '')
                         + (state.getPlayerDeductions(key) ? (' -' + state.getPlayerDeductions(key)) : '')
+                        + (state.getLastSubmissionWinner() === key ? '👑' : '')
                         + (state.doesPlayerNeedHandicap(key) ? '♿' : '')
                         + (state.doesPlayerNeedNerf(key) ? '🎾' : '')
                         + (fullStreakPlayers.includes(key) ? '🔥' : '')
