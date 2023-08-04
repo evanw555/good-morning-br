@@ -42,6 +42,7 @@ const client = new Client({
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.GuildMessageTyping,
         GatewayIntentBits.GuildMessageReactions,
         GatewayIntentBits.DirectMessages,
         GatewayIntentBits.MessageContent
@@ -2438,6 +2439,23 @@ client.on('interactionCreate', async (interaction): Promise<void> => {
             }
         } else {
             await interaction.editReply(`Unknown command: \`${interaction.commandName}\``);
+        }
+    }
+});
+
+client.on('typingStart', async (typing) => {
+    if (goodMorningChannel && typing.channel.id === goodMorningChannel.id && !typing.user.bot) {
+        // If the popcorn user is typing, postpone the fallback timeout
+        if (state.getEventType() === DailyEventType.Popcorn) {
+            const event = state.getEvent();
+            const userId = typing.user.id;
+            if (event.user && event.user === userId) {
+                const inFiveMinutes = new Date();
+                inFiveMinutes.setMinutes(inFiveMinutes.getMinutes() + 5);
+                const ids = await timeoutManager.postponeTimeoutsWithType(TimeoutType.PopcornFallback, inFiveMinutes);
+                // TODO: Temp logging to see how this is working
+                await logger.log(`**${state.getPlayerDisplayName(userId)}** started typing, postpone fallback ` + naturalJoin(ids.map(id => `*${id}** to **${timeoutManager.getDateForTimeoutWithId(id)?.toLocaleTimeString()}**`)));
+            }
         }
     }
 });
