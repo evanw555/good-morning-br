@@ -23,6 +23,12 @@ export default abstract class AbstractGame<T extends GameState> {
      */
     abstract getInstructionsText(): string
     /**
+     * Text sent out to the channel at Saturday around noon to remind players to make a decision.
+     */
+    getReminderText(): string {
+        return 'Reminder! You have until tomorrow morning to DM me your decision for this week...';
+    }
+    /**
      * Text sent directly to users who request help during the game decision phase.
      */
     abstract getHelpText(): string

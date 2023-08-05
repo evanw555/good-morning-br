@@ -1333,6 +1333,10 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         // We register this with the "Delete" strategy since it doesn't schedule any events and it's non-critical
         await timeoutManager.registerTimeout(TimeoutType.BaitingStart, baitingStartTime, { pastStrategy: PastTimeoutStrategy.Delete });
 
+        // If today is the weekly decision, send a reminder urging players to make their decision before tomorrow morning
+        if (state.getEventType() === DailyEventType.GameDecision && state.hasGame()) {
+            await messenger.send(goodMorningChannel, state.getGame().getReminderText());
+        }
 
         // Check the results of anonymous submissions
         if (state.getEventType() === DailyEventType.AnonymousSubmissions) {

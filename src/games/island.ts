@@ -44,6 +44,10 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
         return 'Send me a DM letting me know who should be voted off the island this week!';
     }
 
+    override getReminderText(): string {
+        return 'Reminder! You have until tomorrow morning to vote someone off the island. Send me a DM with the name of who should be voted off...';
+    }
+
     getHelpText(): string {
         return this.getInstructionsText();
     }
@@ -289,7 +293,7 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
             if (options?.admin) {
                 nameText += ` (${this.getNumVotes(userId)}v, ${this.getNumIncomingVotes(userId)}iv)`;
             }
-            drawTextWithShadow(this.getName(userId), playerX, playerY + AVATAR_HEIGHT * 0.75, widthLimit);
+            drawTextWithShadow(nameText, playerX, playerY + AVATAR_HEIGHT * 0.75, widthLimit);
             // context.strokeText(`${player.pointSnapshot}pts ${this.getNumVotes(userId)} votes, ${this.getNumIncomingVotes(userId)} incoming, ${this.isPlayerEliminated(userId) ? '☠️' : ''}`,
             //     playerX + AVATAR_HEIGHT * 2 + MARGIN * 3,
             //     playerY + AVATAR_HEIGHT);
