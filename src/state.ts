@@ -6,6 +6,7 @@ import ClassicGame from "./games/classic";
 import MazeGame from "./games/maze";
 import logger from "./logger";
 import { Bait, Combo, DailyEvent, DailyEventType, DailyPlayerState, FullDate, GameState, PlayerState, RawGoodMorningState, Season } from "./types";
+import IslandGame from "./games/island";
 
 export default class GoodMorningState {
     private data: RawGoodMorningState;
@@ -21,6 +22,9 @@ export default class GoodMorningState {
                     break;
                 case 'MAZE_GAME_STATE':
                     this.game = new MazeGame(rawState.game);
+                    break;
+                case 'ISLAND_GAME_STATE':
+                    this.game = new IslandGame(rawState.game);
                     break;
             }
         }
