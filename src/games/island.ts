@@ -3,7 +3,7 @@ import canvas, { Image } from 'canvas';
 import { DecisionProcessingResult, IslandGameState, IslandPlayerState, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 import logger from "../logger";
-import { getMostSimilarByNormalizedEditDistance, toFixed } from "evanw555.js";
+import { getMostSimilarByNormalizedEditDistance, getRankString, naturalJoin, randChoice, shuffle, toFixed } from "evanw555.js";
 import imageLoader from "../image-loader";
 
 export default class IslandGame extends AbstractGame<IslandGameState> {
@@ -25,7 +25,8 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
             decisions: {},
             turn: 0,
             winners: [],
-            players
+            players,
+            numToBeEliminated: 1
         });
     }
 
@@ -33,14 +34,14 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
         return [
             'My dear dogs... welcome to the Island of Mournful Mornings! This season, you are all castaways on my island 😼',
             'This game will be a true Battle Royale, and only those of you who have participated in the last week are eligible to win 🌞',
-            'However, don\'t get too comfortable! Each week, some dogs will be voted off the island, killing their dreams of a sungazing victory ☠️'
+            'However, don\'t get too comfortable! Each week, some dogs will be voted off the island, killing their dreams of a sungazing victory ☠️',
+            'Unlike other seasons, the points you earn each day are reset at the end of the week. Points are only used to determine how many votes you get, and to break ties in the weekly vote',
+            'By default, you get _one_ vote each week, but top point earners will be told via DM that they have more votes'
         ];
     }
 
     getInstructionsText(): string {
-        return 'Send me a DM letting me know who should be voted off the island this week! '
-            + 'Your voting power is equivalent to the number of points earned this week. '
-            + 'But bewarned! If you don\'t send me anything, you\'ll vote for yourself by default';
+        return 'Send me a DM letting me know who should be voted off the island this week!';
     }
 
     getHelpText(): string {
@@ -67,11 +68,43 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
 
     getOrderedPlayers(): string[] {
         // TODO: Complete this
-        return this.getPlayers();
+        const comparator = (id: Snowflake) => {
+            // TODO: It's pretty hacky to just subtract a large value... make this better
+            return this.getPoints(id) + (this.isPlayerEliminated(id) ? -1000 : 0);
+        };
+        return this.getPlayers().sort((x, y) => comparator(y) - comparator(x));
+    }
+
+    private getReverseOrderedPlayers(): Snowflake[] {
+        return this.getOrderedPlayers().reverse();
+    }
+
+    private getFinalRankOrderedPlayers(): Snowflake[] {
+        return this.getPlayers().sort((x, y) => {
+            return this.getFinalRank(x) - this.getFinalRank(y);
+        })
+    }
+
+    private getRenderOrderedPlayers(): Snowflake[] {
+        // TODO: Complete this
+        const comparator = (x: Snowflake, y: Snowflake) => {
+            // First, their elimination status
+            const elimination = Number(this.isPlayerEliminated(x)) - Number(this.isPlayerEliminated(y));
+            if (elimination !== 0) {
+                return elimination;
+            }
+            // If they're both eliminated, order by final rank
+            if (this.isPlayerEliminated(x) && this.isPlayerEliminated(y)) {
+                return this.getFinalRank(x) - this.getFinalRank(y);
+            }
+            // Second, compare alphabetically
+            return this.getName(x).localeCompare(this.getName(y));
+        };
+        return this.getPlayers().sort((x, y) => comparator(x, y));
     }
 
     private getRemainingPlayers(): Snowflake[] {
-        return this.getPlayers().filter(id => !this.isPlayerEliminated(id));
+        return this.getOrderedPlayers().filter(id => !this.isPlayerEliminated(id));
     }
 
     private getNumRemainingPlayers(): number {
@@ -79,7 +112,7 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
     }
 
     private getEliminatedPlayers(): Snowflake[] {
-        return this.getPlayers().filter(id => this.isPlayerEliminated(id));
+        return this.getOrderedPlayers().filter(id => this.isPlayerEliminated(id));
     }
 
     private getNumEliminatedPlayers(): number {
@@ -91,8 +124,20 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
     }
 
     addPlayer(member: GuildMember): string {
-        logger.log(`Refusing to add **${member.displayName}** to the island, as it's already started`);
-        return `Cannot add **${member.displayName}** (island game already started)`;
+        if (member.id in this.state.players) {
+            logger.log(`Refusing to add **${member.displayName}** to the island, as they're already in it!`);
+            return `Cannot add **${member.displayName}** (already in-game)`;
+        }
+        this.state.players[member.id] = {
+            displayName: member.displayName,
+            points: 0,
+            eliminated: true,
+            // This player is joining late, so lock them (don't let them vote)
+            locked: true,
+            // Give them a terrible dummy rank that's necessarily larger than all other ranks
+            finalRank: this.getNumPlayers() + 1
+        };
+        return `Added **${member.displayName}** at final rank **${this.getFinalRank(member.id)}**`;
     }
 
     updatePlayer(member: GuildMember): void {
@@ -110,24 +155,58 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
         return this.state.players[userId]?.displayName ?? userId;
     }
 
+    private getJoinedNames(userIds: Snowflake[]): string {
+        return naturalJoin(userIds.map(id => this.getName(id)), { bold: true });
+    }
+
     private isPlayerEliminated(userId: Snowflake): boolean {
         return this.state.players[userId]?.eliminated ?? false;
+    }
+
+    private isPlayerLocked(userId: Snowflake): boolean {
+        return this.state.players[userId]?.locked ?? false;
     }
 
     private isPlayerImmune(userId: Snowflake): boolean {
         return this.state.players[userId]?.immunity ?? false;
     }
 
+    private getNumVotes(userId: Snowflake): number {
+        return this.state.players[userId]?.votes ?? 0;
+    }
+
+    private getNumIncomingVotes(userId: Snowflake): number {
+        return this.state.players[userId]?.incomingVotes ?? 0;
+    }
+
+    private getFinalRank(userId: Snowflake): number {
+        return this.state.players[userId]?.finalRank ?? Number.MAX_SAFE_INTEGER;
+    }
+
     async renderState(options?: { showPlayerDecision?: string | undefined; admin?: boolean | undefined; season?: number | undefined; } | undefined): Promise<Buffer> {
         const MARGIN = 16;
-        const HEADER_WIDTH = 700;
-        const HEADER_HEIGHT = 100;
+        const HEADER_WIDTH = 750;
+        const HEADER_HEIGHT = 50;
         const WIDTH = HEADER_WIDTH + MARGIN * 2;
+        const AVATAR_HEIGHT = 32;
+        const AVATAR_MARGIN = 4;
 
         // Load images
         const islandImage = await imageLoader.loadImage('assets/island.png');
+        const rightArrowImage = await imageLoader.loadImage('assets/right-arrow.png');
+        const skullImage = await imageLoader.loadImage('assets/skull.png');
+        const sunIconImage = await imageLoader.loadImage('assets/sunicon.png');
+        const clownIconImage = await imageLoader.loadImage('assets/clownicon.png');
 
-        const HEIGHT = HEADER_HEIGHT * 2 + islandImage.height + MARGIN * 4;
+        const ROSTER_Y = 2 * MARGIN + HEADER_HEIGHT;
+        const HORIZON_Y = ROSTER_Y + this.getNumRemainingPlayers() * (AVATAR_HEIGHT + AVATAR_MARGIN) - 0.5 * AVATAR_MARGIN;
+        const ISLAND_Y = HORIZON_Y - islandImage.height * 0.6;
+        // The total canvas height is the greater of...
+        const HEIGHT = Math.max(
+            // The bottom of the roster
+            ROSTER_Y + this.getNumPlayers() * (AVATAR_HEIGHT + AVATAR_MARGIN),
+            // The bottom of the island
+            ISLAND_Y + islandImage.height + MARGIN);
         const c = canvas.createCanvas(WIDTH, HEIGHT);
         const context = c.getContext('2d');
 
@@ -137,39 +216,190 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
 
         // Fill the sea
         context.fillStyle = 'rgba(28,50,138,1)';
-        const horizonY = HEADER_HEIGHT + MARGIN * 2 + islandImage.height * 0.6;
-        context.fillRect(0, horizonY, WIDTH, HEIGHT - horizonY);
+        context.fillRect(0, HORIZON_Y, WIDTH, HEIGHT - HORIZON_Y);
 
         // Draw the island image
-        context.drawImage(islandImage, MARGIN, HEADER_HEIGHT + MARGIN * 2);
+        context.drawImage(islandImage, MARGIN, ISLAND_Y);
+
+        const drawTextWithShadow = (text: string, x: number, y: number, maxWidth?: number) => {
+            const savedStyle = context.fillStyle;
+            context.fillStyle = 'rgba(0,0,0,0.6)';
+            context.fillText(text, x + 2, y + 2, maxWidth);
+            context.fillStyle = savedStyle;
+            context.fillText(text, x, y, maxWidth);
+        };
 
         // Write the header text
         context.fillStyle = 'rgb(221,231,239)';
-        const TITLE_FONT_SIZE = Math.floor(HEADER_HEIGHT / 2);
+        const TITLE_FONT_SIZE = Math.floor(HEADER_HEIGHT * 0.6);
         context.font = `${TITLE_FONT_SIZE}px sans-serif`;
-        context.fillText('Hello! Welcome to Island\nEnjoy your stay! Yeahhhh', MARGIN, MARGIN + TITLE_FONT_SIZE);
+        drawTextWithShadow(`${this.state.numToBeEliminated} dog${this.state.numToBeEliminated === 1 ? '' : 's'} will be eliminated this week... But who?`, MARGIN, MARGIN + TITLE_FONT_SIZE);
+
+        // DRAW ALL PLAYERS
+        let playerY = ROSTER_Y;
+        for (const userId of this.getRenderOrderedPlayers()) {
+            const player = this.state.players[userId];
+            let playerX = islandImage.width + AVATAR_HEIGHT + MARGIN * 2;
+            // Draw avatar
+            const avatar = await imageLoader.loadAvatar(userId, 32);
+            context.drawImage(avatar, playerX, playerY, AVATAR_HEIGHT, AVATAR_HEIGHT);
+            // If the player has incoming votes, draw the black background for the voter avatars
+            const numIncomingVotes = Math.round(this.getNumIncomingVotes(userId));
+            if (numIncomingVotes > 0) {
+                context.fillStyle = 'black';
+                const boxWidth = numIncomingVotes * (AVATAR_HEIGHT + AVATAR_MARGIN) + AVATAR_MARGIN;
+                context.fillRect(playerX - boxWidth - (AVATAR_HEIGHT + AVATAR_MARGIN), playerY - AVATAR_MARGIN, boxWidth, AVATAR_HEIGHT + 2 * AVATAR_MARGIN);
+            }
+            // Draw who's voted for this player so far
+            const voters = this.getPlayers().filter(id => this.state.players[id]?.revealedTarget === userId);
+            let voterOffsetX = AVATAR_HEIGHT + AVATAR_MARGIN;
+            for (const voterId of voters) {
+                const voterAvatar = await imageLoader.loadAvatar(voterId, 32);
+                // Draw one avatar for each vote
+                for (let i = 0; i < this.getNumVotes(voterId); i++) {
+                    voterOffsetX += AVATAR_HEIGHT + AVATAR_MARGIN;
+                    context.drawImage(voterAvatar, playerX - voterOffsetX, playerY, AVATAR_HEIGHT, AVATAR_HEIGHT);
+                }
+            }
+            // If anyone's voted for this player, draw the arrow
+            if (voters.length > 0) {
+                context.drawImage(rightArrowImage, playerX - (AVATAR_HEIGHT + AVATAR_MARGIN), playerY, AVATAR_HEIGHT, AVATAR_HEIGHT);
+            }
+            // Draw modifier images after the avatar
+            if (this.isPlayerEliminated(userId)) {
+                playerX += AVATAR_HEIGHT + AVATAR_MARGIN;
+                context.drawImage(skullImage, playerX, playerY, AVATAR_HEIGHT, AVATAR_HEIGHT);
+            }
+            if (this.isPlayerImmune(userId)) {
+                playerX += AVATAR_HEIGHT + AVATAR_MARGIN;
+                context.drawImage(sunIconImage, playerX, playerY, AVATAR_HEIGHT, AVATAR_HEIGHT);
+            }
+            if (this.getNumVotes(userId) === 0) {
+                playerX += AVATAR_HEIGHT + AVATAR_MARGIN;
+                context.drawImage(clownIconImage, playerX, playerY, AVATAR_HEIGHT, AVATAR_HEIGHT);
+            }
+            // Draw name
+            playerX += AVATAR_HEIGHT + MARGIN;
+            // const textX = playerX + 3 * (AVATAR_HEIGHT + AVATAR_MARGIN) + MARGIN;
+            const widthLimit = WIDTH - playerX - MARGIN;
+            context.font = `${AVATAR_HEIGHT * 0.6}px BOLD SERIF`;
+            context.fillStyle = this.isPlayerEliminated(userId) ? 'red' : 'white';
+            let nameText = this.getName(userId);
+            // If viewing via the admin console, show more info
+            if (options?.admin) {
+                nameText += ` (${this.getNumVotes(userId)}v, ${this.getNumIncomingVotes(userId)}iv)`;
+            }
+            drawTextWithShadow(this.getName(userId), playerX, playerY + AVATAR_HEIGHT * 0.75, widthLimit);
+            // context.strokeText(`${player.pointSnapshot}pts ${this.getNumVotes(userId)} votes, ${this.getNumIncomingVotes(userId)} incoming, ${this.isPlayerEliminated(userId) ? '☠️' : ''}`,
+            //     playerX + AVATAR_HEIGHT * 2 + MARGIN * 3,
+            //     playerY + AVATAR_HEIGHT);
+            playerY += AVATAR_MARGIN + AVATAR_HEIGHT;
+        }
 
         return c.toBuffer();
     }
 
     override beginTurn(): string[] {
+        const text: string[] = [];
+
+        // Increment the turn counter
         this.state.turn++;
 
+        // Determine how many will be eliminated this turn
+        const numRemaining = this.getNumRemainingPlayers();
+        const numToBeEliminated = numRemaining > 10 ? 3 : (numRemaining > 4 ? 2 : 1);
+        this.state.numToBeEliminated = numToBeEliminated;
+        text.push(`This week, **${numToBeEliminated}** player${numToBeEliminated === 1 ? '' : 's'} will be voted off the island`);
+
+        let aliveVotes = 4;
+        let deadVotes = 4;
+        let i = 0;
+        const votelessPlayers: Snowflake[] = [];
         for (const userId of this.getOrderedPlayers()) {
-            // Add default decision
-            this.state.decisions[userId] = [userId];
+            const player = this.state.players[userId];
+            // Add fractional votes based on points to handle ties
+            player.incomingVotes = i++ * 0.01;
+            // If this player has immunity, send a message about it
+            if (this.isPlayerImmune(userId)) {
+                text.push(`This week's contest winner, **${this.getName(userId)}**, has been granted immunity`);
+            }
+            // If this player is locked, skip them
+            if (this.isPlayerLocked(userId)) {
+                continue;
+            }
+            // Dole out votes to each player
+            if (this.getPoints(userId) > 0) {
+                if (this.isPlayerEliminated(userId)) {
+                    player.votes = Math.max(deadVotes--, 1);
+                } else {
+                    player.votes = Math.max(aliveVotes--, 1);
+                }
+                // TODO: Temp logic for testing
+                // this.state.decisions[userId] = [randChoice(...this.getRemainingPlayers())];
+            } else {
+                // Points are not net-positive, so this player can't vote
+                player.votes = 0;
+                votelessPlayers.push(userId);
+            }
         }
 
-        return [];
+        // Reset all player points
+        for (const userId of this.getPlayers()) {
+            this.state.players[userId].points = 0;
+        }
+
+        // If any players are voteless, add a message for that
+        if (votelessPlayers.length > 0) {
+            text.push(`${this.getJoinedNames(votelessPlayers)} cannot vote this week since they didn't earn any points`);
+        }
+
+        return text;
     }
 
     override endTurn(): string[] {
-        // Reset immunity for all players
-        for (const userId of this.getOrderedPlayers()) {
-            delete this.state.players[userId].immunity;
+        const text: string[] = [];
+        // Eliminate players! Order matters, the most voted-for players are eliminated first (and thus end with a worse final rank)
+        const mostVotedForPlayers = this.getRemainingPlayers().sort((x, y) => this.getNumIncomingVotes(y) - this.getNumIncomingVotes(x));
+        // Exclude immune players, then select only as many as needed
+        const votedOff = mostVotedForPlayers
+            .filter(id => !this.isPlayerImmune(id))
+            .slice(0, this.state.numToBeEliminated);
+        text.push(`${this.getJoinedNames(votedOff)} ${this.state.numToBeEliminated === 1 ? 'has' : 'have'} been voted off the island`);
+        for (const userId of votedOff) {
+            const rank = this.getNumRemainingPlayers();
+            this.state.players[userId].eliminated = true;
+            // Assign final rank
+            this.state.players[userId].finalRank = rank;
         }
-        // Send no extra messages
-        return [];
+        // If one player remains, trigger the winning condition
+        if (this.getNumRemainingPlayers() > 1) {
+            text.push(`**${this.getNumRemainingPlayers()}** dear dogs remain...`);
+        } else {
+            // Assign final rank to the remaining player
+            // TODO: What happens if there are no remaining players? Is that possible?
+            if (this.getNumRemainingPlayers() === 1) {
+                const winnerId = this.getRemainingPlayers()[0];
+                this.state.players[winnerId].finalRank = 1;
+            }
+            // Add the winners based on final rank
+            const winners = this.getFinalRankOrderedPlayers().slice(0, 3);
+            for (const winner of winners) {
+                this.addWinner(winner);
+            }
+            text.push(`**${this.getName(winners[0])}** has survived the island and is crowned champion! The late **${this.getName(winners[1])}** and **${this.getName(winners[2])}** podium at _2nd_ and _3rd_, respectively 🌞`);
+        }
+        // Clear all weekly player metadata
+        for (const userId of this.getOrderedPlayers()) {
+            const player = this.state.players[userId];
+            // Reset immunity for all players
+            delete player.immunity;
+            // Clear num votes for all players
+            delete player.votes;
+            delete player.incomingVotes;
+            // Clear other metadata
+            delete player.revealedTarget;
+        }
+        return text;
     }
 
     getPoints(userId: string): number {
@@ -193,6 +423,11 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
         }
         switch (type) {
             case 'submissions1':
+                // If the player has been eliminated already, do nothing
+                // TODO: Should they get another prize?
+                if (this.isPlayerEliminated(userId)) {
+                    return [];
+                }
                 // If we're in the final week, don't award anything but still notify them
                 if (this.getNumRemainingPlayers() === 2) {
                     return [`${intro}, but it's the final week so I can't grant you immunity. Sorry bud!`];
@@ -206,19 +441,34 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
     }
 
     getWeeklyDecisionDMs(): Record<string, string> {
-        return {};
+        const result: Record<Snowflake, string> = {};
+        for (const userId of this.getPlayers()) {
+            const numVotes = this.getNumVotes(userId);
+            if (numVotes > 1) {
+                result[userId] = `Due your relative performance against other _${this.isPlayerEliminated(userId) ? 'eliminated' : 'remaining'}_ players this week, you have **${numVotes}** votes at your disposal 🌞`;
+            }
+        }
+        return result;
     }
 
     addPlayerDecision(userId: string, text: string): string {
-        const votes = Math.round(this.getPoints(userId));
+        // Validate that they're not locked
+        if (this.isPlayerLocked(userId)) {
+            throw new Error('You joined the game too late to participate, sorry bud!');
+        }
+        // Validate that the player has votes
+        const votes = this.getNumVotes(userId);
         if (votes < 1) {
-            throw new Error('You don\'t have enough points to vote this week, dummy!');
+            throw new Error('You don\'t have any votes to use this week, dummy!');
         }
         const targetName  = text;
         if (targetName) {
             const targetId = this.getClosestUserByName(targetName);
             if (targetId) {
                 // Validate the target user
+                if (userId === targetId) {
+                    throw new Error('Are you trying to vote for yourself? Get it together, man...');
+                }
                 if (this.isPlayerEliminated(targetId)) {
                     throw new Error(`**${this.getName(targetId)}** has already been eliminated, choose someone else!`);
                 }
@@ -238,7 +488,31 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
     processPlayerDecisions(): DecisionProcessingResult {
         let summary = '';
 
-        // TODO: Process decisions
+        // Pick a random player, process their decision
+        const remainingDecisionPlayers = Object.keys(this.state.decisions);
+        shuffle(remainingDecisionPlayers);
+        const userId = randChoice(...remainingDecisionPlayers);
+
+        // Count their votes
+        const numVotes = this.getNumVotes(userId);
+        const targetId = this.state.decisions[userId][0];
+        delete this.state.decisions[userId];
+
+        // Validate that the target is valid
+        if (!this.hasPlayer(targetId)) {
+            summary = `**${this.getName(userId)}** tried to vote for <@${targetId}>, who isn't in the game...`;
+        } else if (this.isPlayerImmune(targetId)) {
+            summary = `**${this.getName(userId)}** tried to vote for **${this.getName(targetId)}**, who's immune...`;
+        } else if (this.isPlayerEliminated(targetId)) {
+            summary = `**${this.getName(userId)}** tried to vote for **${this.getName(targetId)}**, who's already been eliminated...`;
+        } else if (numVotes < 1) {
+            summary = `**${this.getName(userId)}** tried to vote for **${this.getName(targetId)}** without any votes...`;
+        } else {
+            // Target is valid, so add incoming votes
+            this.state.players[targetId].incomingVotes = (this.state.players[targetId].incomingVotes ?? 0) + numVotes;
+            this.state.players[userId].revealedTarget = targetId;
+            summary = `**${this.getName(userId)}** cast **${numVotes}** vote${numVotes === 1 ? '' : 's'} for **${this.getName(targetId)}**`;
+        }
 
         // End the turn if there are no decisions left
         const endTurn = Object.keys(this.state.decisions).length === 0;

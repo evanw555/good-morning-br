@@ -814,7 +814,8 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         // TODO (2.0): Eventually, this should be more generic for other game types (don't hardcode this)
         // const dungeon = DungeonCrawler.createSectional(members, { sectionSize: 11, sectionsAcross: 3 });
         // const newGame = MazeGame.createOrganicBest(members, 20, 43, 19, 90);
-        const newGame = ClassicGame.create(members);
+        // const newGame = ClassicGame.create(members);
+        const newGame = IslandGame.create(members);
         state.setGame(newGame);
         // For all starting players, add the points they earned before the game was instantiated
         for (const userId of participatingUserIds) {
@@ -2605,6 +2606,10 @@ const processCommands = async (msg: Message): Promise<void> => {
                     break;
                 }
             }
+            const endTurnMessages = tempDungeon.endTurn();
+            for (const text of endTurnMessages) {
+                await msg.channel.send(text);
+            }
             await msg.channel.send('Turn is over!');
 
             // Notify and exit if the game is over
@@ -2619,9 +2624,21 @@ const processCommands = async (msg: Message): Promise<void> => {
             // Give everyone points then show the final state
             // TODO: Temp logic to move all other players
             for (const otherId of tempDungeon.getOrderedPlayers()) {
-                tempDungeon.addPoints(otherId, Math.random() * state.getPlayerDisplayName(otherId).length);
+                if (chance(0.1) && otherId !== msg.author.id) {
+                    tempDungeon.addPoints(otherId, -5);
+                } else {
+                    tempDungeon.addPoints(otherId, Math.random() * state.getPlayerDisplayName(otherId).length);
+                }
             }
-            tempDungeon.beginTurn();
+            // Maybe pick a random player to award the grand contest prize to
+            if (chance(0.9)) {
+                const randomPlayer = randChoice(...tempDungeon.getPlayers());
+                tempDungeon.awardPrize(randomPlayer, 'submissions1', 'TEMP');
+            }
+            const beginTurnMessages = tempDungeon.beginTurn();
+            for (const text of beginTurnMessages) {
+                await msg.channel.send(text);
+            }
             try { // TODO: refactor typing event to somewhere else?
                 await msg.channel.sendTyping();
             } catch (err) {}

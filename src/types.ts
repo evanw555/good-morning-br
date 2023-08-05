@@ -208,8 +208,13 @@ export interface MazeGameState {
 export interface IslandPlayerState {
     displayName: string,
     points: number,
+    revealedTarget?: Snowflake,
+    votes?: number,
+    incomingVotes?: number,
     eliminated?: true,
-    immunity?: true
+    locked?: true,
+    immunity?: true,
+    finalRank?: number
 }
 
 export interface IslandGameState {
@@ -218,6 +223,7 @@ export interface IslandGameState {
     turn: number,
     winners: Snowflake[],
     // Custom properties below
+    numToBeEliminated: number,
     players: Record<Snowflake, IslandPlayerState>
 }
 
