@@ -72,11 +72,20 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
 
     getOrderedPlayers(): string[] {
         // TODO: Complete this
-        const comparator = (id: Snowflake) => {
-            // TODO: It's pretty hacky to just subtract a large value... make this better
-            return this.getPoints(id) + (this.isPlayerEliminated(id) ? -1000 : 0);
+        const comparator = (x: Snowflake, y: Snowflake) => {
+            // First, their elimination status
+            const elimination = Number(this.isPlayerEliminated(x)) - Number(this.isPlayerEliminated(y));
+            if (elimination !== 0) {
+                return elimination;
+            }
+            // If they're both eliminated, order by final rank
+            if (this.isPlayerEliminated(x) && this.isPlayerEliminated(y)) {
+                return this.getFinalRank(x) - this.getFinalRank(y);
+            }
+            // Else, compare by points
+            return this.getPoints(y) - this.getPoints(x);
         };
-        return this.getPlayers().sort((x, y) => comparator(y) - comparator(x));
+        return this.getPlayers().sort((x, y) => comparator(x, y));
     }
 
     private getReverseOrderedPlayers(): Snowflake[] {
@@ -101,7 +110,7 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
             if (this.isPlayerEliminated(x) && this.isPlayerEliminated(y)) {
                 return this.getFinalRank(x) - this.getFinalRank(y);
             }
-            // Second, compare alphabetically
+            // Else, compare alphabetically
             return this.getName(x).localeCompare(this.getName(y));
         };
         return this.getPlayers().sort((x, y) => comparator(x, y));
