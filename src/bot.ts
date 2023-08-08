@@ -1028,10 +1028,11 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
 };
 
 const processSubmissionVote = async (userId: Snowflake, event: DailyEvent, submissionCodes: string[], callback: (text: string) => Promise<void>) => {
-    if (!event.votes || !event.submissionOwnersByCode || state.getEventType() !== DailyEventType.AnonymousSubmissions) {
+    if (!event.votes || !event.submissions || !event.submissionOwnersByCode || state.getEventType() !== DailyEventType.AnonymousSubmissions) {
         await callback('You shouldn\'t be able to vote right now!');
         return;
     }
+    const isSubmitterVote: boolean = userId in event.submissions;
     const submissionCodeSet: Set<string> = new Set(submissionCodes);
     const validSubmissionCodes: Set<string> = new Set(Object.keys(event.submissionOwnersByCode));
     // Require at least three votes (or one less than the total number of votes if there aren't enough submissions)
@@ -1075,7 +1076,7 @@ const processSubmissionVote = async (userId: Snowflake, event: DailyEvent, submi
             await finalizeAnonymousSubmissions();
         } else {
             // Otherwise, just send confirmation to the voter
-            await callback('Your vote has been cast! '
+            await callback((isSubmitterVote ? 'Your vote has been cast! ' : 'Your vote will be used for the collective audience vote! ')
                 + naturalJoin(submissionCodes, { bold: true, conjunction: 'then' })
                 + (takenOffProbation ? ' (you have been taken off probation, nice job 👍)' : ''));
             // Notify the admin of how many votes remain
@@ -1093,7 +1094,6 @@ const finalizeAnonymousSubmissions = async () => {
     }
 
     // First and foremost, hold onto all the state data locally
-    const votes = event.votes;
     const submissions: Record<Snowflake, AnonymousSubmission> = event.submissions;
     const submissionOwnersByCode = event.submissionOwnersByCode;
     const allCodes = Object.keys(submissionOwnersByCode);
@@ -1103,6 +1103,19 @@ const finalizeAnonymousSubmissions = async () => {
     const disqualifiedCodes: string[] = allCodes.filter(code => deadbeatSet.has(submissionOwnersByCode[code]));
     const deadbeatsOnProbation: Snowflake[] = deadbeats.filter(userId => state.isPlayerOnVotingProbation(userId));
     // const selectSubmissionMessageId: Snowflake | undefined = event.selectSubmissionMessage;
+
+    // Compute the participant votes vs the audience votes
+    const votes: Record<Snowflake, string[]> = {};
+    const audienceVotes: Record<Snowflake, string[]> = {};
+    for (const [userId, _votes] of Object.entries(event.votes)) {
+        if (userId in submissions) {
+            votes[userId] = _votes;
+        } else {
+            audienceVotes[userId] = _votes;
+        }
+    }
+    // TODO: Temp logging to see how this works
+    await logger.log(`Participant votes: ${getJoinedMentions(Object.keys(votes))}\nAudience votes: ${getJoinedMentions(Object.keys(audienceVotes))}`);
 
     // Now that all the data has been gathered, delete everything from the state to prevent further action
     delete event.votes;
@@ -1145,12 +1158,35 @@ const finalizeAnonymousSubmissions = async () => {
         scores[code] = getSungazerTerm(userId) * GAZER_TERM_BONUS;
         breakdown[code] = [0, 0, 0];
     }
-    // Now tally the actual scores and breakdowns
+
     // Add 0.1 to break ties using total number of votes, 0.01 to ultimately break ties with golds
     const GOLD_VOTE_VALUE = 3.11;
     const SILVER_VOTE_VALUE = 2.1;
     const BRONZE_VOTE_VALUE = 1.1;
     const VOTE_VALUES: number[] = [GOLD_VOTE_VALUE, SILVER_VOTE_VALUE, BRONZE_VOTE_VALUE];
+    // TODO: Remove the try-catch once we're sure this works
+    try {
+        await logger.log(`Compiling **${Object.keys(audienceVotes).length}** audience vote(s):\n`
+            + Object.keys(audienceVotes).map(userId => `- <@${userId}>: ${naturalJoin(audienceVotes[userId], { bold: true, conjunction: '&' })}`).join('\n'));
+        // First, compute the "audience vote"
+        const audienceScores: Record<string, number> = {};
+        for (const codes of Object.values(audienceVotes)) {
+            codes.forEach((code, i) => {
+                audienceScores[code] = toFixed((audienceScores[code] ?? 0) + (VOTE_VALUES[i] ?? 0), 3);
+            });
+        }
+        // Add the collective audience vote to the standard vote map
+        const collectiveAudienceVote: string[] = Object.keys(audienceScores).sort((x, y) => audienceScores[y] - audienceScores[x]).slice(0, 3);
+        if (collectiveAudienceVote.length === 3) {
+            votes['$AUDIENCE'] = collectiveAudienceVote;
+            await logger.log(`Added collective audience vote as ${naturalJoin(collectiveAudienceVote, { bold: true, conjunction: 'then' })}`);
+        } else {
+            await logger.log(`Skipping audience vote, as there are **${collectiveAudienceVote.length}** final code(s)`);
+        }
+    } catch (err) {
+        await logger.log(`Failed computing audience vote: \`${err}\``);
+    }
+    // Now, tally the actual scores and breakdowns
     for (const codes of Object.values(votes)) {
         codes.forEach((code, i) => {
             scores[code] = toFixed(scores[code] + (VOTE_VALUES[i] ?? 0), 3);
