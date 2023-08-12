@@ -210,6 +210,7 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
         const skullImage = await imageLoader.loadImage('assets/skull.png');
         const sunIconImage = await imageLoader.loadImage('assets/sunicon.png');
         const clownIconImage = await imageLoader.loadImage('assets/clownicon.png');
+        const slashIconImage = await imageLoader.loadImage('assets/slashicon.png');
 
         const ROSTER_Y = 2 * MARGIN + HEADER_HEIGHT;
         const HORIZON_Y = ROSTER_Y + this.getNumRemainingPlayers() * (AVATAR_HEIGHT + AVATAR_MARGIN) - 0.5 * AVATAR_MARGIN;
@@ -279,6 +280,10 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
                 context.drawImage(rightArrowImage, playerX - (AVATAR_HEIGHT + AVATAR_MARGIN), playerY, AVATAR_HEIGHT, AVATAR_HEIGHT);
             }
             // Draw modifier images after the avatar
+            if (this.isPlayerLocked(userId)) {
+                playerX += AVATAR_HEIGHT + AVATAR_MARGIN;
+                context.drawImage(slashIconImage, playerX, playerY, AVATAR_HEIGHT, AVATAR_HEIGHT);
+            }
             if (this.isPlayerEliminated(userId)) {
                 playerX += AVATAR_HEIGHT + AVATAR_MARGIN;
                 context.drawImage(skullImage, playerX, playerY, AVATAR_HEIGHT, AVATAR_HEIGHT);
@@ -324,8 +329,8 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
         this.state.numToBeEliminated = numToBeEliminated;
         text.push(`This week, **${numToBeEliminated}** player${numToBeEliminated === 1 ? '' : 's'} will be voted off the island`);
 
-        let aliveVotes = 4;
-        let deadVotes = 4;
+        let aliveVotes = 3;
+        let deadVotes = 3;
         let i = 0;
         const votelessPlayers: Snowflake[] = [];
         for (const userId of this.getOrderedPlayers()) {
