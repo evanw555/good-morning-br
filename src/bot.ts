@@ -1165,6 +1165,7 @@ const finalizeAnonymousSubmissions = async () => {
     const BRONZE_VOTE_VALUE = 1.1;
     const VOTE_VALUES: number[] = [GOLD_VOTE_VALUE, SILVER_VOTE_VALUE, BRONZE_VOTE_VALUE];
     // TODO: Remove the try-catch once we're sure this works
+    const AUDIENCE_VOTE_KEY = '$AUDIENCE';
     try {
         await logger.log(`Compiling **${Object.keys(audienceVotes).length}** audience vote(s):\n`
             + Object.keys(audienceVotes).map(userId => `- <@${userId}>: ${naturalJoin(audienceVotes[userId], { bold: true, conjunction: '&' })}`).join('\n'));
@@ -1178,7 +1179,7 @@ const finalizeAnonymousSubmissions = async () => {
         // Add the collective audience vote to the standard vote map
         const collectiveAudienceVote: string[] = Object.keys(audienceScores).sort((x, y) => audienceScores[y] - audienceScores[x]).slice(0, 3);
         if (collectiveAudienceVote.length === 3) {
-            votes['$AUDIENCE'] = collectiveAudienceVote;
+            votes[AUDIENCE_VOTE_KEY] = collectiveAudienceVote;
             await logger.log(`Added collective audience vote as ${naturalJoin(collectiveAudienceVote, { bold: true, conjunction: 'then' })}`);
         } else {
             await logger.log(`Skipping audience vote, as there are **${collectiveAudienceVote.length}** final code(s)`);
@@ -1327,6 +1328,11 @@ const finalizeAnonymousSubmissions = async () => {
         await messenger.send(sungazersChannel, scoringDetails);
         // Let them know how the score is calculated
         await messenger.send(sungazersChannel, `(\`score = ${GOLD_VOTE_VALUE}🥇 + ${SILVER_VOTE_VALUE}🥈 + ${BRONZE_VOTE_VALUE}🥉 + ${GAZER_TERM_BONUS}🌞\`)`);
+        // Let them know the audience votes, if any
+        const collectiveAudienceVote = votes[AUDIENCE_VOTE_KEY];
+        if (collectiveAudienceVote && collectiveAudienceVote.length === 3) {
+            await messenger.send(sungazersChannel, `**${Object.keys(audienceVotes).length}** audience vote(s) merged as: ${naturalJoin(collectiveAudienceVote, { bold: true })}`);
+        }
         // Let them know who's on probation, if anyone
         if (state.getPlayersOnVotingProbation().length > 0) {
             await messenger.send(sungazersChannel, `Players currently on voting probation: ${getBoldNames(state.getPlayersOnVotingProbation())}`);
@@ -2503,7 +2509,7 @@ client.on('typingStart', async (typing) => {
                 inFiveMinutes.setMinutes(inFiveMinutes.getMinutes() + 5);
                 const ids = await timeoutManager.postponeTimeoutsWithType(TimeoutType.PopcornFallback, inFiveMinutes);
                 // TODO: Temp logging to see how this is working
-                await logger.log(`**${state.getPlayerDisplayName(userId)}** started typing, postpone fallback ` + naturalJoin(ids.map(id => `*${id}** to **${timeoutManager.getDateForTimeoutWithId(id)?.toLocaleTimeString()}**`)));
+                await logger.log(`**${state.getPlayerDisplayName(userId)}** started typing, postpone fallback ` + naturalJoin(ids.map(id => `**${id}** to **${timeoutManager.getDateForTimeoutWithId(id)?.toLocaleTimeString()}**`)));
             }
         }
     }
