@@ -279,23 +279,27 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
             if (voters.length > 0) {
                 context.drawImage(rightArrowImage, playerX - (AVATAR_HEIGHT + AVATAR_MARGIN), playerY, AVATAR_HEIGHT, AVATAR_HEIGHT);
             }
-            // Draw modifier images after the avatar
+            // Draw modifier images after the avatar...
             if (this.isPlayerLocked(userId)) {
                 playerX += AVATAR_HEIGHT + AVATAR_MARGIN;
                 context.drawImage(slashIconImage, playerX, playerY, AVATAR_HEIGHT, AVATAR_HEIGHT);
+            } else {
+                // The following should only be drawn if the player is NOT locked (since it's redundant)
+                if (this.isPlayerEliminated(userId)) {
+                    playerX += AVATAR_HEIGHT + AVATAR_MARGIN;
+                    context.drawImage(skullImage, playerX, playerY, AVATAR_HEIGHT, AVATAR_HEIGHT);
+                }
+                if (this.getNumVotes(userId) === 0) {
+                    playerX += AVATAR_HEIGHT + AVATAR_MARGIN;
+                    context.drawImage(clownIconImage, playerX, playerY, AVATAR_HEIGHT, AVATAR_HEIGHT);
+                }
             }
-            if (this.isPlayerEliminated(userId)) {
-                playerX += AVATAR_HEIGHT + AVATAR_MARGIN;
-                context.drawImage(skullImage, playerX, playerY, AVATAR_HEIGHT, AVATAR_HEIGHT);
-            }
+            // Always draw immunity sun if immune
             if (this.isPlayerImmune(userId)) {
                 playerX += AVATAR_HEIGHT + AVATAR_MARGIN;
                 context.drawImage(sunIconImage, playerX, playerY, AVATAR_HEIGHT, AVATAR_HEIGHT);
             }
-            if (this.getNumVotes(userId) === 0) {
-                playerX += AVATAR_HEIGHT + AVATAR_MARGIN;
-                context.drawImage(clownIconImage, playerX, playerY, AVATAR_HEIGHT, AVATAR_HEIGHT);
-            }
+
             // Draw name
             playerX += AVATAR_HEIGHT + MARGIN;
             // const textX = playerX + 3 * (AVATAR_HEIGHT + AVATAR_MARGIN) + MARGIN;
