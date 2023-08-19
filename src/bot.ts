@@ -328,7 +328,6 @@ const chooseEvent = async (date: Date): Promise<DailyEvent | undefined> => {
     if (date.getDay() === 2) {
         return {
             type: DailyEventType.AnonymousSubmissions,
-            submissionType: await chooseRandomUnusedSubmissionPrompt(),
             submissions: {}
         };
     }
@@ -514,13 +513,9 @@ const updateSubmissionPromptHistory = async (used: string[], unused: string[]) =
 };
 
 const chooseRandomUnusedSubmissionPrompt = async (): Promise<string> => {
-    try {
-        const choices = (await loadSubmissionPromptHistory()).unused;
-        if (choices.length > 0) {
-            return randChoice(...choices);
-        }
-    } catch (err) {
-        await logger.log(`Unhandled exception while choosing random unused prompt:\n\`\`\`${err.message}\`\`\``);
+    const choices = await chooseRandomUnusedSubmissionPrompts(1);
+    if (choices.length === 1) {
+        return choices[0];
     }
     // Random fallback
     return randChoice(
@@ -529,6 +524,19 @@ const chooseRandomUnusedSubmissionPrompt = async (): Promise<string> => {
         // 50% chance to suggest an image prompt
         randChoice("pic that goes hard", "cursed image", "dummy stupid pic", "pic that goes adorable", randChoice("pic that goes ruh", "pic that goes buh"))
     );
+};
+
+const chooseRandomUnusedSubmissionPrompts = async (n: number): Promise<string[]> => {
+    try {
+        const choices = (await loadSubmissionPromptHistory()).unused;
+        if (choices.length > 0) {
+            shuffle(choices);
+            return choices.slice(0, n);
+        }
+    } catch (err) {
+        await logger.log(`Unhandled exception while choosing random unused prompt:\n\`\`\`${err.message}\`\`\``);
+    }
+    return [];
 };
 
 const sendGoodMorningMessage = async (): Promise<void> => {
@@ -918,10 +926,18 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
 
     if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
         const event = state.getEvent();
+        // First, cancel all pending submission prompt polls (if any have been delayed for long enough)
+        await cancelTimeoutsWithType(TimeoutType.AnonymousSubmissionTypePollStart);
+        await cancelTimeoutsWithType(TimeoutType.AnonymousSubmissionTypePollEnd);
         // Load the pre-determined submission prompt into the submission type and clear it
         if (state.hasNextSubmissionPrompt()) {
+            // If the poll finished and the next prompt has been set, use that
             event.submissionType = state.getNextSubmissionPrompt();
             state.clearNextSubmissionPrompt();
+        } else {
+            // If for some reason there wasn't a submission prompt set, pick one at random
+            event.submissionType = await chooseRandomUnusedSubmissionPrompt();
+            await logger.log(`For some reason there wasn't a "next submission prompt" set, so using \`${event.submissionType}\``);
         }
         // Set timeout for anonymous submission reveal
         const submissionRevealTime = new Date();
@@ -1590,14 +1606,17 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                 await logger.log(`Scheduled nightmare event for **${getRelativeDateTimeString(nightmareDate)}**`);
             }
             // Poll for tomorrow's submission prompt (if tomorrow is a submissions day and there's not already a pre-determined prompt)
+            // TODO: If the high-effort poll gets delayed for long enough, this could theoretically kick off in parallel. HANDLE THIS!
             if (state.getEventType() === DailyEventType.AnonymousSubmissions && !state.hasNextSubmissionPrompt()) {
                 // Accept suggestions for 2 hours
                 const pollStartDate = new Date();
                 pollStartDate.setHours(pollStartDate.getHours() + 2);
                 // In 2 hours, fetch replies to this message and start a poll for the submission type
-                const fyiText: string = `FYI gazers: tomorrow, everyone will be sending me a _${state.getEvent().submissionType}_. `
-                    + `If you have another idea, reply to this message before **${getRelativeDateTimeString(pollStartDate)}** with an alternative prompt ${config.defaultGoodMorningEmoji}`;
+                const fyiText: string = 'FYI gazers: it\'s time to pick a submission prompt for tomorrow! '
+                    + `Reply to this message before **${getRelativeDateTimeString(pollStartDate)}** to suggest a prompt. I'll start ${config.defaultGoodMorningEmoji}`;
                 const fyiMessage = await sungazersChannel.send(fyiText);
+                // Prime the suggestions with an unused prompt
+                await messenger.reply(fyiMessage, await chooseRandomUnusedSubmissionPrompt());
                 // Use the delete strategy because it's not required and we want to ensure it's before the morning date
                 await timeoutManager.registerTimeout(TimeoutType.AnonymousSubmissionTypePollStart, pollStartDate, { arg: fyiMessage.id, pastStrategy: PastTimeoutStrategy.Delete });
             }
@@ -1607,8 +1626,14 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                 const pollStartDate = new Date();
                 pollStartDate.setHours(pollStartDate.getHours() + 5);
                 // In 5 hours, fetch replies to this message and start a poll for the submission type
-                const fyiText: string = `Hello gazers, this upcoming Tuesday will be this month's _high-effort_ submissions contest! Reply to this message before **${getRelativeDateTimeString(pollStartDate)}** to suggest a prompt ${config.defaultGoodMorningEmoji}`;
+                const fyiText: string = 'Hello gazers, this upcoming Tuesday will be this month\'s _high-effort_ submissions contest! '
+                    + `Reply to this message before **${getRelativeDateTimeString(pollStartDate)}** to suggest a prompt. I'll give you a few ${config.defaultGoodMorningEmoji}`;
                 const fyiMessage = await sungazersChannel.send(fyiText);
+                // Prime the suggestions with a few unused prompts
+                const unusedPrompts = await chooseRandomUnusedSubmissionPrompts(3);
+                for (const unusedPrompt of unusedPrompts) {
+                    await messenger.reply(fyiMessage, unusedPrompt);
+                }
                 // Use the delete strategy because it's not required and we want to ensure it's before the morning date
                 await timeoutManager.registerTimeout(TimeoutType.AnonymousSubmissionTypePollStart, pollStartDate, { arg: fyiMessage.id, pastStrategy: PastTimeoutStrategy.Delete });
             }
@@ -1944,17 +1969,12 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
 
         // If there are no proposed alternatives...
         if (proposalSet.size === 0) {
-            // Abort if the contest is tomorrow, otherwise try again in two hours
-            if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
-                await logger.log('Aborting anonymous submission type poll start, there were no proposals...');
-            } else {
-                // Schedule the timeout again
-                const in2Hours = new Date();
-                in2Hours.setHours(in2Hours.getHours() + 2);
-                await timeoutManager.registerTimeout(TimeoutType.AnonymousSubmissionTypePollStart, in2Hours, { arg: messageId, pastStrategy: PastTimeoutStrategy.Delete });
-                // Notify the channel
-                await sungazersChannel.send('I don\'t see any prompt ideas, I\'ll give you 2 more hours to pitch some...');
-            }
+            // Schedule the timeout again
+            const in1Hour = new Date();
+            in1Hour.setHours(in1Hour.getHours() + 2);
+            await timeoutManager.registerTimeout(TimeoutType.AnonymousSubmissionTypePollStart, in1Hour, { arg: messageId, pastStrategy: PastTimeoutStrategy.Delete });
+            // Notify the channel
+            await sungazersChannel.send('I don\'t see any prompt ideas, I\'ll give you one more hour to pitch some...');
             return;
         }
 
@@ -2207,7 +2227,6 @@ const cancelTimeoutsWithType = async (type: TimeoutType): Promise<void> => {
     if (canceledIds.length > 0) {
         await logger.log(`Canceled \`${type}\` timeouts \`${JSON.stringify(canceledIds)}\``);
     }
-
 }
 
 const loadState = async (): Promise<void> => {
