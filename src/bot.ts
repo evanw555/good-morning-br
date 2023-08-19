@@ -1576,9 +1576,12 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             state.setMagicWords(magicWords);
         }
 
-        // Revoke access for all players who should be muted (based on their track record / penalty history)
-        // Must be done before dumping the state because it sets player mute properties
-        await revokeGMChannelAccess(state.getDelinquentPlayers());
+        // If the season is still going... (before dumping state)
+        if (!state.isSeasonGoalReached()) {
+            // Revoke access for all players who should be muted (based on their track record / penalty history)
+            // Must be done before dumping the state because it sets player mute properties
+            await revokeGMChannelAccess(state.getDelinquentPlayers());
+        }
 
         // Dump state and R9K hashes
         await dumpState();
@@ -1586,7 +1589,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         await dumpBaitR9KHashes();
         await dumpYouTubeIds();
 
-        // If the season is still going...
+        // If the season is still going... (after dumping state)
         if (!state.isSeasonGoalReached()) {
             // Register a timeout that will allow the bot to "wake up" tomorrow
             if (state.getEventType() === DailyEventType.GuestReveille) {
