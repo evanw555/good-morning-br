@@ -589,7 +589,11 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
             void logger.log(`<@${userId}> is trying to grant immunity: \`${text}\``);
             // If the user is trying to confirm...
             if (text.toLowerCase().trim() === 'confirm') {
-                // If there's someone to confirm, finalize the immunity granting
+                // If the immunity has already been granted, abort
+                if (this.state.immunityReceiver) {
+                    return [`It's too late to do that, immunity has already been granted to **${this.getName(this.state.immunityReceiver)}**`];
+                }
+                // Else, if there's someone to confirm then finalize the immunity granting
                 if (this.pendingImmunityReceiver) {
                     this.state.immunityReceiver = this.pendingImmunityReceiver;
                     delete this.pendingImmunityReceiver;
