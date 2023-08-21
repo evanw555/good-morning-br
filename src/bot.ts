@@ -3576,22 +3576,34 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             await safeProcessCommands(msg);
             return;
         }
-        // If accepting game decisions, process decision and return
-        if (state.isAcceptingGameDecisions()) {
-            if (state.hasGame()) {
-                if (!state.getGame().hasPlayer(userId)) {
+        // If there's an active game...
+        if (state.hasGame()) {
+            const game = state.getGame();
+            // Attempt to process this DM using the using the non-decision hook
+            const replyTexts = game.handleNonDecisionDM(userId, msg.content).filter(t => t);
+            // If this DM warranted some sort of reply, then send the reply and return
+            if (replyTexts.length > 0) {
+                await dumpState();
+                for (const replyText of replyTexts) {
+                    await messenger.reply(msg, replyText);
+                }
+                return;
+            }
+            // Otherwise if accepting game decisions, process this DM as a game decision
+            if (state.isAcceptingGameDecisions()) {
+                if (!game.hasPlayer(userId)) {
                     await msg.reply('You aren\'t in the game! Participate more if you want to play.');
                     return;
                 }
                 // Handle help requests
                 if (msg.content.trim().toLowerCase() === 'help') {
                     await logger.log(`<@${userId}> asked for help!`);
-                    await msg.reply(state.getGame().getHelpText());
+                    await msg.reply(game.getHelpText());
                     return;
                 }
                 try {
                     // Validate decision string
-                    const response: string = state.getGame().addPlayerDecision(userId, msg.content);
+                    const response: string = game.addPlayerDecision(userId, msg.content);
                     // If it succeeds, dump the state and reply with the validation response
                     await dumpState();
                     try { // TODO: refactor typing event to somewhere else?
@@ -3599,26 +3611,12 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     } catch (err) {}
                     await msg.reply({
                         content: response,
-                        files: [new AttachmentBuilder(await state.getGame().renderState({ showPlayerDecision: userId, season: state.getSeasonNumber() })).setName(`game-turn${state.getGame().getTurn()}-confirmation.png`)]
+                        files: [new AttachmentBuilder(await game.renderState({ showPlayerDecision: userId, season: state.getSeasonNumber() })).setName(`game-turn${game.getTurn()}-confirmation.png`)]
                     });
                     await logger.log(`**${state.getPlayerDisplayName(userId)}** made a valid decision!`);
                 } catch (err) {
                     // Validation failed, notify the user why it failed
                     await messenger.reply(msg, err.toString());
-                }
-            } else {
-                await messenger.reply(msg, 'Oh dear... Looks like the game hasn\'t started yet. Please tell the admin.');
-            }
-            return;
-        }
-        // Otherwise, attempt to process this DM using the non-decision hook (return if there are any replies)
-        else if (state.hasGame()) {
-            const replyTexts = state.getGame().handleNonDecisionDM(userId, msg.content).filter(t => t);
-            // If this DM warranted some sort of reply, then send the reply and return
-            if (replyTexts.length > 0) {
-                await dumpState();
-                for (const replyText of replyTexts) {
-                    await messenger.reply(msg, replyText);
                 }
                 return;
             }
