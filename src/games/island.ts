@@ -1,12 +1,14 @@
-import { Guild, GuildMember, Snowflake } from "discord.js";
-import canvas, { Image } from 'canvas';
+import { GuildMember, Snowflake } from "discord.js";
+import canvas from 'canvas';
 import { DecisionProcessingResult, IslandGameState, IslandPlayerState, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
-import logger from "../logger";
-import { getMostSimilarByNormalizedEditDistance, getRankString, naturalJoin, randChoice, shuffle, toFixed } from "evanw555.js";
+import { getMostSimilarByNormalizedEditDistance, naturalJoin, randChoice, shuffle, toFixed } from "evanw555.js";
 import imageLoader from "../image-loader";
 
+import logger from "../logger";
+
 export default class IslandGame extends AbstractGame<IslandGameState> {
+    private pendingImmunityReceiver?: Snowflake;
 
     constructor(state: IslandGameState) {
         super(state);
@@ -138,7 +140,7 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
 
     addPlayer(member: GuildMember): string {
         if (member.id in this.state.players) {
-            logger.log(`Refusing to add **${member.displayName}** to the island, as they're already in it!`);
+            void logger.log(`Refusing to add **${member.displayName}** to the island, as they're already in it!`);
             return `Cannot add **${member.displayName}** (already in-game)`;
         }
         this.state.players[member.id] = {
@@ -181,7 +183,7 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
     }
 
     private isPlayerImmune(userId: Snowflake): boolean {
-        return this.state.players[userId]?.immunity ?? false;
+        return this.state.immunityReceiver !== undefined && this.state.immunityReceiver === userId;
     }
 
     private getNumVotes(userId: Snowflake): number {
@@ -249,7 +251,7 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
         context.font = `${TITLE_FONT_SIZE}px sans-serif`;
         drawTextWithShadow(`${this.state.numToBeEliminated} dog${this.state.numToBeEliminated === 1 ? '' : 's'} will be eliminated this week... But who?`, MARGIN, MARGIN + TITLE_FONT_SIZE);
 
-        // DRAW ALL PLAYERS
+        // Draw all players
         let playerY = ROSTER_Y;
         for (const userId of this.getRenderOrderedPlayers()) {
             const player = this.state.players[userId];
@@ -318,6 +320,13 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
             playerY += AVATAR_MARGIN + AVATAR_HEIGHT;
         }
 
+        // Write some admin properties
+        if (options?.admin) {
+            context.fillStyle = 'white';
+            drawTextWithShadow(`immunityGranter: ${this.getName(this.state.immunityGranter ?? 'N/A')}`, MARGIN, HORIZON_Y + AVATAR_HEIGHT);
+            drawTextWithShadow(`immunityReceiver: ${this.getName(this.state.immunityReceiver ?? 'N/A')}`, MARGIN, HORIZON_Y + 2 * AVATAR_HEIGHT);
+        }
+
         return c.toBuffer();
     }
 
@@ -326,6 +335,11 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
 
         // Increment the turn counter
         this.state.turn++;
+
+        // If the immunity granter never chose anyone, grant them immunity
+        if (this.state.immunityGranter && !this.state.immunityReceiver) {
+            this.state.immunityReceiver = this.state.immunityGranter;
+        }
 
         // Determine how many will be eliminated this turn
         const numRemaining = this.getNumRemainingPlayers();
@@ -362,6 +376,15 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
                 // Points are not net-positive, so this player can't vote
                 player.votes = 0;
                 votelessPlayers.push(userId);
+            }
+        }
+
+        // Add a log statement about immunity
+        if (this.state.immunityGranter && this.state.immunityReceiver) {
+            if (this.state.immunityReceiver === this.state.immunityGranter) {
+                text.push(`This week's contest winner, **${this.getName(this.state.immunityReceiver)}**, has been granted immunity`);
+            } else {
+                text.push(`This week's contest winner, **${this.getName(this.state.immunityGranter)}**, has granted immunity to **${this.getName(this.state.immunityReceiver)}**`);
             }
         }
 
@@ -414,7 +437,9 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
         for (const userId of this.getOrderedPlayers()) {
             const player = this.state.players[userId];
             // Reset immunity for all players
-            delete player.immunity;
+            delete this.pendingImmunityReceiver;
+            delete this.state.immunityGranter;
+            delete this.state.immunityReceiver;
             // Clear num votes for all players
             delete player.votes;
             delete player.incomingVotes;
@@ -452,11 +477,14 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
                 }
                 // If we're in the final week, don't award anything but still notify them
                 if (this.getNumRemainingPlayers() === 2) {
-                    return [`${intro}, but it's the final week so I can't grant you immunity. Sorry bud!`];
+                    return [`${intro}, but it's the final week so I can't grant anyone immunity. Sorry bud!`];
                 }
                 // Else, award immunity and notify
-                this.state.players[userId].immunity = true;
-                return [`${intro}, you've been granted immunity this week! No one will be able to vote to eliminate you until next week`];
+                this.state.immunityGranter = userId;
+                return [
+                    `${intro}, you've been granted immunity this week! No one will be able to vote to eliminate you until next week`,
+                    'Alternatively, you can choose to grant someone else immunity by sending me a DM (e.g. `grant Robert`), but doing so is irreversible'
+                ];
             default:
                 return [];
         }
@@ -553,5 +581,43 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
         if (result) {
             return userIds[result.index];
         }
+    }
+
+    override handleNonDecisionDM(userId: Snowflake, text: string): string[] {
+        // If this user has the power to grant immunity...
+        if (this.state.immunityGranter !== undefined && this.state.immunityGranter === userId) {
+            void logger.log(`<@${userId}> is trying to grant immunity: \`${text}\``);
+            // If the user is trying to confirm...
+            if (text.toLowerCase().trim() === 'confirm') {
+                // If there's someone to confirm, finalize the immunity granting
+                if (this.pendingImmunityReceiver) {
+                    this.state.immunityReceiver = this.pendingImmunityReceiver;
+                    delete this.pendingImmunityReceiver;
+                    return [`Confirmed! You've granted immunity to **${this.getName(userId)}**`];
+                }
+                // Else, tell them to grant first
+                return ['Before you can confirm, you must choose who to grant immunity to by saying `grant [name]`'];
+            }
+            // If the user is trying to confirm a grant...
+            else if (text.toLowerCase().startsWith('grant')) {
+                // If the immunity has already been granted, abort
+                if (this.state.immunityReceiver) {
+                    return [`Sorry, you've already granted immunity to **${this.getName(this.state.immunityReceiver)}**!`];
+                }
+                // Else, handle granting the immunity
+                const sanitizedText = text.toLowerCase().replace('grant', '').trim();
+                const targetId = this.getClosestUserByName(sanitizedText);
+                if (!targetId) {
+                    return ['I\'m not sure who you\'re trying to grant immunity to. Could you please try again?'];
+                } else if (this.isPlayerEliminated(targetId)) {
+                    return [`<@${targetId}> has already been eliminated, you can\'t grant immunity to them. Try someone else!`];
+                } else  {
+                    // Set the pending receiver value so it can be confirmed
+                    this.pendingImmunityReceiver = targetId;
+                    return [`You're granting immunity to <@${targetId}>, say \`confirm\` to confirm this or say \`grant [name]\` to choose someone else`];
+                }
+            }
+        }
+        return [];
     }
 }

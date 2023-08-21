@@ -213,7 +213,6 @@ export interface IslandPlayerState {
     incomingVotes?: number,
     eliminated?: true,
     locked?: true,
-    immunity?: true,
     finalRank?: number
 }
 
@@ -224,7 +223,9 @@ export interface IslandGameState {
     winners: Snowflake[],
     // Custom properties below
     numToBeEliminated: number,
-    players: Record<Snowflake, IslandPlayerState>
+    players: Record<Snowflake, IslandPlayerState>,
+    immunityGranter?: Snowflake,
+    immunityReceiver?: Snowflake
 }
 
 export interface ClassicGameState {
