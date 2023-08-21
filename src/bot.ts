@@ -3467,8 +3467,8 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     else if (state.getPlayerDaysSinceLGM(userId) > 7) {
                         messenger.reply(msg, languageGenerator.generate('{goodMorningReply.absent?}'));
                     }
-                    // If this player is one of the first to say GM, reply (or react) specially
-                    else if (rank <= config.goodMorningReplyCount) {
+                    // If this player is one of the first to say GM (or was the last submission winner), reply (or react) specially
+                    else if (rank <= config.goodMorningReplyCount || userId === state.getLastSubmissionWinner()) {
                         if (state.getEventType() === DailyEventType.Popcorn || chance(config.replyViaReactionProbability)) {
                             reactToMessage(msg, state.getGoodMorningEmoji());
                         } else if (isQuestion) {
