@@ -117,11 +117,21 @@ export default class GoodMorningState {
     }
 
     /**
-     * Returns a list of user IDs of players with more deductions than cumulative points (if they have negative cumulative points, this will be true) or with negative in-game points.
+     * Returns whether any of the following are true for a given player:
+     * 1. Player has more deductions than half their cumulative points.
+     * 2. Player has negative in-game points.
      * @returns list of delinquent user IDs
      */
+    isPlayerDelinquent(userId: Snowflake): boolean {
+        if (this.hasPlayer(userId)) {
+            return this.getPlayerDeductions(userId) > 0.5 * this.getPlayerPoints(userId)
+                || (this.hasGame() && this.getGame().getPoints(userId) < 0);
+        }
+        return false;
+    }
+
     getDelinquentPlayers(): Snowflake[] {
-        return this.getPlayers().filter(userId => this.getPlayerDeductions(userId) > this.getPlayerPoints(userId) || (this.hasGame() && this.getGame().getPoints(userId) < 0));
+        return this.getPlayers().filter(userId => this.isPlayerDelinquent(userId));
     }
 
     getMutedPlayers(): Snowflake[] {

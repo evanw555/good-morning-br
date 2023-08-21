@@ -3542,8 +3542,8 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     await reactToMessage(msg, ['😡', '😬', '😒', '😐', '🤫']);
                 }
             }
-            // If this player has more deductions than cumulative points, mute them immediately (hopefully this prevents abuse...)
-            if (!state.isPlayerMuted(userId) && state.getPlayerDeductions(userId) > state.getPlayerPoints(userId)) {
+            // If this deduction makes a player delinquent, mute them immediately (hopefully this prevents abuse...)
+            if (!state.isPlayerMuted(userId) && state.isPlayerDelinquent(userId)) {
                 await revokeGMChannelAccess([userId]);
                 await logger.log(`Revoked GM channel access for **${msg.member?.displayName ?? msg.author.id}**`);
             }
