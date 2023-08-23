@@ -336,9 +336,16 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
         // Increment the turn counter
         this.state.turn++;
 
-        // If the immunity granter never chose anyone, grant them immunity
+        // If the immunity granter never chose anyone...
         if (this.state.immunityGranter && !this.state.immunityReceiver) {
-            this.state.immunityReceiver = this.state.immunityGranter;
+            if (this.isPlayerEliminated(this.state.immunityGranter)) {
+                // If they're eliminated, grant immunity to no one
+                delete this.state.immunityGranter;
+                delete this.state.immunityReceiver;
+            } else {
+                // If they're remaining, grant them immunity
+                this.state.immunityReceiver = this.state.immunityGranter;
+            }
         }
 
         // Determine how many will be eliminated this turn
@@ -470,9 +477,8 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
         }
         switch (type) {
             case 'submissions1':
-                // If the player has been eliminated already, do nothing
-                // TODO: Should they get another prize?
-                if (this.isPlayerEliminated(userId)) {
+                // If the player is locked (joined late), do nothing
+                if (this.isPlayerLocked(userId)) {
                     return [];
                 }
                 // If we're in the final week, don't award anything but still notify them
@@ -481,10 +487,15 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
                 }
                 // Else, award immunity and notify
                 this.state.immunityGranter = userId;
-                return [
-                    `${intro}, you've been granted immunity this week! No one will be able to vote to eliminate you until next week`,
-                    'Alternatively, you can choose to grant someone else immunity by sending me a DM (e.g. `grant Robert`), but doing so is irreversible'
-                ];
+                // Return reply text catered to their elimination status
+                if (this.isPlayerEliminated(userId)) {
+                    return [`${intro}! If you so desire, you may choose one remaining player to grant immunity to (e.g. \`grant Robert\`)`];
+                } else {
+                    return [
+                        `${intro}, you've been granted immunity this week! No one will be able to vote to eliminate you until next week`,
+                        'Alternatively, you can choose to grant someone else immunity by sending me a DM (e.g. `grant Robert`), but doing so is irreversible'
+                    ];
+                }
             default:
                 return [];
         }
