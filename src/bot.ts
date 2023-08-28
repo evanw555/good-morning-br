@@ -1,9 +1,9 @@
 import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, Client, ComponentType, DMChannel, GatewayIntentBits, Partials, TextChannel, User } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discord.js';
-import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, AnonymousSubmission, GameState, Wordle, SubmissionPromptHistory } from './types';
+import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, AnonymousSubmission, GameState, Wordle, SubmissionPromptHistory, ReplyToMessageData } from './types';
 import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, canonicalizeText, getScaledPoints } from './util';
 import GoodMorningState from './state';
-import { addReactsSync, chance, FileStorage, generateKMeansClusters, getClockTime, getPollChoiceKeys, getRandomDateBetween,
+import { addReactsSync, chance, FileStorage, generateKMeansClusters, getClockTime, getDateBetween, getPollChoiceKeys, getRandomDateBetween,
     getRankString, getRelativeDateTimeString, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger,
     naturalJoin, PastTimeoutStrategy, R9KTextBank, randChoice, randInt, shuffle, sleep, TimeoutManager, toCalendarDate, toFixed, toLetterId } from 'evanw555.js';
 import { getProgressOfGuess, renderWordleState } from './wordle';
@@ -1618,8 +1618,13 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                 const fyiText: string = 'FYI gazers: it\'s time to pick a submission prompt for tomorrow! '
                     + `Reply to this message before **${getRelativeDateTimeString(pollStartDate)}** to suggest a prompt. I'll start ${config.defaultGoodMorningEmoji}`;
                 const fyiMessage = await sungazersChannel.send(fyiText);
-                // Prime the suggestions with an unused prompt
-                await messenger.reply(fyiMessage, await chooseRandomUnusedSubmissionPrompt());
+                // Schedule a timeout to prime the suggestions with a random unused prompt (use delete strategy because it's not required)
+                const arg: ReplyToMessageData = {
+                    channelId: fyiMessage.channelId,
+                    messageId: fyiMessage.id,
+                    content: await chooseRandomUnusedSubmissionPrompt()
+                };
+                await timeoutManager.registerTimeout(TimeoutType.ReplyToMessage, getRandomDateBetween(new Date(), pollStartDate, 2), { arg, pastStrategy: PastTimeoutStrategy.Delete });
                 // Use the delete strategy because it's not required and we want to ensure it's before the morning date
                 await timeoutManager.registerTimeout(TimeoutType.AnonymousSubmissionTypePollStart, pollStartDate, { arg: fyiMessage.id, pastStrategy: PastTimeoutStrategy.Delete });
             }
@@ -1632,10 +1637,15 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                 const fyiText: string = 'Hello gazers, this upcoming Tuesday will be this month\'s _high-effort_ submissions contest! '
                     + `Reply to this message before **${getRelativeDateTimeString(pollStartDate)}** to suggest a prompt. I'll give you a few ${config.defaultGoodMorningEmoji}`;
                 const fyiMessage = await sungazersChannel.send(fyiText);
-                // Prime the suggestions with a few unused prompts
+                // Schedule timeouts to prime the suggestions with a few random unused prompts (use delete strategy because it's not required)
                 const unusedPrompts = await chooseRandomUnusedSubmissionPrompts(3);
                 for (const unusedPrompt of unusedPrompts) {
-                    await messenger.reply(fyiMessage, unusedPrompt);
+                    const arg: ReplyToMessageData = {
+                        channelId: fyiMessage.channelId,
+                        messageId: fyiMessage.id,
+                        content: unusedPrompt
+                    };
+                    await timeoutManager.registerTimeout(TimeoutType.ReplyToMessage, getRandomDateBetween(new Date(), pollStartDate, 2), { arg, pastStrategy: PastTimeoutStrategy.Delete });
                 }
                 // Use the delete strategy because it's not required and we want to ensure it's before the morning date
                 await timeoutManager.registerTimeout(TimeoutType.AnonymousSubmissionTypePollStart, pollStartDate, { arg: fyiMessage.id, pastStrategy: PastTimeoutStrategy.Delete });
@@ -2219,6 +2229,24 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             // Send the universal turn-end message
             // TODO: Should this be provided as a default in the abstract game class?
             await messenger.send(goodMorningChannel, languageGenerator.generate('{!Well|Alright,} that\'s {!all|it} for this {!week|turn}! Are you all {!proud of your actions|happy with the outcome|optimistic|feeling good}?'));
+        }
+    },
+    [TimeoutType.ReplyToMessage]: async (arg): Promise<void> => {
+        if (arg) {
+            const { channelId, messageId, content } = arg as ReplyToMessageData;
+            try {
+                const channel = await client.channels.fetch(channelId);
+                if (channel instanceof TextChannel) {
+                    const message = await channel.messages.fetch(messageId);
+                    await messenger.reply(message, content || 'Bump!');
+                } else {
+                    await logger.log(`Cannot reply to message, \`${channelId}\` is not a text channel`);
+                }
+            } catch (err) {
+                await logger.log(`Failed replying to message: \`${err}\``);
+            }
+        } else {
+            await logger.log('Cannot reply to message, no message reply data provided');
         }
     }
 };

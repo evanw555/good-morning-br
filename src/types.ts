@@ -16,7 +16,9 @@ export enum TimeoutType {
     Nightmare = 'NIGHTMARE',
     HomeStretchSurprise = 'HOME_STRETCH_SURPRISE',
     // GMBR 2.0 events
-    ProcessGameDecisions = 'PROCESS_GAME_DECISIONS'
+    ProcessGameDecisions = 'PROCESS_GAME_DECISIONS',
+    // Utilities
+    ReplyToMessage = 'REPLY_TO_MESSAGE'
 }
 
 /**
@@ -50,6 +52,12 @@ export interface GoodMorningConfig {
         role: Snowflake,
         channel: Snowflake
     }
+}
+
+export interface ReplyToMessageData {
+    channelId: Snowflake,
+    messageId: Snowflake,
+    content?: string
 }
 
 export interface DailyPlayerState {
