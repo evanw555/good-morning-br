@@ -775,7 +775,7 @@ const chooseGoodMorningTime = (eventType: DailyEventType | undefined): Date => {
     highDate.setHours(...MAX_HOUR_EXCLUSIVE, 0, 0);
 
     // Choose a random time between those two times with a 2nd degree Bates distribution
-    return getRandomDateBetween(lowDate, highDate, 2);
+    return getRandomDateBetween(lowDate, highDate, { bates: 2 });
 };
 
 const registerGoodMorningTimeout = async (): Promise<void> => {
@@ -1624,7 +1624,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                     messageId: fyiMessage.id,
                     content: await chooseRandomUnusedSubmissionPrompt()
                 };
-                await timeoutManager.registerTimeout(TimeoutType.ReplyToMessage, getRandomDateBetween(new Date(), pollStartDate, 2), { arg, pastStrategy: PastTimeoutStrategy.Delete });
+                await timeoutManager.registerTimeout(TimeoutType.ReplyToMessage, getRandomDateBetween(new Date(), pollStartDate, { maxAlong: 0.8, bates: 2 }), { arg, pastStrategy: PastTimeoutStrategy.Delete });
                 // Use the delete strategy because it's not required and we want to ensure it's before the morning date
                 await timeoutManager.registerTimeout(TimeoutType.AnonymousSubmissionTypePollStart, pollStartDate, { arg: fyiMessage.id, pastStrategy: PastTimeoutStrategy.Delete });
             }
@@ -1645,7 +1645,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                         messageId: fyiMessage.id,
                         content: unusedPrompt
                     };
-                    await timeoutManager.registerTimeout(TimeoutType.ReplyToMessage, getRandomDateBetween(new Date(), pollStartDate, 2), { arg, pastStrategy: PastTimeoutStrategy.Delete });
+                    await timeoutManager.registerTimeout(TimeoutType.ReplyToMessage, getRandomDateBetween(new Date(), pollStartDate, { maxAlong: 0.8, bates: 2 }), { arg, pastStrategy: PastTimeoutStrategy.Delete });
                 }
                 // Use the delete strategy because it's not required and we want to ensure it's before the morning date
                 await timeoutManager.registerTimeout(TimeoutType.AnonymousSubmissionTypePollStart, pollStartDate, { arg: fyiMessage.id, pastStrategy: PastTimeoutStrategy.Delete });
