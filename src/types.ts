@@ -56,7 +56,10 @@ export interface GoodMorningConfig {
 
 export interface ReplyToMessageData {
     channelId: Snowflake,
-    messageId: Snowflake,
+    /**
+     * If no message ID is provided, then the message won't be a reply.
+     */
+    messageId?: Snowflake,
     content?: string
 }
 

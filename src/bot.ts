@@ -3,9 +3,9 @@ import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discor
 import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, AnonymousSubmission, GameState, Wordle, SubmissionPromptHistory, ReplyToMessageData } from './types';
 import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, canonicalizeText, getScaledPoints } from './util';
 import GoodMorningState from './state';
-import { addReactsSync, chance, FileStorage, generateKMeansClusters, getClockTime, getDateBetween, getPollChoiceKeys, getRandomDateBetween,
+import { addReactsSync, chance, DiscordTimestampFormat, FileStorage, generateKMeansClusters, getClockTime, getDateBetween, getPollChoiceKeys, getRandomDateBetween,
     getRankString, getRelativeDateTimeString, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger,
-    naturalJoin, PastTimeoutStrategy, R9KTextBank, randChoice, randInt, shuffle, sleep, TimeoutManager, toCalendarDate, toFixed, toLetterId } from 'evanw555.js';
+    naturalJoin, PastTimeoutStrategy, R9KTextBank, randChoice, randInt, shuffle, sleep, TimeoutManager, toCalendarDate, toDiscordTimestamp, toFixed, toLetterId } from 'evanw555.js';
 import { getProgressOfGuess, renderWordleState } from './wordle';
 import ActivityTracker from './activity-tracker';
 import AbstractGame from './games/abstract-game';
@@ -120,6 +120,15 @@ const reactToMessageById = async (messageId: Snowflake, emoji: string | string[]
     } catch (err) {
         await logger.log(`Failed to react with ${emoji} to message with ID \`${messageId}\`: \`${err}\``);
     }
+}
+
+const getSubmissionRevealTimestamp = (): string => {
+    const date = timeoutManager.getDateForTimeoutWithType(TimeoutType.AnonymousSubmissionReveal);
+    if (date) {
+        return toDiscordTimestamp(date, DiscordTimestampFormat.ShortTime);
+    }
+    // TODO: This is hardcoded, fix this
+    return '10:50';
 }
 
 const logStateBackupFile = async (): Promise<void> => {
@@ -635,7 +644,7 @@ const sendGoodMorningMessage = async (): Promise<void> => {
             const intro: string = overriddenMessage ? 'There\'s more!' : 'Good morning! Today is a special one.';
             const text = `${intro} Rather than sending your good morning messages here for all to see, `
                 + `I'd like you to come up with a _${state.getEvent().submissionType}_ and send it directly to me via DM! `
-                + `At 10:50, I'll post them here anonymously and you'll all be voting on your favorites 😉`;
+                + `At ${getSubmissionRevealTimestamp()}, I'll post them here anonymously and you'll all be voting on your favorites 😉`;
             await messenger.send(goodMorningChannel, text, { immediate: overriddenMessage !== undefined });
             // Also, let players know they can forfeit
             await sleep(10000);
@@ -944,7 +953,16 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         submissionRevealTime.setHours(10, 50, 0, 0);
         // We register this with the "Invoke" strategy since we want it to happen before Pre-Noon (with which it's registered in parallel)
         await timeoutManager.registerTimeout(TimeoutType.AnonymousSubmissionReveal, submissionRevealTime, { pastStrategy: PastTimeoutStrategy.Invoke });
-        // Also, create the forfeit command
+        // Also, register a reply to give users a 5 minute warning
+        const fiveMinuteWarningTime = new Date(submissionRevealTime);
+        fiveMinuteWarningTime.setMinutes(fiveMinuteWarningTime.getMinutes() - 5);
+        const warningArg: ReplyToMessageData = {
+            channelId: goodMorningChannel.id,
+            content: randChoice('5 minute warning', '5 minutes left, submit now or hold your peace', '5 minutes left', 'You have 5 minutes',
+                'Revealing submissions in 5 minutes', '5 MINUTES!', 'Closing my DMs in 5 minutes', 'Window closes in 5 minutes') + ' ⏳'
+        };
+        await timeoutManager.registerTimeout(TimeoutType.ReplyToMessage, fiveMinuteWarningTime, { arg: warningArg, pastStrategy: PastTimeoutStrategy.Delete })
+        // Create the forfeit command
         await guild.commands.create({
             name: 'forfeit',
             description: `Forfeit the ${event.submissionType?.slice(0, 50)} contest to avoid a penalty`
@@ -2237,8 +2255,13 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             try {
                 const channel = await client.channels.fetch(channelId);
                 if (channel instanceof TextChannel) {
-                    const message = await channel.messages.fetch(messageId);
-                    await messenger.reply(message, content || 'Bump!');
+                    // If no message ID provided, just send the message
+                    if (messageId) {
+                        const message = await channel.messages.fetch(messageId);
+                        await messenger.reply(message, content || 'Bump!');
+                    } else {
+                        await messenger.send(channel, content || 'Bump!');
+                    }
                 } else {
                     await logger.log(`Cannot reply to message, \`${channelId}\` is not a text channel`);
                 }
@@ -3686,7 +3709,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     }
                     // If we now have a multiple of some number of submissions, notify the server
                     if (numSubmissions % 3 === 0) {
-                        await messenger.send(goodMorningChannel, languageGenerator.generate(`{!We now have|I've received|We're now at|I now count|Currently at|I have|Nice} **${numSubmissions}** {!submissions|submissions|entries}! {!DM me|Send me a DM with|Send me} a _${state.getEvent().submissionType}_ to {!participate|be included|join the fun|enter the contest|be a part of the contest|have a chance to win}`));
+                        await messenger.send(goodMorningChannel, languageGenerator.generate(`{!We now have|I've received|We're now at|I now count|Currently at|I have|Nice} **${numSubmissions}** {!submissions|submissions|entries}! {!DM me|Send me a DM with|Send me} a _${state.getEvent().submissionType}_ before ${getSubmissionRevealTimestamp()} to {!participate|be included|join the fun|enter the contest|be a part of the contest|have a chance to win}`));
                     }
                     // This may be the user's first engagement, so refresh display name here
                     // TODO: is there a better, more unified way to do this?
