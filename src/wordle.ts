@@ -88,6 +88,15 @@ export async function renderWordleState(wordle: Wordle, options?: { hiScores: Re
             winnerId = ownerId;
             currentPlayerScores[ownerId]++;
         }
+        // Determine the which letters remain and what quantities
+        const remainingLetters: Record<string, number> = {};
+        for (let j = 0; j < NUM_LETTERS; j++) {
+            const letter = guess[j];
+            if (wordle.solution[j] !== letter) {
+                remainingLetters[letter] = (remainingLetters[letter] ?? 0) + 1;
+            }
+        }
+        // Draw each letter
         for (let j = 0; j < NUM_LETTERS; j++) {
             const letter = guess[j];
             const x = TILE_MARGIN + j * (TILE_SIZE + TILE_MARGIN);
@@ -99,8 +108,13 @@ export async function renderWordleState(wordle: Wordle, options?: { hiScores: Re
                     letterOwners[j] = ownerId;
                     currentPlayerScores[ownerId]++;
                 }
-            } else if (wordle.solution.includes(letter)) {
+            } else if (remainingLetters[letter]) {
                 context.fillStyle = 'goldenrod';
+                // "Consume" one of these remaining letters
+                remainingLetters[letter]--;
+                if (remainingLetters[letter] < 1) {
+                    delete remainingLetters[letter];
+                }
             } else {
                 context.fillStyle = 'gray';
             }
