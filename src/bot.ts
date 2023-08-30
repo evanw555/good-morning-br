@@ -2914,8 +2914,7 @@ const processCommands = async (msg: Message): Promise<void> => {
         }
         // Activity counter simulation/testing
         else if (sanitizedText.includes('activity')) {
-            await msg.reply(state.getOrderedPlayers()
-                .sort((x, y) => state.getPlayerActivity(y).getRating() - state.getPlayerActivity(x).getRating())
+            await msg.reply(state.getActivityOrderedPlayers()
                 .map(userId => `${state.getPlayerActivity(userId).toString()} <@${userId}>`)
                 .join('\n') || 'No players.');
         }
@@ -3173,20 +3172,32 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     await messenger.reply(msg, 'Thank you for a wonderful end to such a wonderful story! Hope you all enjoyed it as much as I did');
                 } else {
                     const mentionedUserIds = getMessageMentions(msg);
-                    // If the user is breaking the rules, force them to try again and abort
-                    if (mentionedUserIds.length === 0) {
-                        await messenger.reply(msg, 'Call on someone else!');
-                        return;
-                    } else if (mentionedUserIds.includes(userId)) {
-                        await messenger.reply(msg, 'You can\'t popcorn yourself you big dummy! Call on someone else');
-                        return;
+                    // Pick out a potential fallback in case this user didn't tag correctly
+                    const fallbackUserId: Snowflake | undefined = state.getActivityOrderedPlayers().filter(id => !state.hasDailyRank(id))[0];
+                    // If there's no fallback and the user is breaking the rules, force them to try again and abort
+                    if (!fallbackUserId) {
+                        if (mentionedUserIds.includes(userId)) {
+                            await messenger.reply(msg, 'You can\'t popcorn yourself you big dummy! Call on someone else');
+                            return;
+                        } else if (mentionedUserIds.length === 0) {
+                            await messenger.reply(msg, 'Call on someone else!');
+                            return;
+                        }
                     }
                     // React with popcorn to show that the torch has been passed
                     await reactToMessage(msg, '🍿');
                     // Cancel any existing popcorn fallback timeouts
                     await cancelTimeoutsWithType(TimeoutType.PopcornFallback);
                     // Pass the torch to someone else...
-                    if (mentionedUserIds.length === 1) {
+                    if (mentionedUserIds.includes(userId)) {
+                        // Tried to tag himself, so pass to the fallback user
+                        event.user = fallbackUserId;
+                        await messenger.reply(msg, `You can\'t popcorn yourself you big dummy, let me pick for you: popcorn <@${fallbackUserId}>!`);
+                    } else if (mentionedUserIds.length === 0) {
+                        // Didn't tag anyone, so pass to the fallback user
+                        event.user = fallbackUserId;
+                        await messenger.reply(msg, `Popcorn <@${fallbackUserId}>!`);
+                    } else if (mentionedUserIds.length === 1) {
                         // Only one other user was mentioned, so pass the torch to them
                         event.user = mentionedUserIds[0];
                         // TODO: We should do something special if an unknown player is called on

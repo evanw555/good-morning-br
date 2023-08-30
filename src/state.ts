@@ -95,6 +95,10 @@ export default class GoodMorningState {
         return Object.keys(this.data.players);
     }
 
+    getActivityOrderedPlayers(): Snowflake[] {
+        return this.getPlayers().sort((x, y) => this.getPlayerActivity(y).getRating() - this.getPlayerActivity(x).getRating());
+    }
+
     /**
      * Returns an ordered list of user IDs sorted by their rank in the game.
      * For every player NOT in game, add them at the end ordered by points, then days since last good morning, then penalties.
