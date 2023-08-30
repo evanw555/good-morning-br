@@ -1634,7 +1634,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                 pollStartDate.setHours(pollStartDate.getHours() + 2);
                 // In 2 hours, fetch replies to this message and start a poll for the submission type
                 const fyiText: string = 'FYI gazers: it\'s time to pick a submission prompt for tomorrow! '
-                    + `Reply to this message before **${getRelativeDateTimeString(pollStartDate)}** to suggest a prompt ${config.defaultGoodMorningEmoji}`;
+                    + `Reply to this message before ${toDiscordTimestamp(pollStartDate, DiscordTimestampFormat.ShortTime)} to suggest a prompt ${config.defaultGoodMorningEmoji}`;
                 const fyiMessage = await sungazersChannel.send(fyiText);
                 // Schedule a timeout to prime the suggestions with a random unused prompt (use delete strategy because it's not required)
                 const arg: ReplyToMessageData = {
@@ -1653,7 +1653,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                 pollStartDate.setHours(pollStartDate.getHours() + 5);
                 // In 5 hours, fetch replies to this message and start a poll for the submission type
                 const fyiText: string = 'Hello gazers, this upcoming Tuesday will be this month\'s _high-effort_ submissions contest! '
-                    + `Reply to this message before **${getRelativeDateTimeString(pollStartDate)}** to suggest a prompt ${config.defaultGoodMorningEmoji}`;
+                    + `Reply to this message before ${toDiscordTimestamp(pollStartDate, DiscordTimestampFormat.ShortTime)} to suggest a prompt ${config.defaultGoodMorningEmoji}`;
                 const fyiMessage = await sungazersChannel.send(fyiText);
                 // Schedule timeouts to prime the suggestions with a few random unused prompts (use delete strategy because it's not required)
                 const unusedPrompts = await chooseRandomUnusedSubmissionPrompts(3);
@@ -2043,7 +2043,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         }
 
         // Send the poll message and prime the choices
-        const pollMessage = await sungazersChannel.send(`What should people submit? (poll ends **${getRelativeDateTimeString(pollEndDate)}**)\n`
+        const pollMessage = await sungazersChannel.send(`What should people submit? (poll ends ${toDiscordTimestamp(pollEndDate, DiscordTimestampFormat.ShortTime)})\n`
             + Object.entries(choices).map(([key, value]) => `${key} _${value}_`).join('\n'));
         await addReactsSync(pollMessage, choiceKeys, { delay: 500 });
 
