@@ -597,9 +597,9 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
     override handleNonDecisionDM(userId: Snowflake, text: string): string[] {
         // If this user has the power to grant immunity...
         if (this.state.immunityGranter !== undefined && this.state.immunityGranter === userId) {
-            void logger.log(`<@${userId}> is trying to grant immunity: \`${text}\``);
             // If the user is trying to confirm...
             if (text.toLowerCase().trim() === 'confirm') {
+                void logger.log(`<@${userId}> is trying to confirm immunity: \`${text}\``);
                 // If the immunity has already been granted, abort
                 if (this.state.immunityReceiver) {
                     return [`It's too late to do that, immunity has already been granted to **${this.getName(this.state.immunityReceiver)}**`];
@@ -615,6 +615,7 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
             }
             // If the user is trying to confirm a grant...
             else if (text.toLowerCase().startsWith('grant')) {
+                void logger.log(`<@${userId}> is trying to grant immunity: \`${text}\``);
                 // If the immunity has already been granted, abort
                 if (this.state.immunityReceiver) {
                     return [`Sorry, you've already granted immunity to **${this.getName(this.state.immunityReceiver)}**!`];
