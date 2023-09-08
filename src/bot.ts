@@ -1,6 +1,6 @@
 import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, Client, ComponentType, DMChannel, GatewayIntentBits, Partials, TextChannel, User } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discord.js';
-import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, AnonymousSubmission, GameState, Wordle, SubmissionPromptHistory, ReplyToMessageData } from './types';
+import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, AnonymousSubmission, GameState, Wordle, SubmissionPromptHistory, ReplyToMessageData, GoodMorningAuth } from './types';
 import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, canonicalizeText, getScaledPoints } from './util';
 import GoodMorningState from './state';
 import { addReactsSync, chance, DiscordTimestampFormat, FileStorage, generateKMeansClusters, getClockTime, getDateBetween, getPollChoiceKeys, getRandomDateBetween,
@@ -16,7 +16,7 @@ import logger from './logger';
 import imageLoader from './image-loader';
 import IslandGame from './games/island';
 
-const auth = loadJson('config/auth.json');
+const auth: GoodMorningAuth = loadJson('config/auth.json');
 const config: GoodMorningConfig = loadJson('config/config.json');
 
 const storage = new FileStorage('./data/');
@@ -56,6 +56,7 @@ let guild: Guild;
 
 let goodMorningChannel: TextChannel;
 let sungazersChannel: TextChannel;
+let testingChannel: TextChannel;
 let guildOwner: GuildMember;
 let guildOwnerDmChannel: DMChannel;
 
@@ -2437,6 +2438,15 @@ client.on('ready', async (): Promise<void> => {
         process.exit(1);
     }
 
+    // Attempt to load the testing channel
+    try {
+        testingChannel = (await client.channels.fetch(config.testingChannelId)) as TextChannel;
+    } catch (err) {}
+    if (!testingChannel) {
+        await logger.log(`Couldn't load testing channel with ID \`${config.testingChannelId}\`, aborting...`);
+        process.exit(1);
+    }
+
     // Load all necessary data from disk
     await loadState();
     await loadHistory();
@@ -3084,7 +3094,10 @@ const extractMagicWord = (message: Message): string | undefined => {
 
 client.on('messageCreate', async (msg: Message): Promise<void> => {
     const userId: Snowflake = msg.author.id;
-    if (goodMorningChannel && msg.channel.id === goodMorningChannel.id && !msg.author.bot) {
+    if (testingChannel && msg.channelId === testingChannel.id && !msg.author.bot) {
+        // If message was posted in the testing channel, process as command
+        await safeProcessCommands(msg);
+    } else if (goodMorningChannel && msg.channel.id === goodMorningChannel.id && !msg.author.bot) {
         const isAm: boolean = new Date().getHours() < 12;
         const isPlayerNew: boolean = !state.hasPlayer(userId);
         const isQuestion: boolean = msg.content.trim().endsWith('?');

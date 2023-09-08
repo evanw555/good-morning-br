@@ -31,6 +31,10 @@ export type CalendarDate = string
  */
 export type FullDate = string
 
+export interface GoodMorningAuth {
+    token: string
+}
+
 export interface GoodMorningConfig {
     goodMorningChannelId: Snowflake,
     goodMorningMessageProbability: number,
@@ -51,7 +55,8 @@ export interface GoodMorningConfig {
     sungazers: {
         role: Snowflake,
         channel: Snowflake
-    }
+    },
+    testingChannelId: string
 }
 
 export interface ReplyToMessageData {
@@ -239,6 +244,13 @@ export interface IslandGameState {
     immunityReceiver?: Snowflake
 }
 
+export interface ArenaGameState {
+    type: 'ARENA_GAME_STATE',
+    decisions: Record<Snowflake, string[]>,
+    turn: number,
+    winners: Snowflake[]
+}
+
 export interface ClassicGameState {
     type: 'CLASSIC_GAME_STATE',
     decisions: Record<Snowflake, string[]>,
@@ -252,7 +264,7 @@ export interface ClassicGameState {
     revealedActions: Record<Snowflake, string>
 }
 
-export type GameState = MazeGameState | IslandGameState | ClassicGameState;
+export type GameState = MazeGameState | IslandGameState | ArenaGameState | ClassicGameState;
 
 export interface Bait {
     userId: Snowflake,

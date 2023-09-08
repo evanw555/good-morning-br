@@ -17,11 +17,15 @@ export default abstract class AbstractGame<T extends GameState> {
     /**
      * Text sent out to the channel before the very first game decision of the season.
      */
-    abstract getIntroductionText(): string[]
+    getIntroductionText(): string[] {
+        return ['Welcome to a new game!'];
+    }
     /**
      * Text sent out to the channel at the beginning of the weekly game decision.
      */
-    abstract getInstructionsText(): string
+    getInstructionsText(): string {
+        return 'DM me "help" for help!';
+    }
     /**
      * Text sent out to the channel at Saturday around noon to remind players to make a decision.
      */
@@ -31,15 +35,21 @@ export default abstract class AbstractGame<T extends GameState> {
     /**
      * Text sent directly to users who request help during the game decision phase.
      */
-    abstract getHelpText(): string
+    getHelpText(): string {
+        return this.getInstructionsText();
+    }
     /**
      * Text describing the state of the game, possibly including decisions.
      */
-    abstract getDebugText(): string
+    getDebugText(): string {
+        return 'Debug text';
+    }
     /**
      * A string describing the overall game at the time of game creation.
      */
-    abstract getDebugString(): string
+    getDebugString(): string {
+        return 'Debug string';
+    }
     /**
      * Returns a number in the range [0, 1] representing the approximate completion of this game.
      * If the season is complete, then the value should always be 1.
