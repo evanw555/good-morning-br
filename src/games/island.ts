@@ -362,10 +362,6 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
             const player = this.state.players[userId];
             // Add fractional votes based on points to handle ties
             player.incomingVotes = i++ * 0.01;
-            // If this player has immunity, send a message about it
-            if (this.isPlayerImmune(userId)) {
-                text.push(`This week's contest winner, **${this.getName(userId)}**, has been granted immunity`);
-            }
             // If this player is locked, skip them
             if (this.isPlayerLocked(userId)) {
                 continue;
