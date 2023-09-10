@@ -832,8 +832,8 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         // TODO (2.0): Eventually, this should be more generic for other game types (don't hardcode this)
         // const dungeon = DungeonCrawler.createSectional(members, { sectionSize: 11, sectionsAcross: 3 });
         // const newGame = MazeGame.createOrganicBest(members, 20, 43, 19, 90);
-        // const newGame = ClassicGame.create(members);
-        const newGame = IslandGame.create(members);
+        const newGame = ClassicGame.create(members);
+        // const newGame = IslandGame.create(members);
         state.setGame(newGame);
         // For all starting players, add the points they earned before the game was instantiated
         for (const userId of participatingUserIds) {
