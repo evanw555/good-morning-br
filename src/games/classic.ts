@@ -144,7 +144,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         const messages: string[] = [];
         for (const userId of this.getOrderedPlayers()) {
             // Add default decision
-            this.state.decisions[userId] = ['cheer'];
+            this.state.decisions[userId] = this.isHalloween() ? ['creep'] : ['cheer'];
 
             // If this user's points exceed the goal, then add them as a winner
             if (this.getPoints(userId) >= this.state.goal) {
@@ -455,6 +455,9 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         const greenDollarIcon = await imageLoader.loadImage('assets/dollargreenicon2.png');
         const redDollarIcon = await imageLoader.loadImage('assets/dollarredicon2.png');
         const eyeImage = await imageLoader.loadImage('assets/eye.png');
+        const creepIcon = await imageLoader.loadImage('assets/black-cat-icon.png');
+        const spookIcon = await imageLoader.loadImage('assets/ghost-icon.png');
+        const hideIcon = await imageLoader.loadImage('assets/hide-icon.png');
         const rank1Image = await imageLoader.loadImage('assets/rank1.png');
         const rank2Image = await imageLoader.loadImage('assets/rank2.png');
         const rank3Image = await imageLoader.loadImage('assets/rank3.png');
@@ -586,6 +589,12 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
                     context.drawImage(redDollarIcon, baseMedalX, baseY + BAR_PADDING, imageWidth, imageWidth);
                 } else if (revealedAction === 'peek') {
                     context.drawImage(eyeImage, baseMedalX, baseY + BAR_PADDING, imageWidth, imageWidth);
+                } else if (revealedAction === 'creep') {
+                    context.drawImage(creepIcon, baseMedalX, baseY + BAR_PADDING, imageWidth, imageWidth);
+                } else if (revealedAction === 'spook' || revealedAction === 'spook-fail') {
+                    context.drawImage(spookIcon, baseMedalX, baseY + BAR_PADDING, imageWidth, imageWidth);
+                } else if (revealedAction === 'hide') {
+                    context.drawImage(hideIcon, baseMedalX, baseY + BAR_PADDING, imageWidth, imageWidth);
                 }
             }
         }
