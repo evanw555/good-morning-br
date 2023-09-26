@@ -261,7 +261,8 @@ export interface ClassicGameState {
     points: Record<Snowflake, number>,
     actionPointDiffs: Record<Snowflake, number>,
     names: Record<Snowflake, string>,
-    revealedActions: Record<Snowflake, string>
+    revealedActions: Record<Snowflake, string>,
+    halloween?: true
 }
 
 export type GameState = MazeGameState | IslandGameState | ArenaGameState | ClassicGameState;

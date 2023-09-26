@@ -2996,6 +2996,8 @@ const processCommands = async (msg: Message): Promise<void> => {
                 }
             } else if (sanitizedText.includes('island')) {
                 tempDungeon = IslandGame.create(members);
+            } else if (sanitizedText.includes('halloween')) {
+                tempDungeon = ClassicGame.create(members, true);
             } else {
                 tempDungeon = ClassicGame.create(members);
             }

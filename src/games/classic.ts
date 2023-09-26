@@ -1,6 +1,6 @@
 import canvas, { Image } from 'canvas';
 import { GuildMember, Snowflake } from "discord.js";
-import { getMostSimilarByNormalizedEditDistance, getRankString, naturalJoin, randChoice, toFixed } from 'evanw555.js';
+import { DiscordTimestampFormat, getMostSimilarByNormalizedEditDistance, getRankString, naturalJoin, randChoice, toDiscordTimestamp, toFixed } from 'evanw555.js';
 import { ClassicGameState, DecisionProcessingResult, Medals, PrizeType } from "../types";
 import { getOrderingUpsets } from '../util';
 import AbstractGame from "./abstract-game";
@@ -14,7 +14,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         super(state);
     }
 
-    static create(members: GuildMember[]): ClassicGame {
+    static create(members: GuildMember[], halloween?: true): ClassicGame {
         const names: Record<Snowflake, string> = {};
         const points: Record<Snowflake, number> = {};
         for (const member of members) {
@@ -30,15 +30,32 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
             points,
             actionPointDiffs: {},
             winners: [],
-            revealedActions: {}
+            revealedActions: {},
+            halloween
         });
     }
 
     getIntroductionText(): string[] {
+        if (this.isHalloween()) {
+            const endDate = new Date();
+            // TODO: This is a hardcoded value
+            endDate.setDate(28);
+            // TODO: Save the end date as a variable
+            return [
+                'Halloween is approaching, my dear dogs... Enjoy this classic GMBR season, but with a graveyard twist!',
+                `This season will end on ${toDiscordTimestamp(endDate, DiscordTimestampFormat.LongDate)}, whoever has the most points by then wins!`
+            ];
+        }
         return ['I know you all must be exhausted, so this season will just be classic GMBR! Say Good Morning and get points, have fun!'];
     }
 
     getInstructionsText(): string {
+        if (this.isHalloween()) {
+            return 'Each week, you can choose one of three actions: **creep**, **spook**, or **hide**! DM me to secretly pick an action, or **creep** by default.\n'
+                + '🕷️ **creep** to spread a little Halloween cheer! (free point to yourself and a random player below you)\n'
+                + '👻 **spook** to steal **4** points from a player above you (e.g. `spook Dezryth`)\n'
+                + '🙈 **hide** to close your eyes and avoid being spooked';
+        }
         return 'Each week, you can choose one of three actions: **cheer**, **take**, or **peek**! DM me to secretly pick an action, or **cheer** by default.\n'
             + '🌞 **cheer** to spread a little Good Morning cheer! (free point to yourself and a random player below you)\n'
             + '‼️ **take** to take **3-5** points from GMBR\'s infinite golden coffer.\n'
@@ -50,11 +67,11 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
     }
 
     getDebugText(): string {
-        return 'Classic Game';
+        return this.getDebugString();
     }
 
     getDebugString(): string {
-        return 'Classic game';
+        return 'Classic game' + (this.isHalloween() ? ' (Halloween)' : '');
     }
 
     getSeasonCompletion(): number {
@@ -192,29 +209,55 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
 
     addPlayerDecision(userId: string, text: string): string {
         const sanitizedDecision = text.toLowerCase().trim();
-        if (sanitizedDecision === 'cheer') {
-            this.state.decisions[userId] = ['cheer'];
-            return 'Good choice! You will spread Good Morning **cheer** to your dear dogs';
-        } else if (sanitizedDecision === 'take') {
-            this.state.decisions[userId] = ['take'];
-            // If the player is near the goal, let them know their take will be nerfed
-            if (this.isPlayerNearGoal(userId)) {
-                return `You will **take**, but you're close to finishing so the amount will be exactly **${ClassicGame.NERFED_TAKE_AMOUNT}** points to avoid randomness in the winning condition`;
-            } else {
-                return 'Oooooh risky choice! You will **take**, let\'s see if it pays off...';
-            }
-        } else if (sanitizedDecision.startsWith('peek')) {
-            const targetName  = sanitizedDecision.replace(/^peek\s*/, '');
-            if (targetName) {
-                const targetId = this.getClosestUserByName(targetName);
-                if (targetId) {
-                    this.state.decisions[userId] = [`peek:${targetId}`];
-                    return `Ok, you will **peek** at **${this.state.names[targetId]}** this turn...`;
+        // Halloween actions
+        if (this.isHalloween()) {
+            if (sanitizedDecision === 'creep') {
+                this.state.decisions[userId] = ['creep'];
+                return 'Good choice! You will **creep** through the night...';
+            } else if (sanitizedDecision === 'hide') {
+                this.state.decisions[userId] = ['hide'];
+                return 'Safe choice, you will put your hands over your eyes to **hide** from the ghouls of the night...';
+            } else if (sanitizedDecision.startsWith('spook')) {
+                const targetName  = sanitizedDecision.replace(/^spook\s*/, '');
+                if (targetName) {
+                    const targetId = this.getClosestUserByName(targetName);
+                    if (targetId) {
+                        this.state.decisions[userId] = [`spook:${targetId}`];
+                        return `Ok, you will **spook** **${this.state.names[targetId]}** this turn...`;
+                    } else {
+                        throw new Error('I have no idea who you\'re trying to spook, could you please be more specific?');
+                    }
                 } else {
-                    throw new Error('I have no idea who you\'re trying to peek at, could you please be more specific?');
+                    throw new Error('Who are you trying to spook? For example, \`spook Dezryth\`');
                 }
-            } else {
-                throw new Error('You are you trying to peek at? For example, \`peek Robert\`');
+            }
+        }
+        // Standard actions
+        else {
+            if (sanitizedDecision === 'cheer') {
+                this.state.decisions[userId] = ['cheer'];
+                return 'Good choice! You will spread Good Morning **cheer** to your dear dogs';
+            } else if (sanitizedDecision === 'take') {
+                this.state.decisions[userId] = ['take'];
+                // If the player is near the goal, let them know their take will be nerfed
+                if (this.isPlayerNearGoal(userId)) {
+                    return `You will **take**, but you're close to finishing so the amount will be exactly **${ClassicGame.NERFED_TAKE_AMOUNT}** points to avoid randomness in the winning condition`;
+                } else {
+                    return 'Oooooh risky choice! You will **take**, let\'s see if it pays off...';
+                }
+            } else if (sanitizedDecision.startsWith('peek')) {
+                const targetName  = sanitizedDecision.replace(/^peek\s*/, '');
+                if (targetName) {
+                    const targetId = this.getClosestUserByName(targetName);
+                    if (targetId) {
+                        this.state.decisions[userId] = [`peek:${targetId}`];
+                        return `Ok, you will **peek** at **${this.state.names[targetId]}** this turn...`;
+                    } else {
+                        throw new Error('I have no idea who you\'re trying to peek at, could you please be more specific?');
+                    }
+                } else {
+                    throw new Error('Who are you trying to peek at? For example, \`peek Robert\`');
+                }
             }
         }
         throw new Error('I don\'t recognize that action!');
@@ -226,8 +269,11 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         let summary = '';
 
         const anyCheerDecisions = Object.values(this.state.decisions).some(d => d.includes('cheer'));
+        const anyCreepDecisions = Object.values(this.state.decisions).some(d => d.includes('creep'));
         const takers = Object.keys(this.state.decisions).filter(userId => this.state.decisions[userId].includes('take'));
         const peekersByTarget: Record<string, string[]> = {};
+        const spookers = Object.keys(this.state.decisions).filter(userId => this.state.decisions[userId][0]?.startsWith('spook:'));
+        const hiders = Object.keys(this.state.decisions).filter(userId => this.state.decisions[userId].includes('hide'));
         for (const userId of Object.keys(this.state.decisions)) {
             const decision = this.state.decisions[userId];
             if (decision && decision[0] && decision[0].startsWith('peek:')) {
@@ -259,6 +305,26 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
                 delete this.state.decisions[userId];
             }
             summary += `**${cheerers.length}** players spread some Good Morning cheer! `;
+        } else if (anyCreepDecisions) {
+            // Process the creeps
+            const creepers = Object.keys(this.state.decisions).filter(userId => this.state.decisions[userId].includes('creep'));
+            const recipientsByCreeper = {};
+            for (const userId of creepers) {
+                recipientsByCreeper[userId] = this.getPlayersBehindPlayer(userId);
+            }
+
+            for (const userId of creepers) {
+                this.state.revealedActions[userId] = 'creep';
+                // Award points
+                this.addPointsFromAction(userId, 1);
+                const recipients = recipientsByCreeper[userId];
+                if (recipients.length > 0) {
+                    this.addPointsFromAction(randChoice(...recipients), 1);
+                }
+                // Remove decision for this player
+                delete this.state.decisions[userId];
+            }
+            summary += `Oh my, oh might! **${creepers.length}** players crept through the night, raising our hairs and spreading Halloween fright... `;
         } else if (takers.length > 0) {
             const taker = randChoice(...takers);
             // If the taker is near the goal, use a constant value to (1) nerf them and (2) prevent unfair winning conditions
@@ -291,28 +357,36 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
             }
             // Delete the decisions
             delete this.state.decisions[taker];
+        } else if (spookers.length > 0) {
+            const spooker = randChoice(...spookers);
+            const decision = this.state.decisions[spooker];
+            const targetUserId = decision[0].split(':')[1];
+            if (hiders.includes(targetUserId)) {
+                // Reveal the target as hiding
+                this.state.revealedActions[targetUserId] = 'hide';
+                this.state.revealedActions[spooker] = 'spook-fail';
+                summary += `**${this.getName(spooker)}** tried to spook **${this.getName(targetUserId)}** and failed, for they were hiding... `;
+            } else {
+                // Successful spook
+                this.state.revealedActions[spooker] = 'spook';
+                // Update points
+                this.addPointsFromAction(spooker, 4);
+                this.addPointsFromAction(targetUserId, -4);
+                summary += `**${this.getName(spooker)}** spooked **${this.getName(targetUserId)}**, creating a grand fright! `;
+            }
         }
 
-        const afterOrdering = this.getOrderedPlayers();
-        const upsets = getOrderingUpsets(beforeOrdering, afterOrdering);
-
-        const upsetStrings: string[] = [];
-        for (const upsetter of Object.keys(upsets)) {
-            const upsettees = upsets[upsetter];
-            upsetStrings.push(`**${this.getName(upsetter)}** has overtaken ${naturalJoin(upsettees.map(u => `**${this.getName(u)}**`), { conjunction: '&' })}`);
-        }
-        const upsetString = naturalJoin(upsetStrings);
-        if (upsetString) {
-            // summary += ' ' + upsetString;
-        }
-
-        // End the turn if the only thing remaining are unfulfilled peek actions
-        const endTurn = Object.values(this.state.decisions).every(d => d[0] && d[0].startsWith('peek:'));
+        // End the turn if the only thing remaining are unfulfilled peek/hide actions
+        const endTurn = Object.values(this.state.decisions).every(d => d[0] && (d[0].startsWith('peek:') || d[0] === 'hide'));
 
         return {
             summary,
             continueProcessing: !endTurn
         };
+    }
+
+    private isHalloween(): boolean {
+        return this.state.halloween ?? false;
     }
 
     private getActionPointDiff(userId: Snowflake): number {
@@ -354,6 +428,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         const HEADER_HEIGHT = 150;
         const BAR_WIDTH = 735;
         const BAR_HEIGHT = 36;
+        const AVATAR_HEIGHT = BAR_HEIGHT;
         const BAR_PADDING = 3;
         const INNER_BAR_WIDTH = BAR_WIDTH - (BAR_PADDING * 2);
         const BAR_SPACING = BAR_PADDING * 1.5;
@@ -361,14 +436,15 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         const SEASON_GOAL = 100;
         const PIXELS_PER_POINT = INNER_BAR_WIDTH / SEASON_GOAL;
         const LOWEST_SCORE = Math.min(...Object.values(this.state.points));
-        const MARGIN = Math.max(BAR_HEIGHT / 2, BAR_PADDING + PIXELS_PER_POINT * Math.abs(Math.min(LOWEST_SCORE, 0)));
-        const WIDTH = BAR_WIDTH + 2 * MARGIN;
+        const BASE_MARGIN = BAR_HEIGHT / 2;
+        const MARGIN = Math.max(BASE_MARGIN, BAR_PADDING + PIXELS_PER_POINT * Math.abs(Math.min(LOWEST_SCORE, 0)));
+        const WIDTH = BAR_WIDTH + 2 * MARGIN + AVATAR_HEIGHT + BASE_MARGIN;
         const HEIGHT = HEADER_HEIGHT + Object.keys(this.state.points).length * (BAR_HEIGHT + BAR_SPACING) + MARGIN - BAR_SPACING;
         const c = canvas.createCanvas(WIDTH, HEIGHT);
         const context = c.getContext('2d');
 
         // Fill the blue sky background
-        context.fillStyle = 'rgba(100,157,250,1)';
+        context.fillStyle = this.isHalloween() ? 'rgb(13,2,23)' : 'rgba(100,157,250,1)';
         context.fillRect(0, 0, WIDTH, HEIGHT);
 
         // Fetch all user display names
@@ -416,17 +492,22 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
             const displayName = this.state.names[userId] ?? `Player ${userId}`;
             const baseY = HEADER_HEIGHT + i * (BAR_HEIGHT + BAR_SPACING);
 
+            // Draw the player's avatar
+            const avatarImage = await imageLoader.loadAvatar(userId, 64);
+            context.drawImage(avatarImage, MARGIN, baseY, AVATAR_HEIGHT, AVATAR_HEIGHT);
+
             // Determine the bar's actual rendered width (may be negative, but clip to prevent it from being too large)
             const actualBarWidth = Math.min(this.getPoints(userId), SEASON_GOAL) * PIXELS_PER_POINT;
 
             // Draw the bar container
+            const baseBarX = MARGIN + AVATAR_HEIGHT + BASE_MARGIN;
             context.fillStyle = 'rgb(221,231,239)';
-            context.fillRect(MARGIN, baseY, BAR_WIDTH, BAR_HEIGHT);
+            context.fillRect(baseBarX, baseY, BAR_WIDTH, BAR_HEIGHT);
 
             // Draw the actual bar using a hue corresponding to the user's rank
             const hue = 256 * (orderedUserIds.length - i) / orderedUserIds.length;
             context.fillStyle = `hsl(${hue},50%,50%)`;
-            context.fillRect(MARGIN + BAR_PADDING,
+            context.fillRect(baseBarX + BAR_PADDING,
                 baseY + BAR_PADDING,
                 actualBarWidth,
                 BAR_HEIGHT - (BAR_PADDING * 2));
@@ -442,7 +523,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
             }
 
             // Write the user's display name (with a "shadow")
-            const textX = MARGIN + BAR_PADDING * 2 + (textInsideBar ? 0 : Math.max(actualBarWidth, 0));
+            const textX = baseBarX + BAR_PADDING * 2 + (textInsideBar ? 0 : Math.max(actualBarWidth, 0));
             context.fillStyle = `rgba(0,0,0,.4)`;
             context.fillText(displayName, textX, baseY + 0.7 * BAR_HEIGHT);
             context.fillStyle = textInsideBar ? 'white' : 'BLACKISH';
