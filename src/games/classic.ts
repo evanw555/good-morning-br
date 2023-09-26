@@ -436,9 +436,9 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         const SEASON_GOAL = 100;
         const PIXELS_PER_POINT = INNER_BAR_WIDTH / SEASON_GOAL;
         const LOWEST_SCORE = Math.min(...Object.values(this.state.points));
-        const BASE_MARGIN = BAR_HEIGHT / 2;
-        const MARGIN = Math.max(BASE_MARGIN, BAR_PADDING + PIXELS_PER_POINT * Math.abs(Math.min(LOWEST_SCORE, 0)));
-        const WIDTH = BAR_WIDTH + 2 * MARGIN + AVATAR_HEIGHT + BASE_MARGIN;
+        const MARGIN = Math.max(BAR_HEIGHT / 2, BAR_PADDING + PIXELS_PER_POINT * Math.abs(Math.min(LOWEST_SCORE, 0)));
+        const BASE_BAR_X = MARGIN + AVATAR_HEIGHT + BAR_SPACING;
+        const WIDTH = BASE_BAR_X + BAR_WIDTH + MARGIN;
         const HEIGHT = HEADER_HEIGHT + Object.keys(this.state.points).length * (BAR_HEIGHT + BAR_SPACING) + MARGIN - BAR_SPACING;
         const c = canvas.createCanvas(WIDTH, HEIGHT);
         const context = c.getContext('2d');
@@ -500,14 +500,13 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
             const actualBarWidth = Math.min(this.getPoints(userId), SEASON_GOAL) * PIXELS_PER_POINT;
 
             // Draw the bar container
-            const baseBarX = MARGIN + AVATAR_HEIGHT + BASE_MARGIN;
             context.fillStyle = 'rgb(221,231,239)';
-            context.fillRect(baseBarX, baseY, BAR_WIDTH, BAR_HEIGHT);
+            context.fillRect(BASE_BAR_X, baseY, BAR_WIDTH, BAR_HEIGHT);
 
             // Draw the actual bar using a hue corresponding to the user's rank
             const hue = 256 * (orderedUserIds.length - i) / orderedUserIds.length;
             context.fillStyle = `hsl(${hue},50%,50%)`;
-            context.fillRect(baseBarX + BAR_PADDING,
+            context.fillRect(BASE_BAR_X + BAR_PADDING,
                 baseY + BAR_PADDING,
                 actualBarWidth,
                 BAR_HEIGHT - (BAR_PADDING * 2));
@@ -523,7 +522,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
             }
 
             // Write the user's display name (with a "shadow")
-            const textX = baseBarX + BAR_PADDING * 2 + (textInsideBar ? 0 : Math.max(actualBarWidth, 0));
+            const textX = BASE_BAR_X + BAR_PADDING * 2 + (textInsideBar ? 0 : Math.max(actualBarWidth, 0));
             context.fillStyle = `rgba(0,0,0,.4)`;
             context.fillText(displayName, textX, baseY + 0.7 * BAR_HEIGHT);
             context.fillStyle = textInsideBar ? 'white' : 'BLACKISH';
