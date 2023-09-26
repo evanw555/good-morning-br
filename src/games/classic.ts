@@ -436,7 +436,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         const SEASON_GOAL = 100;
         const PIXELS_PER_POINT = INNER_BAR_WIDTH / SEASON_GOAL;
         const LOWEST_SCORE = Math.min(...Object.values(this.state.points));
-        const MARGIN = Math.max(BAR_HEIGHT / 2, BAR_PADDING + PIXELS_PER_POINT * Math.abs(Math.min(LOWEST_SCORE, 0)));
+        const MARGIN = Math.max(BAR_HEIGHT / 2, PIXELS_PER_POINT * Math.abs(Math.min(LOWEST_SCORE, 0)) - (2 * BAR_PADDING + AVATAR_HEIGHT));
         const BASE_BAR_X = MARGIN + AVATAR_HEIGHT + BAR_SPACING;
         const WIDTH = BASE_BAR_X + BAR_WIDTH + MARGIN;
         const HEIGHT = HEADER_HEIGHT + Object.keys(this.state.points).length * (BAR_HEIGHT + BAR_SPACING) + MARGIN - BAR_SPACING;
