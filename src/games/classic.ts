@@ -1,4 +1,4 @@
-import canvas, { Image } from 'canvas';
+import canvas, { Image, NodeCanvasRenderingContext2D } from 'canvas';
 import { GuildMember, Snowflake } from "discord.js";
 import { DiscordTimestampFormat, getMostSimilarByNormalizedEditDistance, getRankString, naturalJoin, randChoice, toDiscordTimestamp, toFixed } from 'evanw555.js';
 import { ClassicGameState, DecisionProcessingResult, Medals, PrizeType } from "../types";
@@ -492,15 +492,17 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
             const displayName = this.state.names[userId] ?? `Player ${userId}`;
             const baseY = HEADER_HEIGHT + i * (BAR_HEIGHT + BAR_SPACING);
 
+            // Draw the avatar container
+            context.fillStyle = 'rgb(221,231,239)';
+            context.fillRect(MARGIN, baseY, AVATAR_HEIGHT, AVATAR_HEIGHT);
             // Draw the player's avatar
             const avatarImage = await imageLoader.loadAvatar(userId, 64);
-            context.drawImage(avatarImage, MARGIN, baseY, AVATAR_HEIGHT, AVATAR_HEIGHT);
+            context.drawImage(avatarImage, MARGIN + BAR_PADDING, baseY + BAR_PADDING, AVATAR_HEIGHT - (BAR_PADDING * 2), AVATAR_HEIGHT - (BAR_PADDING * 2));
 
             // Determine the bar's actual rendered width (may be negative, but clip to prevent it from being too large)
             const actualBarWidth = Math.min(this.getPoints(userId), SEASON_GOAL) * PIXELS_PER_POINT;
 
             // Draw the bar container
-            context.fillStyle = 'rgb(221,231,239)';
             context.fillRect(BASE_BAR_X, baseY, BAR_WIDTH, BAR_HEIGHT);
 
             // Draw the actual bar using a hue corresponding to the user's rank
