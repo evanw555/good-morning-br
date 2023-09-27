@@ -486,7 +486,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         const COLOR_HALLOWEEN_BAR_CONTAINER = 'rgb(30,30,30)';
 
         // Start by loading the header image, then use that to determine the total dimensions
-        const headerImage = await imageLoader.loadImage('assets/classic/halloweenskyline.png');
+        const headerImage = await imageLoader.loadImage(`assets/classic/header-${this.isHalloween() ? 'halloween' : 'classic'}.png`);
 
         const HEADER_HEIGHT = 200;
         const WIDTH = (headerImage.width / headerImage.height) * HEADER_HEIGHT;

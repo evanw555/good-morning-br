@@ -2534,7 +2534,7 @@ client.on('invalidated', async () => {
 });
 
 client.on('interactionCreate', async (interaction): Promise<void> => {
-    const game = (awaitingGameCommands && interaction.user.id === guildOwner.id) ? tempDungeon : (state.hasGame() ? state.getGame() : undefined);
+    const game = (awaitingGameCommands && interaction.channelId !== goodMorningChannel.id) ? tempDungeon : (state.hasGame() ? state.getGame() : undefined);
     if (interaction.isMessageComponent()) {
         const customIdSegments = interaction.customId.split(':');
         const rootCustomId = customIdSegments[0];
