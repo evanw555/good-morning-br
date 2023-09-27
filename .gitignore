@@ -4,3 +4,4 @@ ignore/
 build/
 
 config/auth.json
+config/config-override.json

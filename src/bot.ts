@@ -18,6 +18,14 @@ import IslandGame from './games/island';
 
 const auth: GoodMorningAuth = loadJson('config/auth.json');
 const config: GoodMorningConfig = loadJson('config/config.json');
+// For local testing, load a config override file to override specific properties
+try {
+    const configOverride: Record<string, any> = loadJson('config/config-override.json');
+    for (const key of Object.keys(configOverride)) {
+        config[key] = configOverride[key];
+        console.log(`Loaded overridden ${key} config property: ${JSON.stringify(configOverride[key])}`);
+    }
+} catch (err) {}
 
 const storage = new FileStorage('./data/');
 const sharedStorage = new FileStorage('/home/pi/.mcmp/');
