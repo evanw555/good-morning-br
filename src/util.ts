@@ -1,5 +1,5 @@
 import { APIEmbed, Message, Snowflake } from "discord.js";
-import { randChoice, randInt, loadJson } from "evanw555.js";
+import { randChoice, randInt, loadJson, LanguageGenerator } from "evanw555.js";
 import { AnonymousSubmission, GoodMorningConfig } from "./types";
 
 const config: GoodMorningConfig = loadJson('config/config.json');
@@ -186,4 +186,12 @@ export function getScaledPoints(userIds: Snowflake[], options?: { baseline?: num
     }
 
     return results;
+}
+
+/**
+ * Generates text with a config-less language generator object.
+ */
+export function text(input: string): string {
+    const generator = new LanguageGenerator({});
+    return generator.generate(input);
 }

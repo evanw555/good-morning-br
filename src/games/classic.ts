@@ -1,11 +1,11 @@
-import canvas, { Image, NodeCanvasRenderingContext2D } from 'canvas';
+import canvas, {  } from 'canvas';
 import { GuildMember, Snowflake } from "discord.js";
-import { DiscordTimestampFormat, getMostSimilarByNormalizedEditDistance, getRankString, naturalJoin, randChoice, toDiscordTimestamp, toFixed } from 'evanw555.js';
+import { DiscordTimestampFormat, LanguageGenerator, getMostSimilarByNormalizedEditDistance, getRankString, naturalJoin, randChoice, toDiscordTimestamp, toFixed } from 'evanw555.js';
 import { ClassicGameState, DecisionProcessingResult, Medals, PrizeType } from "../types";
-import { getOrderingUpsets } from '../util';
 import AbstractGame from "./abstract-game";
 
 import imageLoader from '../image-loader';
+import { text } from '../util';
 
 export default class ClassicGame extends AbstractGame<ClassicGameState> {
     private static NERFED_TAKE_AMOUNT = 3;
@@ -52,7 +52,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
     getInstructionsText(): string {
         if (this.isHalloween()) {
             return 'Each week, you can choose one of three actions: **creep**, **spook**, or **hide**! DM me to secretly pick an action, or **creep** by default.\n'
-                + '🕷️ **creep** to spread a little Halloween cheer! (free point to yourself and a random player below you)\n'
+                + '🐈‍⬛ **creep** to spread a little Halloween cheer! (free point to yourself and a random player below you)\n'
                 + '👻 **spook** to steal **4** points from a player above you (e.g. `spook Dezryth`)\n'
                 + '🙈 **hide** to close your eyes and avoid being spooked';
         }
@@ -145,6 +145,10 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         for (const userId of this.getOrderedPlayers()) {
             // Add default decision
             this.state.decisions[userId] = this.isHalloween() ? ['creep'] : ['cheer'];
+            // TODO: Temp logic for local testing to add randomness
+            this.state.decisions[userId] = this.isHalloween()
+                ? randChoice(['creep'], ['hide'], [`spook:${randChoice(...this.getPlayers())}`])
+                : randChoice(['cheer'], ['take'], [`peek:${randChoice(...this.getPlayers())}`]);
 
             // If this user's points exceed the goal, then add them as a winner
             if (this.getPoints(userId) >= this.state.goal) {
@@ -222,8 +226,15 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
                 if (targetName) {
                     const targetId = this.getClosestUserByName(targetName);
                     if (targetId) {
+                        if (userId === targetId) {
+                            throw new Error('What\'s your problem? You can\'t **spook** yourself...');
+                        }
+                        // Validate that the target player is ahead of this player
+                        if (this.getPoints(userId) > this.getPoints(targetId)) {
+                            throw new Error(`You can't spook **${this.getName(targetId)}**, for you're ahead of them!`)
+                        }
                         this.state.decisions[userId] = [`spook:${targetId}`];
-                        return `Ok, you will **spook** **${this.state.names[targetId]}** this turn...`;
+                        return `Ok, you will **spook** **${this.getName(targetId)}** this turn...`;
                     } else {
                         throw new Error('I have no idea who you\'re trying to spook, could you please be more specific?');
                     }
@@ -365,24 +376,54 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
                 // Reveal the target as hiding
                 this.state.revealedActions[targetUserId] = 'hide';
                 this.state.revealedActions[spooker] = 'spook-fail';
-                summary += `**${this.getName(spooker)}** tried to spook **${this.getName(targetUserId)}** and failed, for they were hiding... `;
+                summary += this.getFailedSpookString(this.getName(spooker), this.getName(targetUserId));
             } else {
                 // Successful spook
                 this.state.revealedActions[spooker] = 'spook';
                 // Update points
                 this.addPointsFromAction(spooker, 4);
                 this.addPointsFromAction(targetUserId, -4);
-                summary += `**${this.getName(spooker)}** spooked **${this.getName(targetUserId)}**, creating a grand fright! `;
+                summary += this.getSpookString(this.getName(spooker), this.getName(targetUserId));
             }
+            // Delete the decisions
+            delete this.state.decisions[spooker];
         }
 
         // End the turn if the only thing remaining are unfulfilled peek/hide actions
         const endTurn = Object.values(this.state.decisions).every(d => d[0] && (d[0].startsWith('peek:') || d[0] === 'hide'));
 
+        // If nothing happened for some reason, add a default message
+        if (!summary) {
+            summary = this.isHalloween() ? 'The wind blew softly throughout the night, while neither ghost nor ghoul were anywhere in sight...' : 'Dogs sat around with their hands in their pockets...';
+        }
+
         return {
             summary,
             continueProcessing: !endTurn
         };
+    }
+
+    private getSpookString(spooker: string, spookee: string): string {
+        return randChoice(
+            text(`**${spooker}** {!crept|snuck} up behind **${spookee}** and {!pulled|yanked|tugged} on his hair, {!slapped up|groped|spanked up} his ass, and gave him a scare!`),
+            text(`**${spooker}** {!shrieked before|spooked|startled} **${spookee}** with all his might, {!causing a scene|curdling his blood|raising his hair} and {!creating|stirring up} a fright!`),
+            text(`**${spooker}** {!crept|snuck} up behind **${spookee}** and gave him a scare, curdling his blood and raising his hair!`),
+            text(`**${spooker}** shrieked {!at|before|toward} **${spookee}** with a {!sound|noise|voice} so loud, the demons {!rejoiced|cheered on} and {!the devil|even Satan} was proud!`),
+            text(`**${spooker}** shrieked into the night with a sound so brave, **${spookee}** {!tumbled|fell over} backward into his grave!`),
+            text(`**${spooker}** emerged from the dark of night, and spooked **${spookee}** with a terrible might!`)
+        );
+    }
+
+    private getFailedSpookString(spooker: string, spookee: string): string {
+        return randChoice(
+            text(`**${spooker}** {!crept|snuck} up before **${spookee}** to {!deliver|give him} a spook, but his eyes were squinting shut like a... coward!`),
+            text(`**${spooker}** shrieked before **${spookee}** from the bottom of his lungs, but his victim was safe with a pair of ear plugs!`),
+            text(`**${spooker}** failed to spook **${spookee}**, oh how sad - his victim was out {!fishing|grilling|drinking beers} with his dad!`),
+            text(`**${spooker}** failed to spook **${spookee}**, oh how pathetic - his victim had hid, in a move so prophetic!`),
+            text(`**${spooker}** failed to spook **${spookee}**, oh how lame - his victim was hiding, for he's good at this game!`),
+            text(`**${spooker}** failed to spook **${spookee}** and dropped to the ground, {!bawling|crying} his eyes out after his victim wasn't found!`),
+            text(`**${spooker}** tried to spook **${spookee}** but failed so bad, it made GMBR oh so glad!`)
+        );
     }
 
     private isHalloween(): boolean {
@@ -415,7 +456,9 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
 
     private async createMidSeasonUpdateImage(medals: Record<Snowflake, Medals>, season?: number): Promise<Buffer> {
         return await this.createImage(medals, {
-            title: `It's week ${this.state.turn} of season ${season ?? '???'}\n  What a blessed experience!`
+            title: this.isHalloween()
+                ? `${31} nights until halloween...`
+                : `It's week ${this.state.turn} of season ${season ?? '???'}\n  What a blessed experience!`
         });
     }
 
@@ -425,27 +468,41 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
 
     // TODO: This logic is horrible, please clean it up
     private async createImage(medals: Record<Snowflake, Medals>, options?: { title?: string, sunImageName?: string }): Promise<Buffer> {
-        const HEADER_HEIGHT = 150;
-        const BAR_WIDTH = 735;
+        const COLOR_BLACK = 'black';
+        const COLOR_SKY = 'rgba(100,157,250,1)';
+        const COLOR_BAR_CONTAINER = 'rgb(221,231,239)';
+        const COLOR_HALLOWEEN_BAR_CONTAINER = 'rgb(30,30,30)';
+
+        // Start by loading the header image, then use that to determine the total dimensions
+        const headerImage = await imageLoader.loadImage('assets/classic/halloweenskyline.png');
+
+        const HEADER_HEIGHT = 200;
+        const WIDTH = (headerImage.width / headerImage.height) * HEADER_HEIGHT;
+
         const BAR_HEIGHT = 36;
         const AVATAR_HEIGHT = BAR_HEIGHT;
         const BAR_PADDING = 3;
-        const INNER_BAR_WIDTH = BAR_WIDTH - (BAR_PADDING * 2);
         const BAR_SPACING = BAR_PADDING * 1.5;
+        const BASE_MARGIN = BAR_HEIGHT / 2;
+        const BAR_WIDTH = WIDTH - (2 * BASE_MARGIN) - AVATAR_HEIGHT - BAR_SPACING;
+        const INNER_BAR_WIDTH = BAR_WIDTH - (BAR_PADDING * 2);
         // TODO (2.0): This isn't really relevant anymore because there's no longer a season goal
         const SEASON_GOAL = 100;
         const PIXELS_PER_POINT = INNER_BAR_WIDTH / SEASON_GOAL;
         const LOWEST_SCORE = Math.min(...Object.values(this.state.points));
-        const MARGIN = Math.max(BAR_HEIGHT / 2, PIXELS_PER_POINT * Math.abs(Math.min(LOWEST_SCORE, 0)) - (2 * BAR_PADDING + AVATAR_HEIGHT));
+        const MARGIN = Math.max(BASE_MARGIN, PIXELS_PER_POINT * Math.abs(Math.min(LOWEST_SCORE, 0)) - (2 * BAR_PADDING + AVATAR_HEIGHT));
         const BASE_BAR_X = MARGIN + AVATAR_HEIGHT + BAR_SPACING;
-        const WIDTH = BASE_BAR_X + BAR_WIDTH + MARGIN;
+        // const WIDTH = BASE_BAR_X + BAR_WIDTH + MARGIN;
         const HEIGHT = HEADER_HEIGHT + Object.keys(this.state.points).length * (BAR_HEIGHT + BAR_SPACING) + MARGIN - BAR_SPACING;
         const c = canvas.createCanvas(WIDTH, HEIGHT);
         const context = c.getContext('2d');
 
-        // Fill the blue sky background
-        context.fillStyle = this.isHalloween() ? 'rgb(13,2,23)' : 'rgba(100,157,250,1)';
+        // Fill the solid background
+        context.fillStyle = this.isHalloween() ? COLOR_BLACK : COLOR_SKY;
         context.fillRect(0, 0, WIDTH, HEIGHT);
+
+        // Draw the header image
+        context.drawImage(headerImage, 0, 0, WIDTH, HEADER_HEIGHT);
 
         // Fetch all user display names
         const orderedUserIds: string[] = this.getOrderedPlayers();
@@ -455,36 +512,36 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         const greenDollarIcon = await imageLoader.loadImage('assets/dollargreenicon2.png');
         const redDollarIcon = await imageLoader.loadImage('assets/dollarredicon2.png');
         const eyeImage = await imageLoader.loadImage('assets/eye.png');
-        const creepIcon = await imageLoader.loadImage('assets/black-cat-icon.png');
+        const creepIcon = await imageLoader.loadImage('assets/classic/blackcatsmirk.png');
         const spookIcon = await imageLoader.loadImage('assets/ghost-icon.png');
-        const hideIcon = await imageLoader.loadImage('assets/hide-icon.png');
+        const hideIcon = await imageLoader.loadImage('assets/classic/blindfold.png');
         const rank1Image = await imageLoader.loadImage('assets/rank1.png');
         const rank2Image = await imageLoader.loadImage('assets/rank2.png');
         const rank3Image = await imageLoader.loadImage('assets/rank3.png');
         const rankLastImage = await imageLoader.loadImage('assets/ranklast.png');
 
         // Draw the smiling sun graphic
-        let sunImage: Image;
-        try {
-            sunImage = await imageLoader.loadImage(`assets/${options?.sunImageName ?? 'sun3.png'}`);
-        } catch (err) {
-            sunImage = await imageLoader.loadImage(`assets/sun3.png`);
-        }
-        const sunHeight = HEADER_HEIGHT + BAR_HEIGHT;
-        const sunWidth = sunHeight * sunImage.width / sunImage.height;
-        context.drawImage(sunImage, 0, 0, sunWidth, sunHeight);
+        // let sunImage: Image;
+        // try {
+        //     sunImage = await imageLoader.loadImage(`assets/${options?.sunImageName ?? 'sun3.png'}`);
+        // } catch (err) {
+        //     sunImage = await imageLoader.loadImage(`assets/sun3.png`);
+        // }
+        // const sunHeight = HEADER_HEIGHT + BAR_HEIGHT;
+        // const sunWidth = sunHeight * sunImage.width / sunImage.height;
+        // context.drawImage(sunImage, 0, 0, sunWidth, sunHeight);
 
         // Write the header text
-        context.fillStyle = 'rgb(221,231,239)';
-        const TITLE_FONT_SIZE = Math.floor(HEADER_HEIGHT / 4);
+        context.fillStyle = this.isHalloween() ? COLOR_BLACK : COLOR_BAR_CONTAINER;
+        const TITLE_FONT_SIZE = Math.floor(WIDTH / 25);
         context.font = `${TITLE_FONT_SIZE}px sans-serif`;
         if (options?.title) {
-            context.fillText(options.title, sunWidth * .85, HEADER_HEIGHT * 7 / 16);
+            context.fillText(options.title, WIDTH * 0.33, HEADER_HEIGHT * 7 / 16);
         } else {
             const winnerName: string = this.state.names[orderedUserIds[0]] ?? `Player ${orderedUserIds[0]}`;
             // `Celebrating the end of season ${state.getSeasonNumber()}\n   ${state.getSeasonStartedOn()} - ${getTodayDateString()}\n      Congrats, ${winnerName}!`
             context.fillText(`Celebrating the end of the season\n   Congrats, ${winnerName}!`,
-                sunWidth * .7,
+                WIDTH * 0.33,
                 HEADER_HEIGHT * 5 / 16);
         }
 
@@ -496,7 +553,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
             const baseY = HEADER_HEIGHT + i * (BAR_HEIGHT + BAR_SPACING);
 
             // Draw the avatar container
-            context.fillStyle = 'rgb(221,231,239)';
+            context.fillStyle = this.isHalloween() ? COLOR_HALLOWEEN_BAR_CONTAINER : COLOR_BAR_CONTAINER;
             context.fillRect(MARGIN, baseY, AVATAR_HEIGHT, AVATAR_HEIGHT);
             // Draw the player's avatar
             const avatarImage = await imageLoader.loadAvatar(userId, 64);
@@ -510,7 +567,8 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
 
             // Draw the actual bar using a hue corresponding to the user's rank
             const hue = 256 * (orderedUserIds.length - i) / orderedUserIds.length;
-            context.fillStyle = `hsl(${hue},50%,50%)`;
+            const halloweenSaturation = 100 * (orderedUserIds.length - i) / orderedUserIds.length;
+            context.fillStyle = this.isHalloween() ? `hsl(0,${halloweenSaturation}%,30%)` : `hsl(${hue},50%,50%)`;
             context.fillRect(BASE_BAR_X + BAR_PADDING,
                 baseY + BAR_PADDING,
                 actualBarWidth,
@@ -530,7 +588,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
             const textX = BASE_BAR_X + BAR_PADDING * 2 + (textInsideBar ? 0 : Math.max(actualBarWidth, 0));
             context.fillStyle = `rgba(0,0,0,.4)`;
             context.fillText(displayName, textX, baseY + 0.7 * BAR_HEIGHT);
-            context.fillStyle = textInsideBar ? 'white' : 'BLACKISH';
+            context.fillStyle = this.isHalloween() ? COLOR_BAR_CONTAINER : (textInsideBar ? 'white' : 'BLACKISH');
             context.fillText(displayName, textX + 1, baseY + 0.7 * BAR_HEIGHT + 1);
 
             // Draw the number of points to the right of the name
