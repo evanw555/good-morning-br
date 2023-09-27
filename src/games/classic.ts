@@ -1,5 +1,5 @@
 import canvas, {  } from 'canvas';
-import { GuildMember, Snowflake } from "discord.js";
+import { ActionRowComponentData, ActionRowData, ButtonStyle, ComponentType, GuildMember, Interaction, MessageActionRowComponentData, MessageCreateOptions, Snowflake } from "discord.js";
 import { DiscordTimestampFormat, LanguageGenerator, getMostSimilarByNormalizedEditDistance, getRankString, naturalJoin, randChoice, toDiscordTimestamp, toFixed } from 'evanw555.js';
 import { ClassicGameState, DecisionProcessingResult, Medals, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
@@ -222,9 +222,9 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
                 this.state.decisions[userId] = ['hide'];
                 return 'Safe choice, you will put your hands over your eyes to **hide** from the ghouls of the night...';
             } else if (sanitizedDecision.startsWith('spook')) {
-                const targetName  = sanitizedDecision.replace(/^spook\s*/, '');
+                const targetName = sanitizedDecision.replace(/^spook\s*/, '');
                 if (targetName) {
-                    const targetId = this.getClosestUserByName(targetName);
+                    const targetId = this.parseUserDecisionInput(targetName);
                     if (targetId) {
                         if (userId === targetId) {
                             throw new Error('What\'s your problem? You can\'t **spook** yourself...');
@@ -259,7 +259,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
             } else if (sanitizedDecision.startsWith('peek')) {
                 const targetName  = sanitizedDecision.replace(/^peek\s*/, '');
                 if (targetName) {
-                    const targetId = this.getClosestUserByName(targetName);
+                    const targetId = this.parseUserDecisionInput(targetName);
                     if (targetId) {
                         this.state.decisions[userId] = [`peek:${targetId}`];
                         return `Ok, you will **peek** at **${this.state.names[targetId]}** this turn...`;
@@ -432,6 +432,18 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
 
     private getActionPointDiff(userId: Snowflake): number {
         return this.state.actionPointDiffs[userId] ?? 0;
+    }
+
+    /**
+     * TODO: Make this is a generic utility for all games, but we need to make "name" more generally accessible
+     * @param input The user's ID or a name to search with
+     * @returns The ID of the matching user, if any
+     */
+    private parseUserDecisionInput(input: string): Snowflake | undefined {
+        if (this.hasPlayer(input)) {
+            return input;
+        }
+        return this.getClosestUserByName(input);
     }
 
     private getClosestUserByName(input: string): Snowflake | undefined {
@@ -658,5 +670,54 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         }
 
         return c.toBuffer();
+    }
+
+    override getDecisionActionRow(): ActionRowData<MessageActionRowComponentData>[] {
+        if (this.isHalloween()) {
+            return [{
+                type: ComponentType.ActionRow,
+                components: [{
+                    type: ComponentType.Button,
+                    style: ButtonStyle.Secondary,
+                    customId: 'decision:creep',
+                    label: 'Creep',
+                    emoji: '🐈‍⬛'
+                }, {
+                    type: ComponentType.Button,
+                    style: ButtonStyle.Secondary,
+                    customId: 'spawnDecisionUserSelect:spook',
+                    label: 'Spook',
+                    emoji: '👻'
+                }, {
+                    type: ComponentType.Button,
+                    style: ButtonStyle.Secondary,
+                    customId: 'decision:hide',
+                    label: 'Hide',
+                    emoji: '🙈'
+                }]
+            }];
+        }
+        return [{
+            type: ComponentType.ActionRow,
+            components: [{
+                type: ComponentType.Button,
+                style: ButtonStyle.Primary,
+                customId: 'decision:cheer',
+                label: 'Cheer',
+                emoji: '🌞'
+            }, {
+                type: ComponentType.Button,
+                style: ButtonStyle.Primary,
+                customId: 'decision:take',
+                label: 'Take',
+                emoji: '‼️'
+            }, {
+                type: ComponentType.Button,
+                style: ButtonStyle.Primary,
+                customId: 'spawnDecisionUserSelect:peek',
+                label: 'Peek',
+                emoji: '👀'
+            }]
+        }];
     }
 }

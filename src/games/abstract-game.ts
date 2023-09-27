@@ -1,5 +1,5 @@
 import canvas from "canvas";
-import { GuildMember, Snowflake } from "discord.js";
+import { ActionRowData, GuildMember, Interaction, MessageActionRowComponentData, Snowflake } from "discord.js";
 import { DecisionProcessingResult, GameState, PrizeType } from "../types";
 
 export default abstract class AbstractGame<T extends GameState> {
@@ -116,6 +116,14 @@ export default abstract class AbstractGame<T extends GameState> {
     abstract getWeeklyDecisionDMs(): Record<Snowflake, string>
     abstract addPlayerDecision(userId: Snowflake, text: string): string
     abstract processPlayerDecisions(): DecisionProcessingResult
+
+    getDecisionActionRow(): ActionRowData<MessageActionRowComponentData>[] {
+        return [];
+    }
+
+    async handleGameInteraction(interaction: Interaction): Promise<void> {
+
+    };
 
     /**
      * Hook for handling DMs from players during the window of time when decisions are not being processed.

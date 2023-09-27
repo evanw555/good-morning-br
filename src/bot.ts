@@ -672,7 +672,8 @@ const sendGoodMorningMessage = async (): Promise<void> => {
                 const introductionText: string[] = state.getGame().getIntroductionText();
                 await goodMorningChannel.send({
                     content: introductionText.shift(),
-                    files: [attachment]
+                    files: [attachment],
+                    components: state.getGame().getDecisionActionRow()
                 });
                 // Send any subsequent messages, if any
                 for (const text of introductionText) {
@@ -682,7 +683,8 @@ const sendGoodMorningMessage = async (): Promise<void> => {
             } else {
                 await goodMorningChannel.send({
                     content: `Turn **${state.getGame().getTurn()}** has begun!`,
-                    files: [attachment]
+                    files: [attachment],
+                    components: state.getGame().getDecisionActionRow()
                 });
             }
             // Send this immediately because it's technically not morning yet and a message has already been sent
@@ -840,7 +842,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         // TODO (2.0): Eventually, this should be more generic for other game types (don't hardcode this)
         // const dungeon = DungeonCrawler.createSectional(members, { sectionSize: 11, sectionsAcross: 3 });
         // const newGame = MazeGame.createOrganicBest(members, 20, 43, 19, 90);
-        const newGame = ClassicGame.create(members);
+        const newGame = ClassicGame.create(members, true);
         // const newGame = IslandGame.create(members);
         state.setGame(newGame);
         // For all starting players, add the points they earned before the game was instantiated
@@ -1420,7 +1422,10 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
 
         // If today is the weekly decision, send a reminder urging players to make their decision before tomorrow morning
         if (state.getEventType() === DailyEventType.GameDecision && state.hasGame()) {
-            await messenger.send(goodMorningChannel, state.getGame().getReminderText());
+            await goodMorningChannel.send({
+                content: state.getGame().getReminderText(),
+                components: state.getGame().getDecisionActionRow()
+            });
         }
 
         // Check the results of anonymous submissions
@@ -2529,6 +2534,70 @@ client.on('invalidated', async () => {
 });
 
 client.on('interactionCreate', async (interaction): Promise<void> => {
+    const game = (awaitingGameCommands && interaction.user.id === guildOwner.id) ? tempDungeon : (state.hasGame() ? state.getGame() : undefined);
+    if (interaction.isMessageComponent()) {
+        const customIdSegments = interaction.customId.split(':');
+        const rootCustomId = customIdSegments[0];
+        // First, if this is a game decision interaction, pass the handling off to the game instance
+        if (rootCustomId === 'decision') {
+            const decisionName = customIdSegments[1];
+            if (game) {
+                try {
+                    let decisionText = decisionName;
+                    // If this decision was from a user select menu, append the user ID as a decision argument
+                    if (interaction.isUserSelectMenu()) {
+                        decisionText += ' ' + interaction.values[0];
+                    }
+                    console.log(decisionText);
+                    const replyText = game.addPlayerDecision(interaction.user.id, decisionText);
+                    await interaction.reply({
+                        ephemeral: true,
+                        content: replyText
+                    });
+                } catch (err) {
+                    await interaction.reply({
+                        ephemeral: true,
+                        content: err.toString()
+                    });
+                }
+            } else {
+                await interaction.reply({
+                    ephemeral: true,
+                    content: 'Game hasn\'t started yet, see admin...'
+                });
+            }
+            return;
+        }
+        // If this is meant to spawn a decision user select input
+        if (rootCustomId === 'spawnDecisionUserSelect') {
+            const decisionName = customIdSegments[1];
+            await interaction.reply({
+                ephemeral: true,
+                components: [{
+                    type: ComponentType.ActionRow,
+                    components: [{
+                        type: ComponentType.UserSelect,
+                        customId: 'decision:' + decisionName,
+                        placeholder: 'Select a user...'
+                    }]
+                }]
+            });
+            return;
+        }
+        // If this is a generic game interaction, pass the handling off to the game instance
+        if (rootCustomId === 'game') {
+            if (game) {
+                await game.handleGameInteraction(interaction);
+            } else {
+                await interaction.reply({
+                    ephemeral: true,
+                    content: 'Game hasn\'t started yet, see admin...'
+                });
+            }
+            return;
+        }
+    }
+    // Else, handle as voting
     if (interaction.isStringSelectMenu() && interaction.applicationId === client.application?.id) {
         const userId: Snowflake = interaction.user.id;
         await interaction.deferReply({ ephemeral: true });
@@ -2780,7 +2849,7 @@ const processCommands = async (msg: Message): Promise<void> => {
                 await msg.channel.sendTyping();
             } catch (err) {}
             const attachment = new AttachmentBuilder(await tempDungeon.renderState({ admin: true, season: 99 })).setName('dungeon.png');
-            await msg.channel.send({ content: tempDungeon.getInstructionsText(), files: [attachment] });
+            await msg.channel.send({ content: tempDungeon.getInstructionsText(), files: [attachment], components: tempDungeon.getDecisionActionRow() });
 
         } else {
             await msg.reply('The game has not been created yet!');
@@ -3015,7 +3084,7 @@ const processCommands = async (msg: Message): Promise<void> => {
                 await msg.channel.sendTyping();
             } catch (err) {}
             const attachment = new AttachmentBuilder(await tempDungeon.renderState({ season: 99, admin: true })).setName('dungeon.png');
-            await msg.channel.send({ content: tempDungeon.getDebugString(), files: [attachment] });
+            await msg.channel.send({ content: tempDungeon.getDebugString(), files: [attachment], components: tempDungeon.getDecisionActionRow() });
         } else if (sanitizedText.includes('submission')) {
             awaitingSubmission = true;
             await msg.reply('Awaiting submission...');
