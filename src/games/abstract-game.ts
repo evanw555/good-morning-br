@@ -4,14 +4,24 @@ import { DecisionProcessingResult, GameState, PrizeType } from "../types";
 
 export default abstract class AbstractGame<T extends GameState> {
     protected readonly state: T;
+    private testing: boolean;
 
     constructor(state: T) {
         this.state = state;
+        this.testing = false;
 
         // TODO (2.0): Temp logic to ensure the list exists after being loaded (remove this)
         if (this.state.winners === undefined) {
             this.state.winners = [];
         }
+    }
+
+    isTesting(): boolean {
+        return this.testing;
+    }
+
+    setTesting(testing: boolean) {
+        this.testing = testing;
     }
 
     /**
@@ -70,6 +80,16 @@ export default abstract class AbstractGame<T extends GameState> {
             return [];
         } else {
             return orderedPlayers.slice(index + 1);
+        }
+    }
+
+    getPlayersAheadOfPlayer(userId: Snowflake): Snowflake[] {
+        const orderedPlayers = this.getOrderedPlayers();
+        const index = orderedPlayers.indexOf(userId);
+        if (index === -1) {
+            return [];
+        } else {
+            return orderedPlayers.slice(0, index);
         }
     }
 

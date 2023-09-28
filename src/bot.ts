@@ -1,4 +1,4 @@
-import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, Client, ComponentType, DMChannel, GatewayIntentBits, Partials, TextChannel, User } from 'discord.js';
+import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, BaseMessageOptions, Client, ComponentType, DMChannel, GatewayIntentBits, MessageCreateOptions, Partials, TextChannel, User } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discord.js';
 import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, AnonymousSubmission, GameState, Wordle, SubmissionPromptHistory, ReplyToMessageData, GoodMorningAuth } from './types';
 import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, canonicalizeText, getScaledPoints } from './util';
@@ -2297,6 +2297,43 @@ const cancelTimeoutsWithType = async (type: TimeoutType): Promise<void> => {
     }
 }
 
+const processGameDecision = async (userId: Snowflake, decision: string, source: string, callback: (text: BaseMessageOptions) => Promise<void>) => {
+    if (!state.isAcceptingGameDecisions()) {
+        await callback({ content: 'You can\'t do that now, the game isn\'t accepting decisions right now!' });
+        return;
+    }
+    if (!state.hasGame()) {
+        await callback({ content: 'You can\'t do that now, the game hasn\'t started yet!' });
+        return;
+    }
+    const game = state.getGame();
+    if (!game.hasPlayer(userId)) {
+        await callback({ content: 'You aren\'t in the game! Participate more if you want to play.' });
+        return;
+    }
+    // Handle help requests
+    if (decision.trim().toLowerCase() === 'help') {
+        await logger.log(`<@${userId}> asked for help! (${source})`);
+        await callback({ content: game.getHelpText() });
+        return;
+    }
+    try {
+        // Validate decision string
+        const response: string = game.addPlayerDecision(userId, decision);
+        // If it succeeds, dump the state and reply with the validation response
+        await dumpState();
+        await callback({
+            content: response,
+            files: [new AttachmentBuilder(await game.renderState({ showPlayerDecision: userId, season: state.getSeasonNumber() })).setName(`game-turn${game.getTurn()}-confirmation.png`)]
+        });
+        await logger.log(`**${state.getPlayerDisplayName(userId)}** made a valid decision! (${source})`);
+    } catch (err) {
+        // Validation failed, notify the user why it failed
+        await callback(err.toString());
+    }
+    return;
+};
+
 const loadState = async (): Promise<void> => {
     try {
         state = new GoodMorningState(await storage.readJson('state'));
@@ -2534,38 +2571,24 @@ client.on('invalidated', async () => {
 });
 
 client.on('interactionCreate', async (interaction): Promise<void> => {
-    const game = (awaitingGameCommands && interaction.channelId !== goodMorningChannel.id) ? tempDungeon : (state.hasGame() ? state.getGame() : undefined);
+    // TODO: Allow this to be used in testing mode
     if (interaction.isMessageComponent()) {
         const customIdSegments = interaction.customId.split(':');
         const rootCustomId = customIdSegments[0];
         // First, if this is a game decision interaction, pass the handling off to the game instance
         if (rootCustomId === 'decision') {
             const decisionName = customIdSegments[1];
-            if (game) {
-                try {
-                    let decisionText = decisionName;
-                    // If this decision was from a user select menu, append the user ID as a decision argument
-                    if (interaction.isUserSelectMenu()) {
-                        decisionText += ' ' + interaction.values[0];
-                    }
-                    console.log(decisionText);
-                    const replyText = game.addPlayerDecision(interaction.user.id, decisionText);
-                    await interaction.reply({
-                        ephemeral: true,
-                        content: replyText
-                    });
-                } catch (err) {
-                    await interaction.reply({
-                        ephemeral: true,
-                        content: err.toString()
-                    });
-                }
-            } else {
-                await interaction.reply({
-                    ephemeral: true,
-                    content: 'Game hasn\'t started yet, see admin...'
-                });
+            let decisionText = decisionName;
+            // If this decision was from a user select menu, append the user ID as a decision argument
+            if (interaction.isUserSelectMenu()) {
+                decisionText += ' ' + interaction.values[0];
             }
+            await processGameDecision(interaction.user.id, decisionText, 'UI', async (text: BaseMessageOptions) => {
+                await interaction.reply({
+                    ...text,
+                    ephemeral: true
+                });
+            });
             return;
         }
         // If this is meant to spawn a decision user select input
@@ -2586,8 +2609,8 @@ client.on('interactionCreate', async (interaction): Promise<void> => {
         }
         // If this is a generic game interaction, pass the handling off to the game instance
         if (rootCustomId === 'game') {
-            if (game) {
-                await game.handleGameInteraction(interaction);
+            if (state.hasGame()) {
+                await state.getGame().handleGameInteraction(interaction);
             } else {
                 await interaction.reply({
                     ephemeral: true,
@@ -3078,6 +3101,8 @@ const processCommands = async (msg: Message): Promise<void> => {
             } else {
                 tempDungeon = ClassicGame.create(members);
             }
+            // Enable the testing flag
+            tempDungeon.setTesting(true);
             tempDungeon.addPoints(msg.author.id, 10);
             tempDungeon.beginTurn();
             try { // TODO: refactor typing event to somewhere else?
@@ -3745,33 +3770,9 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             }
             // Otherwise if accepting game decisions, process this DM as a game decision
             if (state.isAcceptingGameDecisions()) {
-                if (!game.hasPlayer(userId)) {
-                    await msg.reply('You aren\'t in the game! Participate more if you want to play.');
-                    return;
-                }
-                // Handle help requests
-                if (msg.content.trim().toLowerCase() === 'help') {
-                    await logger.log(`<@${userId}> asked for help!`);
-                    await msg.reply(game.getHelpText());
-                    return;
-                }
-                try {
-                    // Validate decision string
-                    const response: string = game.addPlayerDecision(userId, msg.content);
-                    // If it succeeds, dump the state and reply with the validation response
-                    await dumpState();
-                    try { // TODO: refactor typing event to somewhere else?
-                        await msg.channel.sendTyping();
-                    } catch (err) {}
-                    await msg.reply({
-                        content: response,
-                        files: [new AttachmentBuilder(await game.renderState({ showPlayerDecision: userId, season: state.getSeasonNumber() })).setName(`game-turn${game.getTurn()}-confirmation.png`)]
-                    });
-                    await logger.log(`**${state.getPlayerDisplayName(userId)}** made a valid decision!`);
-                } catch (err) {
-                    // Validation failed, notify the user why it failed
-                    await messenger.reply(msg, err.toString());
-                }
+                await processGameDecision(userId, msg.content, 'DM', async (text: BaseMessageOptions) => {
+                    await msg.reply(text);
+                });
                 return;
             }
         }

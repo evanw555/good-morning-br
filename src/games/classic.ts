@@ -51,12 +51,12 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
 
     getInstructionsText(): string {
         if (this.isHalloween()) {
-            return 'Each week, you can choose one of three actions: **creep**, **spook**, or **hide**! DM me to secretly pick an action, or **creep** by default.\n'
+            return 'Each week, you can choose one of three actions: **creep**, **spook**, or **hide**! Pick an action, or **creep** by default.\n'
                 + '🐈‍⬛ **creep** to spread a little Halloween cheer! (free point to yourself and a random player below you)\n'
                 + '👻 **spook** to steal **4** points from a player above you (e.g. `spook Dezryth`)\n'
                 + '🙈 **hide** to close your eyes and avoid being spooked';
         }
-        return 'Each week, you can choose one of three actions: **cheer**, **take**, or **peek**! DM me to secretly pick an action, or **cheer** by default.\n'
+        return 'Each week, you can choose one of three actions: **cheer**, **take**, or **peek**! Pick an action, or **cheer** by default.\n'
             + '🌞 **cheer** to spread a little Good Morning cheer! (free point to yourself and a random player below you)\n'
             + '‼️ **take** to take **3-5** points from GMBR\'s infinite golden coffer.\n'
             + '👀 **peek** to stop a player from taking. If you stop a player, you steal **3-5** points from them! (e.g. `peek Robert`)';
@@ -145,10 +145,24 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         for (const userId of this.getOrderedPlayers()) {
             // Add default decision
             this.state.decisions[userId] = this.isHalloween() ? ['creep'] : ['cheer'];
-            // TODO: Temp logic for local testing to add randomness
-            this.state.decisions[userId] = this.isHalloween()
-                ? randChoice(['creep'], ['hide'], [`spook:${randChoice(...this.getPlayers())}`])
-                : randChoice(['cheer'], ['take'], [`peek:${randChoice(...this.getPlayers())}`]);
+            // Add random decisions in testing mode
+            if (this.isTesting()) {
+                const testDecisions: [string][] = [];
+                if (this.isHalloween()) {
+                    testDecisions.push(['creep'], ['hide']);
+                } else {
+                    testDecisions.push(['cheer'], ['take']);
+                }
+                const playersAhead = this.getPlayersAheadOfPlayer(userId);
+                if (playersAhead.length > 0) {
+                    if (this.isHalloween()) {
+                        testDecisions.push([`spook:${randChoice(...playersAhead)}`]);
+                    } else {
+                        testDecisions.push([`peek:${randChoice(...playersAhead)}`]);
+                    }
+                }
+                this.state.decisions[userId] = randChoice(...testDecisions);
+            }
 
             // If this user's points exceed the goal, then add them as a winner
             if (this.getPoints(userId) >= this.state.goal) {
