@@ -25,7 +25,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         const endDate = new Date();
         if (halloween) {
             // TODO: This is hardcoded
-            endDate.setDate(28); // 28
+            endDate.setDate(27); // 27
             endDate.setMonth(9); // October
             // Advance the year if the target date is in the past
             if (new Date().getTime() > endDate.getTime()) {
@@ -504,7 +504,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
     private async createMidSeasonUpdateImage(medals: Record<Snowflake, Medals>, season?: number): Promise<Buffer> {
         return await this.createImage(medals, {
             title: this.isHalloween()
-                ? `${getNumberOfDaysUntil(this.state.endDate)} nights until the day of judgment...`
+                ? `${getNumberOfDaysUntil(this.state.endDate)} nights until judgment day...`
                 : `It's week ${this.state.turn} of season ${season ?? '???'}\n  What a blessed experience!`
         });
     }
