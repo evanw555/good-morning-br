@@ -1608,6 +1608,12 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             state.setMagicWords(magicWords);
         }
 
+        // Invoke the daily noon game endpoint, which may subsequently result in the season being over.
+        // This MUST be invoked before any checks on the season end condition.
+        if (state.hasGame()) {
+            state.getGame().endDay();
+        }
+
         // If the season is still going... (before dumping state)
         if (!state.isSeasonGoalReached()) {
             // Revoke access for all players who should be muted (based on their track record / penalty history)

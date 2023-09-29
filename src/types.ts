@@ -257,12 +257,15 @@ export interface ClassicGameState {
     turn: number,
     winners: Snowflake[],
     // Custom properties below
+    halloween?: true,
+    // Goal as determined by a point threshold
     goal: number,
+    // Goal as determined by a defined end date e.g. "10/28/2023"
+    endDate: string,
     points: Record<Snowflake, number>,
     actionPointDiffs: Record<Snowflake, number>,
     names: Record<Snowflake, string>,
     revealedActions: Record<Snowflake, string>,
-    halloween?: true
 }
 
 export type GameState = MazeGameState | IslandGameState | ArenaGameState | ClassicGameState;

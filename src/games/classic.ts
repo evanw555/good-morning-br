@@ -1,6 +1,6 @@
 import canvas, {  } from 'canvas';
-import { ActionRowComponentData, ActionRowData, ButtonStyle, ComponentType, GuildMember, Interaction, MessageActionRowComponentData, MessageCreateOptions, Snowflake } from "discord.js";
-import { DiscordTimestampFormat, LanguageGenerator, getMostSimilarByNormalizedEditDistance, getRankString, naturalJoin, randChoice, toDiscordTimestamp, toFixed } from 'evanw555.js';
+import { ActionRowData, ButtonStyle, ComponentType, GuildMember, MessageActionRowComponentData, Snowflake } from "discord.js";
+import { DiscordTimestampFormat, getMostSimilarByNormalizedEditDistance, getRankString, getTodayDateString, naturalJoin, randChoice, getNumberOfDaysUntil, toDiscordTimestamp, toFixed, toDateString } from 'evanw555.js';
 import { ClassicGameState, DecisionProcessingResult, Medals, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 
@@ -21,29 +21,40 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
             names[member.id] = member.displayName;
             points[member.id] = 0;
         }
+        // Determine the end date
+        const endDate = new Date();
+        if (halloween) {
+            // TODO: This is hardcoded
+            endDate.setDate(28); // 28
+            endDate.setMonth(9); // October
+            // Advance the year if the target date is in the past
+            if (new Date().getTime() > endDate.getTime()) {
+                endDate.setFullYear(endDate.getFullYear() + 1);
+            }
+        } else {
+            // TODO: Using a year as the end date for a standard season
+            endDate.setDate(endDate.getDate() + 365);
+        }
         return new ClassicGame({
             type: 'CLASSIC_GAME_STATE',
             decisions: {},
             turn: 0,
+            halloween: halloween || undefined,
             goal: 100,
+            endDate: toDateString(endDate),
             names,
             points,
             actionPointDiffs: {},
             winners: [],
-            revealedActions: {},
-            halloween
+            revealedActions: {}
         });
     }
 
     getIntroductionText(): string[] {
         if (this.isHalloween()) {
-            const endDate = new Date();
-            // TODO: This is a hardcoded value
-            endDate.setDate(28);
-            // TODO: Save the end date as a variable
             return [
                 'Halloween is approaching, my dear dogs... Enjoy this classic GMBR season, but with a graveyard twist!',
-                `This season will end on ${toDiscordTimestamp(endDate, DiscordTimestampFormat.LongDate)}, whoever has the most points by then wins!`
+                `This season will end on ${toDiscordTimestamp(new Date(this.state.endDate), DiscordTimestampFormat.LongDate)}, whoever has the most points by then wins!`
             ];
         }
         return ['I know you all must be exhausted, so this season will just be classic GMBR! Say Good Morning and get points, have fun!'];
@@ -197,6 +208,17 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         }
 
         return result;
+    }
+
+    override endDay(): void {
+        // If the end date has been reached, add players to the winners list in-order
+        if (getTodayDateString() === this.state.endDate) {
+            for (const userId of this.getOrderedPlayers()) {
+                if (!this.isSeasonComplete()) {
+                    this.addWinner(userId);
+                }
+            }
+        }
     }
 
     getPoints(userId: string): number {
@@ -475,15 +497,14 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
 
     private async createHomeStretchImage(medals: Record<Snowflake, Medals>, season?: number): Promise<Buffer> {
         return await this.createImage(medals, {
-            title: `It's week ${this.state.turn} of season ${season ?? '???'}\n  The final days are upon us`,
-            sunImageName: 'sun_spooky.png'
+            title: `It's week ${this.state.turn} of season ${season ?? '???'}\n  The final days are upon us`
         });
     }
 
     private async createMidSeasonUpdateImage(medals: Record<Snowflake, Medals>, season?: number): Promise<Buffer> {
         return await this.createImage(medals, {
             title: this.isHalloween()
-                ? `${31} nights until halloween...`
+                ? `${getNumberOfDaysUntil(this.state.endDate)} nights until the day of judgment...`
                 : `It's week ${this.state.turn} of season ${season ?? '???'}\n  What a blessed experience!`
         });
     }
@@ -493,7 +514,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
     }
 
     // TODO: This logic is horrible, please clean it up
-    private async createImage(medals: Record<Snowflake, Medals>, options?: { title?: string, sunImageName?: string }): Promise<Buffer> {
+    private async createImage(medals: Record<Snowflake, Medals>, options?: { title?: string }): Promise<Buffer> {
         const COLOR_BLACK = 'black';
         const COLOR_SKY = 'rgba(100,157,250,1)';
         const COLOR_BAR_CONTAINER = 'rgb(221,231,239)';
@@ -545,17 +566,6 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         const rank2Image = await imageLoader.loadImage('assets/rank2.png');
         const rank3Image = await imageLoader.loadImage('assets/rank3.png');
         const rankLastImage = await imageLoader.loadImage('assets/ranklast.png');
-
-        // Draw the smiling sun graphic
-        // let sunImage: Image;
-        // try {
-        //     sunImage = await imageLoader.loadImage(`assets/${options?.sunImageName ?? 'sun3.png'}`);
-        // } catch (err) {
-        //     sunImage = await imageLoader.loadImage(`assets/sun3.png`);
-        // }
-        // const sunHeight = HEADER_HEIGHT + BAR_HEIGHT;
-        // const sunWidth = sunHeight * sunImage.width / sunImage.height;
-        // context.drawImage(sunImage, 0, 0, sunWidth, sunHeight);
 
         // Write the header text
         context.fillStyle = this.isHalloween() ? COLOR_BLACK : COLOR_BAR_CONTAINER;

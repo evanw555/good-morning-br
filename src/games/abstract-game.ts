@@ -122,6 +122,14 @@ export default abstract class AbstractGame<T extends GameState> {
         return [];
     }
 
+    /**
+     * Endpoint that's called daily at noon before the season end condition is checked.
+     * This is primarily used to end the season on a specific day (even if it's a day other than saturday).
+     */
+    endDay() {
+
+    }
+
     abstract getPoints(userId: Snowflake): number
     abstract addPoints(userId: Snowflake, points: number): void
     abstract awardPrize(userId: Snowflake, type: PrizeType, intro: string): string[]
