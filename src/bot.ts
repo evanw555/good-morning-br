@@ -3306,7 +3306,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 } else {
                     const mentionedUserIds = getMessageMentions(msg);
                     // Pick out a potential fallback in case this user didn't tag correctly
-                    const fallbackUserId: Snowflake | undefined = state.getActivityOrderedPlayers().filter(id => !state.hasDailyRank(id))[0];
+                    const fallbackUserId: Snowflake | undefined = state.getActivityOrderedPlayers().filter(id => !state.hasDailyRank(id) && id !== event.user)[0];
                     // If there's no fallback and the user is breaking the rules, force them to try again and abort
                     if (!fallbackUserId) {
                         if (mentionedUserIds.includes(userId)) {
