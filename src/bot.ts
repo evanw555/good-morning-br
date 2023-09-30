@@ -2345,7 +2345,7 @@ const processGameDecision = async (userId: Snowflake, decision: string, source: 
         await logger.log(`**${state.getPlayerDisplayName(userId)}** made a valid decision! (${source})`);
     } catch (err) {
         // Validation failed, notify the user why it failed
-        await callback(err.toString());
+        await callback({ content: err.toString() });
     }
     return;
 };
