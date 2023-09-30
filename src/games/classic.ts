@@ -25,7 +25,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         const endDate = new Date();
         if (halloween) {
             // TODO: This is hardcoded
-            endDate.setDate(27); // 27
+            endDate.setDate(28); // 28
             endDate.setMonth(9); // October
             // Advance the year if the target date is in the past
             if (new Date().getTime() > endDate.getTime()) {
@@ -61,6 +61,10 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
     }
 
     getInstructionsText(): string {
+        // If today is the end date, send a message not prompting any action
+        if (this.isTodayEndDate()) {
+            return 'This season ends today at noon, good luck!';
+        }
         if (this.isHalloween()) {
             return 'Each week, you can choose one of three actions: **creep**, **spook**, or **hide**! Pick an action, or **creep** by default.\n'
                 + '🐈‍⬛ **creep** to spread a little Halloween cheer! (free point to yourself and a random player below you)\n'
@@ -71,6 +75,15 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
             + '🌞 **cheer** to spread a little Good Morning cheer! (free point to yourself and a random player below you)\n'
             + '‼️ **take** to take **3-5** points from GMBR\'s infinite golden coffer.\n'
             + '👀 **peek** to stop a player from taking. If you stop a player, you steal **3-5** points from them! (e.g. `peek Robert`)';
+    }
+
+    override getReminderText(): string {
+        // If today is the end date, send a message not prompting any action
+        if (this.isTodayEndDate()) {
+            return 'The end is almost here...';
+        }
+        // Else, just the default message
+        return super.getReminderText();
     }
 
     getHelpText(): string {
@@ -137,7 +150,20 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         return this.getPoints(userId) >= (this.state.goal * 0.9);
     }
 
-    async renderState(options?: { showPlayerDecision?: string; admin?: boolean, season?: number }): Promise<Buffer> {
+    /**
+     * @returns True if today's date is the game's "end date"
+     */
+    private isTodayEndDate(): boolean {
+        return getTodayDateString() === this.state.endDate;
+    }
+
+    async renderState(options?: { showPlayerDecision?: Snowflake, seasonOver?: boolean, admin?: boolean, season?: number }): Promise<Buffer> {
+        // If the season is over, send a specific renedr for that
+        if (options?.seasonOver) {
+            return await this.createImage({}, {
+                title: this.isHalloween() ? 'Halloween is upon us!' : `Here's to season ${options.season ?? '???'}!`
+            });
+        }
         // If within 10% of the goal, show a more ominous image...
         if (this.getSeasonCompletion() > 0.9) {
             return await this.createHomeStretchImage({}, options?.season);
@@ -212,7 +238,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
 
     override endDay(): void {
         // If the end date has been reached, add players to the winners list in-order
-        if (getTodayDateString() === this.state.endDate) {
+        if (this.isTodayEndDate()) {
             for (const userId of this.getOrderedPlayers()) {
                 if (!this.isSeasonComplete()) {
                     this.addWinner(userId);
@@ -248,6 +274,10 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
     }
 
     addPlayerDecision(userId: string, text: string): string {
+        // If today is the end date, don't accept any decisions
+        if (this.isTodayEndDate()) {
+            throw new Error('The season ends today!');
+        }
         const sanitizedDecision = text.toLowerCase().trim();
         // Halloween actions
         if (this.isHalloween()) {
@@ -311,8 +341,6 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
     }
 
     processPlayerDecisions(): DecisionProcessingResult {
-        const beforeOrdering = this.getOrderedPlayers();
-
         let summary = '';
 
         const anyCheerDecisions = Object.values(this.state.decisions).some(d => d.includes('cheer'));
@@ -697,6 +725,11 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
     }
 
     override getDecisionActionRow(): ActionRowData<MessageActionRowComponentData>[] {
+        // If today is the end date, don't prompt any decisions
+        if (this.isTodayEndDate()) {
+            return [];
+        }
+        // Else, send action rows for this week's decision
         if (this.isHalloween()) {
             return [{
                 type: ComponentType.ActionRow,
@@ -743,5 +776,27 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
                 emoji: '👀'
             }]
         }];
+    }
+
+    override getSeasonEndText(): string[] {
+        const winners: Snowflake[] = this.getWinners();
+        if (this.isHalloween()) {
+            return [
+                `This season, **${this.getNumPlayers()}** players competed each morning to leave us aghast`,
+                'Many of us were spooked, but many cowered under the covers - waiting for the night to pass...',
+                'Through all the screams and tears, only one could be crowned the King of the Graveyard...',
+                `That King's name is <@${winners[0]}> - a monster who goes oh so hard!`,
+                `<@${winners[1]}> and <@${winners[2]}> arose from their graves to unleash terror, but the champion beat them to it`,
+                '...as for the rest of you wannabe ghouls, you absolutely blew it!',
+                'As the season comes to a bittersweet close, remember all those October mornings so gay',
+                'Thank you all for a truly horrific season, and I\'ll see you all tonight at the Grand Ghost Soiree!'
+            ];
+        }
+        return [
+            `This season, **${this.getNumPlayers()}** players competed each morning to bring the most sunshine and cheer...`,
+            'Many of you were takers, but many of you were peekers too!',
+            `Ultimately, only one could be crowned the King of the Morning... <@${winners[0]}>!`,
+            `<@${winners[1]}> and <@${winners[2]}> put up a good fight - and for that we are grateful - yet it was not enough to be crowned champion`
+        ];
     }
 }

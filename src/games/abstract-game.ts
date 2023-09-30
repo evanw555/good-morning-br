@@ -40,7 +40,7 @@ export default abstract class AbstractGame<T extends GameState> {
      * Text sent out to the channel at Saturday around noon to remind players to make a decision.
      */
     getReminderText(): string {
-        return 'Reminder! You have until tomorrow morning to DM me your decision for this week...';
+        return 'Reminder! You have until tomorrow morning to pick an action for this week...';
     }
     /**
      * Text sent directly to users who request help during the game decision phase.
@@ -111,7 +111,14 @@ export default abstract class AbstractGame<T extends GameState> {
         return false;
     }
 
-    abstract renderState(options?: { showPlayerDecision?: Snowflake, admin?: boolean, season?: number }): Promise<Buffer>
+    /**
+     * Render an image representing the state of the game.
+     * @param options.showPlayerDecision If true, show information in the render relevant to the user's chosen decision
+     * @param options.seasonOver If true, render an image to be presented as the final image of the season
+     * @param options.admin If true, show information in the render relevant for the admin
+     * @param options.season The number of the current season
+     */
+    abstract renderState(options?: { showPlayerDecision?: Snowflake, seasonOver?: boolean, admin?: boolean, season?: number }): Promise<Buffer>
     abstract beginTurn(): string[]
 
     /**
@@ -174,6 +181,16 @@ export default abstract class AbstractGame<T extends GameState> {
 
     isSeasonComplete(): boolean {
         return this.getWinners().length === 3;
+    }
+
+    /**
+     * @returns Message(s) to be sent once the game is over
+     */
+    getSeasonEndText(): string[] {
+        return [
+            'Thanks to all those who have participated. You have made these mornings bright and joyous for not just me, but for everyone here 🌞',
+            `Congrats to the winner of this season, <@${this.getWinners()[0]}>!`
+        ];
     }
 
     getWinners(): Snowflake[] {

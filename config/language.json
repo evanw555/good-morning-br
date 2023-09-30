@@ -154,7 +154,7 @@
             "The {phrases.passing?} and the {phrases.passing?}, more reasons to stop and appreciate the beauty of this precious world we live in",
             "The {phrases.passing?}, the {phrases.passing?}, and {!you|YOU} my {nouns.alliterativeTitle?}s are starting a new and exciting day!",
             "Count all your blessings, you {!may|surely} have {!more|many more|a lot more} than you {!realize|think}",
-            "Count all your {nouns.positive?} friendships and {!be thankful|be grateful|show gratitude} for them, for many of {!them|these dogs|these fellows} share the same first name"
+            "Count all your {adjectives.positive?} friendships and {!be thankful|be grateful|show gratitude} for them, for many of {!them|these dogs|these fellows} share the same first name"
         ],
         "seasonUpdate": [
             "We are {!deep|well} into season **{$season}**, and {$top} is in the lead with {$second} {!not far behind|on his tail}!",

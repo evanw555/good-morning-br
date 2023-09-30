@@ -717,30 +717,37 @@ const sendGoodMorningMessage = async (): Promise<void> => {
 
 const sendSeasonEndMessages = async (channel: TextBasedChannel, previousState: GoodMorningState): Promise<void> => {
     // TODO (2.0): We should do this a little more safely...
-    const winner: Snowflake = previousState.getGame().getWinners()[0];
+    const game = previousState.getGame();
     const newSeason: number = previousState.getSeasonNumber() + 1;
+    // Send one preliminary hard-coded message signaling the end of the season
     await messenger.send(channel, `Well everyone, season **${previousState.getSeasonNumber()}** has finally come to an end!`);
-    await messenger.send(channel, 'Thanks to all those who have participated. You have made these mornings bright and joyous for not just me, but for everyone here 🌞');
     await sleep(10000);
+    // Send custom messages for each game
+    const seasonEndMessages = game.getSeasonEndText();
+    for (const text of seasonEndMessages) {
+        await messenger.send(goodMorningChannel, text);
+    }
+    // Send the state render
+    try { // TODO: refactor image sending into the messenger class?
+        await channel.sendTyping();
+    } catch (err) {}
+    await sleep(5000);
+    const attachment = new AttachmentBuilder(await game.renderState({ seasonOver: true, season: previousState.getSeasonNumber() })).setName(`game-final.png`);
+    await goodMorningChannel.send({ files: [attachment] });
     // await messenger.send(channel, 'In a couple minutes, I\'ll reveal the winners and the final standings...');
     // await messenger.send(channel, 'In the meantime, please congratulate yourselves (penalties are disabled), take a deep breath, and appreciate the friends you\'ve made in this channel 🙂');
     // Send the "final results image"
     // await sleep(120000);
     // await messenger.send(channel, 'Alright, here are the final standings...');
-    // try { // TODO: refactor image sending into the messenger class?
-    //     await channel.sendTyping();
-    // } catch (err) {}
-    // await sleep(5000);
     // const attachment = new MessageAttachment(await createSeasonResultsImage(previousState, history.medals), 'results.png');
     // await channel.send({ files: [attachment] });
     // await sleep(5000);
-    await messenger.send(channel, `Congrats to the winner of this season, <@${winner}>!`);
     // Send information about the season rewards
-    await sleep(15000);
-    await messenger.send(channel, `As a reward, <@${winner}> will get the following perks throughout season **${newSeason}**:`);
+    // await sleep(60000);
+    // await messenger.send(channel, `As a reward, our champion <@${winner}> will get the following perks throughout season **${newSeason}**:`);
     // await messenger.send(channel, ' ⭐ Ability to set a special "good morning" emoji that everyone in the server can use');
-    await messenger.send(channel, ' ⭐ Honorary Robert status, with the ability to post in **#robertism**');
-    await messenger.send(channel, ' ⭐ Other secret perks...');
+    // await messenger.send(channel, ' ⭐ Honorary Robert status, with the ability to post in **#robertism**');
+    // await messenger.send(channel, ' ⭐ Other secret perks...');
     // Wait, then send info about the next season
     await sleep(30000);
     await messenger.send(channel, 'Now that this season is over, I\'ll be taking a vacation for several days. Feel free to post whatever whenever until I return 🌞');
@@ -2267,6 +2274,9 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             // Send the universal turn-end message
             // TODO: Should this be provided as a default in the abstract game class?
             await messenger.send(goodMorningChannel, languageGenerator.generate('{!Well|Alright,} that\'s {!all|it} for this {!week|turn}! Are you all {!proud of your actions|happy with the outcome|optimistic|feeling good}?'));
+            // Show the state one final time for this week
+            const turnEndAttachment = new AttachmentBuilder(await game.renderState({ season: state.getSeasonNumber() })).setName(`game-week${game.getTurn()}-end.png`);
+            await goodMorningChannel.send({ files: [turnEndAttachment] });
         }
     },
     [TimeoutType.ReplyToMessage]: async (arg): Promise<void> => {
