@@ -2597,7 +2597,17 @@ client.on('interactionCreate', async (interaction): Promise<void> => {
             let decisionText = decisionName;
             // If this decision was from a user select menu, append the user ID as a decision argument
             if (interaction.isUserSelectMenu()) {
-                decisionText += ' ' + interaction.values[0];
+                const targetUserId = interaction.values[0];
+                // Validate that the selected user is even in the game
+                if (state.hasGame() && !state.getGame().hasPlayer(targetUserId)) {
+                    await interaction.reply({
+                        ephemeral: true,
+                        content: `<@${targetUserId}> isn't in the game! Choose someone else.`
+                    });
+                    return;
+                }
+                // Add the user's ID to the constructed decision text
+                decisionText += ' ' + targetUserId;
             }
             await processGameDecision(interaction.user.id, decisionText, 'UI', async (text: BaseMessageOptions) => {
                 await interaction.reply({
