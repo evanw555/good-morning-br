@@ -3420,13 +3420,6 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                                 content: progress ? `You've revealed ${progress} new letter${progress === 1 ? '' : 's'}!` : 'Hmmmmm...',
                                 files: [new AttachmentBuilder(await renderWordleState(event.wordle)).setName('wordle.png')]
                             });
-                            // TODO: temp logging to show how the member rendering logic is working
-                            await guildOwnerDmChannel.send({
-                                content: 'State of the game so far',
-                                files: [new AttachmentBuilder(await renderWordleState(event.wordle, {
-                                    hiScores: event.wordleHiScores
-                                })).setName('wordle.png')]
-                            });
                         }
                         await dumpState();
                     }
