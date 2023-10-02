@@ -2036,8 +2036,8 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             return;
         }
 
-        // If there are too many, trim it down to 10
-        const maxAlternatives: number = 10;
+        // If there are too many, trim it down to 20
+        const maxAlternatives: number = 20;
         if (proposalSet.size > maxAlternatives) {
             await logger.log(`Too many anonymous submission type proposals, truncating from **${proposalSet.size}** to **${maxAlternatives}**`);
             proposalSet = new Set(Array.from(proposalSet).slice(0, maxAlternatives));
