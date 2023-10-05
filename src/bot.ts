@@ -1,9 +1,9 @@
-import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, BaseMessageOptions, Client, ComponentType, DMChannel, GatewayIntentBits, MessageCreateOptions, Partials, TextChannel, User } from 'discord.js';
+import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, BaseMessageOptions, Client, ComponentType, DMChannel, GatewayIntentBits, Partials, TextChannel, User } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discord.js';
 import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, AnonymousSubmission, GameState, Wordle, SubmissionPromptHistory, ReplyToMessageData, GoodMorningAuth } from './types';
 import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, canonicalizeText, getScaledPoints } from './util';
 import GoodMorningState from './state';
-import { addReactsSync, chance, DiscordTimestampFormat, FileStorage, generateKMeansClusters, getClockTime, getDateBetween, getPollChoiceKeys, getRandomDateBetween,
+import { addReactsSync, chance, DiscordTimestampFormat, FileStorage, generateKMeansClusters, getClockTime, getPollChoiceKeys, getRandomDateBetween,
     getRankString, getRelativeDateTimeString, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger,
     naturalJoin, PastTimeoutStrategy, R9KTextBank, randChoice, randInt, shuffle, sleep, TimeoutManager, toCalendarDate, toDiscordTimestamp, toFixed, toLetterId } from 'evanw555.js';
 import { getProgressOfGuess, renderWordleState } from './wordle';
@@ -140,32 +140,19 @@ const getSubmissionRevealTimestamp = (): string => {
     return '10:50';
 }
 
-const logStateBackupFile = async (): Promise<void> => {
+const logJsonAsFile = async (title: string, data: Record<string, any> | string) => {
     if (guildOwnerDmChannel) {
         try {
+            const sanitizedName = title.trim().toLowerCase().replace(/\s+/g, '_');
             const dateString = new Date().toDateString().replace(/[\s\/-]/g, '_').toLowerCase();
-            const fileName = `gmbr_state_${dateString}.json`;
+            const fileName = `${sanitizedName}_${dateString}.json`;
+            const serialized = (typeof data === 'string') ? data : JSON.stringify(data);
             await guildOwnerDmChannel.send({
-                content: `GMBR state backup: \`${fileName}\``,
-                files: [new AttachmentBuilder(Buffer.from(state.toCompactJson())).setName(fileName)]
+                content: `${title} backup: \`${fileName}\``,
+                files: [new AttachmentBuilder(Buffer.from(serialized)).setName(fileName)]
             });
         } catch (err) {
-            await logger.log(`Failed to log state backup: \`${err}\``);
-        }
-    }
-};
-
-const logHistoryBackupFile = async (): Promise<void> => {
-    if (guildOwnerDmChannel) {
-        try {
-            const dateString = new Date().toDateString().replace(/[\s\/-]/g, '_').toLowerCase();
-            const fileName = `gmbr_history_${dateString}.json`;
-            await guildOwnerDmChannel.send({
-                content: `GMBR history backup: \`${fileName}\``,
-                files: [new AttachmentBuilder(Buffer.from(JSON.stringify(history))).setName(fileName)]
-            });
-        } catch (err) {
-            await logger.log(`Failed to log history backup: \`${err}\``);
+            await logger.log(`Failed to log ${title} backup: \`${err}\``);
         }
     }
 };
@@ -290,8 +277,8 @@ const advanceSeason = async (): Promise<{ gold?: Snowflake, silver?: Snowflake, 
     // Send the final state/history to the guild owner one last time before wiping it
     if (guildOwnerDmChannel) {
         await logger.log(`Sending final state of season **${state.getSeasonNumber()}** (and a history backup) before it's wiped...`);
-        await logStateBackupFile();
-        await logHistoryBackupFile();
+        await logJsonAsFile('GMBR final state', state.toCompactJson());
+        await logJsonAsFile('GMBR history', history);
     }
     // Add new entry for this season
     const newHistoryEntry: Season = state.toHistorySeasonEntry();
@@ -524,7 +511,7 @@ const updateSubmissionPromptHistory = async (used: string[], unused: string[]) =
         // Dump it
         await storage.write('prompts.json', JSON.stringify(promptHistory, null, 2));
         // TODO: Temp logging
-        await messenger.sendLargeMonospaced(guildOwnerDmChannel, JSON.stringify(promptHistory, null, 2));
+        await logJsonAsFile('Submission prompt history', JSON.stringify(promptHistory, null, 2));
     } catch (err) {
         await logger.log(`Unhandled exception while updating prompts file:\n\`\`\`${err.message}\`\`\``);
     }
@@ -1739,7 +1726,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         await setStatus(false);
 
         // Finally, log the final state for today
-        await logStateBackupFile();
+        await logJsonAsFile('GMBR state', state.toCompactJson());
     },
     [TimeoutType.GuestReveilleFallback]: async (): Promise<void> => {
         // Take action if the guest reveiller hasn't said GM
@@ -2977,7 +2964,7 @@ const processCommands = async (msg: Message): Promise<void> => {
         }
         // Log the state backup
         else if (sanitizedText.includes('backup')) {
-            await logStateBackupFile();
+            await logJsonAsFile('GMBR state', state.toCompactJson());
         }
         // Return the timeout info
         else if (sanitizedText.includes('timeouts')) {
