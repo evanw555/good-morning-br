@@ -5,9 +5,11 @@
     "magicWordReactionProbability": 0.5,
     "goodMorningReplyCount": 3,
     "awardsByRank": {
-        "1": 1.3,
-        "2": 1.2,
-        "3": 1.1
+        "1": 1.5,
+        "2": 1.4,
+        "3": 1.3,
+        "4": 1.2,
+        "5": 1.1
     },
     "grandContestAward": 6,
     "focusGameAward": 3.5,
