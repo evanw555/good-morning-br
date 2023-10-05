@@ -2246,9 +2246,11 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             if (new Date().getHours() >= 11) {
                 nextProcessDate.setMinutes(nextProcessDate.getMinutes() + randInt(1, 5));
             } else if (new Date().getHours() >= 10) {
-                nextProcessDate.setMinutes(nextProcessDate.getMinutes() + randInt(3, 10));
-            } else {
                 nextProcessDate.setMinutes(nextProcessDate.getMinutes() + randInt(5, 15));
+            } else if (new Date().getHours() >= 9) {
+                nextProcessDate.setMinutes(nextProcessDate.getMinutes() + randInt(10, 25));
+            } else {
+                nextProcessDate.setMinutes(nextProcessDate.getMinutes() + randInt(20, 35));
             }
             await timeoutManager.registerTimeout(TimeoutType.ProcessGameDecisions, nextProcessDate, { pastStrategy: PastTimeoutStrategy.Invoke });
         } else {
