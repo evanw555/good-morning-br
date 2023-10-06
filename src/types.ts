@@ -70,7 +70,7 @@ export interface ReplyToMessageData {
 
 export interface DailyPlayerState {
     rank?: number,
-    videoRank?: number,
+    bonusRank?: number,
     pointsLost?: number,
     saidHappyBirthday?: boolean,
     pointsEarned: number
@@ -99,6 +99,7 @@ export enum DailyEventType {
     RecapSunday = 'RECAP_SUNDAY',
     WishfulWednesday = 'WISHFUL_WEDNESDAY',
     MonkeyFriday = 'MONKEY_FRIDAY',
+    ChimpOutFriday = 'CHIMP_OUT_FRIDAY',
     BeginHomeStretch = 'BEGIN_HOME_STRETCH',
     Beckoning = 'BECKONING',
     GrumpyMorning = 'GRUMPY_MORNING',

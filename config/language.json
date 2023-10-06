@@ -340,6 +340,16 @@
             "Happy to hear from you, once again! Anything new with you?",
             "I was starting to miss you, my friend. Has life been treating you well?",
             "A {!truly|very} {adjectives.positive?} morning to you! It's been a while since I've heard from you"
+        ],
+        "chimp": [
+            "OOOOO AAAAAAA I'M CHIMPING!",
+            "CHIMP MODE ACTIVATE!",
+            "{!Oh|Ohhhhhh} this {!guy|dog|man} is throwing a chimp fit!",
+            "{!Haha|Hahaha|Lmao} nice",
+            "Hey that's a good one!",
+            "Ok not gonna lie... this one {!scared|spooked} me a bit",
+            "Hey {!man|bro|dog} I like your voice",
+            "My dear dog, you are embodying the {!spirit|values} of Chimp Out Friday {!so|quite} well!"
         ]
     },
     "penaltyReply": {

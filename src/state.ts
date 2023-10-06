@@ -580,16 +580,20 @@ export default class GoodMorningState {
         this.getOrCreateDailyStatus(userId).rank = rank;
     }
 
-    getNextDailyVideoRank(): number {
-        return Math.max(0, ...Object.values(this.data.dailyStatus).map(status => status.videoRank ?? 0)) + 1;
+    getNextDailyBonusRank(): number {
+        return Math.max(0, ...Object.values(this.data.dailyStatus).map(status => status.bonusRank ?? 0)) + 1;
     }
 
-    hasDailyVideoRank(userId: Snowflake): boolean {
-        return this.getDailyStatus(userId)?.videoRank !== undefined;
+    hasDailyBonusRank(userId: Snowflake): boolean {
+        return this.getDailyStatus(userId)?.bonusRank !== undefined;
     }
 
-    setDailyVideoRank(userId: Snowflake, videoRank: number): void {
-        this.getOrCreateDailyStatus(userId).videoRank = videoRank;
+    setDailyBonusRank(userId: Snowflake, videoRank: number): void {
+        this.getOrCreateDailyStatus(userId).bonusRank = videoRank;
+    }
+
+    doesAnyoneHaveDailyBonusRank(): boolean {
+        return this.getPlayers().some(userId => this.hasDailyBonusRank(userId));
     }
 
     hasSaidHappyBirthday(userId: Snowflake): boolean {

@@ -1,4 +1,4 @@
-import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, BaseMessageOptions, Client, ComponentType, DMChannel, GatewayIntentBits, PartialMessage, Partials, TextChannel, User } from 'discord.js';
+import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, BaseMessageOptions, Client, ComponentType, DMChannel, GatewayIntentBits, MessageFlags, MessageFlagsBitField, PartialMessage, Partials, TextChannel, User } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discord.js';
 import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, AnonymousSubmission, GameState, Wordle, SubmissionPromptHistory, ReplyToMessageData, GoodMorningAuth } from './types';
 import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, canonicalizeText, getScaledPoints } from './util';
@@ -361,6 +361,8 @@ const chooseEvent = async (date: Date): Promise<DailyEvent | undefined> => {
     if (date.getDay() === 5) {
         const fridayEvents: DailyEvent[] = [{
             type: DailyEventType.MonkeyFriday
+        }, {
+            type: DailyEventType.ChimpOutFriday
         }];
         // Return a random one of these Friday events
         return randChoice(...fridayEvents);
@@ -578,6 +580,13 @@ const sendGoodMorningMessage = async (): Promise<void> => {
             break;
         case DailyEventType.MonkeyFriday:
             await messenger.send(goodMorningChannel, languageGenerator.generate(overriddenMessage ?? '{happyFriday}'));
+            break;
+        case DailyEventType.ChimpOutFriday:
+            // If there's an overridden message, just send it naively upfront
+            if (overriddenMessage) {
+                await messenger.send(goodMorningChannel, languageGenerator.generate(overriddenMessage));
+            }
+            await messenger.send(goodMorningChannel, 'Today is _CHIMP OUT FRIDAY_! Send me a voice message of you going absolutely chimp mode 🗣️');
             break;
         case DailyEventType.BeginHomeStretch:
             // TODO (2.0): If we enable home stretch again, fix this
@@ -3446,17 +3455,19 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
 
             // Determine some properties related to the contents of the message
             const messageHasVideo: boolean = hasVideo(msg);
+            const messageHasVoiceMemo: boolean = msg.flags.has(MessageFlags.IsVoiceMessage);
             const messageHasText: boolean = msg.content.trim().length !== 0;
 
             // The conditions for triggering MF and GM are separate so that players can post videos-then-messages, vice-versa, or both together
             const triggerMonkeyFriday: boolean = (state.getEventType() === DailyEventType.MonkeyFriday) && messageHasVideo;
+            const triggerChimpOutFriday: boolean = (state.getEventType() === DailyEventType.ChimpOutFriday) && messageHasVoiceMemo;
             // Only trigger GM if it contains text, since players often post images/video without text (but reply to reveillers no matter what)
             const triggerStandardGM: boolean = messageHasText || isReveille;
 
             // Handle MF messages if the conditions are met and its the user's first MF of the day
-            if (triggerMonkeyFriday && !state.hasDailyVideoRank(userId)) {
-                const videoRank: number = state.getNextDailyVideoRank();
-                state.setDailyVideoRank(userId, videoRank);
+            if (triggerMonkeyFriday && !state.hasDailyBonusRank(userId)) {
+                const bonusRank: number = state.getNextDailyBonusRank();
+                state.setDailyBonusRank(userId, bonusRank);
                 // Determine if the video provided is novel
                 // TODO: Can we do this for attachments too?
                 const extractedYouTubeId: string | undefined = extractYouTubeId(msg.content);
@@ -3470,12 +3481,31 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     messenger.reply(msg, languageGenerator.generate('{goodMorningReply.unoriginalVideo?} 🌚'));
                 }
                 // If original, award points then reply (or react) to the message depending on the video rank
-                else if (videoRank === 1) {
+                else if (bonusRank === 1) {
                     state.awardPoints(userId, config.defaultAward);
-                    messenger.reply(msg, languageGenerator.generate('{goodMorningReply.video?} 🐒'));
+                    await messenger.reply(msg, languageGenerator.generate('{goodMorningReply.video?} 🐒'));
                 } else {
                     state.awardPoints(userId, config.defaultAward / 2);
                     await reactToMessage(msg, '🐒');
+                }
+                await dumpState();
+            }
+            // TODO: Can this logic somehow be refactored into the other MF logic?
+            if (triggerChimpOutFriday && !state.hasDailyBonusRank(userId)) {
+                const bonusRank: number = state.getNextDailyBonusRank();
+                state.setDailyBonusRank(userId, bonusRank);
+                // Award points and react/reply based on rank
+                if (bonusRank === 1) {
+                    state.awardPoints(userId, config.defaultAward);
+                    await messenger.reply(msg, languageGenerator.generate('{goodMorningReply.chimp?} 🗣️'));
+                } else {
+                    state.awardPoints(userId, config.defaultAward / 2);
+                    // Reply sometimes, but mostly react
+                    if (chance(0.25)) {
+                        await messenger.reply(msg, languageGenerator.generate('{goodMorningReply.chimp?}'));
+                    } else {
+                        await reactToMessage(msg, '🗣️');
+                    }
                 }
                 await dumpState();
             }
