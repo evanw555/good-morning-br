@@ -3356,11 +3356,11 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     await dumpState();
                     // If a user was selected, schedule a fallback timeout
                     if (event.user) {
-                        // If the player is more active, give them more time (5-10 default, +5-10 when in-game, +1m for each day of streak)
+                        // If the player is more active, give them more time (5-9 default, +1-4 when in-game, +1m for each day of streak)
                         let fallbackDate = new Date();
                         fallbackDate.setMinutes(fallbackDate.getMinutes() + randInt(5, 10));
                         if (state.hasPlayer(event.user)) {
-                            fallbackDate.setMinutes(fallbackDate.getMinutes() + randInt(5, 10) + state.getPlayerActivity(event.user).getStreak());
+                            fallbackDate.setMinutes(fallbackDate.getMinutes() + randInt(1, 5) + state.getPlayerActivity(event.user).getStreak());
                         }
                         await timeoutManager.registerTimeout(TimeoutType.PopcornFallback, fallbackDate, { pastStrategy: PastTimeoutStrategy.Invoke});
                         // TODO: Temp logging to see how this goes
