@@ -2709,11 +2709,21 @@ client.on('typingStart', async (typing) => {
             const event = state.getEvent();
             const userId = typing.user.id;
             if (event.user && event.user === userId) {
+                // Determine the postponed fallback time
                 const inFiveMinutes = new Date();
                 inFiveMinutes.setMinutes(inFiveMinutes.getMinutes() + 5);
-                const ids = await timeoutManager.postponeTimeoutsWithType(TimeoutType.PopcornFallback, inFiveMinutes);
-                // TODO: Temp logging to see how this is working
-                await logger.log(`**${state.getPlayerDisplayName(userId)}** started typing, postpone fallback ` + naturalJoin(ids.map(id => `**${id}** to **${timeoutManager.getDateForTimeoutWithId(id)?.toLocaleTimeString()}**`)));
+                // Determine the existing fallback time
+                const existingFallbackTime = timeoutManager.getDateForTimeoutWithType(TimeoutType.PopcornFallback);
+                if (!existingFallbackTime) {
+                    await logger.log('Cannot postpone the popcorn fallback, as no existing fallback date was found!');
+                    return;
+                }
+                // Only postpone if the existing fallback is sooner than the postponed time (otherwise, it would be moved up constantly with lots of spam)
+                if (existingFallbackTime.getTime() < inFiveMinutes.getTime()) {
+                    const ids = await timeoutManager.postponeTimeoutsWithType(TimeoutType.PopcornFallback, inFiveMinutes);
+                    // TODO: Temp logging to see how this is working
+                    await logger.log(`**${state.getPlayerDisplayName(userId)}** started typing, postpone fallback ` + naturalJoin(ids.map(id => `**${id}** to **${timeoutManager.getDateForTimeoutWithId(id)?.toLocaleTimeString()}**`)));
+                }
             }
         }
     }
