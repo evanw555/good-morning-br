@@ -1,4 +1,4 @@
-import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, BaseMessageOptions, Client, ComponentType, DMChannel, GatewayIntentBits, Partials, TextChannel, User } from 'discord.js';
+import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, BaseMessageOptions, Client, ComponentType, DMChannel, GatewayIntentBits, PartialMessage, Partials, TextChannel, User } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discord.js';
 import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, AnonymousSubmission, GameState, Wordle, SubmissionPromptHistory, ReplyToMessageData, GoodMorningAuth } from './types';
 import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, canonicalizeText, getScaledPoints } from './util';
@@ -3317,7 +3317,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     // Delete the user to prevent further action
                     delete event.user;
                     // Notify the channel
-                    await messenger.reply(msg, 'Thank you for a wonderful end to such a wonderful story! Hope you all enjoyed it as much as I did');
+                    await messenger.reply(msg, languageGenerator.generate('{popcorn.ending?}'));
                 } else {
                     const mentionedUserIds = getMessageMentions(msg);
                     // Pick out a potential fallback in case this user didn't tag correctly
@@ -3336,6 +3336,8 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     await reactToMessage(msg, '🍿');
                     // Cancel any existing popcorn fallback timeouts
                     await cancelTimeoutsWithType(TimeoutType.PopcornFallback);
+                    // Save the latest popcorn message ID in the state
+                    event.messageId = msg.id;
                     // Pass the torch to someone else...
                     if (mentionedUserIds.includes(userId)) {
                         // Tried to tag himself, so pass to the fallback user
@@ -3872,6 +3874,33 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
         // Process admin commands without the override suffix
         else if (guildOwnerDmChannel && msg.channel.id === guildOwnerDmChannel.id && msg.author.id === guildOwner.id) {
             await safeProcessCommands(msg);
+        }
+    }
+});
+
+client.on('messageUpdate', async (oldMessage: PartialMessage | Message, newMessage: PartialMessage | Message) => {
+    if (state.getEventType() === DailyEventType.Popcorn) {
+        const event = state.getEvent();
+        // Abort if there's no user ID in the state
+        if (!event.user) {
+            return;
+        }
+        // If the popcorn message has been edited...
+        if (newMessage.id === event.messageId) {
+            // Validate that they're not partials
+            if (oldMessage.partial || newMessage.partial) {
+                await logger.log(`Popcorn message edited, but aborting due to message partiality: old ${oldMessage.partial ? 'partial' : 'full'}, new ${newMessage.partial ? 'partial' : 'full'}`);
+                return;
+            }
+            // Check if the relevant user tag was removed
+            const oldTags = getMessageMentions(oldMessage);
+            const newTags = getMessageMentions(newMessage);
+            // Send a message if the tag was removed
+            if (oldTags.includes(event.user) && !newTags.includes(event.user)) {
+                await messenger.reply(newMessage, languageGenerator.generate('{popcorn.tagRemoved?}', { player: `<@${event.user}>` }));
+            }
+            // TODO: Temp logging to see how this works
+            await logger.log(`Popcorn message edited. Old tags: \`${JSON.stringify(oldTags)}\`, new tags: \`${JSON.stringify(newTags)}\``);
         }
     }
 });

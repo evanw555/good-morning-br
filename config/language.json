@@ -420,5 +420,17 @@
             "It might be over for you bro...",
             "Please..."
         ]
+    },
+    "popcorn": {
+        "ending": [
+            "Thank you for a wonderful end to such a wonderful story! Hope you all enjoyed it as much as I did",
+            "Thank you for ending the story so well! Today's tale was truly {adjectives.novel?} indeed",
+            "Wow! What a truly {adjectives.positive?} ending to a one-of-a-kind story, thank you all so much"
+        ],
+        "tagRemoved": [
+            "It's still {$player}'s turn, just to be clear...",
+            "Ignore the {!tricks|trickery}! It's still {$player}'s turn!",
+            "There {!is|seems to be} some deception {!afoot|astir}... {$player} still has the {!torch|popcorn|talking stick}"
+        ]
     }
 }

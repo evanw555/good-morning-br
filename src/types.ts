@@ -153,7 +153,9 @@ export interface DailyEvent {
     wishesReceived?: Record<Snowflake, number>,
     // Used specifically for the "wordle" event
     wordle?: Wordle,
-    wordleHiScores?: Record<Snowflake, number>
+    wordleHiScores?: Record<Snowflake, number>,
+    // Used specifically for the "popcorn" event
+    messageId?: Snowflake
 }
 
 export interface MazeLocation {
