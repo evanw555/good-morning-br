@@ -414,7 +414,11 @@
             "Oh {!dear|deer|my}... {$player} {!got|did|clowned} you good",
             "{$player}, I think you're gonna {!wanna|want to} see this...",
             "Tisk tisk...",
-            "Should not've said that... Should not've said that..."
+            "Should not've said that... Should not've said that...",
+            "You're a {!chump|damn fool}",
+            "Are you really gonna be baited like that?",
+            "It might be over for you bro...",
+            "Please..."
         ]
     }
 }
