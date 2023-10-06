@@ -336,17 +336,15 @@ const chooseEvent = async (date: Date): Promise<DailyEvent | undefined> => {
             submissions: {}
         };
     }
-    // Friday: Friday high-focus event
-    if (date.getDay() === 5) {
-        const fridayEvents: DailyEvent[] = [{
-            type: DailyEventType.MonkeyFriday
-        }, {
+    // Thursday: High-focus event
+    if (date.getDay() === 4) {
+        const focusEvents: DailyEvent[] = [{
             type: DailyEventType.Popcorn
         }];
         // Add the wordle event if words can be found
         const wordleWords = await chooseMagicWords(1, 5);
         if (wordleWords.length > 0) {
-            fridayEvents.push({
+            focusEvents.push({
                 type: DailyEventType.Wordle,
                 wordle: {
                     solution: wordleWords[0].toUpperCase(),
@@ -357,6 +355,14 @@ const chooseEvent = async (date: Date): Promise<DailyEvent | undefined> => {
             });
         }
         // Return a random one of these high-focus events
+        return randChoice(...focusEvents);
+    }
+    // Friday: Monkey Friday
+    if (date.getDay() === 5) {
+        const fridayEvents: DailyEvent[] = [{
+            type: DailyEventType.MonkeyFriday
+        }];
+        // Return a random one of these Friday events
         return randChoice(...fridayEvents);
     }
     // Saturday: Game Decision
