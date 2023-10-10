@@ -1212,7 +1212,9 @@ const finalizeAnonymousSubmissions = async () => {
         await sleep(12000);
         await messenger.send(goodMorningChannel, `Now, let us extend our solemn condolences to ${getJoinedMentions(zeroVoteUserIds)}, for they received no votes this fateful morning... 😬`);
     }
-    for (const result of validResults) {
+    // TODO: Switch to validResults.toReversed() in Node 20
+    const reversedValidResults = [...validResults].reverse();
+    for (const result of reversedValidResults) {
         const code: string = result.code
         const userId: Snowflake = result.userId;
         const rank: number = result.rank;
