@@ -185,8 +185,11 @@ export default class GoodMorningState {
         return this.getPlayer(userId) !== undefined;
     }
 
+    /**
+     * @returns The user's display name if known, else return a user mention tag
+     */
     getPlayerDisplayName(userId: Snowflake): string {
-        return this.getPlayer(userId)?.displayName ?? 'Unknown';
+        return this.getPlayer(userId)?.displayName ?? `<@${userId}>`;
     }
 
     getPlayerDisplayNameWithMultiplier(userId: Snowflake): string {
