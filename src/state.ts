@@ -5,8 +5,9 @@ import AbstractGame from "./games/abstract-game";
 import ClassicGame from "./games/classic";
 import MazeGame from "./games/maze";
 import logger from "./logger";
-import { Bait, Combo, DailyEvent, DailyEventType, DailyPlayerState, FullDate, GameState, PlayerState, RawGoodMorningState, Season } from "./types";
+import { Bait, Combo, DailyEvent, DailyEventType, DailyPlayerState, FullDate, GameState, PlayerState, RawAnonymousSubmissionsState, RawGoodMorningState, Season } from "./types";
 import IslandGame from "./games/island";
+import { AnonymousSubmissionsState } from "./submissions";
 
 export default class GoodMorningState {
     private data: RawGoodMorningState;
@@ -759,65 +760,43 @@ export default class GoodMorningState {
             || this.getEventType() === DailyEventType.AnonymousSubmissions;
     }
 
+    hasAnonymousSubmissions(): boolean {
+        return this.data.anonymousSubmissions !== undefined;
+    }
+
+    getAnonymousSubmissions(): AnonymousSubmissionsState {
+        if (!this.data.anonymousSubmissions) {
+            throw new Error('There is no submissions data in the state!');
+        }
+        return new AnonymousSubmissionsState(this.data.anonymousSubmissions);
+    }
+
+    setAnonymousSubmissions(anonymousSubmissions: RawAnonymousSubmissionsState) {
+        this.data.anonymousSubmissions = anonymousSubmissions;
+    }
+
+    clearAnonymousSubmissions() {
+        delete this.data.anonymousSubmissions;
+    }
+
+    isAcceptingAnonymousSubmissions(): boolean {
+        return this.hasAnonymousSubmissions() && this.getAnonymousSubmissions().isSubmissionsPhase();
+    }
+
+    isAcceptingAnonymousSubmissionVotes(): boolean {
+        return this.hasAnonymousSubmissions() && this.getAnonymousSubmissions().isVotingPhase();
+    }
+
     /**
      * @returns True if every user who has submitted something has either (1) voted, (2) forfeited, or (3) is on probation.
      */
     haveAllSubmittersVoted(): boolean {
-        if (this.getEventType() !== DailyEventType.AnonymousSubmissions) {
+        if (!this.hasAnonymousSubmissions()) {
             return false;
         }
-        const event = this.getEvent();
-        const submissions = event.submissions;
-        const votes = event.votes;
-        if (!submissions || !votes) {
-            return false;
-        }
-        return Object.keys(submissions).every(userId => (userId in votes) || this.hasUserForfeited(userId) || this.isPlayerOnVotingProbation(userId));
-    }
-
-    hasUserForfeited(userId: Snowflake): boolean {
-        return (this.getEvent()?.forfeiters ?? []).includes(userId);
-    }
-
-    /**
-     * Get the list of all users who have sent in a submission, yet haven't voted and haven't forfeited.
-     * Even users on probation will be considered deadbeats, despite their vote not being required to satisfy "have all submitters voted".
-     */
-    getSubmissionDeadbeats(): Snowflake[] {
-        if (this.getEventType() !== DailyEventType.AnonymousSubmissions) {
-            return [];
-        }
-        const event = this.getEvent();
-        const submissions = event.submissions;
-        const votes = event.votes;
-        if (!submissions || !votes) {
-            return [];
-        }
-        return Object.keys(submissions)
-            // Users who haven't forfeited...
-            .filter(userId => !this.hasUserForfeited(userId))
-            // And who haven't voted...
-            .filter(userId => !votes[userId]);
-    }
-
-    getNextSubmissionPrompt(): string | undefined {
-        return this.data.nextSubmissionPrompt;
-    }
-
-    hasNextSubmissionPrompt(): boolean {
-        return this.data.nextSubmissionPrompt !== undefined;
-    }
-
-    setNextSubmissionPrompt(nextSubmissionPrompt: string) {
-        if (nextSubmissionPrompt) {
-            this.data.nextSubmissionPrompt = nextSubmissionPrompt;
-        } else {
-            this.clearNextSubmissionPrompt();
-        }
-    }
-
-    clearNextSubmissionPrompt() {
-        delete this.data.nextSubmissionPrompt;
+        const anonymousSubmissions = this.getAnonymousSubmissions();
+        return anonymousSubmissions.getSubmitters()
+            .every(userId => anonymousSubmissions.hasUserVoted(userId) || anonymousSubmissions.hasUserForfeited(userId) || this.isPlayerOnVotingProbation(userId));
     }
 
     getLastSubmissionWinner(): Snowflake | undefined {

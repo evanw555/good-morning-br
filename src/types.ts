@@ -124,24 +124,11 @@ export enum HomeStretchSurprise {
     ComboBreakerBonus
 }
 
-export interface AnonymousSubmission {
-    text?: string,
-    url?: string
-}
-
 export interface DailyEvent {
     type: DailyEventType,
     user?: Snowflake,
     // Used specifically for the "reverse GM" event
     reverseGMRanks?: Record<Snowflake, number>,
-    // Used specifically for the "anonymous submissions" event
-    submissionType?: string,
-    submissions?: Record<Snowflake, AnonymousSubmission>, // Map of UserId -> submission text/url
-    submissionOwnersByCode?: Record<string, Snowflake>, // Map of submission code -> UserId
-    votes?: Record<Snowflake, string[]>, // Map of UserId -> list of submission codes
-    rootSubmissionMessage?: Snowflake, // MessageId
-    selectSubmissionMessage?: Snowflake, // MessageId
-    forfeiters?: Snowflake[], // List of UserIds
     // Used specifically for the "grumpy morning" / "nightmare" / "popcorn" events
     disabled?: boolean,
     // Used specifically for the "writer's block" event
@@ -278,6 +265,25 @@ export interface Bait {
     messageId: Snowflake
 }
 
+export type AnonymousSubmissionsPhase = 'submissions' | 'reveal' | 'voting' | 'results';
+
+export interface AnonymousSubmission {
+    text?: string,
+    url?: string
+}
+
+export interface RawAnonymousSubmissionsState {
+    // Used specifically for the "anonymous submissions" event
+    prompt: string,
+    phase: AnonymousSubmissionsPhase,
+    submissions: Record<Snowflake, AnonymousSubmission>, // Map of UserId -> submission text/url
+    submissionOwnersByCode: Record<string, Snowflake>, // Map of submission code -> UserId
+    votes: Record<Snowflake, string[]>, // Map of UserId -> list of submission codes
+    forfeiters: Snowflake[], // List of UserIds
+    rootSubmissionMessage?: Snowflake, // MessageId
+    selectSubmissionMessage?: Snowflake // MessageId
+}
+
 export interface RawGoodMorningState {
     season: number,
     startedOn: FullDate,
@@ -294,7 +300,7 @@ export interface RawGoodMorningState {
     previousBait?: Bait
     event?: DailyEvent,
     nextEvent?: DailyEvent,
-    nextSubmissionPrompt?: string,
+    anonymousSubmissions?: RawAnonymousSubmissionsState,
     lastSubmissionWinner?: Snowflake,
     dailyStatus: Record<Snowflake, DailyPlayerState>,
     players: Record<Snowflake, PlayerState>,

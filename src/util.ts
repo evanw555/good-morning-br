@@ -152,6 +152,7 @@ export function getMessageMentions(msg: Message): Snowflake[] {
 }
 
 /**
+ * // TODO: Refactor to common library
  * @returns The given text in lower-case with all non-alphanumeric characters removed
  */
 export function canonicalizeText(text: string): string {

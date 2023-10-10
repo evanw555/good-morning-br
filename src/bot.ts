@@ -1,4 +1,4 @@
-import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, BaseMessageOptions, Client, ComponentType, DMChannel, GatewayIntentBits, MessageFlags, MessageFlagsBitField, PartialMessage, Partials, TextChannel, User } from 'discord.js';
+import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, BaseMessageOptions, Client, ComponentType, DMChannel, GatewayIntentBits, MessageFlags, PartialMessage, Partials, TextChannel, User } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discord.js';
 import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, AnonymousSubmission, GameState, Wordle, SubmissionPromptHistory, ReplyToMessageData, GoodMorningAuth } from './types';
 import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, canonicalizeText, getScaledPoints } from './util';
@@ -15,6 +15,7 @@ import MazeGame from './games/maze';
 import logger from './logger';
 import imageLoader from './image-loader';
 import IslandGame from './games/island';
+import { AnonymousSubmissionsState } from './submissions';
 
 const auth: GoodMorningAuth = loadJson('config/auth.json');
 const config: GoodMorningConfig = loadJson('config/config.json');
@@ -206,13 +207,6 @@ const revokeGMChannelAccess = async (userIds: Snowflake[]): Promise<void> => {
     }
 }
 
-/**
- * For a given user, return how many seasons are remaining in their sungazer term (or 0 if not on the council).
- */
-const getSungazerTerm = (userId: Snowflake): number => {
-    return history.sungazers[userId] ?? 0;
-}
-
 const updateSungazer = async (userId: Snowflake, terms: number): Promise<void> => {
     if (history.sungazers[userId] === undefined) {
         history.sungazers[userId] = terms;
@@ -332,8 +326,7 @@ const chooseEvent = async (date: Date): Promise<DailyEvent | undefined> => {
     // Tuesday: Anonymous Submissions
     if (date.getDay() === 2) {
         return {
-            type: DailyEventType.AnonymousSubmissions,
-            submissions: {}
+            type: DailyEventType.AnonymousSubmissions
         };
     }
     // Thursday: High-focus event
@@ -652,15 +645,16 @@ const sendGoodMorningMessage = async (): Promise<void> => {
                 await messenger.send(goodMorningChannel, languageGenerator.generate(overriddenMessage));
             }
             // Send the standard submission prompt
+            const prompt = state.getAnonymousSubmissions().getPrompt();
             const intro: string = overriddenMessage ? 'There\'s more!' : 'Good morning! Today is a special one.';
             const text = `${intro} Rather than sending your good morning messages here for all to see, `
-                + `I'd like you to come up with a _${state.getEvent().submissionType}_ and send it directly to me via DM! `
+                + `I'd like you to come up with a _${prompt}_ and send it directly to me via DM! `
                 + `At ${getSubmissionRevealTimestamp()}, I'll post them here anonymously and you'll all be voting on your favorites 😉`;
             await messenger.send(goodMorningChannel, text, { immediate: overriddenMessage !== undefined });
             // Also, let players know they can forfeit
             await sleep(10000);
             await messenger.send(goodMorningChannel, 'If you won\'t be able to vote, then you can use `/forfeit` to avoid the no-vote penalty. '
-                + `Your _${state.getEvent().submissionType}_ will still be presented, but you won't be rewarded if you win big.`);
+                + `Your _${prompt}_ will still be presented, but you won't be rewarded if you win big.`);
             break;
         }
         case DailyEventType.GameDecision:
@@ -954,20 +948,9 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     }
 
     if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
-        const event = state.getEvent();
         // First, cancel all pending submission prompt polls (if any have been delayed for long enough)
         await cancelTimeoutsWithType(TimeoutType.AnonymousSubmissionTypePollStart);
         await cancelTimeoutsWithType(TimeoutType.AnonymousSubmissionTypePollEnd);
-        // Load the pre-determined submission prompt into the submission type and clear it
-        if (state.hasNextSubmissionPrompt()) {
-            // If the poll finished and the next prompt has been set, use that
-            event.submissionType = state.getNextSubmissionPrompt();
-            state.clearNextSubmissionPrompt();
-        } else {
-            // If for some reason there wasn't a submission prompt set, pick one at random
-            event.submissionType = await chooseRandomUnusedSubmissionPrompt();
-            await logger.log(`For some reason there wasn't a "next submission prompt" set, so using \`${event.submissionType}\``);
-        }
         // Set timeout for anonymous submission reveal
         const submissionRevealTime = new Date();
         submissionRevealTime.setHours(10, 50, 0, 0);
@@ -985,7 +968,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         // Create the forfeit command
         await guild.commands.create({
             name: 'forfeit',
-            description: `Forfeit the ${event.submissionType?.slice(0, 50)} contest to avoid a penalty`
+            description: `Forfeit the ${state.getAnonymousSubmissions().getPrompt().slice(0, 50)} contest to avoid a penalty`
         });
     }
 
@@ -1081,21 +1064,21 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     await dumpState();
 };
 
-const processSubmissionVote = async (userId: Snowflake, event: DailyEvent, submissionCodes: string[], callback: (text: string) => Promise<void>) => {
-    if (!event.votes || !event.submissions || !event.submissionOwnersByCode || state.getEventType() !== DailyEventType.AnonymousSubmissions) {
+const processSubmissionVote = async (userId: Snowflake, submissionCodes: string[], callback: (text: string) => Promise<void>) => {
+    if (!state.isAcceptingAnonymousSubmissionVotes()) {
         await callback('You shouldn\'t be able to vote right now!');
         return;
     }
-    const isSubmitterVote: boolean = userId in event.submissions;
+    const anonymousSubmissions = state.getAnonymousSubmissions();
+    const isSubmitterVote: boolean = anonymousSubmissions.isSubmitter(userId);
     const submissionCodeSet: Set<string> = new Set(submissionCodes);
-    const validSubmissionCodes: Set<string> = new Set(Object.keys(event.submissionOwnersByCode));
     // Require at least three votes (or one less than the total number of votes if there aren't enough submissions)
     // Due to prior validation, there will always be two or more submissions, so this min will always be computed as at least 1
     const maxRequiredVotes: number = 3;
-    const minRequiredVotes: number = Math.min(maxRequiredVotes, validSubmissionCodes.size - 1);
+    const minRequiredVotes: number = Math.min(maxRequiredVotes, anonymousSubmissions.getSubmissionCodes().length - 1);
     // Do some validation on the vote before processing it further
     if (submissionCodes.length === 0) {
-        await callback(`I don\'t understand, please tell me which submissions you\'re voting for. Choose from ${naturalJoin([...validSubmissionCodes])}.`);
+        await callback(`I don\'t understand, please tell me which submissions you\'re voting for. Choose from ${naturalJoin([...anonymousSubmissions.getSubmissionCodes()])}.`);
     } else if (submissionCodes.length < minRequiredVotes) {
         await callback(`You must vote for at least **${minRequiredVotes}** submission${minRequiredVotes === 1 ? '' : 's'}!`);
     } else if (submissionCodes.length > maxRequiredVotes) {
@@ -1105,17 +1088,17 @@ const processSubmissionVote = async (userId: Snowflake, event: DailyEvent, submi
     } else {
         // Ensure that all votes are for valid submissions
         for (const submissionCode of submissionCodes) {
-            if (!validSubmissionCodes.has(submissionCode)) {
-                await callback(`${submissionCode} is not a valid submission! Choose from ${naturalJoin([...validSubmissionCodes])}.`);
+            if (!anonymousSubmissions.isValidSubmissionCode(submissionCode)) {
+                await callback(`${submissionCode} is not a valid submission! Choose from ${naturalJoin([...anonymousSubmissions.getSubmissionCodes()])}.`);
                 return;
             }
-            if (event.submissionOwnersByCode[submissionCode] === userId) {
+            if (anonymousSubmissions.getOwnerOfSubmission(submissionCode) === userId) {
                 await callback('You can\'t vote for your own submission!');
                 return;
             }
         }
         // Cast the vote
-        event.votes[userId] = submissionCodes;
+        anonymousSubmissions.setVote(userId, submissionCodes);
         // If the player is on voting probation, take them off
         let takenOffProbation = false;
         if (state.isPlayerOnVotingProbation(userId)) {
@@ -1134,61 +1117,36 @@ const processSubmissionVote = async (userId: Snowflake, event: DailyEvent, submi
                 + naturalJoin(submissionCodes, { bold: true, conjunction: 'then' })
                 + (takenOffProbation ? ' (you have been taken off probation, nice job 👍)' : ''));
             // Notify the admin of how many votes remain
-            await logger.log(`**${state.getPlayerDisplayName(userId)}** just voted, waiting on **${state.getSubmissionDeadbeats().length}** more votes. ${takenOffProbation ? '**(off probation)**' : ''}`);
+            await logger.log(`**${state.getPlayerDisplayName(userId)}** just voted, waiting on **${anonymousSubmissions.getNumDeadbeats()}** more votes. ${takenOffProbation ? '**(off probation)**' : ''}`);
         }
     }
 };
 
 const finalizeAnonymousSubmissions = async () => {
-    const event = state.getEvent();
+    // Validate that the current event is correct
+    if (state.getEventType() !== DailyEventType.AnonymousSubmissions) {
+        await logger.log(`WARNING! Attempted to finalize submissions with the event as \`${state.getEventType()}\`, aborting...`);
+        return;
+    }
+    // Validate that the submissions exist
+    if (!state.hasAnonymousSubmissions()) {
+        await logger.log('WARNING! Attempted to finalize submissions with no submissions data, aborting...');
+        return;
+    }
+    const anonymousSubmissions = state.getAnonymousSubmissions();
 
-    if (!event.votes || !event.submissions || !event.submissionOwnersByCode) {
-        await logger.log('WARNING! Attempting to finalize submissions with the `votes`, `submissions`, and/or `submissionOwnersByCode` already wiped. Aborting!');
+    // Validate that the current phase is correct
+    if (!anonymousSubmissions.isVotingPhase()) {
+        await logger.log(`WARNING! Attempted to finalize submissions while in the \`${anonymousSubmissions.getPhase()}\` phase, aborting...`);
         return;
     }
 
-    // First and foremost, hold onto all the state data locally
-    const submissions: Record<Snowflake, AnonymousSubmission> = event.submissions;
-    const submissionOwnersByCode = event.submissionOwnersByCode;
-    const allCodes = Object.keys(submissionOwnersByCode);
-    const deadbeats: Snowflake[] = state.getSubmissionDeadbeats();
-    const forfeiters: Snowflake[] = event.forfeiters ?? [];
-    const deadbeatSet: Set<Snowflake> = new Set(deadbeats);
-    const disqualifiedCodes: string[] = allCodes.filter(code => deadbeatSet.has(submissionOwnersByCode[code]));
-    const deadbeatsOnProbation: Snowflake[] = deadbeats.filter(userId => state.isPlayerOnVotingProbation(userId));
-    // const selectSubmissionMessageId: Snowflake | undefined = event.selectSubmissionMessage;
-
-    // Compute the participant votes vs the audience votes
-    const votes: Record<Snowflake, string[]> = {};
-    const audienceVotes: Record<Snowflake, string[]> = {};
-    for (const [userId, _votes] of Object.entries(event.votes)) {
-        if (userId in submissions) {
-            votes[userId] = _votes;
-        } else {
-            audienceVotes[userId] = _votes;
-        }
-    }
-    // TODO: Temp logging to see how this works
-    await logger.log(`Participant votes: ${getJoinedMentions(Object.keys(votes))}\nAudience votes: ${getJoinedMentions(Object.keys(audienceVotes))}`);
-
-    // Now that all the data has been gathered, delete everything from the state to prevent further action
-    delete event.votes;
-    delete event.submissions;
-    delete event.submissionOwnersByCode;
-    delete event.selectSubmissionMessage;
-    delete event.forfeiters;
+    // Update the phase to prevent further action
+    anonymousSubmissions.setPhase('results');
     await dumpState(); // Just in case anything below fails
 
-    // Delete the select submission message, if it exists
-    // TODO: Enable this if we figure out how to solve the select menu error
-    // if (selectSubmissionMessageId) {
-    //     try {
-    //         const selectSubmissionMessage = await goodMorningChannel.messages.fetch(selectSubmissionMessageId);
-    //         await selectSubmissionMessage.delete();
-    //     } catch (err) {
-    //         await logger.log(`Unable to fetch/delete select submission message: \`${err}\``);
-    //     }
-    // }
+    // TODO: Temp logging to see how this works
+    await logger.log(`Participant votes: ${getJoinedMentions(Object.keys(anonymousSubmissions.getSubmitterVotes()))}\nAudience votes: ${getJoinedMentions(Object.keys(anonymousSubmissions.getAudienceVotes()))}`);
 
     // Cancel any scheduled voting reminders
     await cancelTimeoutsWithType(TimeoutType.AnonymousSubmissionVotingReminder);
@@ -1201,56 +1159,9 @@ const finalizeAnonymousSubmissions = async () => {
         }
     });
 
-    // First, tally the votes and compute the scores
-    const scores: Record<string, number> = {}; // Map (submission code : points)
-    const breakdown: Record<string, number[]> = {};
-    // Prime both maps (some submissions may get no votes)
-    const GAZER_TERM_BONUS: number = 0.001;
-    for (const code of allCodes) {
-        const userId: Snowflake = submissionOwnersByCode[code];
-        // Prime with a base score to ultimately break ties based on previous GMBR wins
-        scores[code] = getSungazerTerm(userId) * GAZER_TERM_BONUS;
-        breakdown[code] = [0, 0, 0];
-    }
-
-    // Add 0.1 to break ties using total number of votes, 0.01 to ultimately break ties with golds
-    const GOLD_VOTE_VALUE = 3.11;
-    const SILVER_VOTE_VALUE = 2.1;
-    const BRONZE_VOTE_VALUE = 1.1;
-    const VOTE_VALUES: number[] = [GOLD_VOTE_VALUE, SILVER_VOTE_VALUE, BRONZE_VOTE_VALUE];
-    // TODO: Remove the try-catch once we're sure this works
-    const AUDIENCE_VOTE_KEY = '$AUDIENCE';
-    try {
-        await logger.log(`Compiling **${Object.keys(audienceVotes).length}** audience vote(s):\n`
-            + Object.keys(audienceVotes).map(userId => `- <@${userId}>: ${naturalJoin(audienceVotes[userId], { bold: true, conjunction: '&' })}`).join('\n'));
-        // First, compute the "audience vote"
-        const audienceScores: Record<string, number> = {};
-        for (const codes of Object.values(audienceVotes)) {
-            codes.forEach((code, i) => {
-                audienceScores[code] = toFixed((audienceScores[code] ?? 0) + (VOTE_VALUES[i] ?? 0), 3);
-            });
-        }
-        // Add the collective audience vote to the standard vote map
-        const collectiveAudienceVote: string[] = Object.keys(audienceScores).sort((x, y) => audienceScores[y] - audienceScores[x]).slice(0, 3);
-        if (collectiveAudienceVote.length === 3) {
-            votes[AUDIENCE_VOTE_KEY] = collectiveAudienceVote;
-            await logger.log(`Added collective audience vote as ${naturalJoin(collectiveAudienceVote, { bold: true, conjunction: 'then' })}`);
-        } else {
-            await logger.log(`Skipping audience vote, as there are **${collectiveAudienceVote.length}** final code(s)`);
-        }
-    } catch (err) {
-        await logger.log(`Failed computing audience vote: \`${err}\``);
-    }
-    // Now, tally the actual scores and breakdowns
-    for (const codes of Object.values(votes)) {
-        codes.forEach((code, i) => {
-            scores[code] = toFixed(scores[code] + (VOTE_VALUES[i] ?? 0), 3);
-            // Take note of the breakdown
-            breakdown[code][i]++;
-        });
-    }
-
     // Penalize the submitters who didn't vote (but didn't forfeit)
+    const deadbeats: Snowflake[] = anonymousSubmissions.getDeadbeats();
+    const deadbeatsOnProbation: Snowflake[] = deadbeats.filter(userId => state.isPlayerOnVotingProbation(userId));
     for (const userId of deadbeats) {
         // Deduct points
         state.deductPoints(userId, config.defaultAward);
@@ -1259,14 +1170,14 @@ const finalizeAnonymousSubmissions = async () => {
     }
 
     // Then, assign points based on rank in score (excluding those who didn't vote or forfeit)
-    const validCodesSorted: string[] = allCodes.filter(code => !deadbeatSet.has(submissionOwnersByCode[code]));
-    validCodesSorted.sort((x, y) => scores[y] - scores[x]);
-    const winners: Snowflake[] = validCodesSorted.map(code => submissionOwnersByCode[code]);
+    const { results, audienceVote } = anonymousSubmissions.computeVoteResults({ sungazerTerms: history.sungazers });
+    const validResults = results.filter(r => !r.disqualified);
+    const winners: Snowflake[] = validResults.map(r => r.userId);
     const scaledPoints = getScaledPoints(winners, { maxPoints: config.grandContestAward, order: 3 });
     const handicapReceivers: Set<string> = new Set();
     for (const scaledPointsEntry of scaledPoints) {
         const { userId, points, rank } = scaledPointsEntry;
-        const pointsEarned = forfeiters.includes(userId) ? config.defaultAward : points;
+        const pointsEarned = anonymousSubmissions.hasUserForfeited(userId) ? config.defaultAward : points;
         // If the player placed in the top 3 and needs a handicap, give them double points
         if (rank <= 3 && state.doesPlayerNeedHandicap(userId)) {
             state.awardPoints(userId, 2 * pointsEarned);
@@ -1289,24 +1200,24 @@ const finalizeAnonymousSubmissions = async () => {
         await sleep(10000);
         await messenger.send(goodMorningChannel, `Before anything else, say hello to the deadbeats who were disqualified for not voting! ${getJoinedMentions(deadbeats)} 👋`);
     }
-    const zeroVoteCodes: string[] = validCodesSorted.filter(code => scores[code] < BRONZE_VOTE_VALUE);
-    if (zeroVoteCodes.length > 0) {
-        const zeroVoteUserIds: Snowflake[] = zeroVoteCodes.map(code => submissionOwnersByCode[code]);
+    const zeroVoteResults = validResults.filter(r => r.noVotes);
+    if (zeroVoteResults.length > 0) {
+        const zeroVoteUserIds: Snowflake[] = zeroVoteResults.map(r => r.userId);
         await sleep(12000);
         await messenger.send(goodMorningChannel, `Now, let us extend our solemn condolences to ${getJoinedMentions(zeroVoteUserIds)}, for they received no votes this fateful morning... 😬`);
     }
-    for (let i = validCodesSorted.length - 1; i >= 0; i--) {
-        const code: string = validCodesSorted[i];
-        const userId: Snowflake = submissionOwnersByCode[code];
-        const rank: number = i + 1;
-        const submission: AnonymousSubmission = submissions[userId];
-        if (i === 0) {
+    for (const result of validResults) {
+        const code: string = result.code
+        const userId: Snowflake = result.userId;
+        const rank: number = result.rank;
+        const submission: AnonymousSubmission = anonymousSubmissions.getSubmissionForUser(userId);
+        if (rank === 1) {
             await sleep(12000);
             await messenger.send(goodMorningChannel, `And in first place, with submission **${code}**...`);
             await sleep(6000);
-            await messenger.send(goodMorningChannel, `Receiving **${breakdown[code][0]}** gold votes, **${breakdown[code][1]}** silver votes, and **${breakdown[code][2]}** bronze votes...`);
+            await messenger.send(goodMorningChannel, `Receiving ${result.breakdownString}...`);
             await sleep(12000);
-            if (forfeiters.includes(userId)) {
+            if (anonymousSubmissions.hasUserForfeited(userId)) {
                 await messenger.send(goodMorningChannel, 'Being awarded only participation points on account of them sadly forfeiting...');
                 await sleep(6000);
             }
@@ -1315,9 +1226,9 @@ const finalizeAnonymousSubmissions = async () => {
                 content: `We have our winner, <@${userId}>! Congrats!`,
                 embeds: [ toSubmissionEmbed(submission) ]
             });
-        } else if (i < 3) {
+        } else if (rank <= 3) {
             await sleep(12000);
-            const headerText: string = forfeiters.includes(userId)
+            const headerText: string = anonymousSubmissions.hasUserForfeited(userId)
                 ? `In ${getRankString(rank)} place yet only receiving participation points, we have the forfeiting <@${userId}> with submission **${code}**!`
                 : `In ${getRankString(rank)} place, we have <@${userId}> with submission **${code}**!`;
             // TODO: Integrate this into the Messenger utility
@@ -1329,23 +1240,13 @@ const finalizeAnonymousSubmissions = async () => {
     }
 
     // Send DMs to let each user know their ranking
-    const numValidSubmissions: number = validCodesSorted.length;
-    for (let i = 0; i < validCodesSorted.length; i++) {
-        const code: string = validCodesSorted[i];
-        const userId: Snowflake = submissionOwnersByCode[code];
-        const rank: number = i + 1;
-        // Calculate number of each medal earned
-        const numGold = breakdown[code][0];
-        const numSilver = breakdown[code][1];
-        const numBronze = breakdown[code][2];
+    for (const result of validResults) {
+        const userId = result.userId;
         // Send the DM (let them know about forfeiting and handicapping too)
         await messenger.dm(userId,
-            `Your ${state.getEvent().submissionType} placed **${getRankString(rank)}** of **${numValidSubmissions}**, receiving `
-                + `**${numGold}** gold vote${numGold === 1 ? '' : 's'}, `
-                + `**${numSilver}** silver vote${numSilver === 1 ? '' : 's'}, and `
-                + `**${numBronze}** bronze vote${numBronze === 1 ? '' : 's'}. `
+            `Your ${anonymousSubmissions.getPrompt()} placed **${getRankString(result.rank)}** of **${validResults.length}**, receiving ${result.breakdownString}. `
                 + `Thanks for participating ${config.defaultGoodMorningEmoji}`
-                + (forfeiters.includes(userId) ? ' (and sorry that you had to forfeit)' : '')
+                + (anonymousSubmissions.hasUserForfeited(userId) ? ' (and sorry that you had to forfeit)' : '')
                 + (handicapReceivers.has(userId) ? ' (since you\'re a little behind, I\'ve doubled the points earned for this win!)' : ''),
             { immediate: true });
     }
@@ -1367,25 +1268,23 @@ const finalizeAnonymousSubmissions = async () => {
     // TODO: Remove this try-catch once we're sure it works
     await messenger.send(sungazersChannel, 'FYI gazers, here are the details of today\'s voting...');
     try {
-        const allCodesSorted: string[] = validCodesSorted.concat(disqualifiedCodes);
-        const scoringDetails: string = allCodesSorted.map((c, i) => {
-            const medalsText: string = ('🥇'.repeat(breakdown[c][0]) + '🥈'.repeat(breakdown[c][1]) + '🥉'.repeat(breakdown[c][2])) || '🌚';
-            const userId: Snowflake = submissionOwnersByCode[c];
-            if (deadbeatSet.has(userId)) {
-                return `**DQ**: ${c} ~~<@${userId}>~~ \`${medalsText}=${scores[c]}\``;
-            } else if (forfeiters.includes(userId)) {
-                return `**${getRankString(i + 1)}(F)**: ${c} ~~<@${userId}>~~ \`${medalsText}=${scores[c]}\``;
+        const scoringDetails: string = results.map((r) => {
+            const userId = r.userId;
+            const code = r.code;
+            if (r.disqualified) {
+                return `**DQ**: ${code} ~~<@${userId}>~~ \`${r.medalsString}=${r.score}\``;
+            } else if (anonymousSubmissions.hasUserForfeited(userId)) {
+                return `**${getRankString(r.rank)}(F)**: ${code} ~~<@${userId}>~~ \`${r.medalsString}=${r.score}\``;
             } else {
-                return `**${getRankString(i + 1)}**: ${c} <@${userId}> \`${medalsText}=${scores[c]}\``;
+                return `**${getRankString(r.rank)}**: ${code} <@${userId}> \`${r.medalsString}=${r.score}\``;
             }
         }).join('\n');
         await messenger.send(sungazersChannel, scoringDetails);
         // Let them know how the score is calculated
-        await messenger.send(sungazersChannel, `(\`score = ${GOLD_VOTE_VALUE}🥇 + ${SILVER_VOTE_VALUE}🥈 + ${BRONZE_VOTE_VALUE}🥉 + ${GAZER_TERM_BONUS}🌞\`)`);
+        await messenger.send(sungazersChannel, AnonymousSubmissionsState.getVotingFormulaString());
         // Let them know the audience votes, if any
-        const collectiveAudienceVote = votes[AUDIENCE_VOTE_KEY];
-        if (collectiveAudienceVote && collectiveAudienceVote.length === 3) {
-            await messenger.send(sungazersChannel, `**${Object.keys(audienceVotes).length}** audience vote(s) merged as: ${naturalJoin(collectiveAudienceVote, { bold: true })}`);
+        if (audienceVote.length > 0) {
+            await messenger.send(sungazersChannel, `**${Object.keys(anonymousSubmissions.getAudienceVotes()).length}** audience vote(s) merged as: ${naturalJoin(audienceVote, { bold: true })}`);
         }
         // Let them know who's on probation, if anyone
         if (state.getPlayersOnVotingProbation().length > 0) {
@@ -1439,14 +1338,16 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
 
         // Check the results of anonymous submissions
         if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
-            // ...if they haven't been finalized already
-            if (state.getEvent().votes) {
+            // ...if the votes haven't been finalized already
+            if (state.isAcceptingAnonymousSubmissionVotes()) {
                 await finalizeAnonymousSubmissions();
                 // Sleep to provide a buffer in case more messages need to be sent
                 await sleep(10000);
             } else {
-                await logger.log('Aborting pre-noon submission finalizing, as the votes have already been wiped.');
+                await logger.log('Aborting pre-noon submission finalizing, as the submissions are not currently in the voting phase.');
             }
+            // Wipe the submissions data from the state since we're done with it completely
+            state.clearAnonymousSubmissions();
         }
 
         // Award prizes to the players with the most wishes
@@ -1523,12 +1424,13 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         }
 
         // If there's a pre-determined submissions prompt, notify the players
-        if (state.hasNextSubmissionPrompt()) {
+        if (state.hasAnonymousSubmissions()) {
+            const prompt = state.getAnonymousSubmissions().getPrompt();
             if (nextEvent && nextEvent.type === DailyEventType.AnonymousSubmissions) {
-                await messenger.send(goodMorningChannel, `Reminder that tomorrow's submission prompt is _"${state.getNextSubmissionPrompt()}"_! I'll start accepting submissions tomorrow morning`);
+                await messenger.send(goodMorningChannel, `Reminder that tomorrow's submission prompt is _"${prompt}"_! I'm already accepting submissions`);
             } else {
                 await messenger.send(goodMorningChannel, 'Hear ye, hear ye! Have a little sneak peek at this Tuesday\'s submission prompt 👀 '
-                    + `you'll all be sending me a _${state.getNextSubmissionPrompt()}_, start putting something together if you know what's best for you...`);
+                    + `you'll all be sending me a _${prompt}_! You can send it to me now if it's ready, otherwise start putting something together if you know what's best for you...`);
             }
         }
 
@@ -1657,7 +1559,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             }
             // Poll for tomorrow's submission prompt (if tomorrow is a submissions day and there's not already a pre-determined prompt)
             // TODO: If the high-effort poll gets delayed for long enough, this could theoretically kick off in parallel. HANDLE THIS!
-            if (state.getEventType() === DailyEventType.AnonymousSubmissions && !state.hasNextSubmissionPrompt()) {
+            if (state.getEventType() === DailyEventType.AnonymousSubmissions && !state.hasAnonymousSubmissions()) {
                 // Accept suggestions for 2 hours
                 const pollStartDate = new Date();
                 pollStartDate.setHours(pollStartDate.getHours() + 2);
@@ -1817,27 +1719,29 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         }
     },
     [TimeoutType.AnonymousSubmissionReveal]: async (): Promise<void> => {
+        // Validate that the current event is correct
         if (state.getEventType() !== DailyEventType.AnonymousSubmissions) {
             await logger.log(`WARNING! Attempted to trigger anonymous submission reveal with the event as \`${state.getEventType()}\`, aborting...`);
             return;
         }
-        const event = state.getEvent();
+        // Validate that the submissions exist
+        if (!state.hasAnonymousSubmissions()) {
+            await logger.log('WARNING! Attempted to trigger anonymous submission reveal with no submissions data, aborting...');
+            return;
+        }
+        const anonymousSubmissions = state.getAnonymousSubmissions();
 
-        // Validate that the submissions map exists
-        if (!event.submissions) {
-            await logger.log('WARNING! Attempted to trigger anonymous submission reveal with no submissions map, aborting...');
+        // Validate that the current phase is correct
+        if (!anonymousSubmissions.isSubmissionsPhase()) {
+            await logger.log(`WARNING! Attempted to trigger anonymous submission reveal while in the \`${anonymousSubmissions.getPhase()}\` phase, aborting...`);
             return;
         }
 
-        // Initialize the votes map now to ensure this process can't be triggered again
-        if (event.votes) {
-            await logger.log(`WARNING! Attempted to trigger anonymous submission reveal with votes map initialized (duplicate timeout?), aborting...`);
-            return;
-        }
-        event.votes = {};
+        // Advance the phase now to prevent voting and to ensure this process can't be triggered again
+        anonymousSubmissions.setPhase('reveal');
         await dumpState();
 
-        const userIds: Snowflake[] = Object.keys(event.submissions);
+        const userIds: Snowflake[] = anonymousSubmissions.getSubmitters();
 
         // If nobody sent anything at all, abort!
         if (userIds.length === 0) {
@@ -1861,8 +1765,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
 
         // Send the initial message
         const rootSubmissionMessage: Message = await messenger.sendAndGet(goodMorningChannel, `Here are your anonymous submissions! ${config.defaultGoodMorningEmoji}`);
-        event.rootSubmissionMessage = rootSubmissionMessage.id;
-        event.submissionOwnersByCode = {};
+        anonymousSubmissions.setRootSubmissionMessage(rootSubmissionMessage.id);
         await dumpState();
 
         // Shuffle all the revelant user IDs
@@ -1871,11 +1774,11 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         // For each submission (in shuffled order)...
         for (let i = 0; i < userIds.length; i++) {
             const userId: Snowflake = userIds[i];
-            const submission = event.submissions[userId];
+            const submission = anonymousSubmissions.getSubmissionForUser(userId);
             const submissionCode: string = toLetterId(i);
             
             // Keep track of which user this submission's "number" maps to
-            event.submissionOwnersByCode[submissionCode] = userId;
+            anonymousSubmissions.setSubmissionOwnerByCode(submissionCode, userId);
             await dumpState();
 
             try {
@@ -1892,10 +1795,10 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         }
 
         // Register the vote command
-        const choices = Object.keys(event.submissionOwnersByCode).map(c => { return { name: `Submission ${c}`, value: c }; });
+        const choices = anonymousSubmissions.getSubmissionCodes().map(c => { return { name: `Submission ${c}`, value: c }; });
         await guild.commands.create({
             name: 'vote',
-            description: `Vote for a ${event.submissionType?.slice(0, 50)}`,
+            description: `Vote for a ${anonymousSubmissions.getPrompt().slice(0, 50)}`,
             // TODO: What do we do if there are 2-3 submissions?
             options: [
                 {
@@ -1922,10 +1825,14 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             ]
          });
 
+        // Advance to the voting phase
+        anonymousSubmissions.setPhase('voting');
+        await dumpState();
+
         // Send voting message
         await messenger.send(goodMorningChannel,
             `Alright, that's all of them! Use the \`/vote\` command to vote for your 3 favorite submissions. `
-            + `If you submitted a ${state.getEvent().submissionType}, you _must_ vote otherwise you will be disqualified and penalized.`);
+            + `If you submitted a ${anonymousSubmissions.getPrompt()}, you _must_ vote otherwise you will be disqualified and penalized.`);
         // TODO: Enable if we can figure out why this breaks
         // TODO: Remove try-catch once we're sure this works
         // try {
@@ -1965,28 +1872,39 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         });
     },
     [TimeoutType.AnonymousSubmissionVotingReminder]: async (): Promise<void> => {
+        // Validate that the current event is correct
         if (state.getEventType() !== DailyEventType.AnonymousSubmissions) {
             await logger.log(`WARNING! Attempted to trigger anonymous submission voting reminder with the event as \`${state.getEventType()}\``);
             return;
         }
-        const event = state.getEvent();
-        if (!event.votes) {
-            await logger.log('Aborting submission voting reminder, as the votes have already been wiped.');
+        // Validate that the submissions exist
+        if (!state.hasAnonymousSubmissions()) {
+            await logger.log('WARNING! Attempted to trigger anonymous submission voting reminder with no submissions data, aborting...');
             return;
         }
-        if (!event.rootSubmissionMessage) {
+        const anonymousSubmissions = state.getAnonymousSubmissions();
+
+        // Validate that the current phase is correct
+        if (!anonymousSubmissions.isSubmissionsPhase()) {
+            await logger.log(`WARNING! Attempted to trigger anonymous submission voting reminder while in the \`${anonymousSubmissions.getPhase()}\` phase, aborting...`);
+            return;
+        }
+
+        // Validate that the root submission message ID exists
+        if (!anonymousSubmissions.hasRootSubmissionMessage()) {
             await logger.log('Aborting submission voting reminder, as there\'s no root submission message ID.');
             return;
         }
-        const delinquents: Snowflake[] = state.getSubmissionDeadbeats();
+
+        const delinquents: Snowflake[] = anonymousSubmissions.getDeadbeats();
         if (delinquents.length === 1) {
             // Send voting reminder targeting the one remaining user
             await messenger.send(goodMorningChannel, `Ahem <@${delinquents[0]}>... Please vote.`);
         } else if (delinquents.length > 1) {
             // Send a voting notification to the channel
             try {
-                const rootSubmissionMessage: Message = await goodMorningChannel.messages.fetch(event.rootSubmissionMessage);
-                await messenger.reply(rootSubmissionMessage, `If you haven't already, please vote on your favorite ${event.submissionType} with \`/vote\`!`);
+                const rootSubmissionMessage: Message = await goodMorningChannel.messages.fetch(anonymousSubmissions.getRootSubmissionMessage());
+                await messenger.reply(rootSubmissionMessage, `If you haven't already, please vote on your favorite ${anonymousSubmissions.getPrompt()} with \`/vote\`!`);
             } catch (err) {
                 logger.log(`Failed to fetch root submission message and send reminder: \`${err.toString()}\``);
             }
@@ -1996,7 +1914,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                 delinquents.forEach(async (userId) => {
                     try {
                         await messenger.dm(userId,
-                            `You still haven\'t voted! You and your ${event.submissionType} will be disqualified if you don't vote by noon. You can vote with the \`/vote\` command.`);
+                            `You still haven\'t voted! You and your ${anonymousSubmissions.getPrompt()} will be disqualified if you don't vote by noon. You can vote with the \`/vote\` command.`);
                     } catch (err) {
                         await logger.log(`Unable to send voting reminder DM to **${state.getPlayerDisplayName(userId)}**: \`${err.toString()}\``);
                     }
@@ -2013,8 +1931,8 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             await logger.log('Aborting anonymous submission type poll start, as there\'s no sungazers channel...');
             return;
         }
-        if (state.hasNextSubmissionPrompt()) {
-            await logger.log(`Aborting anonymous submission type poll start, as the next submission prompt is already set: \`${state.getNextSubmissionPrompt()}\``);
+        if (state.hasAnonymousSubmissions()) {
+            await logger.log(`Aborting anonymous submission type poll start, as the next submission prompt is already set: \`${state.getAnonymousSubmissions().getPrompt()}\``);
             return;
         }
 
@@ -2045,13 +1963,6 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             proposalSet = new Set(Array.from(proposalSet).slice(0, maxAlternatives));
         }
 
-        // Add the original proposed prompt
-        if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
-            const event = state.getEvent();
-            if (event.submissionType) {
-                proposalSet.add(event.submissionType);
-            }
-        }
         // Shuffle all the prompts
         const proposedTypes: string[] = Array.from(proposalSet);
         shuffle(proposedTypes);
@@ -2093,8 +2004,8 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             await logger.log('Aborting anonymous submission type poll end, as there\'s no sungazers channel...');
             return;
         }
-        if (state.hasNextSubmissionPrompt()) {
-            await logger.log(`Aborting anonymous submission type poll end, as the next submission prompt is already set: \`${state.getNextSubmissionPrompt()}\``);
+        if (state.hasAnonymousSubmissions()) {
+            await logger.log(`Aborting anonymous submission type poll end, as the next submission prompt is already set: \`${state.getAnonymousSubmissions().getPrompt()}\``);
             return;
         }
 
@@ -2118,14 +2029,21 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
 
         // Update the next submission prompt in the state
         const chosenPrompt = randChoice(...winningChoices)
-        state.setNextSubmissionPrompt(chosenPrompt);
+        state.setAnonymousSubmissions({
+            prompt: chosenPrompt,
+            phase: 'submissions',
+            submissions: {},
+            submissionOwnersByCode: {},
+            votes: {},
+            forfeiters: []
+        });
         await dumpState();
 
         // Update the submission prompt history
         await updateSubmissionPromptHistory([chosenPrompt], Object.values(arg.choices));
 
         // Notify the channel
-        await pollMessage.reply(`The results are in, everyone will be sending me a _${state.getNextSubmissionPrompt()}_ ${config.defaultGoodMorningEmoji}`);
+        await pollMessage.reply(`The results are in, everyone will be sending me a _${chosenPrompt}_ ${config.defaultGoodMorningEmoji}. You can start sending me submissions now!`);
     },
     [TimeoutType.Nightmare]: async (): Promise<void> => {
         if (state.getEventType() !== DailyEventType.Nightmare) {
@@ -2655,7 +2573,7 @@ client.on('interactionCreate', async (interaction): Promise<void> => {
         const userId: Snowflake = interaction.user.id;
         await interaction.deferReply({ ephemeral: true });
         if (interaction.customId === 'selectAnonymousSubmissions') {
-            await processSubmissionVote(userId, state.getEvent(), interaction.values, async (text: string) => {
+            await processSubmissionVote(userId, interaction.values, async (text: string) => {
                 await interaction.editReply(text);
             });
         }
@@ -2669,39 +2587,31 @@ client.on('interactionCreate', async (interaction): Promise<void> => {
                 interaction.options.getString('second', true),
                 interaction.options.getString('third', true)
             ];
-            await processSubmissionVote(userId, state.getEvent(), submissionCodes, async (text: string) => {
+            await processSubmissionVote(userId, submissionCodes, async (text: string) => {
                 await interaction.editReply(text);
             });
         } else if (interaction.commandName === 'forfeit') {
-            if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
-                const event = state.getEvent();
-                if (event.submissions) {
-                    // If voting has started, notify and abort
-                    if (event.votes) {
-                        await interaction.editReply('You can\'t forfeit now, it\'s too late! Now please vote.');
-                        return;
-                    }
-                    // If they haven't submitted anything, notify and abort
-                    if (!event.submissions[userId]) {
-                        await interaction.editReply('Why are you trying to forfeit? You haven\'t even submitted anything!');
-                        return;
-                    }
-                    // If the forfeiters list isn't initialized, create it
-                    if (!event.forfeiters) {
-                        event.forfeiters = [];
-                    }
-                    // Add the player to the forefeiters list if they're not already on it
-                    if (event.forfeiters.includes(userId)) {
-                        await interaction.editReply(languageGenerator.generate('{!Uhhh|Erm|Um}... you\'ve already forfeited, {!bonehead|blockhead|silly}.'));
-                    } else {
-                        event.forfeiters.push(userId);
-                        await interaction.editReply('You have forfeited today\'s contest. This cannot be undone. You will still be able to vote, though.');
-                        await logger.log(`**${state.getPlayerDisplayName(userId)}** has forfeited!`);
-                    }
-                    await dumpState();
-                } else {
-                    await interaction.editReply('You can\'t forfeit right now!');
+            if (state.hasAnonymousSubmissions()) {
+                const anonymousSubmissions = state.getAnonymousSubmissions();
+                // If voting has started, notify and abort
+                if (anonymousSubmissions.getPhase() !== 'submissions') {
+                    await interaction.editReply('You can\'t forfeit now, it\'s too late! Now please vote.');
+                    return;
                 }
+                // If they haven't submitted anything, notify and abort
+                if (!anonymousSubmissions.isSubmitter(userId)) {
+                    await interaction.editReply('Why are you trying to forfeit? You haven\'t even submitted anything!');
+                    return;
+                }
+                // Add the player to the forefeiters list if they're not already on it
+                if (anonymousSubmissions.hasUserForfeited(userId)) {
+                    await interaction.editReply(languageGenerator.generate('{!Uhhh|Erm|Um}... you\'ve already forfeited, {!bonehead|blockhead|silly}.'));
+                } else {
+                    anonymousSubmissions.addForfeiter(userId);
+                    await interaction.editReply('You have forfeited today\'s contest. This cannot be undone. You will still be able to vote, though.');
+                    await logger.log(`**${state.getPlayerDisplayName(userId)}** has forfeited!`);
+                }
+                await dumpState();
             } else {
                 await interaction.editReply('You can\'t forfeit right now!');
             }
@@ -3836,29 +3746,28 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
         // If this DM wasn't processed based on the above game logic, then proceed to process it using other rules.
 
         // Process DM submissions depending on the event
-        if (state.isMorning() && state.getEventType() === DailyEventType.AnonymousSubmissions) {
-            const event = state.getEvent();
-            const submissions = event.submissions;
+        if (state.isMorning() && state.hasAnonymousSubmissions()) {
+            const anonymousSubmissions = state.getAnonymousSubmissions();
             const userId: Snowflake = msg.author.id;
             // Handle voting or submitting depending on what phase of the process we're in
-            if (event.votes && event.submissionOwnersByCode) {
+            if (anonymousSubmissions.isVotingPhase()) {
                 const pattern: RegExp = /[a-zA-Z]+/g;
                 // Grab all possible matches, as the vote processing validates the number of votes
                 const submissionCodes: string[] = [...msg.content.matchAll(pattern)].map(x => x[0].toUpperCase());
-                await processSubmissionVote(userId, event, submissionCodes, async (text: string) => {
+                await processSubmissionVote(userId, submissionCodes, async (text: string) => {
                     await messenger.reply(msg, text);
                 });
-            } else if (submissions) {
-                const redoSubmission: boolean = userId in submissions;
+            } else if (anonymousSubmissions.isSubmissionsPhase()) {
+                const redoSubmission: boolean = anonymousSubmissions.isSubmitter(userId);
                 // Add the submission
                 try {
-                    submissions[userId] = toSubmission(msg);
+                    anonymousSubmissions.addSubmission(userId, toSubmission(msg));
                 } catch (err) {
                     await messenger.reply(msg, (err as Error).message);
                     return;
                 }
                 // Reply to the player via DM to let them know their submission was received
-                const numSubmissions: number = Object.keys(submissions).length;
+                const numSubmissions: number = anonymousSubmissions.getNumSubmissions();
                 if (redoSubmission) {
                     await messenger.reply(msg, 'Thanks for the update, I\'ll use this submission instead of your previous one.');
                 } else {
@@ -3867,9 +3776,10 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     if (state.isPlayerOnVotingProbation(userId)) {
                         await messenger.reply(msg, '**BEWARNED!** Since you didn\'t vote last time, you are on _voting probation_! This means I won\'t wait for your vote today, so vote quickly or else 🌚', { immediate: true });
                     }
-                    // If we now have a multiple of some number of submissions, notify the server
-                    if (numSubmissions % 3 === 0) {
-                        await messenger.send(goodMorningChannel, languageGenerator.generate(`{!We now have|I've received|We're now at|I now count|Currently at|I have|Nice} **${numSubmissions}** {!submissions|submissions|entries}! {!DM me|Send me a DM with|Send me} a _${state.getEvent().submissionType}_ before ${getSubmissionRevealTimestamp()} to {!participate|be included|join the fun|enter the contest|be a part of the contest|have a chance to win}`));
+                    // If we now have a multiple of some number of submissions (and it's currently the morning), notify the server
+                    if (numSubmissions % 3 === 0 && state.isMorning()) {
+                        await messenger.send(goodMorningChannel, languageGenerator.generate(`{!We now have|I've received|We're now at|I now count|Currently at|I have|Nice} **${numSubmissions}** {!submissions|submissions|entries}! `
+                            + `{!DM me|Send me a DM with|Send me} a _${anonymousSubmissions.getPrompt()}_ before ${getSubmissionRevealTimestamp()} to {!participate|be included|join the fun|enter the contest|be a part of the contest|have a chance to win}`));
                     }
                     // This may be the user's first engagement, so refresh display name here
                     // TODO: is there a better, more unified way to do this?
