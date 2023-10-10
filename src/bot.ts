@@ -1212,11 +1212,11 @@ const finalizeAnonymousSubmissions = async () => {
         const rank: number = result.rank;
         const submission: AnonymousSubmission = anonymousSubmissions.getSubmissionForUser(userId);
         if (rank === 1) {
-            await sleep(12000);
+            await sleep(15000);
             await messenger.send(goodMorningChannel, `And in first place, with submission **${code}**...`);
             await sleep(6000);
             await messenger.send(goodMorningChannel, `Receiving ${result.breakdownString}...`);
-            await sleep(12000);
+            await sleep(6000);
             if (anonymousSubmissions.hasUserForfeited(userId)) {
                 await messenger.send(goodMorningChannel, 'Being awarded only participation points on account of them sadly forfeiting...');
                 await sleep(6000);
@@ -1227,7 +1227,7 @@ const finalizeAnonymousSubmissions = async () => {
                 embeds: [ toSubmissionEmbed(submission) ]
             });
         } else if (rank <= 3) {
-            await sleep(12000);
+            await sleep(15000);
             const headerText: string = anonymousSubmissions.hasUserForfeited(userId)
                 ? `In ${getRankString(rank)} place yet only receiving participation points, we have the forfeiting <@${userId}> with submission **${code}**!`
                 : `In ${getRankString(rank)} place, we have <@${userId}> with submission **${code}**!`;
@@ -1788,7 +1788,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                     embeds: [ toSubmissionEmbed(submission) ]
                 })
                 // Take a long pause
-                await sleep(30000);
+                await sleep(40000);
             } catch (err) {
                 logger.log(`Failed to send out <@${userId}>'s submission: \`${err.toString()}\``);
             }
