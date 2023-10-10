@@ -1070,7 +1070,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     await dumpState();
 };
 
-const processSubmissionVote = async (userId: Snowflake, submissionCodes: string[], callback: (text: string) => Promise<void>) => {
+const processSubmissionVote = async (userId: Snowflake, submissionCodes: string[], source: string, callback: (text: string) => Promise<void>) => {
     if (!state.isAcceptingAnonymousSubmissionVotes()) {
         await callback('You shouldn\'t be able to vote right now!');
         return;
@@ -1123,7 +1123,7 @@ const processSubmissionVote = async (userId: Snowflake, submissionCodes: string[
                 + naturalJoin(submissionCodes, { bold: true, conjunction: 'then' })
                 + (takenOffProbation ? ' (you have been taken off probation, nice job 👍)' : ''));
             // Notify the admin of how many votes remain
-            await logger.log(`**${state.getPlayerDisplayName(userId)}** just voted, waiting on **${anonymousSubmissions.getNumDeadbeats()}** more votes. ${takenOffProbation ? '**(off probation)**' : ''}`);
+            await logger.log(`**${state.getPlayerDisplayName(userId)}** just voted (${source}), waiting on **${anonymousSubmissions.getNumDeadbeats()}** more votes. ${takenOffProbation ? '**(off probation)**' : ''}`);
         }
     }
 };
@@ -2632,7 +2632,7 @@ client.on('interactionCreate', async (interaction): Promise<void> => {
         const userId: Snowflake = interaction.user.id;
         await interaction.deferReply({ ephemeral: true });
         if (interaction.customId === 'selectAnonymousSubmissions') {
-            await processSubmissionVote(userId, interaction.values, async (text: string) => {
+            await processSubmissionVote(userId, interaction.values, 'menu', async (text: string) => {
                 await interaction.editReply(text);
             });
         }
@@ -2646,7 +2646,7 @@ client.on('interactionCreate', async (interaction): Promise<void> => {
                 interaction.options.getString('second', true),
                 interaction.options.getString('third', true)
             ];
-            await processSubmissionVote(userId, submissionCodes, async (text: string) => {
+            await processSubmissionVote(userId, submissionCodes, 'command', async (text: string) => {
                 await interaction.editReply(text);
             });
         } else {
@@ -3788,7 +3788,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 const pattern: RegExp = /[a-zA-Z]+/g;
                 // Grab all possible matches, as the vote processing validates the number of votes
                 const submissionCodes: string[] = [...msg.content.matchAll(pattern)].map(x => x[0].toUpperCase());
-                await processSubmissionVote(userId, submissionCodes, async (text: string) => {
+                await processSubmissionVote(userId, submissionCodes, 'DM', async (text: string) => {
                     await messenger.reply(msg, text);
                 });
             } else if (anonymousSubmissions.isSubmissionsPhase()) {
