@@ -263,11 +263,11 @@ export class AnonymousSubmissionsState {
 
     private static toBreakdownString(breakdown: number[]): string {
         const items: string[] = [];
-        const type: string[] = ['gold', 'silver', 'bronze'];
+        const types: string[] = ['gold', 'silver', 'bronze'];
         for (let i = 0; i < 3; i++) {
             const n = breakdown[i];
             if (n) {
-                items.push(`**${n}** ${type} vote` + (n === 1 ? '' : 's'));
+                items.push(`**${n}** ${types[i]} vote` + (n === 1 ? '' : 's'));
             }
         }
         return naturalJoin(items);
