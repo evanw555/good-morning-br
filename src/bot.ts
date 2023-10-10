@@ -3777,8 +3777,8 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
 
         // If this DM wasn't processed based on the above game logic, then proceed to process it using other rules.
 
-        // Process DM submissions depending on the event
-        if (state.isMorning() && state.hasAnonymousSubmissions()) {
+        // Process DM submissions depending on the submissions phase
+        if (state.hasAnonymousSubmissions()) {
             const anonymousSubmissions = state.getAnonymousSubmissions();
             const userId: Snowflake = msg.author.id;
             // Handle voting or submitting depending on what phase of the process we're in
