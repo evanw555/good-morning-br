@@ -1,4 +1,4 @@
-import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, BaseMessageOptions, Client, ComponentType, DMChannel, GatewayIntentBits, MessageFlags, PartialMessage, Partials, TextChannel, User } from 'discord.js';
+import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, BaseMessageOptions, ButtonStyle, Client, ComponentType, DMChannel, GatewayIntentBits, MessageFlags, PartialMessage, Partials, TextChannel, User } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discord.js';
 import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, AnonymousSubmission, GameState, Wordle, SubmissionPromptHistory, ReplyToMessageData, GoodMorningAuth } from './types';
 import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, canonicalizeText, getScaledPoints } from './util';
@@ -653,8 +653,19 @@ const sendGoodMorningMessage = async (): Promise<void> => {
             await messenger.send(goodMorningChannel, text, { immediate: overriddenMessage !== undefined });
             // Also, let players know they can forfeit
             await sleep(10000);
-            await messenger.send(goodMorningChannel, 'If you won\'t be able to vote, then you can use `/forfeit` to avoid the no-vote penalty. '
-                + `Your _${prompt}_ will still be presented, but you won't be rewarded if you win big.`);
+            await goodMorningChannel.send({
+                content: 'If you won\'t be able to vote, then you can _forfeit_ to avoid the no-vote penalty. '
+                    + `Your _${prompt}_ will still be presented, but you won't be rewarded if you win big.`,
+                components: [{
+                    type: ComponentType.ActionRow,
+                    components: [{
+                        type: ComponentType.Button,
+                        style: ButtonStyle.Danger,
+                        customId: 'forfeit',
+                        label: 'Forfeit'
+                    }]
+                }]
+            });
             break;
         }
         case DailyEventType.GameDecision:
@@ -964,12 +975,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
             content: randChoice('5 minute warning', '5 minutes left, submit now or hold your peace', '5 minutes left', 'You have 5 minutes',
                 'Revealing submissions in 5 minutes', '5 MINUTES!', 'Closing my DMs in 5 minutes', 'Window closes in 5 minutes') + ' ⏳'
         };
-        await timeoutManager.registerTimeout(TimeoutType.ReplyToMessage, fiveMinuteWarningTime, { arg: warningArg, pastStrategy: PastTimeoutStrategy.Delete })
-        // Create the forfeit command
-        await guild.commands.create({
-            name: 'forfeit',
-            description: `Forfeit the ${state.getAnonymousSubmissions().getPrompt().slice(0, 50)} contest to avoid a penalty`
-        });
+        await timeoutManager.registerTimeout(TimeoutType.ReplyToMessage, fiveMinuteWarningTime, { arg: warningArg, pastStrategy: PastTimeoutStrategy.Delete });
     }
 
     const minutesEarly: number = state.getEventType() === DailyEventType.EarlyEnd ? (state.getEvent().minutesEarly ?? 0) : 0;
@@ -1154,7 +1160,7 @@ const finalizeAnonymousSubmissions = async () => {
     // Disable voting and forfeiting by deleting commands
     const guildCommands = await guild.commands.fetch();
     guildCommands.forEach(command => {
-        if ((command.name === 'vote' || command.name === 'forfeit') && command.applicationId === client.application?.id) {
+        if ((command.name === 'vote') && command.applicationId === client.application?.id) {
             command.delete();
         }
     });
@@ -2509,6 +2515,10 @@ client.on('invalidated', async () => {
 });
 
 client.on('interactionCreate', async (interaction): Promise<void> => {
+    // If this isn't from this application, abort!
+    if (interaction.applicationId !== client.application?.id) {
+        return;
+    }
     // TODO: Allow this to be used in testing mode
     if (interaction.isMessageComponent()) {
         const customIdSegments = interaction.customId.split(':');
@@ -2568,29 +2578,26 @@ client.on('interactionCreate', async (interaction): Promise<void> => {
             return;
         }
     }
-    // Else, handle as voting
-    if (interaction.isStringSelectMenu() && interaction.applicationId === client.application?.id) {
-        const userId: Snowflake = interaction.user.id;
-        await interaction.deferReply({ ephemeral: true });
-        if (interaction.customId === 'selectAnonymousSubmissions') {
-            await processSubmissionVote(userId, interaction.values, async (text: string) => {
-                await interaction.editReply(text);
+    // Handle anonymous submission forfeiting
+    if (interaction.isButton()) {
+        if (interaction.customId === 'forfeit') {
+            await interaction.reply({
+                ephemeral: true,
+                content: 'Are you sure you want to forfeit?',
+                components: [{
+                    type: ComponentType.ActionRow,
+                    components: [{
+                        type: ComponentType.Button,
+                        style: ButtonStyle.Danger,
+                        customId: 'forfeitConfirm',
+                        label: 'Yes, Forfeit'
+                    }]
+                }]
             });
-        }
-    } else if (interaction.isChatInputCommand() && interaction.applicationId === client.application?.id) {
-        const userId: Snowflake = interaction.user.id;
-        await interaction.deferReply({ ephemeral: true });
-        if (interaction.commandName === 'vote') {
-            // TODO: What do we do if there are 2-3 submissions?
-            const submissionCodes: string[] = [
-                interaction.options.getString('first', true),
-                interaction.options.getString('second', true),
-                interaction.options.getString('third', true)
-            ];
-            await processSubmissionVote(userId, submissionCodes, async (text: string) => {
-                await interaction.editReply(text);
-            });
-        } else if (interaction.commandName === 'forfeit') {
+            return;
+        } else if (interaction.customId === 'forfeitConfirm') {
+            const userId: Snowflake = interaction.user.id;
+            await interaction.deferReply({ ephemeral: true });
             if (state.hasAnonymousSubmissions()) {
                 const anonymousSubmissions = state.getAnonymousSubmissions();
                 // If voting has started, notify and abort
@@ -2615,6 +2622,31 @@ client.on('interactionCreate', async (interaction): Promise<void> => {
             } else {
                 await interaction.editReply('You can\'t forfeit right now!');
             }
+            return;
+        }
+    }
+    // Else, handle as voting
+    if (interaction.isStringSelectMenu()) {
+        const userId: Snowflake = interaction.user.id;
+        await interaction.deferReply({ ephemeral: true });
+        if (interaction.customId === 'selectAnonymousSubmissions') {
+            await processSubmissionVote(userId, interaction.values, async (text: string) => {
+                await interaction.editReply(text);
+            });
+        }
+    } else if (interaction.isChatInputCommand()) {
+        const userId: Snowflake = interaction.user.id;
+        await interaction.deferReply({ ephemeral: true });
+        if (interaction.commandName === 'vote') {
+            // TODO: What do we do if there are 2-3 submissions?
+            const submissionCodes: string[] = [
+                interaction.options.getString('first', true),
+                interaction.options.getString('second', true),
+                interaction.options.getString('third', true)
+            ];
+            await processSubmissionVote(userId, submissionCodes, async (text: string) => {
+                await interaction.editReply(text);
+            });
         } else {
             await interaction.editReply(`Unknown command: \`${interaction.commandName}\``);
         }
