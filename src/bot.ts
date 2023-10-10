@@ -1891,7 +1891,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         const anonymousSubmissions = state.getAnonymousSubmissions();
 
         // Validate that the current phase is correct
-        if (!anonymousSubmissions.isSubmissionsPhase()) {
+        if (!anonymousSubmissions.isVotingPhase()) {
             await logger.log(`WARNING! Attempted to trigger anonymous submission voting reminder while in the \`${anonymousSubmissions.getPhase()}\` phase, aborting...`);
             return;
         }
