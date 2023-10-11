@@ -1789,17 +1789,14 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             anonymousSubmissions.setSubmissionOwnerByCode(submissionCode, userId);
             await dumpState();
 
-            try {
-                // Send the message out
-                await goodMorningChannel.send({
-                    content: `**Submission ${submissionCode}:**`,
-                    embeds: [ toSubmissionEmbed(submission) ]
-                })
-                // Take a long pause
-                await sleep(40000);
-            } catch (err) {
-                logger.log(`Failed to send out <@${userId}>'s submission: \`${err.toString()}\``);
-            }
+            // Send the message out (suppress notifications to reduce spam)
+            await messenger.send(goodMorningChannel, {
+                content: `**Submission ${submissionCode}:**`,
+                embeds: [ toSubmissionEmbed(submission) ],
+                flags: MessageFlags.SuppressNotifications
+            });
+            // Take a long pause
+            await sleep(40000);
         }
 
         // Register the vote command
@@ -2156,29 +2153,18 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             return;
         }
 
-        // Start sending the typing event
-        try {
-            await goodMorningChannel.sendTyping();
-        } catch (err) {
-            await logger.log(`Failed to send typing on game processing loop: ${err}`);
-        }
-
         // Process player decisions
         const game = state.getGame();
         const processingResult = game.processPlayerDecisions();
         await dumpState();
 
-        // Sleep based on the length of the text
-        // TODO: This should be integrated into the messenger tool
-        try {
-            await sleep(processingResult.summary.length * randInt(45, 55));
-        } catch (err) {
-            await logger.log(`Failed to sleep on game processing loop: ${err}`);
-        }
-
-        // Render the updated state and send it out
+        // Render the updated state and send it out (suppress notifications to reduce spam)
         const attachment = new AttachmentBuilder(await game.renderState({ season: state.getSeasonNumber() })).setName(`game-week${game.getTurn()}.png`);
-        await goodMorningChannel.send({ content: processingResult.summary, files: [attachment] });
+        await messenger.send(goodMorningChannel, {
+            content: processingResult.summary,
+            files: [attachment],
+            flags: MessageFlags.SuppressNotifications
+        });
 
         if (processingResult.continueProcessing) {
             // If there are more decisions to be processed, schedule the next processing timeout
@@ -2201,12 +2187,12 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             for (const text of turnEndMessages) {
                 await messenger.send(goodMorningChannel, text);
             }
-            // Send the universal turn-end message
-            // TODO: Should this be provided as a default in the abstract game class?
-            await messenger.send(goodMorningChannel, languageGenerator.generate('{!Well|Alright,} that\'s {!all|it} for this {!week|turn}! Are you all {!proud of your actions|happy with the outcome|optimistic|feeling good}?'));
-            // Show the state one final time for this week
+            // Send the universal turn-end message, and show the state one final time for this week
             const turnEndAttachment = new AttachmentBuilder(await game.renderState({ season: state.getSeasonNumber() })).setName(`game-week${game.getTurn()}-end.png`);
-            await goodMorningChannel.send({ files: [turnEndAttachment] });
+            await messenger.send(goodMorningChannel, {
+                content: languageGenerator.generate('{!Well|Alright,} that\'s {!all|it} for this {!week|turn}! Are you all {!proud of your actions|happy with the outcome|optimistic|feeling good}?'),
+                files: [turnEndAttachment]
+            });
         }
     },
     [TimeoutType.ReplyToMessage]: async (arg): Promise<void> => {
@@ -3369,7 +3355,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                             const score = config.defaultAward * (2 + progress);
                             event.wordleHiScores[userId] = Math.max(event.wordleHiScores[userId] ?? 0, score);
                             // Notify the channel
-                            await msg.reply({
+                            await messenger.reply(msg, {
                                 content: 'Congrats, you\'ve solved the puzzle!',
                                 files: [new AttachmentBuilder(await renderWordleState(previousWordle, {
                                     hiScores: event.wordleHiScores
@@ -3385,10 +3371,11 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                             // Determine this user's score (1 default + 1 for each new tile)
                             const score = config.defaultAward * (1 + progress);
                             event.wordleHiScores[userId] = Math.max(event.wordleHiScores[userId] ?? 0, score);
-                            // Reply letting them know how many letter they've revealed
-                            await msg.reply({
+                            // Reply letting them know how many letter they've revealed (suppress notifications to reduce spam)
+                            await messenger.reply(msg, {
                                 content: progress ? `You've revealed ${progress} new letter${progress === 1 ? '' : 's'}!` : 'Hmmmmm...',
-                                files: [new AttachmentBuilder(await renderWordleState(event.wordle)).setName('wordle.png')]
+                                files: [new AttachmentBuilder(await renderWordleState(event.wordle)).setName('wordle.png')],
+                                flags: MessageFlags.SuppressNotifications
                             });
                         }
                         await dumpState();
