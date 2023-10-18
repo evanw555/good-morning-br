@@ -16,6 +16,7 @@ import logger from './logger';
 import imageLoader from './image-loader';
 import IslandGame from './games/island';
 import { AnonymousSubmissionsState } from './submissions';
+import MasterpieceGame from './games/masterpiece';
 
 const auth: GoodMorningAuth = loadJson('config/auth.json');
 const config: GoodMorningConfig = loadJson('config/config.json');
@@ -3068,6 +3069,8 @@ const processCommands = async (msg: Message): Promise<void> => {
                 tempDungeon = IslandGame.create(members);
             } else if (sanitizedText.includes('halloween')) {
                 tempDungeon = ClassicGame.create(members, true);
+            } else if (sanitizedText.includes('masterpiece')) {
+                tempDungeon = MasterpieceGame.create(members);
             } else {
                 tempDungeon = ClassicGame.create(members);
             }

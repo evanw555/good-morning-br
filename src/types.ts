@@ -241,6 +241,30 @@ export interface ArenaGameState {
     winners: Snowflake[]
 }
 
+export interface MasterpiecePlayerState {
+    displayName: string,
+    points: number
+}
+
+export interface MasterpiecePieceState {
+    value: number,
+    name: string,
+    // Snowflake -> owner ID, false -> unsold, true -> sold
+    owner: Snowflake | boolean
+}
+
+export interface MasterpieceGameState {
+    type: 'MASTERPIECE_GAME_STATE',
+    decisions: Record<Snowflake, string[]>,
+    turn: number,
+    winners: Snowflake[],
+    // Custom properties below
+    players: Record<Snowflake, MasterpiecePlayerState>,
+    pieces: Record<string, MasterpiecePieceState>,
+    bankAuction?: { pieceId: string, bid: number, bidder: Snowflake },
+    privateAuction?: { pieceId: string, bid: number, bidder: Snowflake }
+}
+
 export interface ClassicGameState {
     type: 'CLASSIC_GAME_STATE',
     decisions: Record<Snowflake, string[]>,
@@ -258,7 +282,7 @@ export interface ClassicGameState {
     revealedActions: Record<Snowflake, string>,
 }
 
-export type GameState = MazeGameState | IslandGameState | ArenaGameState | ClassicGameState;
+export type GameState = MazeGameState | IslandGameState | ArenaGameState | MasterpieceGameState | ClassicGameState;
 
 export interface Bait {
     userId: Snowflake,

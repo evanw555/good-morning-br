@@ -8,6 +8,8 @@ import logger from "./logger";
 import { Bait, Combo, DailyEvent, DailyEventType, DailyPlayerState, FullDate, GameState, PlayerState, RawAnonymousSubmissionsState, RawGoodMorningState, Season } from "./types";
 import IslandGame from "./games/island";
 import { AnonymousSubmissionsState } from "./submissions";
+import ArenaGame from "./games/arena";
+import MasterpieceGame from "./games/masterpiece";
 
 export default class GoodMorningState {
     private data: RawGoodMorningState;
@@ -26,6 +28,12 @@ export default class GoodMorningState {
                     break;
                 case 'ISLAND_GAME_STATE':
                     this.game = new IslandGame(rawState.game);
+                    break;
+                case 'ARENA_GAME_STATE':
+                    this.game = new ArenaGame(rawState.game);
+                    break;
+                case 'MASTERPIECE_GAME_STATE':
+                    this.game = new MasterpieceGame(rawState.game);
                     break;
             }
         }

@@ -269,10 +269,6 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         return [];
     }
 
-    getWeeklyDecisionDMs(): Record<Snowflake, string> {
-        return {};
-    }
-
     addPlayerDecision(userId: string, text: string): string {
         // If today is the end date, don't accept any decisions
         if (this.isTodayEndDate()) {

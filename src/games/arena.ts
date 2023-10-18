@@ -49,9 +49,6 @@ export default class ArenaGame extends AbstractGame<ArenaGameState> {
     awardPrize(userId: string, type: PrizeType, intro: string): string[] {
         throw new Error("Method not implemented.");
     }
-    getWeeklyDecisionDMs(): Record<string, string> {
-        throw new Error("Method not implemented.");
-    }
     addPlayerDecision(userId: string, text: string): string {
         throw new Error("Method not implemented.");
     }
