@@ -11,12 +11,12 @@ import ActivityTracker from './activity-tracker';
 import AbstractGame from './games/abstract-game';
 import ClassicGame from './games/classic';
 import MazeGame from './games/maze';
+import MasterpieceGame from './games/masterpiece';
+import IslandGame from './games/island';
 
 import logger from './logger';
 import imageLoader from './image-loader';
-import IslandGame from './games/island';
 import { AnonymousSubmissionsState } from './submissions';
-import MasterpieceGame from './games/masterpiece';
 
 const auth: GoodMorningAuth = loadJson('config/auth.json');
 const config: GoodMorningConfig = loadJson('config/config.json');
@@ -857,8 +857,9 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         // TODO (2.0): Eventually, this should be more generic for other game types (don't hardcode this)
         // const dungeon = DungeonCrawler.createSectional(members, { sectionSize: 11, sectionsAcross: 3 });
         // const newGame = MazeGame.createOrganicBest(members, 20, 43, 19, 90);
-        const newGame = ClassicGame.create(members, true);
+        // const newGame = ClassicGame.create(members, true);
         // const newGame = IslandGame.create(members);
+        const newGame = MasterpieceGame.create(members);
         state.setGame(newGame);
         // For all starting players, add the points they earned before the game was instantiated
         for (const userId of participatingUserIds) {
