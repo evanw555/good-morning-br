@@ -2,7 +2,7 @@ import canvas from 'canvas';
 import { GuildMember, Snowflake } from "discord.js";
 import { DecisionProcessingResult, MasterpieceGameState, MasterpiecePieceState, MasterpiecePlayerState, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
-import { shuffle, toFixed, toLetterId } from "evanw555.js";
+import { randChoice, shuffle, toFixed, toLetterId } from "evanw555.js";
 
 import logger from "../logger";
 import imageLoader from '../image-loader';
@@ -38,9 +38,11 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
         const numBankAuctions = 10;
         const maxInitialPieces = Math.min(members.length, totalNumPieces - numBankAuctions);
         // Dole out free pieces to the first N players (in order of first week performance)
+        const shuffledPieceIds = Object.keys(pieces);
+        shuffle(shuffledPieceIds);
         for (let i = 0; i < maxInitialPieces; i++) {
             const userId = members[i].id;
-            const pieceId = toLetterId(i);
+            const pieceId = shuffledPieceIds[i];
             pieces[pieceId].owner = userId;
         }
         return new MasterpieceGame({
@@ -69,6 +71,10 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
 
     private getPieces(): MasterpiecePieceState[] {
         return Object.values(this.state.pieces);
+    }
+
+    private getPieceIds(): string[] {
+        return Object.keys(this.state.pieces);
     }
 
     private getNumPieces(): number {
@@ -169,23 +175,45 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
     }
 
     override async renderState(options?: { showPlayerDecision?: string | undefined; seasonOver?: boolean | undefined; admin?: boolean | undefined; season?: number | undefined; } | undefined): Promise<Buffer> {
+        // TODO: Temp logic to draw the private auction room
+        // if (true) {
+        //     const bankAuctionImage = await imageLoader.loadImage('assets/masterpiece/bankauction.png');
+        //     const randomPieceImage = await imageLoader.loadImage(`assets/masterpiece/pieces/${randChoice(...this.getPieceIds()).toLowerCase()}.png`);
+        //     const c2 = canvas.createCanvas(bankAuctionImage.width, bankAuctionImage.height);
+        //     const context2 = c2.getContext('2d');
+        //     context2.drawImage(bankAuctionImage, 0, 0);
+        //     context2.drawImage(randomPieceImage, 484, 246, 256, 256);
+        //     return c2.toBuffer();
+        // }
         // TODO: Do something real here
         const WIDTH = 200;
         const ROW_HEIGHT = 32;
-        const HEIGHT = ROW_HEIGHT * this.getNumPieces();
+        const HEIGHT = ROW_HEIGHT * this.getNumPlayers();
         const c = canvas.createCanvas(WIDTH, HEIGHT);
         const context = c.getContext('2d');
 
-        // Draw info about each piece
+        // Draw background
+        context.fillStyle = 'pink';
+        context.fillRect(0, 0, WIDTH, HEIGHT);
+
+        // Draw each player's inventory
+        context.fillStyle = 'black';
+        context.font = '20px sans serif';
         let baseY = 0;
-        for (const piece of this.getPieces()) {
-            context.fillStyle = 'black';
-            context.font = '20px sans serif';
-            context.fillText(`${piece.name} $${piece.value}`, 0, baseY + ROW_HEIGHT);
-            // Show owner if any
-            if (typeof piece.owner === 'string') {
-                const avatar = await imageLoader.loadAvatar(piece.owner, 32);
-                context.drawImage(avatar, 100, baseY, ROW_HEIGHT, ROW_HEIGHT);
+        for (const userId of this.getOrderedPlayers()) {
+            let baseX = 0;
+            // Draw player avatar
+            const avatar = await imageLoader.loadAvatar(userId, 32);
+            context.drawImage(avatar, baseX, baseY, ROW_HEIGHT, ROW_HEIGHT);
+            baseX += ROW_HEIGHT;
+            // Draw cash stack
+            context.fillText(`$${this.getPoints(userId).toFixed(2)}`, baseX, baseY + (0.7 * ROW_HEIGHT));
+            baseX += ROW_HEIGHT * 3;
+            // Draw any pieces this player owns
+            for (const pieceId of this.getPieceIdsForUser(userId)) {
+                const pieceImage = await imageLoader.loadImage(`assets/masterpiece/pieces/${pieceId.toLowerCase()}.png`);
+                context.drawImage(pieceImage, baseX, baseY, ROW_HEIGHT, ROW_HEIGHT);
+                baseX += ROW_HEIGHT;
             }
             baseY += ROW_HEIGHT;
         }
