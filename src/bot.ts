@@ -1,7 +1,7 @@
 import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, BaseMessageOptions, ButtonStyle, Client, ComponentType, DMChannel, GatewayIntentBits, MessageFlags, PartialMessage, Partials, TextChannel, User } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discord.js';
 import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, AnonymousSubmission, GameState, Wordle, SubmissionPromptHistory, ReplyToMessageData, GoodMorningAuth } from './types';
-import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, canonicalizeText, getScaledPoints, generateWithAi } from './util';
+import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, canonicalizeText, getScaledPoints, generateSynopsisWithAi } from './util';
 import GoodMorningState from './state';
 import { addReactsSync, chance, DiscordTimestampFormat, FileStorage, generateKMeansClusters, getClockTime, getPollChoiceKeys, getRandomDateBetween,
     getRankString, getRelativeDateTimeString, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger,
@@ -1521,7 +1521,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             if (event.storySegments && event.storySegments.length > 0) {
                 // TODO: Remove this try-catch once we're sure it's working
                 try {
-                    const summary = await generateWithAi('Please give a synopsis of the following story in 300 words or fewer, explaining the premise, conflict, and characters:\n\n' + event.storySegments.join('\n'));
+                    const summary = await generateSynopsisWithAi(event.storySegments.join('\n'));
                     await messenger.send(goodMorningChannel, summary.slice(0, 1990));
                 } catch (err) {
                     await logger.log(`Failed to summarize popcorn story: \`${err}\``);
@@ -3350,7 +3350,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     if (event.storySegments && event.storySegments.length > 0) {
                         // TODO: Remove this try-catch once we're sure it's working
                         try {
-                            const summary = await generateWithAi('Please give a synopsis of the following story in 300 words or fewer, explaining the premise, conflict, and characters:\n\n' + event.storySegments.join('\n'));
+                            const summary = await generateSynopsisWithAi(event.storySegments.join('\n'));
                             await logger.log(`**Summary so far:**\n${summary}`);
                         } catch (err) {
                             await logger.log(`Failed to summarize popcorn story: \`${err}\``);

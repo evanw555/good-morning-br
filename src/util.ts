@@ -217,3 +217,9 @@ export async function generateWithAi(prompt: string): Promise<string> {
     });
     return response.choices[0].text;
 }
+
+export async function generateSynopsisWithAi(story: string): Promise<string> {
+    return await generateWithAi('The following is a story told by several different storytellers:\n\n'
+        + story
+        + '\n\nThis concludes the story. Now that the story has ended, please give a synopsis of the following story in 300 words or fewer, explaining the premise, conflict, and characters.')
+}
