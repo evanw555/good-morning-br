@@ -1,7 +1,7 @@
 import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, BaseMessageOptions, ButtonStyle, Client, ComponentType, DMChannel, GatewayIntentBits, MessageFlags, PartialMessage, Partials, TextChannel, User } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discord.js';
 import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, AnonymousSubmission, GameState, Wordle, SubmissionPromptHistory, ReplyToMessageData, GoodMorningAuth } from './types';
-import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, canonicalizeText, getScaledPoints } from './util';
+import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, canonicalizeText, getScaledPoints, generateWithAi } from './util';
 import GoodMorningState from './state';
 import { addReactsSync, chance, DiscordTimestampFormat, FileStorage, generateKMeansClusters, getClockTime, getPollChoiceKeys, getRandomDateBetween,
     getRankString, getRelativeDateTimeString, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger,
@@ -1516,6 +1516,16 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             if (event.user) {
                 state.deductPoints(event.user, config.defaultAward);
                 await messenger.send(goodMorningChannel, `Looks like our dear friend <@${event.user}> wasn't able to complete today's Good Morning story... 😔`);
+            }
+            // Summarize the story
+            if (event.storySegments && event.storySegments.length > 0) {
+                // TODO: Remove this try-catch once we're sure it's working
+                try {
+                    const summary = await generateWithAi('Please give a synopsis of the following story in 300 words or fewer, explaining the premise, conflict, and characters:\n\n' + event.storySegments.join('\n'));
+                    await messenger.send(goodMorningChannel, summary.slice(0, 1990));
+                } catch (err) {
+                    await logger.log(`Failed to summarize popcorn story: \`${err}\``);
+                }
             }
         }
 
@@ -3259,11 +3269,25 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     // If the selected user says "the end" near the end of the morning, end the story!
                     // Delete the user to prevent further action
                     delete event.user;
+                    // TODO: Do this a better way
+                    // Save the last story segment to the state
+                    if (!event.storySegments) {
+                        event.storySegments = [];
+                    }
+                    event.storySegments.push(msg.cleanContent);
+                    await dumpState();
                     // Notify the channel
                     await messenger.reply(msg, languageGenerator.generate('{popcorn.ending?}'));
                 } else {
-                    const mentionedUserIds = getMessageMentions(msg);
+                    // TODO: Do this a better way
+                    // Save the last story segment to the state
+                    if (!event.storySegments) {
+                        event.storySegments = [];
+                    }
+                    event.storySegments.push(msg.cleanContent);
+                    await dumpState();
                     // Pick out a potential fallback in case this user didn't tag correctly
+                    const mentionedUserIds = getMessageMentions(msg);
                     const fallbackUserId: Snowflake | undefined = state.getActivityOrderedPlayers().filter(id => !state.hasDailyRank(id) && id !== event.user)[0];
                     // If there's no fallback and the user is breaking the rules, force them to try again and abort
                     if (!fallbackUserId) {
@@ -3320,6 +3344,17 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                         await timeoutManager.registerTimeout(TimeoutType.PopcornFallback, fallbackDate, { pastStrategy: PastTimeoutStrategy.Invoke});
                         // TODO: Temp logging to see how this goes
                         await logger.log(`Scheduled popcorn fallback for **${state.getPlayerDisplayName(event.user)}** at **${getRelativeDateTimeString(fallbackDate)}**`);
+                    }
+                    // TODO: Temp logic to see how the synposis generation is working so far
+                    // Summarize the story
+                    if (event.storySegments && event.storySegments.length > 0) {
+                        // TODO: Remove this try-catch once we're sure it's working
+                        try {
+                            const summary = await generateWithAi('Please give a synopsis of the following story in 300 words or fewer, explaining the premise, conflict, and characters:\n\n' + event.storySegments.join('\n'));
+                            await logger.log(`**Summary so far:**\n${summary}`);
+                        } catch (err) {
+                            await logger.log(`Failed to summarize popcorn story: \`${err}\``);
+                        }
                     }
                 }
             }

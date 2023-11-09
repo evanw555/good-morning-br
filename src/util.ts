@@ -1,7 +1,9 @@
 import { APIEmbed, Message, Snowflake } from "discord.js";
+import OpenAI from 'openai';
 import { randChoice, randInt, loadJson, LanguageGenerator } from "evanw555.js";
-import { AnonymousSubmission, GoodMorningConfig } from "./types";
+import { AnonymousSubmission, GoodMorningAuth, GoodMorningConfig } from "./types";
 
+const auth: GoodMorningAuth = loadJson('config/auth.json');
 const config: GoodMorningConfig = loadJson('config/config.json');
 
 export function validateConfig(config: GoodMorningConfig): void {
@@ -195,4 +197,23 @@ export function getScaledPoints(userIds: Snowflake[], options?: { baseline?: num
 export function text(input: string): string {
     const generator = new LanguageGenerator({});
     return generator.generate(input);
+}
+
+/**
+ * Using some text prompt, use OpenAI to generate a text response.
+ */
+export async function generateWithAi(prompt: string): Promise<string> {
+    const openai = new OpenAI({
+        apiKey: auth.openAiKey
+    });
+    const response = await openai.completions.create({
+        model: 'text-davinci-003',
+        prompt,
+        temperature: 0.9,
+        max_tokens: 256,
+        top_p: 1,
+        frequency_penalty: 0,
+        presence_penalty: 0
+    });
+    return response.choices[0].text;
 }

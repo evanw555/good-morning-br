@@ -32,7 +32,8 @@ export type CalendarDate = string
 export type FullDate = string
 
 export interface GoodMorningAuth {
-    token: string
+    token: string,
+    openAiKey: string
 }
 
 export interface GoodMorningConfig {
@@ -143,7 +144,8 @@ export interface DailyEvent {
     wordle?: Wordle,
     wordleHiScores?: Record<Snowflake, number>,
     // Used specifically for the "popcorn" event
-    messageId?: Snowflake
+    messageId?: Snowflake,
+    storySegments?: string[]
 }
 
 export interface MazeLocation {

@@ -1,6 +1,6 @@
 {
     "name": "good-morning-br",
-    "version": "2.5.70",
+    "version": "2.5.71",
     "description": "Saying \"good morning\" is now a feature-rich Battle Royale experience!",
     "main": "./build/bot.js",
     "author": "Evan Williams",
@@ -10,7 +10,8 @@
     "dependencies": {
         "discord.js": "14.10.2",
         "canvas": "2.8.0",
-        "evanw555.js": "evanw555/evanw555.js"
+        "evanw555.js": "evanw555/evanw555.js",
+        "openai": "4.17.0"
     },
     "devDependencies": {
         "@typescript-eslint/eslint-plugin": "^4.15.2",
