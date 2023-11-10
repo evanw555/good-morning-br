@@ -1,4 +1,4 @@
-import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, BaseMessageOptions, ButtonStyle, Client, ComponentType, DMChannel, GatewayIntentBits, MessageFlags, PartialMessage, Partials, TextChannel, User } from 'discord.js';
+import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, BaseMessageOptions, ButtonStyle, Client, Component, ComponentType, DMChannel, GatewayIntentBits, MessageFlags, PartialMessage, Partials, TextChannel, TextInputStyle, User } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discord.js';
 import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, AnonymousSubmission, GameState, Wordle, SubmissionPromptHistory, ReplyToMessageData, GoodMorningAuth } from './types';
 import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, canonicalizeText, getScaledPoints, generateSynopsisWithAi } from './util';
@@ -74,6 +74,22 @@ let state: GoodMorningState;
 let history: GoodMorningHistory;
 
 let dailyVolatileLog: [Date, String][] = [];
+
+// TODO: Use this during testing to directly trigger subsequent timeouts
+const showTimeoutTriggerButton = async (type: TimeoutType) => {
+    await goodMorningChannel.send({
+        content: `Click here to jump to the next \`${type}\``,
+        components: [{
+            type: ComponentType.ActionRow,
+            components: [{
+                type: ComponentType.Button,
+                style: ButtonStyle.Primary,
+                custom_id: 'invokeTimeout:' + type,
+                label: 'Go'
+            }]
+        }]
+    });
+};
 
 const getDisplayName = async (userId: Snowflake): Promise<string> => {
     try {
@@ -457,7 +473,7 @@ const awardPrize = async (userId: Snowflake, type: PrizeType, intro: string): Pr
         return;
     }
     try {
-        const prizeTexts: string[] = state.getGame().awardPrize(userId, type, intro).filter(t => t);
+        const prizeTexts = state.getGame().awardPrize(userId, type, intro).filter(t => t);
         await dumpState();
         if (prizeTexts.length > 0) {
             for (const prizeText of prizeTexts) {
@@ -674,29 +690,12 @@ const sendGoodMorningMessage = async (): Promise<void> => {
             if (overriddenMessage) {
                 await messenger.send(goodMorningChannel, languageGenerator.generate(overriddenMessage));
             }
-            // Send the game state plus header text and basic instructions
-            const attachment = new AttachmentBuilder(await state.getGame().renderState({ season: state.getSeasonNumber() })).setName(`game-turn${state.getGame().getTurn()}-decision.png`);
+            // Send the first basic message of the game decision day before the morning officially begins (logic for sending subsequent messages is elsewhere)
             if (state.getGame().getTurn() === 1) {
-                const introductionText: string[] = state.getGame().getIntroductionText();
-                await goodMorningChannel.send({
-                    content: introductionText.shift(),
-                    files: [attachment],
-                    components: state.getGame().getDecisionActionRow()
-                });
-                // Send any subsequent messages, if any
-                for (const text of introductionText) {
-                    // TODO: Can we somehow add the typing delay while also having the morning start?
-                    await goodMorningChannel.send(text);
-                }
+                await messenger.send(goodMorningChannel, `Welcome to season **${state.getSeasonNumber()}**! Allow me introduce you to this season's game...`, { immediate: overriddenMessage !== undefined })
             } else {
-                await goodMorningChannel.send({
-                    content: `Turn **${state.getGame().getTurn()}** has begun!`,
-                    files: [attachment],
-                    components: state.getGame().getDecisionActionRow()
-                });
+                await messenger.send(goodMorningChannel, `Turn **${state.getGame().getTurn()}** has begun!`, { immediate: overriddenMessage !== undefined });
             }
-            // Send this immediately because it's technically not morning yet and a message has already been sent
-            await messenger.send(goodMorningChannel, state.getGame().getInstructionsText(), { immediate: true });
             break;
         case DailyEventType.GameUpdate:
             if (!state.hasGame()) {
@@ -706,7 +705,7 @@ const sendGoodMorningMessage = async (): Promise<void> => {
             await messenger.send(goodMorningChannel, languageGenerator.generate(overriddenMessage ?? '{goodMorning}'));
             await goodMorningChannel.send({
                 content: 'Here\'s where we\'re all starting from. In just a few minutes, we\'ll be seeing the outcome of this week\'s turn...',
-                files: [new AttachmentBuilder(await state.getGame().renderState({ season: state.getSeasonNumber() })).setName(`game-turn${state.getGame().getTurn()}-begin.png`)]
+                files: [new AttachmentBuilder(await state.getGame().renderState()).setName(`game-turn${state.getGame().getTurn()}-begin.png`)]
             });
             break;
         default:
@@ -740,7 +739,7 @@ const sendSeasonEndMessages = async (channel: TextBasedChannel, previousState: G
         await channel.sendTyping();
     } catch (err) {}
     await sleep(5000);
-    const attachment = new AttachmentBuilder(await game.renderState({ seasonOver: true, season: previousState.getSeasonNumber() })).setName(`game-final.png`);
+    const attachment = new AttachmentBuilder(await game.renderState({ seasonOver: true })).setName(`game-final.png`);
     await goodMorningChannel.send({ files: [attachment] });
     // await messenger.send(channel, 'In a couple minutes, I\'ll reveal the winners and the final standings...');
     // await messenger.send(channel, 'In the meantime, please congratulate yourselves (penalties are disabled), take a deep breath, and appreciate the friends you\'ve made in this channel 🙂');
@@ -824,6 +823,7 @@ const registerGoodMorningTimeout = async (): Promise<void> => {
 
     // We register this with the "Increment Day" strategy since it happens at a particular time and it's not competing with any other triggers.
     await timeoutManager.registerTimeout(TimeoutType.NextGoodMorning, nextMorning, { pastStrategy: PastTimeoutStrategy.IncrementDay });
+    // await showTimeoutTriggerButton(TimeoutType.NextGoodMorning);
 };
 
 const registerGuestReveilleFallbackTimeout = async (): Promise<void> => {
@@ -842,6 +842,9 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         return;
     }
 
+    // TODO: Temp logic for local testing, can we make this configurable?
+    // await goodMorningChannel.bulkDelete(await goodMorningChannel.messages.fetch({ limit: 50 }));
+
     // If today is the first decision of the season, instantiate the game...
     if (state.getEventType() === DailyEventType.GameDecision && !state.hasGame()) {
         // Fetch all participating members, ordered by performance in the first week
@@ -859,7 +862,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         // const newGame = MazeGame.createOrganicBest(members, 20, 43, 19, 90);
         // const newGame = ClassicGame.create(members, true);
         // const newGame = IslandGame.create(members);
-        const newGame = MasterpieceGame.create(members);
+        const newGame = MasterpieceGame.create(members, state.getSeasonNumber());
         state.setGame(newGame);
         // For all starting players, add the points they earned before the game was instantiated
         for (const userId of participatingUserIds) {
@@ -949,6 +952,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         const firstDecisionProcessDate: Date = new Date();
         firstDecisionProcessDate.setMinutes(firstDecisionProcessDate.getMinutes() + 5);
         await timeoutManager.registerTimeout(TimeoutType.ProcessGameDecisions, firstDecisionProcessDate, { pastStrategy: PastTimeoutStrategy.Invoke });
+        // await showTimeoutTriggerButton(TimeoutType.ProcessGameDecisions);
     }
 
     if (state.getEventType() === DailyEventType.BeginHomeStretch) {
@@ -986,6 +990,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     preNoonToday.setHours(11, randInt(48, 56) - minutesEarly, randInt(0, 60), 0);
     // We register this with the "Increment Hour" strategy since its subsequent timeout (Noon) is registered in series
     await timeoutManager.registerTimeout(TimeoutType.NextPreNoon, preNoonToday, { pastStrategy: PastTimeoutStrategy.IncrementHour });
+    // await showTimeoutTriggerButton(TimeoutType.NextPreNoon);
 
     // Update the bot's status to active
     await setStatus(true);
@@ -1008,6 +1013,31 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     state.clearBaiters();
     dailyVolatileLog = [];
     dailyVolatileLog.push([new Date(), 'GMBR has arisen.']);
+
+    // Send the remaining game decision messages
+    if (state.getEventType() === DailyEventType.GameDecision && state.hasGame()) {
+        const attachment = new AttachmentBuilder(await state.getGame().renderState()).setName(`game-turn${state.getGame().getTurn()}-decision.png`);
+        if (state.getGame().getTurn() === 1) {
+            // If it's the first week, send the introduction messages for this game
+            const introductionMessages = await state.getGame().getIntroductionMessages();
+            for (const messengerPayload of introductionMessages) {
+                await messenger.send(goodMorningChannel, messengerPayload);
+            }
+        } else {
+            // If it's not the first week, send the state image for this week
+            await goodMorningChannel.send({
+                files: [attachment],
+                components: state.getGame().getDecisionActionRow()
+            });
+        }
+        // Send the instructions for this game no matter the week
+        await messenger.send(goodMorningChannel, state.getGame().getInstructionsText());
+        // Get decision phases that need to be scheduled
+        for (const decisionPhase of state.getGame().getDecisionPhases()) {
+            const phaseDate = new Date(new Date().getTime() + decisionPhase.millis);
+            await timeoutManager.registerTimeout(TimeoutType.GameDecisionPhase, phaseDate, { arg: decisionPhase.key, pastStrategy: PastTimeoutStrategy.Invoke});
+        }
+    }
 
     // Let the channel know of all the newly joined players
     if (newlyAddedPlayers.length === 1) {
@@ -1331,20 +1361,13 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         noonToday.setMinutes(noonToday.getMinutes() - minutesEarly);
         // We register this with the "Increment Hour" strategy since its subsequent timeout (GoodMorning) is registered in series
         await timeoutManager.registerTimeout(TimeoutType.NextNoon, noonToday, { pastStrategy: PastTimeoutStrategy.IncrementHour });
+        // await showTimeoutTriggerButton(TimeoutType.NextNoon);
         // Set timeout for when baiting starts
         const baitingStartTime: Date = new Date();
         baitingStartTime.setHours(11, 59, 0, 0);
         baitingStartTime.setMinutes(baitingStartTime.getMinutes() - minutesEarly);
         // We register this with the "Delete" strategy since it doesn't schedule any events and it's non-critical
-        await timeoutManager.registerTimeout(TimeoutType.BaitingStart, baitingStartTime, { pastStrategy: PastTimeoutStrategy.Delete });
-
-        // If today is the weekly decision, send a reminder urging players to make their decision before tomorrow morning
-        if (state.getEventType() === DailyEventType.GameDecision && state.hasGame()) {
-            await goodMorningChannel.send({
-                content: state.getGame().getReminderText(),
-                components: state.getGame().getDecisionActionRow()
-            });
-        }
+        // await timeoutManager.registerTimeout(TimeoutType.BaitingStart, baitingStartTime, { pastStrategy: PastTimeoutStrategy.Delete });
 
         // Check the results of anonymous submissions
         if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
@@ -1418,6 +1441,17 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
 
         // Determine event for tomorrow
         const nextEvent = await chooseEvent(getTomorrow());
+        // TODO: Temp logic for local testing, can we make this configurable?
+        // let nextEvent: DailyEvent;
+        // if (state.getEventType() === DailyEventType.GameDecision) {
+        //     nextEvent = {
+        //         type: DailyEventType.GameUpdate
+        //     };
+        // } else {
+        //     nextEvent = {
+        //         type: DailyEventType.GameDecision
+        //     };
+        // }
         if (nextEvent && !state.isSeasonGoalReached()) {
             state.setNextEvent(nextEvent);
             // TODO: temporary message to tell admin when a special event has been selected, remove this soon
@@ -1441,6 +1475,14 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             } else {
                 await messenger.send(goodMorningChannel, 'Hear ye, hear ye! Have a little sneak peek at this Tuesday\'s submission prompt 👀 '
                     + `you'll all be sending me a _${prompt}_! You can send it to me now if it's ready, otherwise start putting something together if you know what's best for you...`);
+            }
+        }
+
+        // Process the pre-noon game decision endpoint and send any messages
+        if (state.getEventType() === DailyEventType.GameDecision && state.hasGame()) {
+            const responseMessages = await state.getGame().onDecisionPreNoon();
+            for (const messengerPayload of responseMessages) {
+                await messenger.send(goodMorningChannel, messengerPayload);
             }
         }
 
@@ -1531,6 +1573,13 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
 
         // Activate the queued up event (this can only be done after all thing which process the morning's event)
         state.dequeueNextEvent();
+
+        // TODO: Temp logic to simulate the prize award system, can we make this configurable?
+        // if (state.getEventType() === DailyEventType.GameDecision) {
+        //     const randomUserId = randChoice(...state.getPlayers());
+        //     await awardPrize(randomUserId, 'submissions1', 'Congrats on winning the contest');
+        //     await goodMorningChannel.send(`Sent prize offer to <@${randomUserId}>`);
+        // }
 
         // Set tomorrow's magic words (if it's not an abnormal event tomorrow)
         state.clearMagicWords();
@@ -2171,7 +2220,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         await dumpState();
 
         // Render the updated state and send it out (suppress notifications to reduce spam)
-        const attachment = new AttachmentBuilder(await game.renderState({ season: state.getSeasonNumber() })).setName(`game-week${game.getTurn()}.png`);
+        const attachment = new AttachmentBuilder(await game.renderState()).setName(`game-week${game.getTurn()}.png`);
         await messenger.send(goodMorningChannel, {
             content: processingResult.summary,
             files: [attachment],
@@ -2192,6 +2241,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                 nextProcessDate.setMinutes(nextProcessDate.getMinutes() + randInt(20, 35));
             }
             await timeoutManager.registerTimeout(TimeoutType.ProcessGameDecisions, nextProcessDate, { pastStrategy: PastTimeoutStrategy.Invoke });
+            // await showTimeoutTriggerButton(TimeoutType.ProcessGameDecisions);
         } else {
             // Trigger turn-end logic and send turn-end messages
             const turnEndMessages = game.endTurn();
@@ -2200,11 +2250,28 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                 await messenger.send(goodMorningChannel, text);
             }
             // Send the universal turn-end message, and show the state one final time for this week
-            const turnEndAttachment = new AttachmentBuilder(await game.renderState({ season: state.getSeasonNumber() })).setName(`game-week${game.getTurn()}-end.png`);
+            const turnEndAttachment = new AttachmentBuilder(await game.renderState()).setName(`game-week${game.getTurn()}-end.png`);
             await messenger.send(goodMorningChannel, {
                 content: languageGenerator.generate('{!Well|Alright,} that\'s {!all|it} for this {!week|turn}! Are you all {!proud of your actions|happy with the outcome|optimistic|feeling good}?'),
                 files: [turnEndAttachment]
             });
+        }
+    },
+    [TimeoutType.GameDecisionPhase]: async (arg): Promise<void> => {
+        if (!arg || typeof arg !== 'string') {
+            await logger.log(`Tried to invoke game decision with no string phase argument! Aborting...`);
+            return;
+        }
+        if (!state.hasGame()) {
+            await logger.log(`Tried to invoke game decision phase \`${arg}\` with no game instance! Aborting...`);
+            return;
+        }
+
+        // Invoke game decision phase
+        const responseMessages = await state.getGame().onDecisionPhase(arg);
+        await dumpState();
+        for (const messengerPayload of responseMessages) {
+            await messenger.send(goodMorningChannel, messengerPayload);
         }
     },
     [TimeoutType.ReplyToMessage]: async (arg): Promise<void> => {
@@ -2268,7 +2335,7 @@ const processGameDecision = async (userId: Snowflake, decision: string, source: 
         await dumpState();
         await callback({
             content: response,
-            files: [new AttachmentBuilder(await game.renderState({ showPlayerDecision: userId, season: state.getSeasonNumber() })).setName(`game-turn${game.getTurn()}-confirmation.png`)]
+            files: [new AttachmentBuilder(await game.renderState({ showPlayerDecision: userId })).setName(`game-turn${game.getTurn()}-confirmation.png`)]
         });
         await logger.log(`**${state.getPlayerDisplayName(userId)}** made a valid decision! (${source})`);
     } catch (err) {
@@ -2463,6 +2530,23 @@ client.on('ready', async (): Promise<void> => {
 
     // Update the bot's status
     await setStatus(state.isMorning());
+
+    await dumpState();
+
+    // TODO: Temp logic to aid in testing, figure out a way to make this configurable
+    // state.setNextEvent({
+    //     type: DailyEventType.GameDecision
+    // });
+    // state.dequeueNextEvent();
+    // state.setMorning(false);
+    // await timeoutManager.cancelTimeoutsWithType(TimeoutType.NextPreNoon);
+    // await timeoutManager.cancelTimeoutsWithType(TimeoutType.NextNoon);
+    // await timeoutManager.cancelTimeoutsWithType(TimeoutType.NextGoodMorning);
+    // await timeoutManager.cancelTimeoutsWithType(TimeoutType.GameDecisionPhase);
+    // if (state.hasGame()) {
+    //     state.getGame().setTesting(true);
+    // }
+    // await wakeUp(true);
 });
 
 client.on('guildMemberRemove', async (member): Promise<void> => {
@@ -2520,9 +2604,19 @@ client.on('interactionCreate', async (interaction): Promise<void> => {
         return;
     }
     // TODO: Allow this to be used in testing mode
-    if (interaction.isMessageComponent()) {
+    if (interaction.isMessageComponent() || interaction.isModalSubmit()) {
         const customIdSegments = interaction.customId.split(':');
         const rootCustomId = customIdSegments[0];
+        // TODO: Temp logic to simulate jumping forward to timeouts
+        if (rootCustomId === 'invokeTimeout') {
+            await interaction.reply({
+                ephemeral: true,
+                content: 'Invoking...'
+            });
+            await interaction.message?.delete();
+            await timeoutManager.registerTimeout(customIdSegments[1] as TimeoutType, new Date(), { pastStrategy: PastTimeoutStrategy.Invoke });
+            return;
+        }
         // First, if this is a game decision interaction, pass the handling off to the game instance
         if (rootCustomId === 'decision') {
             const decisionName = customIdSegments[1];
@@ -2540,6 +2634,15 @@ client.on('interactionCreate', async (interaction): Promise<void> => {
                 }
                 // Add the user's ID to the constructed decision text
                 decisionText += ' ' + targetUserId;
+            }
+            // If this decision was from a string select menu, append the first string as a decision argument
+            if (interaction.isStringSelectMenu()) {
+                // TODO: Can this somehow support multiple values?
+                decisionText += ' ' + interaction.values[0];
+            }
+            // If this decision was from a modal submit, append the text value as a decision argument
+            if (interaction.isModalSubmit()) {
+                decisionText += ' ' + interaction.fields.getTextInputValue('value').trim();
             }
             await processGameDecision(interaction.user.id, decisionText, 'UI', async (text: BaseMessageOptions) => {
                 await interaction.reply({
@@ -2565,10 +2668,38 @@ client.on('interactionCreate', async (interaction): Promise<void> => {
             });
             return;
         }
+        // If this is meant to spawn a decision modal text input
+        if (rootCustomId === 'spawnDecisionModal' && interaction.isMessageComponent()) {
+            const decisionName = customIdSegments[1];
+            await interaction.showModal({
+                customId: 'decision:' + decisionName,
+                title: 'Enter Game Decision',
+                components: [{
+                    type: ComponentType.ActionRow,
+                    components: [{
+                        type: ComponentType.TextInput,
+                        customId: 'value',
+                        label: decisionName,
+                        style: TextInputStyle.Short,
+                        required: false
+                    }]
+                }]
+            });
+            return;
+        }
         // If this is a generic game interaction, pass the handling off to the game instance
         if (rootCustomId === 'game') {
             if (state.hasGame()) {
+                // Handle the game interaction in the game state
                 await state.getGame().handleGameInteraction(interaction);
+                await dumpState();
+                // If not replied to, send an error reply
+                if (!interaction.replied) {
+                    await interaction.reply({
+                        ephemeral: true,
+                        content: 'This action could not be processed right now (see admin)'
+                    });
+                }
             } else {
                 await interaction.reply({
                     ephemeral: true,
@@ -2793,7 +2924,7 @@ const processCommands = async (msg: Message): Promise<void> => {
                     // const randomOrdering: Snowflake[] = tempDungeon.getDecisionShuffledPlayers();
                     await msg.reply({
                         content: response, // + `\nHere's a sample random ordering: ${randomOrdering.map(x => tempDungeon.getDisplayName(x)).join(', ')}`,
-                        files: [new AttachmentBuilder(await tempDungeon.renderState({ showPlayerDecision: msg.author.id, season: 99 })).setName('confirmation.png')]
+                        files: [new AttachmentBuilder(await tempDungeon.renderState({ showPlayerDecision: msg.author.id })).setName('confirmation.png')]
                     });
                     await sleep(5000);
                 } catch (err) {
@@ -2809,7 +2940,7 @@ const processCommands = async (msg: Message): Promise<void> => {
                     try { // TODO: refactor typing event to somewhere else?
                         await msg.channel.sendTyping();
                     } catch (err) {}
-                    const attachment = new AttachmentBuilder(await tempDungeon.renderState({ season: 99 })).setName('dungeon.png');
+                    const attachment = new AttachmentBuilder(await tempDungeon.renderState()).setName('dungeon.png');
                     await msg.channel.send({ content: processingData.summary.slice(0, 1990), files: [attachment] });
                     await sleep(2500);
                 }
@@ -2853,7 +2984,7 @@ const processCommands = async (msg: Message): Promise<void> => {
             try { // TODO: refactor typing event to somewhere else?
                 await msg.channel.sendTyping();
             } catch (err) {}
-            const attachment = new AttachmentBuilder(await tempDungeon.renderState({ admin: true, season: 99 })).setName('dungeon.png');
+            const attachment = new AttachmentBuilder(await tempDungeon.renderState({ admin: true })).setName('dungeon.png');
             await msg.channel.send({ content: tempDungeon.getInstructionsText(), files: [attachment], components: tempDungeon.getDecisionActionRow() });
 
         } else {
@@ -3046,7 +3177,7 @@ const processCommands = async (msg: Message): Promise<void> => {
                     await msg.channel.sendTyping();
                 } catch (err) {}
                 await msg.channel.send({ content: state.getGame().getDebugText() || 'No Debug Text.', files: [
-                    new AttachmentBuilder(await state.getGame().renderState({ admin: true, season: state.getSeasonNumber() })).setName('game-test-admin.png')
+                    new AttachmentBuilder(await state.getGame().renderState({ admin: true })).setName('game-test-admin.png')
                 ]});
             } else {
                 await msg.reply('The game hasn\'t been created yet!');
@@ -3064,9 +3195,7 @@ const processCommands = async (msg: Message): Promise<void> => {
             await msg.reply(`Generating new game with **${members.length}** player(s)...` + (useBetaFeatures ? ' (with beta features enabled)' : ''));
             awaitingGameCommands = true;
             if (sanitizedText.includes('maze')) {
-                // tempDungeon = DungeonCrawler.createBest(members, 20, 40);
-                // tempDungeon = DungeonCrawler.createSectional(members, { sectionSize: 33, sectionsAcross: 1 }); // Before: size=11,across=3
-                tempDungeon = MazeGame.createOrganicBest(members, 20, 33, 19, 80);
+                tempDungeon = MazeGame.create(members, 99);
                 (tempDungeon as MazeGame).addPlayerItem(msg.author.id, 'trap', 5);
                 (tempDungeon as MazeGame).addPlayerItem(msg.author.id, 'boulder', 3);
                 (tempDungeon as MazeGame).addPlayerItem(msg.author.id, 'seal', 3);
@@ -3077,23 +3206,23 @@ const processCommands = async (msg: Message): Promise<void> => {
                     (tempDungeon as MazeGame).setUsingBetaFeatures(true);
                 }
             } else if (sanitizedText.includes('island')) {
-                tempDungeon = IslandGame.create(members);
+                tempDungeon = IslandGame.create(members, 99);
             } else if (sanitizedText.includes('halloween')) {
-                tempDungeon = ClassicGame.create(members, true);
+                tempDungeon = ClassicGame.create(members, 99, true);
             } else if (sanitizedText.includes('masterpiece')) {
-                tempDungeon = MasterpieceGame.create(members);
+                tempDungeon = MasterpieceGame.create(members, 99);
             } else {
-                tempDungeon = ClassicGame.create(members);
+                tempDungeon = ClassicGame.create(members, 99);
             }
             // Enable the testing flag
             tempDungeon.setTesting(true);
             tempDungeon.addPoints(msg.author.id, 10);
             tempDungeon.beginTurn();
-            try { // TODO: refactor typing event to somewhere else?
-                await msg.channel.sendTyping();
-            } catch (err) {}
-            const attachment = new AttachmentBuilder(await tempDungeon.renderState({ season: 99, admin: true })).setName('dungeon.png');
-            await msg.channel.send({ content: tempDungeon.getDebugString(), files: [attachment], components: tempDungeon.getDecisionActionRow() });
+            // Show the introduction messages for this newly generated game
+            const introductionMessages = await tempDungeon.getIntroductionMessages();
+            for (const messagePayload of introductionMessages) {
+                await msg.channel.send(messagePayload);
+            }
         } else if (sanitizedText.includes('submission')) {
             awaitingSubmission = true;
             await msg.reply('Awaiting submission...');

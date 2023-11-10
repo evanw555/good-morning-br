@@ -1,6 +1,5 @@
-import canvas from "canvas";
-import { ActionRowData, GuildMember, Interaction, MessageActionRowComponentData, Snowflake } from "discord.js";
-import { DecisionProcessingResult, GameState, PrizeType } from "../types";
+import { ActionRowData, AttachmentBuilder, GuildMember, Interaction, MessageActionRowComponentData, Snowflake } from "discord.js";
+import { DecisionProcessingResult, GameState, MessengerPayload, PrizeType } from "../types";
 
 export default abstract class AbstractGame<T extends GameState> {
     protected readonly state: T;
@@ -9,11 +8,6 @@ export default abstract class AbstractGame<T extends GameState> {
     constructor(state: T) {
         this.state = state;
         this.testing = false;
-
-        // TODO (2.0): Temp logic to ensure the list exists after being loaded (remove this)
-        if (this.state.winners === undefined) {
-            this.state.winners = [];
-        }
     }
 
     isTesting(): boolean {
@@ -25,10 +19,37 @@ export default abstract class AbstractGame<T extends GameState> {
     }
 
     /**
-     * Text sent out to the channel before the very first game decision of the season.
+     * @returns The season number of this game
      */
-    getIntroductionText(): string[] {
+    getSeasonNumber(): number {
+        return this.state.season;
+    }
+
+    /**
+     * Text sent out to the channel before the very first game decision of the season.
+     * @deprecated Use {@link getIntroductionMessages}
+     */
+    protected getIntroductionText(): string[] {
         return ['Welcome to a new game!'];
+    }
+    /**
+     * Generates messenger payloads sent out to the channel before the very first game decision of the season.
+     * This should also include any introduction or state image attachments that might be necessary at this time.
+     */
+    async getIntroductionMessages(): Promise<MessengerPayload[]> {
+        const attachment = new AttachmentBuilder(await this.renderState()).setName(`game-introduction.png`);
+        const introTexts = this.getIntroductionText();
+        return introTexts.map((text, i) => {
+            // By default, the first message will have the state render attached
+            if (i === 0) {
+                return {
+                    content: text,
+                    files: [attachment],
+                    components: this.getDecisionActionRow()
+                };
+            }
+            return text;
+        });
     }
     /**
      * Text sent out to the channel at the beginning of the weekly game decision.
@@ -59,6 +80,32 @@ export default abstract class AbstractGame<T extends GameState> {
      */
     getDebugString(): string {
         return 'Debug string';
+    }
+    /**
+     * @returns A list of decision phase events and their corresponding delay (in millis) after the initial message is sent out.
+     */
+    getDecisionPhases(): { key: string, millis: number }[] {
+        return [];
+    }
+    /**
+     * Invokes a particular decision phase, which happens sometime after the initial game decision message.
+     * May update the state, and may return a sequence of messenger payloads to send back to the channel.
+     * @param key The decision phase identifier
+     * @returns Messenger payload objects
+     */
+    async onDecisionPhase(key: string): Promise<MessengerPayload[]> {
+        return [];
+    }
+    /**
+     * This is invoked at the end of the game decision pre-noon timeout.
+     * @returns Messages to be sent to the good morning channel
+     */
+    async onDecisionPreNoon(): Promise<MessengerPayload[]> {
+        // By default, just sent a decision reminder message
+        return [{
+            content: this.getReminderText(),
+            components: this.getDecisionActionRow()
+        }];
     }
     /**
      * Returns a number in the range [0, 1] representing the approximate completion of this game.
@@ -116,9 +163,8 @@ export default abstract class AbstractGame<T extends GameState> {
      * @param options.showPlayerDecision If true, show information in the render relevant to the user's chosen decision
      * @param options.seasonOver If true, render an image to be presented as the final image of the season
      * @param options.admin If true, show information in the render relevant for the admin
-     * @param options.season The number of the current season
      */
-    abstract renderState(options?: { showPlayerDecision?: Snowflake, seasonOver?: boolean, admin?: boolean, season?: number }): Promise<Buffer>
+    abstract renderState(options?: { showPlayerDecision?: Snowflake, seasonOver?: boolean, admin?: boolean }): Promise<Buffer>
     abstract beginTurn(): string[]
 
     /**
@@ -139,7 +185,7 @@ export default abstract class AbstractGame<T extends GameState> {
 
     abstract getPoints(userId: Snowflake): number
     abstract addPoints(userId: Snowflake, points: number): void
-    abstract awardPrize(userId: Snowflake, type: PrizeType, intro: string): string[]
+    abstract awardPrize(userId: Snowflake, type: PrizeType, intro: string): MessengerPayload[]
 
     getMaxPoints(): number {
         return Math.max(0, ...this.getPlayers().map(userId => this.getPoints(userId)));
@@ -155,6 +201,9 @@ export default abstract class AbstractGame<T extends GameState> {
     abstract addPlayerDecision(userId: Snowflake, text: string): string
     abstract processPlayerDecisions(): DecisionProcessingResult
 
+    /**
+     * @deprecated This should be phased out into using better endpoints for returning decision/reminder messages
+     */
     getDecisionActionRow(): ActionRowData<MessageActionRowComponentData>[] {
         return [];
     }

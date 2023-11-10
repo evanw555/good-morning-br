@@ -1,4 +1,4 @@
-import { Snowflake } from "discord.js"
+import { MessageCreateOptions, Snowflake } from "discord.js"
 
 export enum TimeoutType {
     NextGoodMorning = 'NEXT_GOOD_MORNING',
@@ -17,9 +17,15 @@ export enum TimeoutType {
     HomeStretchSurprise = 'HOME_STRETCH_SURPRISE',
     // GMBR 2.0 events
     ProcessGameDecisions = 'PROCESS_GAME_DECISIONS',
+    GameDecisionPhase = 'GAME_DECISION_PHASE',
     // Utilities
     ReplyToMessage = 'REPLY_TO_MESSAGE'
 }
+
+/**
+ * Type representing message data that can be sent via the Discord messenger utility.
+ */
+export type MessengerPayload = string | MessageCreateOptions;
 
 /**
  * A calendar date expressed as "{month}/{day}".
@@ -193,12 +199,15 @@ export interface DecisionProcessingResult {
     continueProcessing: boolean
 }
 
-export interface MazeGameState {
-    type: 'MAZE_GAME_STATE',
+export interface AbstractGameState<T> {
+    readonly type: T,
+    readonly season: number,
+    readonly winners: Snowflake[],
     decisions: Record<Snowflake, string[]>,
-    turn: number,
-    winners: Snowflake[],
-    // Custom properties below
+    turn: number
+}
+
+export interface MazeGameState extends AbstractGameState<'MAZE_GAME_STATE'> {
     action: number,
     rows: number,
     columns: number
@@ -224,28 +233,22 @@ export interface IslandPlayerState {
     finalRank?: number
 }
 
-export interface IslandGameState {
-    type: 'ISLAND_GAME_STATE',
-    decisions: Record<Snowflake, string[]>,
-    turn: number,
-    winners: Snowflake[],
-    // Custom properties below
+export interface IslandGameState extends AbstractGameState<'ISLAND_GAME_STATE'> {
     numToBeEliminated: number,
     players: Record<Snowflake, IslandPlayerState>,
     immunityGranter?: Snowflake,
     immunityReceiver?: Snowflake
 }
 
-export interface ArenaGameState {
-    type: 'ARENA_GAME_STATE',
-    decisions: Record<Snowflake, string[]>,
-    turn: number,
-    winners: Snowflake[]
+export interface ArenaGameState extends AbstractGameState<'ARENA_GAME_STATE'> {
+    // TODO: Fill this in
 }
 
 export interface MasterpiecePlayerState {
     displayName: string,
-    points: number
+    points: number,
+    // If true, then this player can still choose to select a special action as a prize
+    pendingPrize?: true
 }
 
 export interface MasterpiecePieceState {
@@ -255,24 +258,18 @@ export interface MasterpiecePieceState {
     owner: Snowflake | boolean
 }
 
-export interface MasterpieceGameState {
-    type: 'MASTERPIECE_GAME_STATE',
-    decisions: Record<Snowflake, string[]>,
-    turn: number,
-    winners: Snowflake[],
-    // Custom properties below
+export interface MasterpieceGameState extends AbstractGameState<'MASTERPIECE_GAME_STATE'> {
     players: Record<Snowflake, MasterpiecePlayerState>,
     pieces: Record<string, MasterpiecePieceState>,
-    bankAuction?: { pieceId: string, bid: number, bidder: Snowflake },
-    privateAuction?: { pieceId: string, bid: number, bidder: Snowflake }
+    bankAuction?: { pieceId: string, bid: number, bidder?: Snowflake },
+    privateAuction?: { pieceId: string, bid: number, bidder?: Snowflake },
+    // ID of the piece being offered in the "silent auction"
+    silentAuctionPieceId?: string,
+    // ID of the piece to be sold during the next game update
+    salePieceId?: string
 }
 
-export interface ClassicGameState {
-    type: 'CLASSIC_GAME_STATE',
-    decisions: Record<Snowflake, string[]>,
-    turn: number,
-    winners: Snowflake[],
-    // Custom properties below
+export interface ClassicGameState extends AbstractGameState<'CLASSIC_GAME_STATE'> {
     halloween?: true,
     // Goal as determined by a point threshold
     goal: number,

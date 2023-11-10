@@ -14,7 +14,7 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
         super(state);
     }
 
-    static create(members: GuildMember[]): IslandGame {
+    static create(members: GuildMember[], season: number): IslandGame {
         const players: Record<Snowflake, IslandPlayerState> = {};
         for (const member of members) {
             players[member.id] = {
@@ -24,9 +24,10 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
         }
         return new IslandGame({
             type: 'ISLAND_GAME_STATE',
+            season,
+            winners: [],
             decisions: {},
             turn: 0,
-            winners: [],
             players,
             numToBeEliminated: 1
         });
@@ -198,7 +199,7 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
         return this.state.players[userId]?.finalRank ?? Number.MAX_SAFE_INTEGER;
     }
 
-    async renderState(options?: { showPlayerDecision?: string | undefined; admin?: boolean | undefined; season?: number | undefined; } | undefined): Promise<Buffer> {
+    async renderState(options?: { showPlayerDecision?: string | undefined; admin?: boolean | undefined } | undefined): Promise<Buffer> {
         const MARGIN = 16;
         const HEADER_WIDTH = 750;
         const HEADER_HEIGHT = 50;

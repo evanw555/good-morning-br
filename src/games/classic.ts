@@ -14,7 +14,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         super(state);
     }
 
-    static create(members: GuildMember[], halloween?: true): ClassicGame {
+    static create(members: GuildMember[], season: number, halloween?: true): ClassicGame {
         const names: Record<Snowflake, string> = {};
         const points: Record<Snowflake, number> = {};
         for (const member of members) {
@@ -37,6 +37,8 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         }
         return new ClassicGame({
             type: 'CLASSIC_GAME_STATE',
+            season,
+            winners: [],
             decisions: {},
             turn: 0,
             halloween: halloween || undefined,
@@ -45,7 +47,6 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
             names,
             points,
             actionPointDiffs: {},
-            winners: [],
             revealedActions: {}
         });
     }
@@ -157,18 +158,18 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         return getTodayDateString() === this.state.endDate;
     }
 
-    async renderState(options?: { showPlayerDecision?: Snowflake, seasonOver?: boolean, admin?: boolean, season?: number }): Promise<Buffer> {
+    async renderState(options?: { showPlayerDecision?: Snowflake, seasonOver?: boolean, admin?: boolean }): Promise<Buffer> {
         // If the season is over, send a specific renedr for that
         if (options?.seasonOver) {
             return await this.createImage({}, {
-                title: this.isHalloween() ? 'Halloween is upon us!' : `Here's to season ${options.season ?? '???'}!`
+                title: this.isHalloween() ? 'Halloween is upon us!' : `Here's to season ${this.getSeasonNumber()}!`
             });
         }
         // If within 10% of the goal, show a more ominous image...
         if (this.getSeasonCompletion() > 0.9) {
-            return await this.createHomeStretchImage({}, options?.season);
+            return await this.createHomeStretchImage({});
         } else {
-            return await this.createMidSeasonUpdateImage({}, options?.season);
+            return await this.createMidSeasonUpdateImage({});
         }
     }
 
@@ -519,21 +520,21 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         return this.state.names[userId] ?? userId;
     }
 
-    private async createHomeStretchImage(medals: Record<Snowflake, Medals>, season?: number): Promise<Buffer> {
+    private async createHomeStretchImage(medals: Record<Snowflake, Medals>): Promise<Buffer> {
         return await this.createImage(medals, {
-            title: `It's week ${this.state.turn} of season ${season ?? '???'}\n  The final days are upon us`
+            title: `It's week ${this.state.turn} of season ${this.getSeasonNumber()}\n  The final days are upon us`
         });
     }
 
-    private async createMidSeasonUpdateImage(medals: Record<Snowflake, Medals>, season?: number): Promise<Buffer> {
+    private async createMidSeasonUpdateImage(medals: Record<Snowflake, Medals>): Promise<Buffer> {
         return await this.createImage(medals, {
             title: this.isHalloween()
                 ? `${getNumberOfDaysUntil(this.state.endDate)} nights until judgment day...`
-                : `It's week ${this.state.turn} of season ${season ?? '???'}\n  What a blessed experience!`
+                : `It's week ${this.state.turn} of season ${this.getSeasonNumber()}\n  What a blessed experience!`
         });
     }
 
-    private async createSeasonResultsImage(medals: Record<Snowflake, Medals>, season?: number): Promise<Buffer> {
+    private async createSeasonResultsImage(medals: Record<Snowflake, Medals>): Promise<Buffer> {
         return await this.createImage(medals);
     }
 

@@ -91,6 +91,12 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         }
     }
 
+    static create(members: GuildMember[], season: number): MazeGame {
+        // this.createBest(members, 20, 40);
+        // this.createSectional(members, { sectionSize: 33, sectionsAcross: 1 }); // Before: size=11,across=3
+        return this.createOrganicBest(members, season, { attempts: 20, rows: 33, columns: 19, minNaive: 80 });
+    }
+
     getIntroductionText(): string[] {
         return [
             'My dear dogs... Welcome to the Clouded Labyrinth of the Shining Idol! '
@@ -257,7 +263,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         return this.getSeasonCompletion() > 0.2 && this.getPlayerRank(userId) <= 3;
     }
 
-    async renderState(options?: { showPlayerDecision?: Snowflake, admin?: boolean, season?: number }): Promise<Buffer> {
+    async renderState(options?: { showPlayerDecision?: Snowflake, admin?: boolean }): Promise<Buffer> {
         const WIDTH: number = this.state.columns * MazeGame.TILE_SIZE;
         const HEIGHT: number = this.state.rows * MazeGame.TILE_SIZE;
         const c = canvas.createCanvas(WIDTH, HEIGHT);
@@ -432,7 +438,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         let y = 2;
         c2.fillStyle = 'white';
         const leftTextX = WIDTH + MazeGame.TILE_SIZE + MARGIN;
-        c2.fillText(`Season ${options?.season ?? '???'}, Week ${this.state.turn}, Action ${this.state.action}`, leftTextX, MazeGame.TILE_SIZE);
+        c2.fillText(`Season ${this.getSeasonNumber()}, Week ${this.state.turn}, Action ${this.state.action}`, leftTextX, MazeGame.TILE_SIZE);
         for (const userId of this.getOrganizedPlayers()) {
             y++;
             const player = this.state.players[userId];
@@ -1270,7 +1276,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         return { map, doorwayCosts };
     }
 
-    static createSectional(members: GuildMember[], options: { sectionSize: number, sectionsAcross: number }): MazeGame {
+    static createSectional(members: GuildMember[], season: number, options: { sectionSize: number, sectionsAcross: number }): MazeGame {
         const columns = (options.sectionSize + 1) * options.sectionsAcross - 1;
         const rows = columns;
 
@@ -1395,9 +1401,10 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
 
         const game = new MazeGame({
             type: 'MAZE_GAME_STATE',
+            season,
             decisions: {},
-            turn: 0,
             winners: [],
+            turn: 0,
             action: 0,
             rows,
             columns,
@@ -1413,9 +1420,9 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         return game;
     }
 
-    static createOrganic(members: GuildMember[], rows: number, columns: number): MazeGame {
+    static createOrganic(members: GuildMember[], season: number, rows: number, columns: number): MazeGame {
         while (true) {
-            const attempt = MazeGame.tryCreateOrganic(members, rows, columns);
+            const attempt = MazeGame.tryCreateOrganic(members, season, rows, columns);
             // Only use this maze if the goal can be pathed to from all 3 non-goal corners
             if (attempt.searchToGoal(0, 0, { useDoorways: false }).success
                 && attempt.searchToGoal(rows - 1, 0, { useDoorways: false }).success
@@ -1425,7 +1432,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         }
     }
 
-    private static tryCreateOrganic(members: GuildMember[], rows: number, columns: number): MazeGame {
+    private static tryCreateOrganic(members: GuildMember[], season: number ,rows: number, columns: number): MazeGame {
         const map = generateOrganicMaze(rows, columns);
 
         // Clear spawn section
@@ -1484,9 +1491,10 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
 
         const game = new MazeGame({
             type: 'MAZE_GAME_STATE',
+            season,
+            winners: [],
             decisions: {},
             turn: 0,
-            winners: [],
             action: 0,
             rows,
             columns,
@@ -1502,12 +1510,12 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         return game;
     }
 
-    static createBest(members: GuildMember[], attempts: number, minSteps: number = 0): MazeGame {
+    static createBest(members: GuildMember[], season: number, attempts: number, minSteps: number = 0): MazeGame {
         let maxFairness = { fairness: 0 };
         let bestMap: MazeGame | null = null;
         let validAttempts = 0;
         while (validAttempts < attempts) {
-            const newGame = MazeGame.createSectional(members, {
+            const newGame = MazeGame.createSectional(members, season, {
                 sectionsAcross: 1,
                 sectionSize: 29
             });
@@ -1524,12 +1532,17 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         return bestMap as MazeGame;
     }
 
-    static createOrganicBest(members: GuildMember[], attempts: number, rows: number, columns: number, minNaive: number = 0): MazeGame {
+    static createOrganicBest(members: GuildMember[], season: number, options?: { attempts?: number, rows?: number, columns?: number, minNaive?: number }): MazeGame {
+        const attempts = options?.attempts ?? 1;
+        const rows = options?.rows ?? 10;
+        const columns = options?.columns ?? 10;
+        const minNaive = options?.minNaive ?? 0;
+        // Now, try to create the best organic map possible with the specified number of attempts and min naive cost
         let maxFairness = { fairness: 0 };
         let bestMap: MazeGame | null = null;
         let validAttempts = 0;
         while (validAttempts < attempts) {
-            const newGame = MazeGame.createOrganic(members, rows, columns);
+            const newGame = MazeGame.createOrganic(members, season, rows, columns);
             const fairness = newGame.getMapFairness();
             if (fairness.naive >= minNaive) {
                 validAttempts++;

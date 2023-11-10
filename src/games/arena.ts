@@ -4,12 +4,13 @@ import AbstractGame from "./abstract-game";
 
 export default class ArenaGame extends AbstractGame<ArenaGameState> {
 
-    static create(members: GuildMember[]): ArenaGame {
+    static create(members: GuildMember[], season: number): ArenaGame {
         return new ArenaGame({
             type: 'ARENA_GAME_STATE',
+            season,
+            winners: [],
             decisions: {},
-            turn: 0,
-            winners: []
+            turn: 0
         });
     }
 
@@ -34,7 +35,7 @@ export default class ArenaGame extends AbstractGame<ArenaGameState> {
     removePlayer(userId: string): void {
         throw new Error("Method not implemented.");
     }
-    renderState(options?: { showPlayerDecision?: string | undefined; admin?: boolean | undefined; season?: number | undefined; } | undefined): Promise<Buffer> {
+    renderState(options?: { showPlayerDecision?: string | undefined; admin?: boolean | undefined } | undefined): Promise<Buffer> {
         throw new Error("Method not implemented.");
     }
     beginTurn(): string[] {
