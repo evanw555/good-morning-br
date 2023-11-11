@@ -622,18 +622,17 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
         // Get the legend canvas
         const legendCanvas = await this.renderLegend();
 
-        // Load border image
-        const border = await imageLoader.loadImage('assets/masterpiece/design/border.png');
-
         // Create composite canvas
         const innerWidth = rosterCanvas.width + legendCanvas.width;
         const innerHeight = Math.max(rosterCanvas.height, legendCanvas.height);
-        const margin = Math.floor(Math.max(.1 * innerWidth, .1 * innerHeight));
+        const margin = Math.floor(Math.max(.05 * innerWidth, .05 * innerHeight));
         const c = canvas.createCanvas(innerWidth + 2 * margin, innerHeight + 2 * margin);
         const context = c.getContext('2d');
         // Draw background
         context.fillStyle = 'black';
         context.fillRect(0, 0, c.width, c.height);
+        const borderType = (innerHeight / innerWidth > 1.75) ? 'border-tall' : 'border';
+        const border = await imageLoader.loadImage(`assets/masterpiece/design/${borderType}.png`);
         context.drawImage(border, 0, 0, c.width, c.height);
         // Draw both sub-canvases
         context.drawImage(rosterCanvas, margin, margin);
