@@ -1,6 +1,6 @@
 import { AttachmentBuilder, GuildMember, MessageFlags, Snowflake } from "discord.js";
 import canvas from 'canvas';
-import { DecisionProcessingResult, IslandGameState, IslandPlayerState, PrizeType } from "../types";
+import { DecisionProcessingResult, IslandGameState, IslandPlayerState, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 import { getMostSimilarByNormalizedEditDistance, naturalJoin, randChoice, shuffle, toFixed } from "evanw555.js";
 import imageLoader from "../image-loader";
@@ -405,8 +405,8 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
         return text;
     }
 
-    override endTurn(): string[] {
-        const text: string[] = [];
+    override async endTurn(): Promise<MessengerPayload[]> {
+        const text: MessengerPayload[] = [];
         // Eliminate players! Order matters, the most voted-for players are eliminated first (and thus end with a worse final rank)
         const mostVotedForPlayers = this.getRemainingPlayers().sort((x, y) => this.getNumIncomingVotes(y) - this.getNumIncomingVotes(x));
         // Exclude immune players, then select only as many as needed
@@ -450,6 +450,10 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
             // Clear other metadata
             delete player.revealedTarget;
         }
+
+        // Add the universal turn-end message and state render
+        text.push(...await super.endTurn());
+
         return text;
     }
 
@@ -509,7 +513,7 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
         return result;
     }
 
-    addPlayerDecision(userId: string, text: string): string {
+    override async addPlayerDecision(userId: string, text: string): Promise<MessengerPayload> {
         // Validate that they're not locked
         if (this.isPlayerLocked(userId)) {
             throw new Error('You joined the game too late to participate, sorry bud!');

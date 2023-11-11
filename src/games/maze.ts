@@ -1,7 +1,7 @@
 import canvas, { NodeCanvasRenderingContext2D } from 'canvas';
-import { GuildMember, MessageFlags, Snowflake } from 'discord.js';
+import { AttachmentBuilder, GuildMember, MessageFlags, Snowflake } from 'discord.js';
 import { getRankString, getNumberBetween, naturalJoin, randInt, shuffle, toLetterId, fromLetterId, AStarPathFinder, shuffleWithDependencies, toFixed, collapseRedundantStrings, chance, randChoice } from 'evanw555.js';
-import { DecisionProcessingResult, MazeGameState, MazeItemName, MazeLine, MazeLocation, MazePlayerState, PrizeType } from "../types";
+import { DecisionProcessingResult, MazeGameState, MazeItemName, MazeLine, MazeLocation, MazePlayerState, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 
 import logger from '../logger';
@@ -808,14 +808,15 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         return [];
     }
 
-    override endTurn(): string[] {
+    override async endTurn(): Promise<MessengerPayload[]> {
         // It's Sunday, so wipe all the item offers
         for (const userId of this.getPlayers()) {
             const player = this.state.players[userId];
             delete player.itemOffers;
         }
 
-        return [];
+        // Add the universal turn-end message and state render
+        return await super.endTurn();
     }
 
     getPoints(userId: Snowflake): number {
@@ -1700,7 +1701,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         return results;
     }
 
-    addPlayerDecision(userId: Snowflake, text: string): string {
+    override async addPlayerDecision(userId: Snowflake, text: string): Promise<MessengerPayload> {
         const commands: string[] = text.replace(/\s+/g, ' ').trim().split(' ').map(c => c.toLowerCase());
         const warnings: string[] = [];
 
@@ -1906,9 +1907,12 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         }
 
         this.state.decisions[userId] = commands;
-        return `Valid actions, your new location will be **${isWarping ? '???' : MazeGame.getLocationString(newLocation.r, newLocation.c)}**. `
-            + `This will consume **${cost}** of your **${Math.floor(playerPoints)}** points if successful. `
-            + (warnings.length > 0 ? ' _BUT PLEASE NOTE THE FOLLOWING:_\n' + warnings.join('\n') : '');
+        return {
+            content: `Valid actions, your new location will be **${isWarping ? '???' : MazeGame.getLocationString(newLocation.r, newLocation.c)}**. `
+                + `This will consume **${cost}** of your **${Math.floor(playerPoints)}** points if successful. `
+                + (warnings.length > 0 ? ' _BUT PLEASE NOTE THE FOLLOWING:_\n' + warnings.join('\n') : ''),
+            files: [new AttachmentBuilder(await this.renderState({ showPlayerDecision: userId })).setName(`game-turn${this.getTurn()}-confirmation.png`)]
+        };
     }
 
     private getActionCost(action: ActionName, location?: MazeLocation, arg?: string): number {

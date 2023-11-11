@@ -1,7 +1,7 @@
 import canvas, {  } from 'canvas';
 import { ActionRowData, AttachmentBuilder, ButtonStyle, ComponentType, GuildMember, MessageActionRowComponentData, MessageFlags, Snowflake } from "discord.js";
 import { DiscordTimestampFormat, getMostSimilarByNormalizedEditDistance, getRankString, getTodayDateString, naturalJoin, randChoice, getNumberOfDaysUntil, toDiscordTimestamp, toFixed, toDateString } from 'evanw555.js';
-import { ClassicGameState, DecisionProcessingResult, Medals, PrizeType } from "../types";
+import { ClassicGameState, DecisionProcessingResult, Medals, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 
 import imageLoader from '../image-loader';
@@ -219,8 +219,8 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         return messages;
     }
 
-    override endTurn(): string[] {
-        const result: string[] = [];
+    override async endTurn(): Promise<MessengerPayload[]> {
+        const result: MessengerPayload[] = [];
 
         // Evaluate the winners all at once at the end of the turn.
         // This is done to prevent winners from being determined by the random order of taking
@@ -233,6 +233,9 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
                 }
             }
         }
+
+        // Add the universal turn-end message and state render
+        result.push(...await super.endTurn());
 
         return result;
     }
@@ -270,7 +273,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         return [];
     }
 
-    addPlayerDecision(userId: string, text: string): string {
+    override async addPlayerDecision(userId: string, text: string): Promise<MessengerPayload> {
         // If today is the end date, don't accept any decisions
         if (this.isTodayEndDate()) {
             throw new Error('The season ends today!');

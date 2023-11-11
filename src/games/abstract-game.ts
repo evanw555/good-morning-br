@@ -1,5 +1,6 @@
 import { ActionRowData, AttachmentBuilder, GuildMember, Interaction, MessageActionRowComponentData, Snowflake } from "discord.js";
 import { DecisionProcessingResult, GameState, MessengerPayload, PrizeType } from "../types";
+import { text } from "../util";
 
 export default abstract class AbstractGame<T extends GameState> {
     protected readonly state: T;
@@ -176,11 +177,25 @@ export default abstract class AbstractGame<T extends GameState> {
     abstract beginTurn(): string[]
 
     /**
+     * @returns List of messages to send before any game decisions are processed
+     */
+    async getPreProcessingMessages(): Promise<MessengerPayload[]> {
+        return [{
+            content: 'Good morning everyone! Here\'s where we\'re all starting from. In just a few minutes, we\'ll be seeing the outcome of this week\'s turn...',
+            files: [new AttachmentBuilder(await this.renderState()).setName(`game-turn${this.getTurn()}-preprocessing.png`)]
+        }];
+    }
+
+    /**
      * Triggers turn-end logic. This is run after the final round of decisions are processed.
      * @returns List of messages to send to the GM channel on turn-end
      */
-    endTurn(): string[] {
-        return [];
+    async endTurn(): Promise<MessengerPayload[]> {
+        // By default, send this universal message with a generic state render
+        return [{
+            content: text('{!Well|Alright,} that\'s {!all|it} for this {!week|turn}! Are you all {!proud of your actions|happy with the outcome|optimistic|feeling good}?'),
+            files: [new AttachmentBuilder(await this.renderState()).setName(`game-week${this.getTurn()}-end.png`)]
+        }];
     }
 
     /**
@@ -206,7 +221,7 @@ export default abstract class AbstractGame<T extends GameState> {
         return {};
     }
 
-    abstract addPlayerDecision(userId: Snowflake, text: string): string
+    abstract addPlayerDecision(userId: Snowflake, text: string): Promise<MessengerPayload>
     abstract processPlayerDecisions(): Promise<DecisionProcessingResult>
 
     /**

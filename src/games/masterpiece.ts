@@ -6,6 +6,7 @@ import { naturalJoin, randChoice, shuffle, toFixed, toLetterId } from "evanw555.
 
 import logger from "../logger";
 import imageLoader from '../image-loader';
+import { text } from '../util';
 
 export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> {
     private bankAuctionLock: boolean = false;
@@ -514,6 +515,7 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
         // Draw background and piece image on top of it
         context.drawImage(bankAuctionImage, 0, 0, 1224, 816);
         context.drawImage(pieceImage, 484, 246, 256, 256);
+
         // Draw text over the image
         context.fillStyle = 'white';
         context.font = '25px serif';
@@ -524,6 +526,21 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
         // Superimpose the legend
         const legendCanvas = await this.renderLegend();
         context.drawImage(legendCanvas, c.width - legendCanvas.width - 32, 214);
+
+        // Show the owner (if it's a player
+        const owner = this.getPieceOwner(pieceId);
+        if (typeof owner === 'string') {
+            const ownerAvatar = await imageLoader.loadAvatar(owner, 128);
+            const ownerCenterX = 242;
+            const ownerCenterY = 374;
+            await this.drawImageAsCircle(context, ownerAvatar, 1, ownerCenterX, ownerCenterY, 64);
+            // Write the display name
+            context.fillStyle = 'white';
+            context.font = 'italic 30px serif';
+            await this.drawTextCentered(context, this.getPlayerDisplayName(owner), ownerCenterX - 96, ownerCenterX + 96, ownerCenterY + 96);
+            context.font = 'italic 25px serif';
+            await this.drawTextCentered(context, 'Owner', ownerCenterX - 96, ownerCenterX + 96, ownerCenterY + 128);
+        }
 
         return new AttachmentBuilder(c.toBuffer()).setName(`${imageName}-auction-week${this.getTurn()}.png`);
     }
@@ -644,6 +661,7 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
 
     override beginTurn(): string[] {
         this.state.turn++;
+        this.state.decisions = {};
 
         // Reset metadata for each player
         for (const userId of this.getPlayers()) {
@@ -653,6 +671,22 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
 
         // TODO: Do something here
         return [];
+    }
+
+    override async getPreProcessingMessages(): Promise<MessengerPayload[]> {
+        return [{
+            content: 'Good morning everyone! Let me take a few minutes to look over the agenda for today, then we\'ll see the outcome of this weekend\'s pending sales...',
+            files: [new AttachmentBuilder(await this.renderState()).setName(`game-turn${this.getTurn()}-preprocessing.png`)],
+            components: this.getDecisionActionRow()
+        }];
+    }
+
+    override async endTurn(): Promise<MessengerPayload[]> {
+        return [{
+            content: text('{!Well|Alright}, that\'s all the {!art trading|auctioneering} for now. Have a blessed week and remember to {!stack your cheddar|count your bills|cherish each morning}!'),
+            files: [new AttachmentBuilder(await this.renderState()).setName(`game-week${this.getTurn()}-end.png`)],
+            components: this.getDecisionActionRow()
+        }];
     }
 
     override getPoints(userId: string): number {
@@ -721,7 +755,7 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
         }
     }
 
-    override addPlayerDecision(userId: string, text: string): string {
+    override async addPlayerDecision(userId: string, text: string): Promise<MessengerPayload> {
         // Validate that there's an active silent auction
         if (!this.state.silentAuctionPieceId) {
             throw new Error('You can\'t do that now, there\'s no piece currently for sale!');
@@ -741,7 +775,7 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
         }
         // Update the state
         this.state.decisions[userId] = [`${offer}`, `${new Date().getTime()}`];
-        // TODO: Do something here
+
         return `You have offered **$${offer}** for the bank's piece _"${this.getPieceName(this.state.silentAuctionPieceId)}"_`;
     }
 
@@ -835,6 +869,7 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
     }
 
     override getDecisionActionRow(): ActionRowData<MessageActionRowComponentData>[] {
+        // TODO: This isn't really a "decision" action row, this whole API should be refactored
         return [{
             type: ComponentType.ActionRow,
             components: [{

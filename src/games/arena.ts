@@ -1,5 +1,5 @@
 import { GuildMember } from "discord.js";
-import { ArenaGameState, DecisionProcessingResult, PrizeType } from "../types";
+import { ArenaGameState, DecisionProcessingResult, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 
 export default class ArenaGame extends AbstractGame<ArenaGameState> {
@@ -50,7 +50,7 @@ export default class ArenaGame extends AbstractGame<ArenaGameState> {
     awardPrize(userId: string, type: PrizeType, intro: string): string[] {
         throw new Error("Method not implemented.");
     }
-    addPlayerDecision(userId: string, text: string): string {
+    addPlayerDecision(userId: string, text: string): Promise<MessengerPayload> {
         throw new Error("Method not implemented.");
     }
     processPlayerDecisions(): Promise<DecisionProcessingResult> {
