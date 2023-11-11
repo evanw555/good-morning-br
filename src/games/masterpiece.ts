@@ -531,11 +531,12 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
     private async renderRoster(): Promise<Canvas> {
         // TODO: Do something real here
         const AVATAR_WIDTH = 32;
-        const MARGIN = 16;
+        const HORIZONTAL_MARGIN = 16;
+        const VERTICAL_MARGIN = 12;
         const ROWS = 3 + this.getNumPlayers();
-        const HEIGHT = ROWS * (AVATAR_WIDTH + MARGIN) + MARGIN;
+        const HEIGHT = ROWS * (AVATAR_WIDTH + VERTICAL_MARGIN) + VERTICAL_MARGIN;
         const MAX_INVENTORY_SIZE = Math.max(1, ...this.getPlayers().map(id => this.getNumPiecesForUser(id)));
-        const WIDTH = (5 + MAX_INVENTORY_SIZE) * (AVATAR_WIDTH + MARGIN) + MARGIN;
+        const WIDTH = (5 + MAX_INVENTORY_SIZE) * (AVATAR_WIDTH + HORIZONTAL_MARGIN) + HORIZONTAL_MARGIN;
         // const ROW_HEIGHT = 32;
         const c = canvas.createCanvas(WIDTH, HEIGHT);
         const context = c.getContext('2d');
@@ -545,28 +546,28 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
         // context.fillRect(0, 0, WIDTH, HEIGHT);
 
         // Draw the title row
-        let baseY = MARGIN;
+        let baseY = VERTICAL_MARGIN;
         context.fillStyle = 'white';
         context.font = 'italic bold 32px serif';
-        this.drawTextCentered(context, `GMBR's Auction House - Week ${this.getTurn()}`, 0, c.width, AVATAR_WIDTH, { padding: AVATAR_WIDTH });
-        baseY += AVATAR_WIDTH + MARGIN;
+        this.drawTextCentered(context, `GMBR's Art Auction - Week ${this.getTurn()}`, 0, c.width, AVATAR_WIDTH, { padding: AVATAR_WIDTH });
+        baseY += AVATAR_WIDTH + VERTICAL_MARGIN;
 
         // Draw the banker row
         context.font = 'bold 20px serif';
         {
-            let baseX = MARGIN;
+            let baseX = HORIZONTAL_MARGIN;
             const textY = baseY + (0.7 * AVATAR_WIDTH);
             // Draw banker name
-            await this.drawTextCentered(context, 'The Banker', baseX, baseX + AVATAR_WIDTH * 3 + MARGIN, textY);
-            baseX += 3 * (AVATAR_WIDTH + MARGIN);
+            await this.drawTextCentered(context, 'The Banker', baseX, baseX + AVATAR_WIDTH * 3 + HORIZONTAL_MARGIN, textY);
+            baseX += 3 * (AVATAR_WIDTH + HORIZONTAL_MARGIN);
             // Draw banker avatar
             const sunAvatar = await imageLoader.loadImage('assets/sun4.png');
             context.drawImage(sunAvatar, baseX, baseY, AVATAR_WIDTH, AVATAR_WIDTH);
-            baseX += AVATAR_WIDTH + MARGIN;
+            baseX += AVATAR_WIDTH + HORIZONTAL_MARGIN;
             // Draw remaining piece count
             context.font = '20px sans-serif';
             context.fillText(`x${this.getNumAvailablePieces()}`, baseX, textY, AVATAR_WIDTH);
-            baseX += AVATAR_WIDTH + MARGIN;
+            baseX += AVATAR_WIDTH + HORIZONTAL_MARGIN;
             // Draw mystery piece icon
             const pieceImage = await imageLoader.loadImage(`assets/masterpiece/mystery.png`);
             context.drawImage(pieceImage, baseX, baseY, AVATAR_WIDTH, AVATAR_WIDTH);
@@ -574,31 +575,31 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
             context.strokeStyle = 'rgb(232,164,4)';
             context.lineWidth = 2;
             context.strokeRect(baseX, baseY, AVATAR_WIDTH, AVATAR_WIDTH);
-            baseX += AVATAR_WIDTH + MARGIN;
+            baseX += AVATAR_WIDTH + HORIZONTAL_MARGIN;
         }
-        baseY += AVATAR_WIDTH + MARGIN;
+        baseY += AVATAR_WIDTH + VERTICAL_MARGIN;
 
         // Draw the separator
         const separator = await imageLoader.loadImage('assets/masterpiece/design/separator-middle.png');
-        context.drawImage(separator, MARGIN, baseY, c.width - 2 * MARGIN, AVATAR_WIDTH);
-        baseY += AVATAR_WIDTH + MARGIN;
+        context.drawImage(separator, HORIZONTAL_MARGIN, baseY, c.width - 2 * HORIZONTAL_MARGIN, AVATAR_WIDTH);
+        baseY += AVATAR_WIDTH + VERTICAL_MARGIN;
 
         // Draw each player's inventory
         for (const userId of this.getOrderedPlayers()) {
-            let baseX = MARGIN;
+            let baseX = HORIZONTAL_MARGIN;
             const textY = baseY + (0.7 * AVATAR_WIDTH);
             // Draw player name
             context.font = '20px serif';
-            await this.drawTextCentered(context, this.getPlayerDisplayName(userId), baseX, baseX + AVATAR_WIDTH * 3 + MARGIN, textY);
-            baseX += 3 * (AVATAR_WIDTH + MARGIN);
+            await this.drawTextCentered(context, this.getPlayerDisplayName(userId), baseX, baseX + AVATAR_WIDTH * 3 + HORIZONTAL_MARGIN, textY);
+            baseX += 3 * (AVATAR_WIDTH + HORIZONTAL_MARGIN);
             // Draw player avatar
             const avatar = await imageLoader.loadAvatar(userId, 32);
             await this.drawImageAsCircle(context, avatar, 1, baseX + 0.5 * AVATAR_WIDTH, baseY + 0.5 * AVATAR_WIDTH, AVATAR_WIDTH * 0.5);
-            baseX += AVATAR_WIDTH + MARGIN;
+            baseX += AVATAR_WIDTH + HORIZONTAL_MARGIN;
             // Draw truncated cash stack
             context.font = '20px sans-serif';
             context.fillText(`$${Math.floor(this.getPoints(userId))}`, baseX, textY, AVATAR_WIDTH);
-            baseX += AVATAR_WIDTH + MARGIN;
+            baseX += AVATAR_WIDTH + HORIZONTAL_MARGIN;
             // Draw any pieces this player owns
             for (const pieceId of this.getPieceIdsForUser(userId)) {
                 const pieceImage = await imageLoader.loadImage(`assets/masterpiece/pieces/${pieceId.toLowerCase()}.png`);
@@ -607,9 +608,9 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
                 context.strokeStyle = 'rgb(232,164,4)';
                 context.lineWidth = 2;
                 context.strokeRect(baseX, baseY, AVATAR_WIDTH, AVATAR_WIDTH);
-                baseX += AVATAR_WIDTH + MARGIN;
+                baseX += AVATAR_WIDTH + HORIZONTAL_MARGIN;
             }
-            baseY += AVATAR_WIDTH + MARGIN;
+            baseY += AVATAR_WIDTH + VERTICAL_MARGIN;
         }
 
         return c;
