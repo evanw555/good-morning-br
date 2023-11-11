@@ -1367,7 +1367,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         baitingStartTime.setHours(11, 59, 0, 0);
         baitingStartTime.setMinutes(baitingStartTime.getMinutes() - minutesEarly);
         // We register this with the "Delete" strategy since it doesn't schedule any events and it's non-critical
-        // await timeoutManager.registerTimeout(TimeoutType.BaitingStart, baitingStartTime, { pastStrategy: PastTimeoutStrategy.Delete });
+        await timeoutManager.registerTimeout(TimeoutType.BaitingStart, baitingStartTime, { pastStrategy: PastTimeoutStrategy.Delete });
 
         // Check the results of anonymous submissions
         if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
