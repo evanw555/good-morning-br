@@ -1,5 +1,5 @@
 import canvas, {  } from 'canvas';
-import { ActionRowData, ButtonStyle, ComponentType, GuildMember, MessageActionRowComponentData, Snowflake } from "discord.js";
+import { ActionRowData, AttachmentBuilder, ButtonStyle, ComponentType, GuildMember, MessageActionRowComponentData, MessageFlags, Snowflake } from "discord.js";
 import { DiscordTimestampFormat, getMostSimilarByNormalizedEditDistance, getRankString, getTodayDateString, naturalJoin, randChoice, getNumberOfDaysUntil, toDiscordTimestamp, toFixed, toDateString } from 'evanw555.js';
 import { ClassicGameState, DecisionProcessingResult, Medals, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
@@ -337,7 +337,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         throw new Error('I don\'t recognize that action!');
     }
 
-    processPlayerDecisions(): DecisionProcessingResult {
+    override async processPlayerDecisions(): Promise<DecisionProcessingResult> {
         let summary = '';
 
         const anyCheerDecisions = Object.values(this.state.decisions).some(d => d.includes('cheer'));
@@ -459,7 +459,11 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         }
 
         return {
-            summary,
+            summary: {
+                content: summary,
+                files: [await this.renderStateAttachment()],
+                flags: MessageFlags.SuppressNotifications
+            },
             continueProcessing: !endTurn
         };
     }

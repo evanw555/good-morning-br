@@ -1,4 +1,4 @@
-import { GuildMember, Snowflake } from "discord.js";
+import { AttachmentBuilder, GuildMember, MessageFlags, Snowflake } from "discord.js";
 import canvas from 'canvas';
 import { DecisionProcessingResult, IslandGameState, IslandPlayerState, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
@@ -543,7 +543,7 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
         }
     }
 
-    processPlayerDecisions(): DecisionProcessingResult {
+    override async processPlayerDecisions(): Promise<DecisionProcessingResult> {
         let summary = '';
 
         // Pick a random player, process their decision
@@ -576,7 +576,11 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
         const endTurn = Object.keys(this.state.decisions).length === 0;
 
         return {
-            summary,
+            summary: {
+                content: summary,
+                files: [await this.renderStateAttachment()],
+                flags: MessageFlags.SuppressNotifications
+            },
             continueProcessing: !endTurn
         }
     }

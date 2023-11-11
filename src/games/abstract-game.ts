@@ -165,6 +165,14 @@ export default abstract class AbstractGame<T extends GameState> {
      * @param options.admin If true, show information in the render relevant for the admin
      */
     abstract renderState(options?: { showPlayerDecision?: Snowflake, seasonOver?: boolean, admin?: boolean }): Promise<Buffer>
+
+    /**
+     * Wrapper method for rendering the state into an image attachment.
+     */
+    async renderStateAttachment(): Promise<AttachmentBuilder> {
+        return new AttachmentBuilder(await this.renderState()).setName(`game-week${this.getTurn()}.png`)
+    }
+
     abstract beginTurn(): string[]
 
     /**
@@ -199,7 +207,7 @@ export default abstract class AbstractGame<T extends GameState> {
     }
 
     abstract addPlayerDecision(userId: Snowflake, text: string): string
-    abstract processPlayerDecisions(): DecisionProcessingResult
+    abstract processPlayerDecisions(): Promise<DecisionProcessingResult>
 
     /**
      * @deprecated This should be phased out into using better endpoints for returning decision/reminder messages

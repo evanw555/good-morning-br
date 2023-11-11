@@ -195,7 +195,7 @@ export interface MazePlayerState {
 }
 
 export interface DecisionProcessingResult {
-    summary: string,
+    summary: MessengerPayload,
     continueProcessing: boolean
 }
 

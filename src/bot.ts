@@ -2216,16 +2216,11 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
 
         // Process player decisions
         const game = state.getGame();
-        const processingResult = game.processPlayerDecisions();
+        const processingResult = await game.processPlayerDecisions();
         await dumpState();
 
-        // Render the updated state and send it out (suppress notifications to reduce spam)
-        const attachment = new AttachmentBuilder(await game.renderState()).setName(`game-week${game.getTurn()}.png`);
-        await messenger.send(goodMorningChannel, {
-            content: processingResult.summary,
-            files: [attachment],
-            flags: MessageFlags.SuppressNotifications
-        });
+        // Send out the message payload for the updated game state (may contain attachments or just be text)
+        await messenger.send(goodMorningChannel, processingResult.summary);
 
         if (processingResult.continueProcessing) {
             // If there are more decisions to be processed, schedule the next processing timeout
@@ -2933,15 +2928,15 @@ const processCommands = async (msg: Message): Promise<void> => {
                 }
             }
 
-            // Process decisions and render state
+            // Process decisions and sending updated state
             while (true) {
-                const processingData = tempDungeon.processPlayerDecisions();
+                const processingData = await tempDungeon.processPlayerDecisions();
                 if (!skipRenderingActions) {
                     try { // TODO: refactor typing event to somewhere else?
                         await msg.channel.sendTyping();
                     } catch (err) {}
-                    const attachment = new AttachmentBuilder(await tempDungeon.renderState()).setName('dungeon.png');
-                    await msg.channel.send({ content: processingData.summary.slice(0, 1990), files: [attachment] });
+                    // TODO: This may result in messages with too much text, can we truncate that somehow?
+                    await msg.channel.send(processingData.summary);
                     await sleep(2500);
                 }
                 if (!processingData.continueProcessing) {

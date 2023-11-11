@@ -1,5 +1,5 @@
 import canvas, { NodeCanvasRenderingContext2D } from 'canvas';
-import { GuildMember, Snowflake } from 'discord.js';
+import { GuildMember, MessageFlags, Snowflake } from 'discord.js';
 import { getRankString, getNumberBetween, naturalJoin, randInt, shuffle, toLetterId, fromLetterId, AStarPathFinder, shuffleWithDependencies, toFixed, collapseRedundantStrings, chance, randChoice } from 'evanw555.js';
 import { DecisionProcessingResult, MazeGameState, MazeItemName, MazeLine, MazeLocation, MazePlayerState, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
@@ -1964,7 +1964,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         return 0;
     }
 
-    processPlayerDecisions(): DecisionProcessingResult {
+    override async processPlayerDecisions(): Promise<DecisionProcessingResult> {
         // Delete all render lines (this is not done in the inner method since we want to show long paths for multiple consecutive actions)
         this.state.lines = [];
 
@@ -1972,8 +1972,9 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         const summaries: string[] = [];
         let processingResult: DecisionProcessingResult & { continueImmediately: boolean };
         do {
-           processingResult = this.processPlayerDecisionsOnce();
-           summaries.push(processingResult.summary);
+           processingResult = await this.processPlayerDecisionsOnce();
+           // TODO: Is there a more graceful way to do this than extracting the strings from the payloads and dropping the images?
+           summaries.push(typeof processingResult.summary === 'string' ? processingResult.summary : processingResult.summary.content ?? '');
         } while (processingResult.continueProcessing && processingResult.continueImmediately);
 
         // If more than one action was processed for each player, collapse action summaries to reduce redundant messages (e.g. "___ took a step")
@@ -1981,7 +1982,11 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
             return processingResult;
         } else {
             return {
-                summary: collapseRedundantStrings(summaries, (s, n) => n > 1 ? `${s} _(x${n})_` : s).join('\n'),
+                summary: {
+                    content: collapseRedundantStrings(summaries, (s, n) => n > 1 ? `${s} _(x${n})_` : s).join('\n'),
+                    files: [await this.renderStateAttachment()],
+                    flags: MessageFlags.SuppressNotifications
+                },
                 continueProcessing: processingResult.continueProcessing
             };
         }
@@ -1990,7 +1995,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
     /**
      * Process exactly one action for each player. Return extra information about whether we can run this procedure again with no delay.
      */
-    processPlayerDecisionsOnce(): DecisionProcessingResult & { continueImmediately: boolean } {
+    private async processPlayerDecisionsOnce(): Promise<DecisionProcessingResult & { continueImmediately: boolean }> {
         this.state.action++;
         const summaryData = {
             consecutiveStepUsers: [] as Snowflake[],
@@ -2589,7 +2594,11 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
 
         // If there are no decisions left, end the turn
         return {
-            summary: naturalJoin(summaryData.statements, { conjunction: 'then' }) || 'Dogs sat around with their hands in their pockets...',
+            summary: {
+                content: naturalJoin(summaryData.statements, { conjunction: 'then' }) || 'Dogs sat around with their hands in their pockets...',
+                files: [await this.renderStateAttachment()],
+                flags: MessageFlags.SuppressNotifications
+            },
             continueProcessing,
             continueImmediately
         };

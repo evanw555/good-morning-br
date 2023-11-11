@@ -1,5 +1,5 @@
 import canvas, { Canvas, NodeCanvasRenderingContext2D } from 'canvas';
-import { ActionRowData, AttachmentBuilder, ButtonStyle, ComponentType, GuildMember, Interaction, MessageActionRowComponentData, MessageFlags, Snowflake, time } from "discord.js";
+import { ActionRowData, AttachmentBuilder, ButtonStyle, ComponentType, GuildMember, Interaction, MessageActionRowComponentData, MessageFlags, Snowflake } from "discord.js";
 import { DecisionProcessingResult, MasterpieceGameState, MasterpiecePieceState, MasterpiecePlayerState, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 import { naturalJoin, randChoice, shuffle, toFixed, toLetterId } from "evanw555.js";
@@ -745,7 +745,7 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
         return `You have offered **$${offer}** for the bank's piece _"${this.getPieceName(this.state.silentAuctionPieceId)}"_`;
     }
 
-    override processPlayerDecisions(): DecisionProcessingResult {
+    override async processPlayerDecisions(): Promise<DecisionProcessingResult> {
         // Process any pending sale first and foremost
         if (this.state.salePieceId) {
             const pieceId = this.state.salePieceId;
@@ -767,7 +767,10 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
             // Return a summary
             return {
                 continueProcessing: true,
-                summary: `**${this.getPlayerDisplayName(ownerId)}** sold their piece _"${this.getPieceName(pieceId)}"_ to the Museum of Gaming History for **$${value}**, removing this piece from the game!`
+                summary: {
+                    content: `**${this.getPlayerDisplayName(ownerId)}** sold their piece _"${this.getPieceName(pieceId)}"_ to the Museum of Gaming History for **$${value}**, removing this piece from the game!`,
+                    files: [await this.renderStateAttachment()]
+                }
             };
         }
     
@@ -805,12 +808,18 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
             if (highBidders.length === 1) {
                 return {
                     continueProcessing: false,
-                    summary: `**${this.getPlayerDisplayName(userId)}** has purchased _"${this.getPieceName(pieceId)}"_ with the high offer of **$${maxValue}**!`
+                    summary: {
+                        content: `**${this.getPlayerDisplayName(userId)}** has purchased _"${this.getPieceName(pieceId)}"_ with the high offer of **$${maxValue}**!`,
+                        files: [await this.renderAuction(pieceId, 'Silent Auction', 'silent')]
+                    }
                 };
             } else {
                 return {
                     continueProcessing: false,
-                    summary: `${this.getJoinedDisplayNames(highBidders)} tied with a high offer of **$${maxValue}**, but **${this.getPlayerDisplayName(userId)}** acted the quickest. _"${this.getPieceName(pieceId)}"_ is theirs!`
+                    summary: {
+                        content: `${this.getJoinedDisplayNames(highBidders)} tied with a high offer of **$${maxValue}**, but **${this.getPlayerDisplayName(userId)}** acted the quickest. _"${this.getPieceName(pieceId)}"_ is theirs!`,
+                        files: [await this.renderAuction(pieceId, 'Silent Auction', 'silent')]
+                    }
                 };
             }
         }
@@ -818,7 +827,10 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
         // TODO: Do something here
         return {
             continueProcessing: false,
-            summary: 'Nothing happened! Since there\'s no silent auction going on'
+            summary: {
+                content: 'Nothing happened! Since there\'s no silent auction going on',
+                files: [await this.renderStateAttachment()]
+            }
         };
     }
 

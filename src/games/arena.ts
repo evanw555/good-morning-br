@@ -53,7 +53,7 @@ export default class ArenaGame extends AbstractGame<ArenaGameState> {
     addPlayerDecision(userId: string, text: string): string {
         throw new Error("Method not implemented.");
     }
-    processPlayerDecisions(): DecisionProcessingResult {
+    processPlayerDecisions(): Promise<DecisionProcessingResult> {
         throw new Error("Method not implemented.");
     }
 
