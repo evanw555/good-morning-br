@@ -1790,7 +1790,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         const nextPuzzleLength: number = arg;
 
         // Try to find some words of the correct length
-        const nextPuzzleWords = await chooseMagicWords(1, { characters: nextPuzzleLength });
+        const nextPuzzleWords = await chooseMagicWords(1, { characters: nextPuzzleLength, bonusMultiplier: 3 });
         if (nextPuzzleWords.length > 0) {
             // If a word was found, restart the puzzle and notify the channel
             event.wordle = {
@@ -3537,7 +3537,8 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                             });
                             await messenger.send(msg.channel, `Count how many times your avatar appears, that's your score ${config.defaultGoodMorningEmoji}`);
                             // Schedule the next round, potentially with a longer word (the longer the word, the longer the delay)
-                            const nextPuzzleLength = previousWordle.solution.length + (chance(0.5) ? 1 : 0);
+                            const chanceToAdvance = previousWordle.solution.length < 8 ? 0.7 : 0.3;
+                            const nextPuzzleLength = previousWordle.solution.length + (chance(chanceToAdvance) ? 1 : 0);
                             const wordleRestartDate = new Date();
                             wordleRestartDate.setMinutes(wordleRestartDate.getMinutes() + randInt(nextPuzzleLength, nextPuzzleLength * 4));
                             await timeoutManager.registerTimeout(TimeoutType.WordleRestart, wordleRestartDate, { arg: nextPuzzleLength, pastStrategy: PastTimeoutStrategy.Delete});
