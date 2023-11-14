@@ -352,7 +352,7 @@ const chooseEvent = async (date: Date): Promise<DailyEvent | undefined> => {
             type: DailyEventType.Popcorn
         }];
         // Add the wordle event if words can be found
-        const wordleWords = await chooseMagicWords(1, 5);
+        const wordleWords = await chooseMagicWords(1, { characters: 5 });
         if (wordleWords.length > 0) {
             focusEvents.push({
                 type: DailyEventType.Wordle,
@@ -486,15 +486,28 @@ const awardPrize = async (userId: Snowflake, type: PrizeType, intro: string): Pr
     }
 };
 
-const chooseMagicWords = async (n: number, characters?: number): Promise<string[]> => {
+const chooseMagicWords = async (n: number, options?: { characters?: number, bonusMultiplier?: number }): Promise<string[]> => {
+    const words: string[] = [];
+    // First, load the main list
     try {
-        const words: string[] = await loadJson('config/words2.json');
-        shuffle(words);
-        return words.filter(w => !characters || w.length === characters).slice(0, n);
+        const main: string[] = await loadJson('config/words/main.json');
+        words.push(...main);
     } catch (err) {
-        await logger.log(`Failed to choose a word of the day: \`${err.toString()}\``);
-        return [];
+        await logger.log(`Failed to load the **main** magic words list: \`${err.toString()}\``);
     }
+    // Then, load the bonus list and apply any bonus repetitions
+    try {
+        const bonusMultiplier = Math.floor(options?.bonusMultiplier ?? 1);
+        const bonus: string[] = await loadJson('config/words/bonus.json');
+        for (let i = 0; i < bonusMultiplier; i++) {
+            words.push(...bonus);
+        }
+    } catch (err) {
+        await logger.log(`Failed to load the **bonus** magic words list: \`${err.toString()}\``);
+    }
+    // Finally, shuffle and filter the list to get the final magic words
+    shuffle(words);
+    return words.filter(w => !options?.characters || w.length === options.characters).slice(0, n);
 };
 
 const loadSubmissionPromptHistory = async (): Promise<SubmissionPromptHistory> => {
@@ -1777,7 +1790,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         const nextPuzzleLength: number = arg;
 
         // Try to find some words of the correct length
-        const nextPuzzleWords = await chooseMagicWords(1, nextPuzzleLength);
+        const nextPuzzleWords = await chooseMagicWords(1, { characters: nextPuzzleLength });
         if (nextPuzzleWords.length > 0) {
             // If a word was found, restart the puzzle and notify the channel
             event.wordle = {
@@ -2869,7 +2882,7 @@ const processCommands = async (msg: Message): Promise<void> => {
             });
             // Restart the game
             const newPuzzleLength = tempWordle.solution.length + 1;
-            const words = await chooseMagicWords(1, newPuzzleLength);
+            const words = await chooseMagicWords(1, { characters: newPuzzleLength });
             if (words.length > 0) {
                 const word = words[0].toUpperCase();
                 tempWordle = {
@@ -3123,7 +3136,7 @@ const processCommands = async (msg: Message): Promise<void> => {
         }
         // Choose a magic word and show potential recipients
         else if (sanitizedText.includes('magic word')) {
-            const magicWords = await chooseMagicWords(randInt(2, 5));
+            const magicWords = await chooseMagicWords(randInt(2, 5), { bonusMultiplier: 10 });
             const potentialRecipients: Snowflake[] = state.getPotentialMagicWordRecipients();
             const recipient: string = potentialRecipients.length > 0 ? state.getPlayerDisplayName(randChoice(...potentialRecipients)) : 'N/A';
             await msg.reply(`The test magic words are ${naturalJoin(magicWords, { bold: true })}, and send the hint to **${recipient}** (Out of **${potentialRecipients.length}** choices)`);
@@ -3248,7 +3261,7 @@ const processCommands = async (msg: Message): Promise<void> => {
                 await msg.reply(`\`${id}\` is NOT in the state!`);
             }
         } else if (sanitizedText.includes('wordle')) {
-            const words = await chooseMagicWords(1, 4);
+            const words = await chooseMagicWords(1, { characters: 4 });
             if (words.length > 0) {
                 const word = words[0].toUpperCase();
                 tempWordle = {
