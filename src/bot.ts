@@ -804,7 +804,8 @@ const chooseGoodMorningTime = (eventType: DailyEventType | undefined): Date => {
     const MIN_HOURS: Record<string, [number, number]> = {
         default: [6, 0],
         [DailyEventType.SleepyMorning]: [10, 0],
-        [DailyEventType.ReverseGoodMorning]: [7, 0]
+        [DailyEventType.ReverseGoodMorning]: [7, 0],
+        [DailyEventType.GameDecision]: [7, 0]
     };
     const MAX_HOURS: Record<string, [number, number]> = {
         default: [10, 45],
@@ -812,6 +813,7 @@ const chooseGoodMorningTime = (eventType: DailyEventType | undefined): Date => {
         [DailyEventType.ReverseGoodMorning]: [11, 15],
         [DailyEventType.AnonymousSubmissions]: [8, 0],
         [DailyEventType.Popcorn]: [9, 15],
+        [DailyEventType.GameDecision]: [9, 30],
         [DailyEventType.GameUpdate]: [9, 0]
     };
     const MIN_HOUR: [number, number] = MIN_HOURS[eventType ?? 'default'] ?? MIN_HOURS.default;
