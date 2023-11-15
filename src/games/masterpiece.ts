@@ -1,15 +1,17 @@
 import canvas, { Canvas, NodeCanvasRenderingContext2D } from 'canvas';
-import { ActionRowData, AttachmentBuilder, ButtonStyle, ComponentType, GuildMember, Interaction, MessageActionRowComponentData, MessageFlags, Snowflake } from "discord.js";
+import { ActionRowData, AttachmentBuilder, ButtonInteraction, ButtonStyle, ComponentType, GuildMember, Interaction, MessageActionRowComponentData, MessageFlags, Snowflake } from "discord.js";
 import { DecisionProcessingResult, MasterpieceGameState, MasterpiecePieceState, MasterpiecePlayerState, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
-import { naturalJoin, randChoice, shuffle, toFixed, toLetterId } from "evanw555.js";
+import { capitalize, naturalJoin, randChoice, shuffle, toFixed, toLetterId } from "evanw555.js";
 
 import logger from "../logger";
 import imageLoader from '../image-loader';
 import { text } from '../util';
 
+type AuctionType = 'bank' | 'private';
+
 export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> {
-    private bankAuctionLock: boolean = false;
+    private auctionLock: boolean = false;
 
     constructor(state: MasterpieceGameState) {
         super(state);
@@ -65,7 +67,8 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
             decisions: {},
             turn: 0,
             players,
-            pieces
+            pieces,
+            auctions: {}
         });
     }
 
@@ -80,6 +83,10 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
             5,  5,  5,
             0,  0
         ]
+    }
+
+    private static getAuctionTypes(): AuctionType[] {
+        return ['bank', 'private'];
     }
 
     private getPieces(): MasterpiecePieceState[] {
@@ -153,14 +160,22 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
     }
 
     override getDecisionPhases(): { key: string; millis: number; }[] {
-        // If for some reason there aren't any pieces available (this shouldn't happen), then handle gracefully...
-        if (this.getNumAvailablePieces() === 0) {
-            return [];
+        const phases: { key: string; millis: number; }[] = [];
+        // If there are enough pieces for a bank auction, schedule a phase for that
+        if (this.getNumAvailablePieces() > 0) {
+            phases.push({
+                key: 'beginBankAuction',
+                millis: this.isTesting() ? (1000 * 5) : (1000 * 60 * 30) // 30 minutes, 5 seconds if testing
+            });
         }
-        return [{
-            key: 'beginBankAuction',
-            millis: this.isTesting() ? (1000 * 5) : (1000 * 60 * 30) // 30 minutes, 5 seconds if testing
-        }];
+        // If there's a private auction today, schedule a phase for that
+        if (this.state.auctions.private) {
+            phases.push({
+                key: 'beginPrivateAuction',
+                millis: this.isTesting() ? (1000 * 10) : (1000 * 60 * 90) // 1.5 hours, 10 seconds if testing
+            })
+        }
+        return phases;
     }
 
     override async onDecisionPhase(key: string): Promise<MessengerPayload[]> {
@@ -170,9 +185,10 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
                 // First, choose a random available piece to auction off
                 const pieceId = randChoice(...this.getAvailablePieceIds());
                 // Set the bank auction state
-                this.state.bankAuction = {
+                this.state.auctions.bank = {
                     pieceId,
-                    bid: 0
+                    bid: 0,
+                    active: true
                 };
                 // Return the messages
                 return [
@@ -193,6 +209,33 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
                         }]
                     }
                 ];
+            case 'beginPrivateAuction':
+                // Validate that the private auction even exists
+                const auction = this.state.auctions.private;
+                if (!auction) {
+                    return [];
+                }
+                // Activate the private auction
+                auction.active = true;
+                // Return the messages
+                return [
+                    `Oh dear! It looks like this week\'s contest winner has chosen to force one of **${this.getPieceOwnerString(auction.pieceId)}'s** pieces into auction...`,
+                    {
+                        files: [await this.renderAuction(auction.pieceId, 'Private Auction', 'private')]
+                    },
+                    {
+                        content: 'Do we have any bidders? Let\'s start with **$1**',
+                        components: [{
+                            type: ComponentType.ActionRow,
+                            components: [{
+                                type: ComponentType.Button,
+                                style: ButtonStyle.Success,
+                                label: 'Bid',
+                                custom_id: 'game:privateBid'
+                            }]
+                        }]
+                    }
+                ];
         }
         return [];
     }
@@ -200,27 +243,40 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
     override async onDecisionPreNoon(): Promise<MessengerPayload[]> {
         const responseMessages: MessengerPayload[] = [];
 
-        // Process the bank auction bid
-        if (this.state.bankAuction) {
-            const { pieceId, bid, bidder } = this.state.bankAuction;
-            // Clear the bank auction to prevent further action
-            delete this.state.bankAuction;
-            if (bidder) {
-                // Assign the piece to this owner
-                this.getPiece(pieceId).owner = bidder;
-                // Deduct points from the player
-                this.addPoints(bidder, -bid);
-                // Reply with appropriate message
-                responseMessages.push({
-                    content: `<@${bidder}> has won the auction for _${this.getPieceName(pieceId)}_ with a bid of **$${bid}**!`,
-                    files: [await this.renderAuction(pieceId, 'Bank Auction', 'bank')],
-                    components: this.getDecisionActionRow()
-                });
-            } else {
-                // Reply with appropriate message
-                responseMessages.push({
-                    content: `No one bid on _${this.getPieceName(pieceId)}_! What??? I guess we'll save that one for another day...`
-                });
+        // Mark all existing auctions as inactive to prevent further action
+        for (const auction of Object.values(this.state.auctions)) {
+            delete auction.active;
+        }
+
+        // Process the active auctions
+        for (const type of Object.keys(this.state.auctions)) {
+            const auction = this.state.auctions[type];
+            if (auction) {
+                const { pieceId, bid, bidder } = auction;
+                // Clear the auction to double-prevent further action
+                delete this.state.auctions[type];
+                if (bidder) {
+                    // If the piece belonged to another player, add points to their balance
+                    const previousOwnerId = this.getPieceOwner(pieceId);
+                    if (typeof previousOwnerId === 'string') {
+                        this.addPoints(previousOwnerId, bid);
+                    }
+                    // Assign the piece to this owner
+                    this.getPiece(pieceId).owner = bidder;
+                    // Deduct points from the player
+                    this.addPoints(bidder, -bid);
+                    // Reply with appropriate message
+                    responseMessages.push({
+                        content: `<@${bidder}> has won the auction for _${this.getPieceName(pieceId)}_ with a bid of **$${bid}**!`,
+                        files: [await this.renderAuction(pieceId, `${capitalize(type)} Auction`, type)],
+                        components: this.getDecisionActionRow()
+                    });
+                } else {
+                    // Reply with appropriate message
+                    responseMessages.push({
+                        content: `No one bid on _${this.getPieceName(pieceId)}_! What??? I guess we'll save that one for another day...`
+                    });
+                }
             }
         }
 
@@ -391,6 +447,17 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
 
     private getAssumedPlayerWealth(userId: Snowflake): number {
         return this.getPoints(userId) + this.getNumPiecesForUser(userId) * this.getAverageUnsoldPieceValue();
+    }
+
+    /**
+     * @param userId The ID of the player
+     * @returns The amount this player is currently committing to spend in all existing auctions
+     */
+    private getPlayerBidLiability(userId: Snowflake): number {
+        return Object.values(this.state.auctions)
+            .filter(a => a.bidder === userId)
+            .map(a => a.bid)
+            .reduce((a, b) => a + b, 0);
     }
 
     private async drawImageAsCircle(context: NodeCanvasRenderingContext2D, image: canvas.Image, alpha: number, centerX: number, centerY: number, radius: number): Promise<void> {
@@ -913,77 +980,12 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
                         });
                     }
                     break;
-                case 'game:bankBid': {
-                    // Do some basic validation
-                    if (!this.state.bankAuction) {
-                        await interaction.reply({
-                            ephemeral: true,
-                            content: 'You can\'t place a bid right now, as there\'s no active bank auction!'
-                        });
-                        return;
-                    }
-                    if (userId === this.state.bankAuction.bidder) {
-                        await interaction.reply({
-                            ephemeral: true,
-                            content: 'You were the last one to bid! Wait until someone else bids, then try again...'
-                        });
-                        return;
-                    }
-                    // Compute the target bid and validate whether the user can even place a bid
-                    const bidAmount = this.state.bankAuction.bid + 1;
-                    if (this.getPoints(userId) < bidAmount) {
-                        await interaction.reply({
-                            ephemeral: true,
-                            content: `You can't place a **$${bidAmount}** bid, as you only have **$${this.getPoints(userId)}**!`
-                        });
-                        return;
-                    }
-                    // Check and acquire the lock
-                    if (this.bankAuctionLock) {
-                        await interaction.reply({
-                            ephemeral: true,
-                            content: 'Someone else is placing a bid at this exact moment, try again in half a second...'
-                        });
-                        return;
-                    }
-                    this.bankAuctionLock = true;
-                    // Place the bid
-                    this.state.bankAuction.bidder = userId;
-                    this.state.bankAuction.bid = bidAmount;
-                    // Reply and notify the channel
-                    const pieceId = this.state.bankAuction.pieceId;
-                    const pieceName = this.getPiece(pieceId).name;
-                    await interaction.reply({
-                        ephemeral: true,
-                        content: `You've placed a bid on _${pieceName}_!`
-                    });
-                    await interaction.channel?.send({
-                        content: `<@${userId}> has raised the bid on _${pieceName}_ to **$${bidAmount}**!`,
-                        flags: MessageFlags.SuppressNotifications
-                    });
-                    await interaction.channel?.send({
-                        content: `**$${bidAmount + 1}**, anyone?`,
-                        components: [{
-                            type: ComponentType.ActionRow,
-                            components: [{
-                                type: ComponentType.Button,
-                                style: ButtonStyle.Success,
-                                label: 'Bid',
-                                custom_id: 'game:bankBid'
-                            }]
-                        }],
-                        flags: MessageFlags.SuppressNotifications
-                    });
-                    // Delete the original message containing the previous bid button
-                    try {
-                        await interaction.message.delete();
-                    } catch (err) {
-                        // TODO: Better way to do this?
-                    }
-                    // Release the lock
-                    this.bankAuctionLock = false;
+                case 'game:bankBid':
+                    await this.handleBid('bank', interaction);
                     break;
-                }
+                case 'game:privateBid':
+                    await this.handleBid('private', interaction);
+                    break;
                 case 'game:sell':
                     // Validate that this user can do this
                     if (!this.isPlayerPendingPrize(userId)) {
@@ -1123,7 +1125,7 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
                         return;
                     }
                     // Update the state
-                    this.state.privateAuction = {
+                    this.state.auctions.private = {
                         pieceId,
                         bid: 0
                     };
@@ -1137,5 +1139,90 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
                 }
             }
         }
+    }
+
+    private async handleBid(type: AuctionType, interaction: ButtonInteraction) {
+        const userId = interaction.user.id;
+        const auction = this.state.auctions[type];
+        // Ensure the auction exists and is active
+        if (!auction || !auction.active) {
+            await interaction.reply({
+                ephemeral: true,
+                content: `You can't place a bid right now, as there's no active ${type} auction!`
+            });
+            return;
+        }
+        // The player cannot bid on the same piece twice in a row
+        if (userId === auction.bidder) {
+            await interaction.reply({
+                ephemeral: true,
+                content: 'You were the last one to bid! Wait until someone else bids, then try again...'
+            });
+            return;
+        }
+        // The player cannot bid on a piece they own (e.g. cannot bid on a piece stolen from you via private auction)
+        if (userId === this.getPieceOwner(auction.pieceId)) {
+            await interaction.reply({
+                ephemeral: true,
+                content: 'This is your piece, buddy. You can\'t bid on it! You must sit in the corner and watch as everyone bids on your own piece.'
+            });
+            return;
+        }
+        // Compute the target bid and validate whether the user can even place a bid
+        const bidAmount = auction.bid + 1;
+        const existingBidLiability = this.getPlayerBidLiability(userId);
+        const totalLiability = bidAmount + existingBidLiability;
+        if (totalLiability > this.getPoints(userId)) {
+            await interaction.reply({
+                ephemeral: true,
+                content: `You can't place a **$${bidAmount}** bid, as you only have **$${this.getPoints(userId)}**!`
+                    + (existingBidLiability > 0 ? ` (and you're currently bidding **$${existingBidLiability}** on other auctions)` : '')
+            });
+            return;
+        }
+        // Check and acquire the lock
+        if (this.auctionLock) {
+            await interaction.reply({
+                ephemeral: true,
+                content: 'Someone else is placing a bid at this exact moment, try again in half a second...'
+            });
+            return;
+        }
+        this.auctionLock = true;
+        // Place the bid
+        auction.bidder = userId;
+        auction.bid = bidAmount;
+        // Reply and notify the channel
+        const pieceId = auction.pieceId;
+        const pieceName = this.getPiece(pieceId).name;
+        await interaction.reply({
+            ephemeral: true,
+            content: `You've placed a bid on _${pieceName}_!`
+        });
+        await interaction.channel?.send({
+            content: `<@${userId}> has raised the bid on _${pieceName}_ to **$${bidAmount}**!`,
+            flags: MessageFlags.SuppressNotifications
+        });
+        await interaction.channel?.send({
+            content: `**$${bidAmount + 1}**, anyone?`,
+            components: [{
+                type: ComponentType.ActionRow,
+                components: [{
+                    type: ComponentType.Button,
+                    style: ButtonStyle.Success,
+                    label: 'Bid',
+                    custom_id: `game:${type}Bid`
+                }]
+            }],
+            flags: MessageFlags.SuppressNotifications
+        });
+        // Delete the original message containing the previous bid button
+        try {
+            await interaction.message.delete();
+        } catch (err) {
+            // TODO: Better way to do this?
+        }
+        // Release the lock
+        this.auctionLock = false;
     }
 }

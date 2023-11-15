@@ -258,11 +258,20 @@ export interface MasterpiecePieceState {
     owner: Snowflake | boolean
 }
 
+export interface MasterpieceAuctionState {
+    pieceId: string,
+    bid: number,
+    bidder?: Snowflake,
+    active?: true
+}
+
 export interface MasterpieceGameState extends AbstractGameState<'MASTERPIECE_GAME_STATE'> {
-    players: Record<Snowflake, MasterpiecePlayerState>,
-    pieces: Record<string, MasterpiecePieceState>,
-    bankAuction?: { pieceId: string, bid: number, bidder?: Snowflake },
-    privateAuction?: { pieceId: string, bid: number, bidder?: Snowflake },
+    readonly players: Record<Snowflake, MasterpiecePlayerState>,
+    readonly pieces: Record<string, MasterpiecePieceState>,
+    readonly auctions: {
+        bank?: MasterpieceAuctionState,
+        private?: MasterpieceAuctionState
+    },
     // ID of the piece being offered in the "silent auction"
     silentAuctionPieceId?: string,
     // ID of the piece to be sold during the next game update
