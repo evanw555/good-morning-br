@@ -1,11 +1,11 @@
-import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, BaseMessageOptions, ButtonStyle, Client, Component, ComponentType, DMChannel, GatewayIntentBits, MessageFlags, PartialMessage, Partials, TextChannel, TextInputStyle, User } from 'discord.js';
+import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, BaseMessageOptions, ButtonStyle, Client, ComponentType, DMChannel, GatewayIntentBits, MessageFlags, PartialMessage, Partials, TextChannel, TextInputStyle, User } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discord.js';
 import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, AnonymousSubmission, GameState, Wordle, SubmissionPromptHistory, ReplyToMessageData, GoodMorningAuth, MessengerPayload, WordleRestartData } from './types';
 import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, canonicalizeText, getScaledPoints, generateSynopsisWithAi } from './util';
 import GoodMorningState from './state';
 import { addReactsSync, chance, DiscordTimestampFormat, FileStorage, generateKMeansClusters, getClockTime, getPollChoiceKeys, getRandomDateBetween,
     getRankString, getRelativeDateTimeString, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger,
-    naturalJoin, PastTimeoutStrategy, R9KTextBank, randChoice, randInt, shuffle, sleep, TimeoutManager, toCalendarDate, toDiscordTimestamp, toFixed, toLetterId } from 'evanw555.js';
+    naturalJoin, PastTimeoutStrategy, R9KTextBank, randChoice, randInt, shuffle, sleep, splitTextNaturally, TimeoutManager, toCalendarDate, toDiscordTimestamp, toFixed, toLetterId } from 'evanw555.js';
 import { getProgressOfGuess, renderWordleState } from './wordle';
 import ActivityTracker from './activity-tracker';
 import AbstractGame from './games/abstract-game';
@@ -1582,8 +1582,10 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             if (event.storySegments && event.storySegments.length > 0) {
                 // TODO: Remove this try-catch once we're sure it's working
                 try {
-                    const summary = await generateSynopsisWithAi(event.storySegments.join('\n'));
-                    await messenger.send(goodMorningChannel, summary.slice(0, 1990));
+                    const summary = splitTextNaturally(await generateSynopsisWithAi(event.storySegments.join('\n')), 1500);
+                    for (const summarySegment of summary) {
+                        await messenger.send(goodMorningChannel, summarySegment);
+                    }
                 } catch (err) {
                     await logger.log(`Failed to summarize popcorn story: \`${err}\``);
                 }
@@ -3489,8 +3491,11 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     if (event.storySegments && event.storySegments.length > 0) {
                         // TODO: Remove this try-catch once we're sure it's working
                         try {
-                            const summary = await generateSynopsisWithAi(event.storySegments.join('\n'));
-                            await logger.log(`**Summary so far:**\n${summary}`);
+                            const summary = splitTextNaturally(await generateSynopsisWithAi(event.storySegments.join('\n')), 1500);
+                            await logger.log('**Summary so far:**');
+                            for (const summarySegment of summary) {
+                                await logger.log(summarySegment);
+                            }
                         } catch (err) {
                             await logger.log(`Failed to summarize popcorn story: \`${err}\``);
                         }
