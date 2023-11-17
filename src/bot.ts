@@ -1,6 +1,6 @@
 import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, BaseMessageOptions, ButtonStyle, Client, Component, ComponentType, DMChannel, GatewayIntentBits, MessageFlags, PartialMessage, Partials, TextChannel, TextInputStyle, User } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discord.js';
-import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, AnonymousSubmission, GameState, Wordle, SubmissionPromptHistory, ReplyToMessageData, GoodMorningAuth, MessengerPayload } from './types';
+import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, AnonymousSubmission, GameState, Wordle, SubmissionPromptHistory, ReplyToMessageData, GoodMorningAuth, MessengerPayload, WordleRestartData } from './types';
 import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, canonicalizeText, getScaledPoints, generateSynopsisWithAi } from './util';
 import GoodMorningState from './state';
 import { addReactsSync, chance, DiscordTimestampFormat, FileStorage, generateKMeansClusters, getClockTime, getPollChoiceKeys, getRandomDateBetween,
@@ -352,7 +352,7 @@ const chooseEvent = async (date: Date): Promise<DailyEvent | undefined> => {
             type: DailyEventType.Popcorn
         }];
         // Add the wordle event if words can be found
-        const wordleWords = await chooseMagicWords(1, { characters: 5 });
+        const wordleWords = await chooseMagicWords(1, { characters: 6, bonusMultiplier: 8 });
         if (wordleWords.length > 0) {
             focusEvents.push({
                 type: DailyEventType.Wordle,
@@ -1785,23 +1785,25 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         }
 
         // Abort if there's no length argument to the timeout
-        if (typeof arg !== 'number') {
-            await logger.log(`WARNING! Attempted to trigger wordle restart with arg \`${arg}\` of non-number type. Aborting...`);
+        if (!arg) {
+            await logger.log('WARNING! Attempted to trigger wordle restart with no arg. Aborting...');
             return;
         }
-        const nextPuzzleLength: number = arg;
+        const { nextPuzzleLength, blacklistedUserId } = arg as WordleRestartData;
 
         // Try to find some words of the correct length
-        const nextPuzzleWords = await chooseMagicWords(1, { characters: nextPuzzleLength, bonusMultiplier: 3 });
+        const nextPuzzleWords = await chooseMagicWords(1, { characters: nextPuzzleLength, bonusMultiplier: 8 });
         if (nextPuzzleWords.length > 0) {
             // If a word was found, restart the puzzle and notify the channel
             event.wordle = {
                 solution: nextPuzzleWords[0].toUpperCase(),
                 guesses: [],
-                guessOwners: []
+                guessOwners: [],
+                blacklistedUserId
             };
             await dumpState();
-            await messenger.send(goodMorningChannel, `Let's solve another puzzle! If you get a better score, it will overwrite your previous score. Someone give me a **${nextPuzzleLength}**-letter word`);
+            await messenger.send(goodMorningChannel, `Let's solve another puzzle! If you get a better score, it will overwrite your previous score. `
+                + `Someone other than **${state.getPlayerDisplayName(blacklistedUserId)}** give me a **${nextPuzzleLength}**-letter word`);
         } else {
             await logger.log(`Unable to find a **${nextPuzzleLength}**-letter word, ending Wordle for today...`);
         }
@@ -3511,6 +3513,11 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                         if (!wordleGuess.match(/^[A-Z]+$/)) {
                             return;
                         }
+                        // Ignore the user if they solved the previous puzzle
+                        if (userId === event.wordle.blacklistedUserId) {
+                            await messenger.reply(msg, 'You solved the previous puzzle, give someone else a chance!');
+                            return;
+                        }
                         // Cut the user off if their guess isn't the right length
                         if (wordleGuess.length !== event.wordle.solution.length) {
                             await messenger.reply(msg, `Try again but with a **${event.wordle.solution.length}**-letter word`);
@@ -3538,12 +3545,14 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                                 })).setName('wordle.png')]
                             });
                             await messenger.send(msg.channel, `Count how many times your avatar appears, that's your score ${config.defaultGoodMorningEmoji}`);
-                            // Schedule the next round, potentially with a longer word (the longer the word, the longer the delay)
-                            const chanceToAdvance = previousWordle.solution.length < 8 ? 0.7 : 0.3;
-                            const nextPuzzleLength = previousWordle.solution.length + (chance(chanceToAdvance) ? 1 : 0);
+                            // Schedule the next round with a random word length
+                            const arg: WordleRestartData = {
+                                nextPuzzleLength: randChoice(5, 6, 7, 8),
+                                blacklistedUserId: userId
+                            };
                             const wordleRestartDate = new Date();
-                            wordleRestartDate.setMinutes(wordleRestartDate.getMinutes() + randInt(nextPuzzleLength, nextPuzzleLength * 4));
-                            await timeoutManager.registerTimeout(TimeoutType.WordleRestart, wordleRestartDate, { arg: nextPuzzleLength, pastStrategy: PastTimeoutStrategy.Delete});
+                            wordleRestartDate.setMinutes(wordleRestartDate.getMinutes() + randInt(5, 25));
+                            await timeoutManager.registerTimeout(TimeoutType.WordleRestart, wordleRestartDate, { arg, pastStrategy: PastTimeoutStrategy.Delete});
                         } else {
                             // Determine this user's score (1 default + 1 for each new tile)
                             const score = config.defaultAward * (1 + progress);

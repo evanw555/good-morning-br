@@ -365,7 +365,13 @@ export interface GoodMorningHistory {
 export interface Wordle {
     solution: string,
     guesses: string[],
-    guessOwners: Snowflake[]
+    guessOwners: Snowflake[],
+    blacklistedUserId?: Snowflake
+}
+
+export interface WordleRestartData {
+    nextPuzzleLength: number,
+    blacklistedUserId: Snowflake
 }
 
 export interface SubmissionPromptHistory {
