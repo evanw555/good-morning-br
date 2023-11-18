@@ -782,14 +782,17 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         }];
     }
 
-    override getSeasonEndText(): string[] {
+    override async getSeasonEndMessages(): Promise<MessengerPayload[]> {
         const winners: Snowflake[] = this.getWinners();
         if (this.isHalloween()) {
             return [
                 `This season, **${this.getNumPlayers()}** players competed each morning to leave us aghast`,
                 'Many of us were spooked, but many cowered under the covers - waiting for the night to pass...',
                 'Through all the screams and tears, only one could be crowned the King of the Graveyard...',
-                `That King's name is <@${winners[0]}> - a monster who goes oh so hard!`,
+                {
+                    content: `That King's name is <@${winners[0]}> - a monster who goes oh so hard!`,
+                    files: [await this.renderSeasonEndStateAttachment()]
+                },
                 `<@${winners[1]}> and <@${winners[2]}> arose from their graves to unleash terror, but the champion beat them to it`,
                 '...as for the rest of you wannabe ghouls, you absolutely blew it!',
                 'As the season comes to a bittersweet close, remember all those October mornings so gay',
@@ -799,7 +802,10 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         return [
             `This season, **${this.getNumPlayers()}** players competed each morning to bring the most sunshine and cheer...`,
             'Many of you were takers, but many of you were peekers too!',
-            `Ultimately, only one could be crowned the King of the Morning... <@${winners[0]}>!`,
+            {
+                content: `Ultimately, only one could be crowned the King of the Morning... <@${winners[0]}>!`,
+                files: [await this.renderSeasonEndStateAttachment()]
+            },
             `<@${winners[1]}> and <@${winners[2]}> put up a good fight - and for that we are grateful - yet it was not enough to be crowned champion`
         ];
     }

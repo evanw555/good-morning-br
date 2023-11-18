@@ -747,17 +747,10 @@ const sendSeasonEndMessages = async (channel: TextBasedChannel, previousState: G
     await messenger.send(channel, `Well everyone, season **${previousState.getSeasonNumber()}** has finally come to an end!`);
     await sleep(10000);
     // Send custom messages for each game
-    const seasonEndMessages = game.getSeasonEndText();
-    for (const text of seasonEndMessages) {
-        await messenger.send(goodMorningChannel, text);
+    const seasonEndMessages = await game.getSeasonEndMessages();
+    for (const messengerPayload of seasonEndMessages) {
+        await messenger.send(goodMorningChannel, messengerPayload);
     }
-    // Send the state render
-    try { // TODO: refactor image sending into the messenger class?
-        await channel.sendTyping();
-    } catch (err) {}
-    await sleep(5000);
-    const attachment = new AttachmentBuilder(await game.renderState({ seasonOver: true })).setName(`game-final.png`);
-    await goodMorningChannel.send({ files: [attachment] });
     // await messenger.send(channel, 'In a couple minutes, I\'ll reveal the winners and the final standings...');
     // await messenger.send(channel, 'In the meantime, please congratulate yourselves (penalties are disabled), take a deep breath, and appreciate the friends you\'ve made in this channel 🙂');
     // Send the "final results image"

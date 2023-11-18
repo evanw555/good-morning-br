@@ -173,6 +173,12 @@ export default abstract class AbstractGame<T extends GameState> {
     async renderStateAttachment(): Promise<AttachmentBuilder> {
         return new AttachmentBuilder(await this.renderState()).setName(`game-week${this.getTurn()}.png`)
     }
+    /**
+     * Wrapper method for rendering the season end state into an image attachment.
+     */
+    async renderSeasonEndStateAttachment(): Promise<AttachmentBuilder> {
+        return new AttachmentBuilder(await this.renderState({ seasonOver: true })).setName(`game-final.png`);
+    }
 
     abstract beginTurn(): string[]
 
@@ -261,10 +267,13 @@ export default abstract class AbstractGame<T extends GameState> {
     /**
      * @returns Message(s) to be sent once the game is over
      */
-    getSeasonEndText(): string[] {
+    async getSeasonEndMessages(): Promise<MessengerPayload[]> {
         return [
             'Thanks to all those who have participated. You have made these mornings bright and joyous for not just me, but for everyone here 🌞',
-            `Congrats to the winner of this season, <@${this.getWinners()[0]}>!`
+            {
+                content: `Congrats to the winner of this season, <@${this.getWinners()[0]}>!`,
+                files: [await this.renderSeasonEndStateAttachment()]
+            }
         ];
     }
 

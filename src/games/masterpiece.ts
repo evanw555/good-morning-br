@@ -317,8 +317,14 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
         return Object.keys(this.state.players);
     }
 
-    override getOrderedPlayers(): string[] {
+    override getOrderedPlayers(): Snowflake[] {
+        // This is the public ordering, so only use ASSUMED player wealth
         return this.getPlayers().sort((x, y) => this.getAssumedPlayerWealth(y) - this.getAssumedPlayerWealth(x));
+    }
+
+    private getTrueOrderedPlayers(): Snowflake[] {
+        // This is only used at the end to determine the winners, NEVER show this to the players before then
+        return this.getPlayers().sort((x, y) => this.getTruePlayerWealth(y) - this.getTruePlayerWealth(x));
     }
 
     override hasPlayer(userId: string): boolean {
@@ -445,8 +451,24 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
         return this.getSumValueOfUnsoldPieces() / this.getNumUnsoldPieces();
     }
 
+    /**
+     * @param userId Some player's user ID
+     * @returns The assumed wealth of the player (cash + value of owned pieces assuming they have the average unsold piece value)
+     */
     private getAssumedPlayerWealth(userId: Snowflake): number {
         return this.getPoints(userId) + this.getNumPiecesForUser(userId) * this.getAverageUnsoldPieceValue();
+    }
+
+    /**
+     * @param userId Some player's user ID
+     * @returns The true wealth of the player (cash + value of owned pieces)
+     */
+    private getTruePlayerWealth(userId: Snowflake): number {
+        return this.getPoints(userId)
+            // Sum up the true value of this player's pieces
+            + this.getPieceIdsForUser(userId)
+                .map(pieceId => this.getPieceValue(pieceId))
+                .reduce((a, b) => a + b);
     }
 
     /**
@@ -749,11 +771,35 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
     }
 
     override async endTurn(): Promise<MessengerPayload[]> {
+        // If the game is over, hint at that
+        if (this.getNumAvailablePieces() === 0) {
+            return [
+                'Well my dear friends, it looks like I\'ve auctioned off all the pieces in the bank vault! This means our _Art Auction Adventure_ is coming to a close today...',
+                {
+                    content: 'Here are the current standings (with the value of each unsold piece still hidden)',
+                    files: [new AttachmentBuilder(await this.renderState()).setName(`game-week${this.getTurn()}-end.png`)],
+                    components: this.getDecisionActionRow()
+                },
+                'At noon, I\'ll reveal the value of everyone\'s collection... and thus: the wealthiest three dogs who shall be named our winners!'
+            ];
+        }
+        // Else, show a generic closing message
         return [{
             content: text('{!Well|Alright}, that\'s all the {!art trading|auctioneering} for now. Have a blessed week and remember to {!stack your cheddar|count your bills|cherish each morning}!'),
             files: [new AttachmentBuilder(await this.renderState()).setName(`game-week${this.getTurn()}-end.png`)],
             components: this.getDecisionActionRow()
         }];
+    }
+
+    override endDay(): void {
+        // At noon after the final game update, do some processing to determine the winners and how to reveal the final pieces
+        if (this.getNumAvailablePieces() === 0) {
+            // First, add the winners
+            for (const userId of this.getTrueOrderedPlayers().slice(0, 3)) {
+                this.addWinner(userId);
+            }
+            // TODO: Do some processing here to determine what exactly gets revealed in the season end text
+        }
     }
 
     override getPoints(userId: string): number {
@@ -925,7 +971,8 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
             }
         }
 
-        // TODO: Do something here
+        // Fallback message that shows only if there's no active silent auction
+        // TODO: Can we just short-circuit instead of showing this?
         return {
             continueProcessing: false,
             summary: {
@@ -1224,5 +1271,14 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
         }
         // Release the lock
         this.auctionLock = false;
+    }
+
+    override async getSeasonEndMessages(): Promise<MessengerPayload[]> {
+        return [
+            // TODO: Reveal the true value of all the pieces in a dramatic fashion (starting with all weak pieces and finally with the most valuable pieces)
+            // TODO: Show some render of the true order of players, showing their true wealth (show the true value of their pieces)
+            // TODO: Show a cool render of the three winners on golden pedestals
+            'TODO: Yeah the game is over!'
+        ];
     }
 }
