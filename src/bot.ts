@@ -75,6 +75,30 @@ let history: GoodMorningHistory;
 
 let dailyVolatileLog: [Date, String][] = [];
 
+/**
+ * Set of users who have typed in the good morning channel since some event-related point in time.
+ * Currently this is only used for the Popcorn event to track users who've typed since the last turn.
+ */
+const typingUsers: Set<string> = new Set();
+
+const getPopcornFallbackUserId = (): Snowflake | undefined => {
+    if (state.getEventType() === DailyEventType.Popcorn) {
+        const event = state.getEvent();
+        // First, give priority to typing users who haven't had a turn yet
+        const turnlessTypingUsers = Array.from(typingUsers).filter(id => !state.hasDailyRank(id) && id !== event.user);
+        if (turnlessTypingUsers.length > 0) {
+            return randChoice(...turnlessTypingUsers);
+        }
+        // Next, give priority to typing users who may have had a turn already
+        const otherTypingUsers = Array.from(typingUsers).filter(id => id !== event.user);
+        if (otherTypingUsers.length > 0) {
+            return randChoice(...otherTypingUsers);
+        }
+        // Last priority goes to the most active user who hasn't had a turn yet
+        return state.getActivityOrderedPlayers().filter(id => !state.hasDailyRank(id) && id !== event.user)[0];
+    }
+};
+
 // TODO(testing): Use this during testing to directly trigger subsequent timeouts
 const showTimeoutTriggerButton = async (type: TimeoutType) => {
     await goodMorningChannel.send({
@@ -1427,6 +1451,8 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         // If it's a popcorn day, prompt the end of the story
         if (state.getEventType() === DailyEventType.Popcorn) {
             const event = state.getEvent();
+            // Cancel the fallback timeout to prevent weird race conditions at the end of the game
+            await cancelTimeoutsWithType(TimeoutType.PopcornFallback);
             // "Disabling" the event allows the current user to end the story, and if there's no user then it prevents further action
             event.disabled = true;
             // Prompt the user to end the story or cut it off there
@@ -2807,7 +2833,7 @@ client.on('typingStart', async (typing) => {
             const event = state.getEvent();
             const userId = typing.user.id;
             if (event.user && event.user === userId) {
-                // Determine the postponed fallback time
+                // It's currently this user's turn, so postpone the fallback
                 const inFiveMinutes = new Date();
                 inFiveMinutes.setMinutes(inFiveMinutes.getMinutes() + 5);
                 // Determine the existing fallback time
@@ -2822,6 +2848,16 @@ client.on('typingStart', async (typing) => {
                     // TODO: Temp logging to see how this is working
                     await logger.log(`**${state.getPlayerDisplayName(userId)}** started typing, postpone fallback ` + naturalJoin(ids.map(id => `**${id}** to **${timeoutManager.getDateForTimeoutWithId(id)?.toLocaleTimeString()}**`)));
                 }
+            } else if (!event.disabled && !event.user) {
+                // It's not this user's turn, but it's up for grabs so let them have it!
+                event.user = userId;
+                await dumpState();
+                await messenger.send(goodMorningChannel, languageGenerator.generate(`<@${userId}> I see you typing, {!I'll let you have this turn|I'll let this turn be yours|this turn is yours}!`));
+                // Wipe the typing users map
+                typingUsers.clear();
+            } else {
+                // In all other cases, add the user to this turn's set of typing users
+                typingUsers.add(userId);
             }
         }
     }
@@ -3429,7 +3465,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     await dumpState();
                     // Pick out a potential fallback in case this user didn't tag correctly
                     const mentionedUserIds = getMessageMentions(msg);
-                    const fallbackUserId: Snowflake | undefined = state.getActivityOrderedPlayers().filter(id => !state.hasDailyRank(id) && id !== event.user)[0];
+                    const fallbackUserId = getPopcornFallbackUserId();
                     // If there's no fallback and the user is breaking the rules, force them to try again and abort
                     if (!fallbackUserId) {
                         if (mentionedUserIds.includes(userId)) {
@@ -3444,6 +3480,8 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     await reactToMessage(msg, '🍿');
                     // Cancel any existing popcorn fallback timeouts
                     await cancelTimeoutsWithType(TimeoutType.PopcornFallback);
+                    // Wipe the set of typing users for the previous turn
+                    typingUsers.clear();
                     // Save the latest popcorn message ID in the state
                     event.messageId = msg.id;
                     // Pass the torch to someone else...
@@ -3485,20 +3523,6 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                         await timeoutManager.registerTimeout(TimeoutType.PopcornFallback, fallbackDate, { pastStrategy: PastTimeoutStrategy.Invoke});
                         // TODO: Temp logging to see how this goes
                         await logger.log(`Scheduled popcorn fallback for **${state.getPlayerDisplayName(event.user)}** at **${getRelativeDateTimeString(fallbackDate)}**`);
-                    }
-                    // TODO: Temp logic to see how the synposis generation is working so far
-                    // Summarize the story
-                    if (event.storySegments && event.storySegments.length > 0) {
-                        // TODO: Remove this try-catch once we're sure it's working
-                        try {
-                            const summary = splitTextNaturally(await generateSynopsisWithAi(event.storySegments.join('\n')), 1500);
-                            await logger.log('**Summary so far:**');
-                            for (const summarySegment of summary) {
-                                await logger.log(summarySegment);
-                            }
-                        } catch (err) {
-                            await logger.log(`Failed to summarize popcorn story: \`${err}\``);
-                        }
                     }
                 }
             }
