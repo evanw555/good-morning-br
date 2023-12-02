@@ -2833,7 +2833,8 @@ client.on('typingStart', async (typing) => {
             const event = state.getEvent();
             const userId = typing.user.id;
             if (event.user && event.user === userId) {
-                // It's currently this user's turn, so postpone the fallback
+                // It's currently this user's turn, so postpone the fallback.
+                // Determine the postponed fallback time
                 const inFiveMinutes = new Date();
                 inFiveMinutes.setMinutes(inFiveMinutes.getMinutes() + 5);
                 // Determine the existing fallback time
@@ -2842,8 +2843,8 @@ client.on('typingStart', async (typing) => {
                     await logger.log('Cannot postpone the popcorn fallback, as no existing fallback date was found!');
                     return;
                 }
-                // Only postpone if the existing fallback is sooner than the postponed time (otherwise, it would be moved up constantly with lots of spam)
-                if (existingFallbackTime.getTime() < inFiveMinutes.getTime()) {
+                // Only postpone if the existing fallback is sooner than 1m from now (otherwise, it would be moved up constantly with lots of spam)
+                if (existingFallbackTime.getTime() - new Date().getTime() < 1000 * 60) {
                     const ids = await timeoutManager.postponeTimeoutsWithType(TimeoutType.PopcornFallback, inFiveMinutes);
                     // TODO: Temp logging to see how this is working
                     await logger.log(`**${state.getPlayerDisplayName(userId)}** started typing, postpone fallback ` + naturalJoin(ids.map(id => `**${id}** to **${timeoutManager.getDateForTimeoutWithId(id)?.toLocaleTimeString()}**`)));
