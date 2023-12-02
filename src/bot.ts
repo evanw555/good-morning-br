@@ -1849,8 +1849,10 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         }
 
         // Send the initial message
-        const rootSubmissionMessage: Message = await messenger.sendAndGet(goodMorningChannel, `Here are your anonymous submissions! ${config.defaultGoodMorningEmoji}`);
-        anonymousSubmissions.setRootSubmissionMessage(rootSubmissionMessage.id);
+        const rootSubmissionMessage = await messenger.send(goodMorningChannel, `Here are your anonymous submissions! ${config.defaultGoodMorningEmoji}`);
+        if (rootSubmissionMessage) {
+            anonymousSubmissions.setRootSubmissionMessage(rootSubmissionMessage.id);
+        }
         await dumpState();
 
         // Shuffle all the revelant user IDs
@@ -1985,8 +1987,13 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         } else if (delinquents.length > 1) {
             // Send a voting notification to the channel
             try {
-                const rootSubmissionMessage: Message = await goodMorningChannel.messages.fetch(anonymousSubmissions.getRootSubmissionMessage());
-                await messenger.reply(rootSubmissionMessage, `If you haven't already, please vote on your favorite ${anonymousSubmissions.getPrompt()} with \`/vote\`!`);
+                const reminderText = `If you haven't already, please vote on your favorite ${anonymousSubmissions.getPrompt()} with \`/vote\`!`;
+                if (anonymousSubmissions.hasRootSubmissionMessage()) {
+                    const rootSubmissionMessage: Message = await goodMorningChannel.messages.fetch(anonymousSubmissions.getRootSubmissionMessage());
+                    await messenger.reply(rootSubmissionMessage, reminderText);
+                } else {
+                    await messenger.send(goodMorningChannel, reminderText);
+                }
             } catch (err) {
                 logger.log(`Failed to fetch root submission message and send reminder: \`${err.toString()}\``);
             }
