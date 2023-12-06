@@ -829,6 +829,7 @@ const chooseGoodMorningTime = (eventType: DailyEventType | undefined): Date => {
         [DailyEventType.EarlyMorning]: [5, 0],
         [DailyEventType.SleepyMorning]: [10, 0],
         [DailyEventType.ReverseGoodMorning]: [7, 0],
+        [DailyEventType.AnonymousSubmissions]: [6, 0],
         [DailyEventType.GameDecision]: [7, 0]
     };
     const MAX_HOURS: Record<string, [number, number]> = {
