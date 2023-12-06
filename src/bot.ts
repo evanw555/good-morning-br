@@ -435,6 +435,9 @@ const chooseEvent = async (date: Date): Promise<DailyEvent | undefined> => {
                 type: DailyEventType.GrumpyMorning
             },
             {
+                type: DailyEventType.EarlyMorning
+            },
+            {
                 type: DailyEventType.SleepyMorning
             },
             {
@@ -649,6 +652,9 @@ const sendGoodMorningMessage = async (): Promise<void> => {
         case DailyEventType.GrumpyMorning:
             await messenger.send(goodMorningChannel, languageGenerator.generate('{grumpyMorning}'));
             break;
+        case DailyEventType.EarlyMorning:
+            await messenger.send(goodMorningChannel, languageGenerator.generate('{earlyMorning}'));
+            break;
         case DailyEventType.SleepyMorning:
             await messenger.send(goodMorningChannel, languageGenerator.generate('{sleepyMorning}'));
             break;
@@ -819,13 +825,15 @@ const setStatus = async (active: boolean): Promise<void> => {
 const chooseGoodMorningTime = (eventType: DailyEventType | undefined): Date => {
     // Hour-minute overrides of the earliest/latest possible time of a particular event
     const MIN_HOURS: Record<string, [number, number]> = {
-        default: [6, 0],
+        default: [7, 0],
+        [DailyEventType.EarlyMorning]: [5, 0],
         [DailyEventType.SleepyMorning]: [10, 0],
         [DailyEventType.ReverseGoodMorning]: [7, 0],
         [DailyEventType.GameDecision]: [7, 0]
     };
     const MAX_HOURS: Record<string, [number, number]> = {
-        default: [10, 45],
+        default: [10, 0],
+        [DailyEventType.EarlyMorning]: [7, 0],
         [DailyEventType.SleepyMorning]: [11, 30],
         [DailyEventType.ReverseGoodMorning]: [11, 15],
         [DailyEventType.AnonymousSubmissions]: [8, 0],

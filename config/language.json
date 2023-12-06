@@ -114,6 +114,16 @@
             "Awaken! Awaken",
             "Wake up"
         ],
+        "earlyMorningIntro": [
+            "UP AND AT 'EM",
+            "The early bird gets the worm",
+            "The early dog gets the bone",
+            "LET'S GO",
+            "Who up?",
+            "'Tis one {adjectives.beautiful?}, early morning for me",
+            "Top o' the morning to you all",
+            "Awaken, my early risers"
+        ],
         "sleepyMorningIntro": [
             "{!Yawnnnnnn|Yawn}......",
             "Me {!tired|sleepy}.",
@@ -219,6 +229,7 @@
     "wishfulWednesday": "{phrases.morningIntro?}, for today is Wishful Wednesday! Tag a dear friend and wish them a {adjectives.positive?} morning. Those who receive more wishes will be graced with {nouns.treasure?1-2}. If you don't send any wishes, it will reflect quite poorly on you...",
     "happyFriday": "Happy Friday! {phrases.wellWish?} 🐒",
     "grumpyMorning": "{!Hello|Hey|Morning} everyone, honestly I'm not feeling too {!good|great} {!this morning|today}... I encourage you all to say good morning, but the first {!one|person} to say it is gonna {!piss me off|irritate me|really bug me}.",
+    "earlyMorning": "{phrases.earlyMorningIntro?}! {phrases.wellWish?}",
     "sleepyMorning": "{phrases.sleepyMorningIntro?} Good morning 😴",
     "earlyEndMorning": "{phrases.morningIntro?}! {phrases.earlyEnd?}. {phrases.wellWish?}",
     "weeklyUpdate": "{!Good morning|Happy Sunday}! {phrases.seasonUpdate?}",

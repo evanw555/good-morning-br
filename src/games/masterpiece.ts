@@ -916,6 +916,7 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
                 continueProcessing: true,
                 summary: {
                     content: `**${this.getPlayerDisplayName(ownerId)}** sold their piece _"${this.getPieceName(pieceId)}"_ to the Museum of Gaming History for **$${value}**, removing this piece from the game!`,
+                    // TODO: Render this piece on the wall at a museum
                     files: [await this.renderStateAttachment()]
                 }
             };

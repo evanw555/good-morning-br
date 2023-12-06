@@ -110,6 +110,7 @@ export enum DailyEventType {
     BeginHomeStretch = 'BEGIN_HOME_STRETCH',
     Beckoning = 'BECKONING',
     GrumpyMorning = 'GRUMPY_MORNING',
+    EarlyMorning = 'EARLY_MORNING',
     SleepyMorning = 'SLEEPY_MORNING',
     WritersBlock = 'WRITERS_BLOCK',
     Nightmare = 'NIGHTMARE',
