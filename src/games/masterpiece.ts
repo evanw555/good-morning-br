@@ -577,7 +577,7 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
     private async renderInventory(userId: Snowflake): Promise<AttachmentBuilder> {
         const inventoryImage = await imageLoader.loadImage('assets/masterpiece/inventory.png');
         const pieceIds = this.getPieceIdsForUser(userId);
-        const c = canvas.createCanvas(inventoryImage.width * (pieceIds.length + 1), inventoryImage.height);
+        const c = canvas.createCanvas(inventoryImage.width * pieceIds.length, inventoryImage.height);
         const context = c.getContext('2d');
         for (let i = 0; i < pieceIds.length; i++) {
             const pieceId = pieceIds[i];
