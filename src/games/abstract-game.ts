@@ -237,8 +237,8 @@ export default abstract class AbstractGame<T extends GameState> {
         return [];
     }
 
-    async handleGameInteraction(interaction: Interaction): Promise<void> {
-
+    async handleGameInteraction(interaction: Interaction): Promise<MessengerPayload[] | undefined> {
+        return undefined;
     };
 
     /**

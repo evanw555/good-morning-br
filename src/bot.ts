@@ -3,20 +3,21 @@ import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discor
 import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, AnonymousSubmission, GameState, Wordle, SubmissionPromptHistory, ReplyToMessageData, GoodMorningAuth, MessengerPayload, WordleRestartData } from './types';
 import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, canonicalizeText, getScaledPoints, generateSynopsisWithAi } from './util';
 import GoodMorningState from './state';
-import { addReactsSync, chance, DiscordTimestampFormat, FileStorage, generateKMeansClusters, getClockTime, getPollChoiceKeys, getRandomDateBetween,
+import { addReactsSync, chance, DiscordTimestampFormat, FileStorage, generateKMeansClusters, getClockTime, getJoinedMentions, getPollChoiceKeys, getRandomDateBetween,
     getRankString, getRelativeDateTimeString, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger,
-    naturalJoin, PastTimeoutStrategy, R9KTextBank, randChoice, randInt, shuffle, sleep, splitTextNaturally, TimeoutManager, toCalendarDate, toDiscordTimestamp, toFixed, toLetterId } from 'evanw555.js';
+    naturalJoin, PastTimeoutStrategy, R9KTextBank, randChoice, randInt, shuffle, sleep, splitTextNaturally, TimeoutManager, TimeoutOptions, toCalendarDate, toDiscordTimestamp, toFixed, toLetterId } from 'evanw555.js';
 import { getProgressOfGuess, renderWordleState } from './wordle';
+import { AnonymousSubmissionsState } from './submissions';
 import ActivityTracker from './activity-tracker';
 import AbstractGame from './games/abstract-game';
 import ClassicGame from './games/classic';
 import MazeGame from './games/maze';
 import MasterpieceGame from './games/masterpiece';
 import IslandGame from './games/island';
+import RiskGame from './games/risk';
 
 import logger from './logger';
 import imageLoader from './image-loader';
-import { AnonymousSubmissionsState } from './submissions';
 
 const auth: GoodMorningAuth = loadJson('config/auth.json');
 const config: GoodMorningConfig = loadJson('config/config.json');
@@ -100,19 +101,34 @@ const getPopcornFallbackUserId = (): Snowflake | undefined => {
 };
 
 // TODO(testing): Use this during testing to directly trigger subsequent timeouts
-const showTimeoutTriggerButton = async (type: TimeoutType) => {
+const showTimeoutTriggerButton = async (type: TimeoutType, arg?: any) => {
+    let customId = `invokeTimeout:${type}`;
+    if (arg !== undefined) {
+        customId += `:${encodeURIComponent(JSON.stringify(arg))}`;
+    }
     await goodMorningChannel.send({
-        content: `Click here to jump to the next \`${type}\``,
+        content: `Click here to trigger \`${customId}\``,
         components: [{
             type: ComponentType.ActionRow,
             components: [{
                 type: ComponentType.Button,
                 style: ButtonStyle.Primary,
-                custom_id: 'invokeTimeout:' + type,
+                custom_id: customId,
                 label: 'Go'
             }]
         }]
     });
+};
+
+/**
+ * This is a wrapper for the timeout manager that allows us to spawn buttons instead of timeouts when testing locally.
+ */
+const registerTimeout = async (type: TimeoutType, date: Date, options?: TimeoutOptions) => {
+    if (config.testing) {
+        await showTimeoutTriggerButton(type, options?.arg);
+    } else {
+        await timeoutManager.registerTimeout(type, date, options);
+    }
 };
 
 const getDisplayName = async (userId: Snowflake): Promise<string> => {
@@ -152,10 +168,6 @@ const fetchUsers = async (userIds: Snowflake[]): Promise<Record<Snowflake, User>
 
 const getBoldNames = (userIds: Snowflake[]): string => {
     return naturalJoin(userIds.map(userId => `**${state.getPlayerDisplayName(userId)}**`));
-}
-
-const getJoinedMentions = (userIds: Snowflake[]): string => {
-    return naturalJoin(userIds.map(userId => `<@${userId}>`));
 }
 
 const replaceUserIdsInText = (input: string): string => {
@@ -358,6 +370,18 @@ const advanceSeason = async (): Promise<{ gold?: Snowflake, silver?: Snowflake, 
 };
 
 const chooseEvent = async (date: Date): Promise<DailyEvent | undefined> => {
+    // If we're testing locally, alternate between game decision and update
+    if (config.testing) {
+        if (state.getEventType() === DailyEventType.GameDecision) {
+            return {
+                type: DailyEventType.GameUpdate
+            };
+        } else {
+            return {
+                type: DailyEventType.GameDecision
+            };
+        }
+    }
     // Sunday: Game Update
     if (date.getDay() === 0) {
         return {
@@ -867,8 +891,7 @@ const registerGoodMorningTimeout = async (): Promise<void> => {
     }
 
     // We register this with the "Increment Day" strategy since it happens at a particular time and it's not competing with any other triggers.
-    await timeoutManager.registerTimeout(TimeoutType.NextGoodMorning, nextMorning, { pastStrategy: PastTimeoutStrategy.IncrementDay });
-    // await showTimeoutTriggerButton(TimeoutType.NextGoodMorning);
+    await registerTimeout(TimeoutType.NextGoodMorning, nextMorning, { pastStrategy: PastTimeoutStrategy.IncrementDay });
 };
 
 const registerGuestReveilleFallbackTimeout = async (): Promise<void> => {
@@ -877,7 +900,7 @@ const registerGuestReveilleFallbackTimeout = async (): Promise<void> => {
     date.setHours(11, randInt(30, 45), randInt(0, 60));
     // We register this with the "Invoke" strategy since this way of "waking up" is competing with a user-driven trigger.
     // We want to invoke this ASAP in order to avoid this event when it's no longer needed.
-    await timeoutManager.registerTimeout(TimeoutType.GuestReveilleFallback, date, { pastStrategy: PastTimeoutStrategy.Invoke });
+    await registerTimeout(TimeoutType.GuestReveilleFallback, date, { pastStrategy: PastTimeoutStrategy.Invoke });
 };
 
 const wakeUp = async (sendMessage: boolean): Promise<void> => {
@@ -887,8 +910,10 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         return;
     }
 
-    // TODO(testing): Temp logic for local testing, can we make this configurable?
-    // await goodMorningChannel.bulkDelete(await goodMorningChannel.messages.fetch({ limit: 50 }));
+    // If testing locally, delete recent messages upon waking up
+    if (config.testing) {
+        await goodMorningChannel.bulkDelete(await goodMorningChannel.messages.fetch({ limit: 50 }));
+    }
 
     // If today is the first decision of the season, instantiate the game...
     if (state.getEventType() === DailyEventType.GameDecision && !state.hasGame()) {
@@ -907,8 +932,12 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         // const newGame = MazeGame.createOrganicBest(members, 20, 43, 19, 90);
         // const newGame = ClassicGame.create(members, true);
         // const newGame = IslandGame.create(members);
-        const newGame = MasterpieceGame.create(members, state.getSeasonNumber());
+        // const newGame = MasterpieceGame.create(members, state.getSeasonNumber());
+        const newGame = RiskGame.create(members, state.getSeasonNumber());
         state.setGame(newGame);
+        if (config.testing) {
+            newGame.setTesting(true);
+        }
         // For all starting players, add the points they earned before the game was instantiated
         for (const userId of participatingUserIds) {
             state.getGame().addPoints(userId, state.getPlayerPoints(userId));
@@ -996,8 +1025,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     if (state.getEventType() === DailyEventType.GameUpdate) {
         const firstDecisionProcessDate: Date = new Date();
         firstDecisionProcessDate.setMinutes(firstDecisionProcessDate.getMinutes() + 5);
-        await timeoutManager.registerTimeout(TimeoutType.ProcessGameDecisions, firstDecisionProcessDate, { pastStrategy: PastTimeoutStrategy.Invoke });
-        // await showTimeoutTriggerButton(TimeoutType.ProcessGameDecisions);
+        await registerTimeout(TimeoutType.ProcessGameDecisions, firstDecisionProcessDate, { pastStrategy: PastTimeoutStrategy.Invoke });
     }
 
     if (state.getEventType() === DailyEventType.BeginHomeStretch) {
@@ -1006,7 +1034,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         // Set timeout for first home stretch surprise (these events are recursive)
         const surpriseTime = new Date();
         surpriseTime.setMinutes(surpriseTime.getMinutes() + 10);
-        await timeoutManager.registerTimeout(TimeoutType.HomeStretchSurprise, surpriseTime, { pastStrategy: PastTimeoutStrategy.Invoke });
+        await registerTimeout(TimeoutType.HomeStretchSurprise, surpriseTime, { pastStrategy: PastTimeoutStrategy.Invoke });
     }
 
     if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
@@ -1017,7 +1045,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         const submissionRevealTime = new Date();
         submissionRevealTime.setHours(10, 50, 0, 0);
         // We register this with the "Invoke" strategy since we want it to happen before Pre-Noon (with which it's registered in parallel)
-        await timeoutManager.registerTimeout(TimeoutType.AnonymousSubmissionReveal, submissionRevealTime, { pastStrategy: PastTimeoutStrategy.Invoke });
+        await registerTimeout(TimeoutType.AnonymousSubmissionReveal, submissionRevealTime, { pastStrategy: PastTimeoutStrategy.Invoke });
         // Also, register a reply to give users a 5 minute warning
         const fiveMinuteWarningTime = new Date(submissionRevealTime);
         fiveMinuteWarningTime.setMinutes(fiveMinuteWarningTime.getMinutes() - 5);
@@ -1026,7 +1054,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
             content: randChoice('5 minute warning', '5 minutes left, submit now or hold your peace', '5 minutes left', 'You have 5 minutes',
                 'Revealing submissions in 5 minutes', '5 MINUTES!', 'Closing my DMs in 5 minutes', 'Window closes in 5 minutes') + ' ⏳'
         };
-        await timeoutManager.registerTimeout(TimeoutType.ReplyToMessage, fiveMinuteWarningTime, { arg: warningArg, pastStrategy: PastTimeoutStrategy.Delete });
+        await registerTimeout(TimeoutType.ReplyToMessage, fiveMinuteWarningTime, { arg: warningArg, pastStrategy: PastTimeoutStrategy.Delete });
     }
 
     const minutesEarly: number = state.getEventType() === DailyEventType.EarlyEnd ? (state.getEvent().minutesEarly ?? 0) : 0;
@@ -1034,8 +1062,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     const preNoonToday: Date = new Date();
     preNoonToday.setHours(11, randInt(48, 56) - minutesEarly, randInt(0, 60), 0);
     // We register this with the "Increment Hour" strategy since its subsequent timeout (Noon) is registered in series
-    await timeoutManager.registerTimeout(TimeoutType.NextPreNoon, preNoonToday, { pastStrategy: PastTimeoutStrategy.IncrementHour });
-    // await showTimeoutTriggerButton(TimeoutType.NextPreNoon);
+    await registerTimeout(TimeoutType.NextPreNoon, preNoonToday, { pastStrategy: PastTimeoutStrategy.IncrementHour });
 
     // Update the bot's status to active
     await setStatus(true);
@@ -1061,7 +1088,6 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
 
     // Send the remaining game decision messages
     if (state.getEventType() === DailyEventType.GameDecision && state.hasGame()) {
-        const attachment = new AttachmentBuilder(await state.getGame().renderState()).setName(`game-turn${state.getGame().getTurn()}-decision.png`);
         if (state.getGame().getTurn() === 1) {
             // If it's the first week, send the introduction messages for this game
             const introductionMessages = await state.getGame().getIntroductionMessages();
@@ -1070,6 +1096,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
             }
         } else {
             // If it's not the first week, send the state image for this week
+            const attachment = new AttachmentBuilder(await state.getGame().renderState()).setName(`game-turn${state.getGame().getTurn()}-decision.png`);
             await goodMorningChannel.send({
                 files: [attachment],
                 components: state.getGame().getDecisionActionRow()
@@ -1080,7 +1107,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         // Get decision phases that need to be scheduled
         for (const decisionPhase of state.getGame().getDecisionPhases()) {
             const phaseDate = new Date(new Date().getTime() + decisionPhase.millis);
-            await timeoutManager.registerTimeout(TimeoutType.GameDecisionPhase, phaseDate, { arg: decisionPhase.key, pastStrategy: PastTimeoutStrategy.Invoke});
+            await registerTimeout(TimeoutType.GameDecisionPhase, phaseDate, { arg: decisionPhase.key, pastStrategy: PastTimeoutStrategy.Invoke});
         }
     }
 
@@ -1405,14 +1432,13 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         noonToday.setHours(12, 0, 0, 0);
         noonToday.setMinutes(noonToday.getMinutes() - minutesEarly);
         // We register this with the "Increment Hour" strategy since its subsequent timeout (GoodMorning) is registered in series
-        await timeoutManager.registerTimeout(TimeoutType.NextNoon, noonToday, { pastStrategy: PastTimeoutStrategy.IncrementHour });
-        // await showTimeoutTriggerButton(TimeoutType.NextNoon);
+        await registerTimeout(TimeoutType.NextNoon, noonToday, { pastStrategy: PastTimeoutStrategy.IncrementHour });
         // Set timeout for when baiting starts
         const baitingStartTime: Date = new Date();
         baitingStartTime.setHours(11, 59, 0, 0);
         baitingStartTime.setMinutes(baitingStartTime.getMinutes() - minutesEarly);
         // We register this with the "Delete" strategy since it doesn't schedule any events and it's non-critical
-        await timeoutManager.registerTimeout(TimeoutType.BaitingStart, baitingStartTime, { pastStrategy: PastTimeoutStrategy.Delete });
+        await registerTimeout(TimeoutType.BaitingStart, baitingStartTime, { pastStrategy: PastTimeoutStrategy.Delete });
 
         // Check the results of anonymous submissions
         if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
@@ -1488,17 +1514,6 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
 
         // Determine event for tomorrow
         const nextEvent = await chooseEvent(getTomorrow());
-        // TODO(testing): Temp logic for local testing, can we make this configurable?
-        // let nextEvent: DailyEvent;
-        // if (state.getEventType() === DailyEventType.GameDecision) {
-        //     nextEvent = {
-        //         type: DailyEventType.GameUpdate
-        //     };
-        // } else {
-        //     nextEvent = {
-        //         type: DailyEventType.GameDecision
-        //     };
-        // }
         if (nextEvent && !state.isSeasonGoalReached()) {
             state.setNextEvent(nextEvent);
             // TODO: temporary message to tell admin when a special event has been selected, remove this soon
@@ -1623,12 +1638,12 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         // Activate the queued up event (this can only be done after all thing which process the morning's event)
         state.dequeueNextEvent();
 
-        // TODO(testing): Temp logic to simulate the prize award system, can we make this configurable?
-        // if (state.getEventType() === DailyEventType.GameDecision) {
-        //     const randomUserId = randChoice(...state.getPlayers());
-        //     await awardPrize(randomUserId, 'submissions1', 'Congrats on winning the contest');
-        //     await goodMorningChannel.send(`Sent prize offer to <@${randomUserId}>`);
-        // }
+        // If we're testing locally, simulate the prize award system by awarding a prize to a random user
+        if (config.testing && state.getEventType() === DailyEventType.GameDecision) {
+            const randomUserId = randChoice(...state.getPlayers());
+            await awardPrize(randomUserId, 'submissions1', 'Congrats for existing');
+            await goodMorningChannel.send(`Sent prize offer to <@${randomUserId}>`);
+        }
 
         // Set tomorrow's magic words (if it's not an abnormal event tomorrow)
         state.clearMagicWords();
@@ -1672,7 +1687,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                 const nightmareDate: Date = getTomorrow();
                 nightmareDate.setHours(randInt(1, 4), randInt(0, 60), randInt(0, 60), 0);
                 // If this event was missed, simply delete it (nothing will be impacted if it's skipped)
-                await timeoutManager.registerTimeout(TimeoutType.Nightmare, nightmareDate, { pastStrategy: PastTimeoutStrategy.Delete });
+                await registerTimeout(TimeoutType.Nightmare, nightmareDate, { pastStrategy: PastTimeoutStrategy.Delete });
                 await logger.log(`Scheduled nightmare event for **${getRelativeDateTimeString(nightmareDate)}**`);
             }
             // Poll for tomorrow's submission prompt (if tomorrow is a submissions day and there's not already a pre-determined prompt)
@@ -1691,9 +1706,9 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                     messageId: fyiMessage.id,
                     content: await chooseRandomUnusedSubmissionPrompt()
                 };
-                await timeoutManager.registerTimeout(TimeoutType.ReplyToMessage, getRandomDateBetween(new Date(), pollStartDate, { maxAlong: 0.8, bates: 2 }), { arg, pastStrategy: PastTimeoutStrategy.Delete });
+                await registerTimeout(TimeoutType.ReplyToMessage, getRandomDateBetween(new Date(), pollStartDate, { maxAlong: 0.8, bates: 2 }), { arg, pastStrategy: PastTimeoutStrategy.Delete });
                 // Use the delete strategy because it's not required and we want to ensure it's before the morning date
-                await timeoutManager.registerTimeout(TimeoutType.AnonymousSubmissionTypePollStart, pollStartDate, { arg: fyiMessage.id, pastStrategy: PastTimeoutStrategy.Delete });
+                await registerTimeout(TimeoutType.AnonymousSubmissionTypePollStart, pollStartDate, { arg: fyiMessage.id, pastStrategy: PastTimeoutStrategy.Delete });
             }
             // Alternatively, if it's the first Saturday of the month then start a high-effort submissions prompt poll
             else if (new Date().getDay() === 6 && new Date().getDate() <= 7) {
@@ -1712,10 +1727,10 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                         messageId: fyiMessage.id,
                         content: unusedPrompt
                     };
-                    await timeoutManager.registerTimeout(TimeoutType.ReplyToMessage, getRandomDateBetween(new Date(), pollStartDate, { maxAlong: 0.8, bates: 2 }), { arg, pastStrategy: PastTimeoutStrategy.Delete });
+                    await registerTimeout(TimeoutType.ReplyToMessage, getRandomDateBetween(new Date(), pollStartDate, { maxAlong: 0.8, bates: 2 }), { arg, pastStrategy: PastTimeoutStrategy.Delete });
                 }
                 // Use the delete strategy because it's not required and we want to ensure it's before the morning date
-                await timeoutManager.registerTimeout(TimeoutType.AnonymousSubmissionTypePollStart, pollStartDate, { arg: fyiMessage.id, pastStrategy: PastTimeoutStrategy.Delete });
+                await registerTimeout(TimeoutType.AnonymousSubmissionTypePollStart, pollStartDate, { arg: fyiMessage.id, pastStrategy: PastTimeoutStrategy.Delete });
             }
         }
 
@@ -1753,7 +1768,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             const nextSeasonStart: Date = new Date();
             nextSeasonStart.setHours(8, 0, 0, 0);
             nextSeasonStart.setDate(nextSeasonStart.getDate() + 8 - nextSeasonStart.getDay());
-            await timeoutManager.registerTimeout(TimeoutType.NextGoodMorning, nextSeasonStart, { pastStrategy: PastTimeoutStrategy.IncrementDay });
+            await registerTimeout(TimeoutType.NextGoodMorning, nextSeasonStart, { pastStrategy: PastTimeoutStrategy.IncrementDay });
             await logger.log(`Registered next season's first GM for **${getRelativeDateTimeString(nextSeasonStart)}**`);
         }
 
@@ -1987,7 +2002,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             const reminderTime: Date = new Date();
             reminderTime.setHours(hour, minute);
             // We register these with the "Delete" strategy since they are terminal and aren't needed if in the past
-            timeoutManager.registerTimeout(TimeoutType.AnonymousSubmissionVotingReminder, reminderTime, { pastStrategy: PastTimeoutStrategy.Delete });
+            registerTimeout(TimeoutType.AnonymousSubmissionVotingReminder, reminderTime, { pastStrategy: PastTimeoutStrategy.Delete });
         });
     },
     [TimeoutType.AnonymousSubmissionVotingReminder]: async (): Promise<void> => {
@@ -2074,7 +2089,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             // Schedule the timeout again
             const in1Hour = new Date();
             in1Hour.setHours(in1Hour.getHours() + 2);
-            await timeoutManager.registerTimeout(TimeoutType.AnonymousSubmissionTypePollStart, in1Hour, { arg: messageId, pastStrategy: PastTimeoutStrategy.Delete });
+            await registerTimeout(TimeoutType.AnonymousSubmissionTypePollStart, in1Hour, { arg: messageId, pastStrategy: PastTimeoutStrategy.Delete });
             // Notify the channel
             await sungazersChannel.send('I don\'t see any prompt ideas, I\'ll give you one more hour to pitch some...');
             return;
@@ -2117,7 +2132,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             choices
         }
         // Use the delete strategy because it's not required and we want to ensure it's before the morning date
-        await timeoutManager.registerTimeout(TimeoutType.AnonymousSubmissionTypePollEnd, pollEndDate, { arg, pastStrategy: PastTimeoutStrategy.Delete });
+        await registerTimeout(TimeoutType.AnonymousSubmissionTypePollEnd, pollEndDate, { arg, pastStrategy: PastTimeoutStrategy.Delete });
     },
     [TimeoutType.AnonymousSubmissionTypePollEnd]: async (arg: { messageId: Snowflake, choices: Record<string, string> }): Promise<void> => {
         if (!arg || !arg.messageId || !arg.choices) {
@@ -2293,8 +2308,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             } else {
                 nextProcessDate.setMinutes(nextProcessDate.getMinutes() + randInt(20, 35));
             }
-            await timeoutManager.registerTimeout(TimeoutType.ProcessGameDecisions, nextProcessDate, { pastStrategy: PastTimeoutStrategy.Invoke });
-            // await showTimeoutTriggerButton(TimeoutType.ProcessGameDecisions);
+            await registerTimeout(TimeoutType.ProcessGameDecisions, nextProcessDate, { pastStrategy: PastTimeoutStrategy.Invoke });
         } else {
             // Trigger turn-end logic and send turn-end messages
             const turnEndMessages = await game.endTurn();
@@ -2577,20 +2591,38 @@ client.on('ready', async (): Promise<void> => {
 
     await dumpState();
 
-    // TODO(testing): Temp logic to aid in testing, figure out a way to make this configurable
-    // state.setNextEvent({
-    //     type: DailyEventType.GameDecision
-    // });
-    // state.dequeueNextEvent();
-    // state.setMorning(false);
-    // await timeoutManager.cancelTimeoutsWithType(TimeoutType.NextPreNoon);
-    // await timeoutManager.cancelTimeoutsWithType(TimeoutType.NextNoon);
-    // await timeoutManager.cancelTimeoutsWithType(TimeoutType.NextGoodMorning);
-    // await timeoutManager.cancelTimeoutsWithType(TimeoutType.GameDecisionPhase);
-    // if (state.hasGame()) {
-    //     state.getGame().setTesting(true);
-    // }
-    // await wakeUp(true);
+    // If we're testing locally, delete all existing timeouts and jump straight to the morning of the decision
+    if (config.testing) {
+        // First, create a new state altogether
+        state = new GoodMorningState({
+            season: 99,
+            startedOn: getTodayDateString(),
+            isMorning: false,
+            isGracePeriod: true,
+            goodMorningEmoji: config.defaultGoodMorningEmoji,
+            dailyStatus: {},
+            players: {}
+        });
+        // Add players with random starting points
+        for (const member of (await guild.members.fetch()).toJSON()) {
+            if (!member.user.bot) {
+                state.awardPoints(member.id, randInt(0, 10));
+            }
+        }
+        await dumpState();
+        // Jump straight to the morning of the decision
+        state.setNextEvent({
+            type: DailyEventType.GameDecision
+        });
+        state.dequeueNextEvent();
+        state.setMorning(false);
+        // TODO: Can we somehow delete all scheduled events? May need to add a new library method
+        await timeoutManager.cancelTimeoutsWithType(TimeoutType.NextPreNoon);
+        await timeoutManager.cancelTimeoutsWithType(TimeoutType.NextNoon);
+        await timeoutManager.cancelTimeoutsWithType(TimeoutType.NextGoodMorning);
+        await timeoutManager.cancelTimeoutsWithType(TimeoutType.GameDecisionPhase);
+        await wakeUp(true);
+    }
 });
 
 client.on('guildMemberRemove', async (member): Promise<void> => {
@@ -2658,7 +2690,11 @@ client.on('interactionCreate', async (interaction): Promise<void> => {
                 content: 'Invoking...'
             });
             await interaction.message?.delete();
-            await timeoutManager.registerTimeout(customIdSegments[1] as TimeoutType, new Date(), { pastStrategy: PastTimeoutStrategy.Invoke });
+            let timeoutArg = undefined;
+            if (customIdSegments[2]) {
+                timeoutArg = JSON.parse(decodeURIComponent(customIdSegments[2]));
+            }
+            await timeoutManager.registerTimeout(customIdSegments[1] as TimeoutType, new Date(), { arg: timeoutArg, pastStrategy: PastTimeoutStrategy.Invoke });
             return;
         }
         // First, if this is a game decision interaction, pass the handling off to the game instance
@@ -2742,7 +2778,18 @@ client.on('interactionCreate', async (interaction): Promise<void> => {
         if (rootCustomId === 'game') {
             if (state.hasGame()) {
                 // Handle the game interaction in the game state
-                await state.getGame().handleGameInteraction(interaction);
+                try {
+                    const messengerPayloads = await state.getGame().handleGameInteraction(interaction);
+                    // If any payloads were returned, send them to the channel
+                    if (messengerPayloads) {
+                        await messenger.sendAll(goodMorningChannel, messengerPayloads);
+                    }
+                } catch (err) {
+                    await interaction.reply({
+                        ephemeral: true,
+                        content: err.toString()
+                    });
+                }
                 await dumpState();
                 // If not replied to, send an error reply
                 if (!interaction.replied) {
@@ -3530,7 +3577,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                         if (state.hasPlayer(event.user)) {
                             fallbackDate.setMinutes(fallbackDate.getMinutes() + randInt(1, 5) + state.getPlayerActivity(event.user).getStreak());
                         }
-                        await timeoutManager.registerTimeout(TimeoutType.PopcornFallback, fallbackDate, { pastStrategy: PastTimeoutStrategy.Invoke});
+                        await registerTimeout(TimeoutType.PopcornFallback, fallbackDate, { pastStrategy: PastTimeoutStrategy.Invoke});
                         // TODO: Temp logging to see how this goes
                         await logger.log(`Scheduled popcorn fallback for **${state.getPlayerDisplayName(event.user)}** at **${getRelativeDateTimeString(fallbackDate)}**`);
                     }
@@ -3591,7 +3638,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                             };
                             const wordleRestartDate = new Date();
                             wordleRestartDate.setMinutes(wordleRestartDate.getMinutes() + randInt(5, 25));
-                            await timeoutManager.registerTimeout(TimeoutType.WordleRestart, wordleRestartDate, { arg, pastStrategy: PastTimeoutStrategy.Delete});
+                            await registerTimeout(TimeoutType.WordleRestart, wordleRestartDate, { arg, pastStrategy: PastTimeoutStrategy.Delete});
                         } else {
                             // Determine this user's score (1 default + 1 for each new tile)
                             const score = config.defaultAward * (1 + progress);

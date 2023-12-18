@@ -1,10 +1,10 @@
-import { AttachmentBuilder, GuildMember, MessageFlags, Snowflake } from "discord.js";
+import { GuildMember, MessageFlags, Snowflake } from "discord.js";
 import canvas from 'canvas';
 import { DecisionProcessingResult, IslandGameState, IslandPlayerState, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 import { getMostSimilarByNormalizedEditDistance, naturalJoin, randChoice, shuffle, toFixed } from "evanw555.js";
-import imageLoader from "../image-loader";
 
+import imageLoader from "../image-loader";
 import logger from "../logger";
 
 export default class IslandGame extends AbstractGame<IslandGameState> {

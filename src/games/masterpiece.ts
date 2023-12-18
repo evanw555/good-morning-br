@@ -1003,7 +1003,7 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
         }];
     }
 
-    override async handleGameInteraction(interaction: Interaction): Promise<void> {
+    override async handleGameInteraction(interaction: Interaction): Promise<MessengerPayload[] | undefined> {
         const userId = interaction.user.id;
         if (interaction.isButton()) {
             switch (interaction.customId) {

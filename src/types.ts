@@ -63,7 +63,8 @@ export interface GoodMorningConfig {
         role: Snowflake,
         channel: Snowflake
     },
-    testingChannelId: string
+    testingChannelId: string,
+    testing?: true
 }
 
 export interface ReplyToMessageData {
@@ -279,6 +280,24 @@ export interface MasterpieceGameState extends AbstractGameState<'MASTERPIECE_GAM
     salePieceId?: string
 }
 
+export interface RiskPlayerState {
+    displayName: string,
+    points: number,
+    color?: string,
+    finalRank?: number
+}
+
+export interface RiskTerritoryState {
+    owner?: Snowflake,
+    troops: number
+}
+
+export interface RiskGameState extends AbstractGameState<'RISK_GAME_STATE'> {
+    readonly players: Record<Snowflake, RiskPlayerState>,
+    readonly territories: Record<string, RiskTerritoryState>,
+    draft?: Record<Snowflake, { available?: true, timestamp: number}>
+}
+
 export interface ClassicGameState extends AbstractGameState<'CLASSIC_GAME_STATE'> {
     halloween?: true,
     // Goal as determined by a point threshold
@@ -291,7 +310,7 @@ export interface ClassicGameState extends AbstractGameState<'CLASSIC_GAME_STATE'
     revealedActions: Record<Snowflake, string>,
 }
 
-export type GameState = MazeGameState | IslandGameState | ArenaGameState | MasterpieceGameState | ClassicGameState;
+export type GameState = MazeGameState | IslandGameState | ArenaGameState | MasterpieceGameState | RiskGameState | ClassicGameState;
 
 export interface Bait {
     userId: Snowflake,
