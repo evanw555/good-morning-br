@@ -306,7 +306,12 @@ export interface RiskGameState extends AbstractGameState<'RISK_GAME_STATE'> {
     // The following are used for categorized decisions that can only be added via interactions
     addDecisions?: Record<Snowflake, string[]>,
     attackDecisions?: Record<Snowflake, RiskMovementData[]>,
-    moveDecisions?: Record<Snowflake, RiskMovementData>
+    moveDecisions?: Record<Snowflake, RiskMovementData>,
+    // This represents the current conflict being processed
+    currentConflict?: {
+        attackerTroops: number,
+        defenderTroops: number
+    } & RiskMovementData
 }
 
 export interface ClassicGameState extends AbstractGameState<'CLASSIC_GAME_STATE'> {

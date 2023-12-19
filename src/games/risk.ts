@@ -1,11 +1,11 @@
-import { APIActionRowComponent, APIMessageActionRowComponent, APISelectMenuOption, APIStringSelectComponent, ActionRowData, AttachmentBuilder, ButtonInteraction, ButtonStyle, ComponentType, GuildMember, Interaction, InteractionReplyOptions, Message, MessageActionRowComponentData, MessageCreateOptions, MessageFlags, MessageFlagsBitField, Snowflake, StringSelectMenuInteraction } from "discord.js";
+import { APIActionRowComponent, APIMessageActionRowComponent, APISelectMenuOption, ActionRowData, AttachmentBuilder, ButtonStyle, ComponentType, GuildMember, Interaction, InteractionReplyOptions, MessageActionRowComponentData, MessageFlags, Snowflake } from "discord.js";
 import { DecisionProcessingResult, MessengerPayload, PrizeType, RiskGameState, RiskMovementData, RiskPlayerState, RiskTerritoryState } from "../types";
 import AbstractGame from "./abstract-game";
 import { Canvas, createCanvas } from "canvas";
-import { DiscordTimestampFormat, getDateBetween, getJoinedMentions, naturalJoin, randChoice, randInt, toDiscordTimestamp, toFixed } from "evanw555.js";
+import { DiscordTimestampFormat, chance, getDateBetween, getJoinedMentions, naturalJoin, randChoice, randInt, shuffleWithDependencies, toDiscordTimestamp, toFixed } from "evanw555.js";
 
-import imageLoader from "../image-loader";
 import logger from "../logger";
+import imageLoader from "../image-loader";
 
 interface RiskConfig {
     territories: Record<string, {
@@ -107,7 +107,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             },
             W: {
                 name: 'The Fun Zone',
-                connections: ['V', 'X']
+                connections: ['R', 'V', 'X', 'Y']
             },
             X: {
                 name: 'The Wedge',
@@ -278,9 +278,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         return this.getTerritoriesForPlayer(userId)
             // That have adjacent territories owned by this player
             .filter(territoryId => this.getTerritoryConnections(territoryId).some(otherId => this.getTerritoryOwner(otherId) === userId))
-            // That have at least 2 troops
-            // TODO: Account for pending additions too...
-            .filter(territoryId => this.getTerritoryTroops(territoryId) >= 2);
+            // That have at least 2 troops (including ones to be added)
+            .filter(territoryId => this.getPromisedTerritoryTroops(territoryId) >= 2);
     }
 
     private getValidAttackSourceTerritoriesForPlayer(userId: Snowflake): string[] {
@@ -288,9 +287,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         return this.getTerritoriesForPlayer(userId)
             // That have adjacent territories owned by another player
             .filter(territoryId => this.getTerritoryConnections(territoryId).some(otherId => this.getTerritoryOwner(otherId) !== userId))
-            // That have at least 2 troops
-            // TODO: Account for pending additions too...
-            .filter(territoryId => this.getTerritoryTroops(territoryId) >= 2);
+            // That have at least 2 troops (including ones to be added)
+            .filter(territoryId => this.getPromisedTerritoryTroops(territoryId) >= 2);
     }
 
     /**
@@ -307,6 +305,36 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         return this.state.territories[territoryId]?.troops ?? 0;
     }
 
+    /**
+     * Gets the number of troops that are presently scheduled to be added to some territory by any player.
+     */
+    private getTerritoryTroopsToBeAdded(territoryId: string): number {
+        const addDecisions = this.state.addDecisions;
+        if (!addDecisions) {
+            return 0;
+        }
+        let count = 0;
+        for (const territoryIds of Object.values(addDecisions)) {
+            count += territoryIds.filter(id => id === territoryId).length;
+        }
+        return count;
+    }
+
+    /**
+     * Gets the number of actual troops in a territory plus all the troops scheduled to be added to it.
+     */
+    private getPromisedTerritoryTroops(territoryId: string): number {
+        return this.getTerritoryTroops(territoryId) + this.getTerritoryTroopsToBeAdded(territoryId);
+    }
+
+    private addTerritoryTroops(territoryId: string, quantity: number) {
+        this.state.territories[territoryId].troops = this.getTerritoryTroops(territoryId) + quantity;
+    }
+
+    private setTerritoryTroops(territoryId: string, quantity: number) {
+        this.state.territories[territoryId].troops = quantity;
+    }
+
     private getTerritoryName(territoryId: string): string {
         return RiskGame.config.territories[territoryId]?.name ?? '???';
     }
@@ -320,7 +348,10 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             .reduce((a, b) => a + b, 0);
     }
 
-    private getPlayerDisplayName(userId: Snowflake): string {
+    private getPlayerDisplayName(userId: Snowflake | undefined): string {
+        if (!userId) {
+            return '???';
+        }
         return this.state.players[userId]?.displayName ?? `<@${userId}>`;
     }
 
@@ -478,7 +509,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         return canvas;
     }
 
-    beginTurn(): string[] {
+    override beginTurn(): string[] {
         this.state.turn++;
 
         // If we're on the first turn, determine the draft order
@@ -498,9 +529,22 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             this.addPlayerNewTroops(userId, randInt(1, 4));
         }
 
+        // TODO: Determine how many "new troops" are awarded to each player
+        // TODO: Can we somehow generate a graphic showing who got troops this round?
+
         // TODO: Do more here...
 
         return [];
+    }
+
+    override async endTurn(): Promise<MessengerPayload[]> {
+        // Clear all decision-related data
+        delete this.state.addDecisions;
+        delete this.state.attackDecisions;
+        delete this.state.moveDecisions;
+
+        // TODO: Return something meaningful
+        return super.endTurn();
     }
 
     private constructDraftData(): Record<Snowflake, { timestamp: number }> {
@@ -545,6 +589,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
     }
 
     async processPlayerDecisions(): Promise<DecisionProcessingResult> {
+        // If the draft is active, handle this primarily
         if (this.state.draft) {
             // If there are any remaining players, pick a random location for them
             const remainingAvailableUserIds = this.getAvailableDraftPlayers();
@@ -573,11 +618,201 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 summary: 'Alright, everyone\'s settled in! See you all next week when the bloodshed begins...'
             };
         }
-        // TODO: Handle this
+        // If there are pending add decisions, process them
+        if (this.state.addDecisions) {
+            const addDecisions = this.state.addDecisions;
+            for (const userId of Object.keys(addDecisions)) {
+                const territoryIds = addDecisions[userId];
+                for (const territoryId of territoryIds) {
+                    this.addTerritoryTroops(territoryId, 1);
+                }
+            }
+            // Delete the add decisions to prevent further processing on them
+            delete this.state.addDecisions;
+            return {
+                continueProcessing: true,
+                summary: {
+                    content: 'Troops were added!',
+                    // TODO: Show a render that depicts what was added where
+                    files: [await this.renderStateAttachment()]
+                }
+            };
+        }
+        // If there's an active conflict, process it
+        if (this.state.currentConflict) {
+            const conflict = this.state.currentConflict;
+            const attackerId = this.getTerritoryOwner(conflict.from);
+            const defenderId = this.getTerritoryOwner(conflict.to);
+            // Now, roll all the dice
+            const attackerDice = Math.min(3, conflict.attackerTroops);
+            const defenderDice = Math.min(2, conflict.defenderTroops);
+            const attackerRolls = this.getSortedDiceRolls(attackerDice);
+            const defenderRolls = this.getSortedDiceRolls(defenderDice);
+            const numComparisons = Math.min(2, attackerDice, defenderDice);
+            // Compare the first set
+            let summary = `Attacker rolls **${attackerRolls}**, defender rolls **${defenderRolls}**. `;
+            if (attackerRolls[0] > defenderRolls[0]) {
+                conflict.defenderTroops--;
+                summary += `Attacker's **${attackerRolls[0]}** beats **${defenderRolls[0]}**. `;
+            } else {
+                conflict.attackerTroops--;
+                summary += `Defender's **${defenderRolls[0]}** beats **${attackerRolls[0]}**. `;
+            }
+            // If there are enough dice, compare the second set
+            if (numComparisons === 2) {
+                if (attackerRolls[1] > defenderRolls[1]) {
+                    conflict.defenderTroops--;
+                    summary += `Attacker's **${attackerRolls[1]}** beats **${defenderRolls[1]}**. `;
+                } else {
+                    conflict.attackerTroops--;
+                    summary += `Defender's **${defenderRolls[1]}** beats **${attackerRolls[1]}**. `;
+                }
+            }
+            // If it's a defender victory...
+            if (conflict.attackerTroops === 0) {
+                // Update the source territory's troop count
+                this.addTerritoryTroops(conflict.from, -conflict.quantity);
+                // Delete the conflict
+                delete this.state.currentConflict;
+                // Send a message
+                return {
+                    continueProcessing: true,
+                    summary: `${summary}\n**${this.getPlayerDisplayName(defenderId)}** has successfully fended off **${this.getPlayerDisplayName(attackerId)}** at _${this.getTerritoryName(conflict.to)}_!`
+                };
+            }
+            // If it's an attacker victory...
+            if (conflict.defenderTroops === 0) {
+                // Update the troop counts of both territories
+                this.setTerritoryTroops(conflict.to, conflict.attackerTroops);
+                this.addTerritoryTroops(conflict.from, -conflict.quantity);
+                // Update the ownership of the target territory
+                this.state.territories[conflict.to].owner = attackerId;
+                // TODO: Handle player eliminations and such here...
+                // Delete the conflict
+                delete this.state.currentConflict;
+                // Send a message
+                return {
+                    continueProcessing: true,
+                    summary: `${summary}\n**${this.getPlayerDisplayName(attackerId)}** has defeated **${this.getPlayerDisplayName(defenderId)}** at _${this.getTerritoryName(conflict.to)}_!`
+                };
+            }
+            // Otherwise, provide an update of the conflict
+            return {
+                continueProcessing: true,
+                summary: `${summary}**${conflict.attackerTroops}** attacker troops remaining vs **${conflict.defenderTroops}** defending...`
+            };
+        }
+        // If there are any attack decisions, process them
+        if (this.state.attackDecisions) {
+            const attackDecisions = this.state.attackDecisions;
+            // First, determine the attack dependencies
+            // TODO: This assumes each source only depends on one destination, can we guarantee this?
+            const dependencies: Record<string, string> = {};
+            for (const userId of Object.keys(attackDecisions)) {
+                const attackDataEntries = attackDecisions[userId];
+                for (const attackData of attackDataEntries) {
+                    dependencies[attackData.from] = attackData.to;
+                }
+            }
+            // Then, shuffle the list of attacking territories with these dependencies
+            // TODO: Add a try-catch to handle cycles, in which case we should just choose a random territory
+            const orderedTerritories = shuffleWithDependencies(Object.keys(dependencies), dependencies);
+            // Get the first element from the shuffled list
+            const territoryId = orderedTerritories[0];
+            if (!territoryId) {
+                return {
+                    continueProcessing: true,
+                    summary: 'Couldn\'t find the next territory attack node to process...'
+                };
+            }
+            const ownerId = this.getTerritoryOwner(territoryId);
+            if (!ownerId) {
+                return {
+                    continueProcessing: true,
+                    summary: `Couldn't find the owner for territory _${this.getTerritoryName(territoryId)}_ staging an attack...`
+                };
+            }
+            // TODO: This assumes each source only depends on one destination, can we guarantee this?
+            const conflict = this.state.attackDecisions[ownerId].filter(x => x.from === territoryId)[0];
+            if (!conflict) {
+                return {
+                    continueProcessing: true,
+                    summary: `Couldn't find decision conflict for <@${ownerId}>'s territory _${this.getTerritoryName(territoryId)}_ staging an attack...`
+                };
+            }
+            // Determine how many troops can actually be used
+            const actualQuantity = Math.min(conflict.quantity, this.getTerritoryTroops(conflict.from) - 1);
+            if (actualQuantity !== conflict.quantity) {
+                void logger.log(`<@${ownerId}> tried to attack _${this.getTerritoryName(conflict.to)}_ with **${conflict.quantity}** troop(s) `
+                    + `but _${this.getTerritoryName(conflict.from)}_ only has **${this.getTerritoryTroops(conflict.from)}**, so only attacking with **${actualQuantity}**`);
+            }
+            // Save this node as the current conflict
+            this.state.currentConflict = {
+                from: conflict.from,
+                to: conflict.to,
+                quantity: actualQuantity,
+                attackerTroops: actualQuantity,
+                defenderTroops: this.getTerritoryTroops(conflict.to)
+            };
+            // Delete this attack decision
+            // TODO: This assumes each source only depends on one destination, can we guarantee this?
+            // TODO: Also, REALLY hacky. Can we index the conflicts by some sort of conflict ID?
+            this.state.attackDecisions[ownerId] = this.state.attackDecisions[ownerId].filter(x => x.from !== conflict.from);
+            // Delete this user's attack decisions if there are none left
+            if (this.state.attackDecisions[ownerId].length === 0) {
+                delete this.state.attackDecisions[ownerId];
+            }
+            // Delete the attack decision map if there are no decisions left from anyone
+            if (Object.keys(this.state.attackDecisions).length === 0) {
+                delete this.state.attackDecisions;
+            }
+            return {
+                continueProcessing: true,
+                summary: {
+                    content: `**${this.getPlayerDisplayName(ownerId)}** has staged an attack from _${this.getTerritoryName(conflict.from)}_ to _${this.getTerritoryName(conflict.to)}_ with **${conflict.quantity}** troop(s)!`
+                    // TODO: Show a map with arrows
+                }
+            };
+        }
+        // If there are any move decisions, process them last
+        if (this.state.moveDecisions) {
+            const moveDecisions = this.state.moveDecisions;
+            for (const [ userId, data ] of Object.entries(moveDecisions)) {
+                // Validate that there are enough troops left, and that they still own the destination
+                if (this.getTerritoryTroops(data.from) > 1 && this.getTerritoryOwner(data.to) === userId) {
+                    // Since the territory may have lost troops during the attack phase, only move as many as is possible
+                    const actualQuantity = Math.min(data.quantity, this.getTerritoryTroops(data.from) - 1);
+                    if (actualQuantity !== data.quantity) {
+                        void logger.log(`<@${userId}> tried to move **${data.quantity}** troop(s) from _${this.getTerritoryName(data.from)}_ to _${this.getTerritoryName(data.to)}_ `
+                            + `but _${this.getTerritoryName(data.from)}_ only has **${this.getTerritoryTroops(data.from)}**, so only moving with **${actualQuantity}**`);
+                    }
+                    this.addTerritoryTroops(data.from, -actualQuantity);
+                    this.addTerritoryTroops(data.to, actualQuantity);
+                }
+            }
+            // Delete the decision map
+            delete this.state.moveDecisions;
+            return {
+                continueProcessing: false,
+                summary: {
+                    content: 'Troops were moved!',
+                    // TODO: Post a map showing the newly moved troops with arrows
+                }
+            };
+        }
+        // Last resort fallback, this should never happen
         return {
             continueProcessing: false,
             summary: 'That\'s all!'
         };
+    }
+
+    private getSortedDiceRolls(n: number): number[] {
+        const result: number[] = [];
+        for (let i = 0; i < n; i++) {
+            result.push(randInt(1, 7));
+        }
+        return result.sort().reverse();
     }
 
     override getDecisionActionRow(): ActionRowData<MessageActionRowComponentData>[] {
@@ -951,7 +1186,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     placeholder: 'Select territory...',
                     min_values: 1,
                     max_values: 1,
-                    options: this.getTerritorySelectOptions(this.getTerritoriesForPlayer(userId))
+                    options: this.getOwnedTerritorySelectOptions(this.getTerritoriesForPlayer(userId))
                 }]
             });
         }
@@ -1002,7 +1237,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                             placeholder: 'Select source territory...',
                             min_values: 1,
                             max_values: 1,
-                            options: this.getTerritorySelectOptions(validSources)
+                            options: this.getOwnedTerritorySelectOptions(validSources)
                         }]
                     }]
                 };
@@ -1047,7 +1282,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         }
         // If the quantity is missing, prompt them to fill it in
         if (!pendingMove.quantity) {
-            const numTroops = this.getTerritoryTroops(pendingMove.from);
+            // Consider how many troops are promised to be in a particular territory
+            const numTroops = this.getPromisedTerritoryTroops(pendingMove.from);
             const quantityValues: string[] = [];
             for (let i = 1; i < numTroops; i++) {
                 quantityValues.push(`${i}`);
@@ -1126,7 +1362,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             if (validSources.length > 0) {
                 return {
                     ephemeral: true,
-                    content: 'Which troops will you use for the attack?',
+                    content: 'Which territory will launch the attack?',
                     components: [{
                         type: ComponentType.ActionRow,
                         components: [{
@@ -1136,7 +1372,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                             min_values: 1,
                             max_values: 1,
                             // TODO: Show correct territories
-                            options: this.getTerritorySelectOptions(validSources)
+                            options: this.getOwnedTerritorySelectOptions(validSources)
                         }]
                     }]
                 };
@@ -1157,7 +1393,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             if (validTargets.length > 0) {
                 return {
                     ephemeral: true,
-                    content: `Which territory will the troops from _${this.getTerritoryName(pendingAttack.from)}_ attacK?`,
+                    content: `Which territory will be attacked by _${this.getTerritoryName(pendingAttack.from)}_?`,
                     components: [{
                         type: ComponentType.ActionRow,
                         components: [{
@@ -1181,7 +1417,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         }
         // If the quantity is missing, prompt them to fill it in
         if (!pendingAttack.quantity) {
-            const numTroops = this.getTerritoryTroops(pendingAttack.from);
+            // Consider how many troops are promised to be in a particular territory
+            const numTroops = this.getPromisedTerritoryTroops(pendingAttack.from);
             const quantityValues: string[] = [];
             for (let i = 1; i < numTroops; i++) {
                 quantityValues.push(`${i}`);
@@ -1295,6 +1532,26 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 const troops = this.getTerritoryTroops(territoryId);
                 if (troops) {
                     result.push(`${troops} troop(s)`);
+                }
+                result.push(`${this.getNumTerritoryConnections(territoryId)} neighbor(s)`);
+                return result.join(', ');
+            })()
+        }));
+    }
+
+    private getOwnedTerritorySelectOptions(territoryIds: string[]): APISelectMenuOption[] {
+        return territoryIds.map(territoryId => ({
+            label: this.getTerritoryName(territoryId),
+            value: territoryId,
+            description: (() => {
+                const result: string[] = [];
+                const troops = this.getTerritoryTroops(territoryId);
+                if (troops) {
+                    result.push(`${troops} troop(s)`);
+                }
+                const troopsToBeAdded = this.getTerritoryTroopsToBeAdded(territoryId);
+                if (troopsToBeAdded) {
+                    result.push(`${troopsToBeAdded} to be added`)
                 }
                 result.push(`${this.getNumTerritoryConnections(territoryId)} neighbor(s)`);
                 return result.join(', ');
