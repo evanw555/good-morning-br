@@ -283,6 +283,7 @@ export interface MasterpieceGameState extends AbstractGameState<'MASTERPIECE_GAM
 export interface RiskPlayerState {
     displayName: string,
     points: number,
+    newTroops?: number,
     color?: string,
     finalRank?: number
 }
@@ -292,10 +293,20 @@ export interface RiskTerritoryState {
     troops: number
 }
 
+export interface RiskMovementData {
+    from: string,
+    to: string,
+    quantity: number
+}
+
 export interface RiskGameState extends AbstractGameState<'RISK_GAME_STATE'> {
     readonly players: Record<Snowflake, RiskPlayerState>,
     readonly territories: Record<string, RiskTerritoryState>,
-    draft?: Record<Snowflake, { available?: true, timestamp: number}>
+    draft?: Record<Snowflake, { available?: true, timestamp: number}>,
+    // The following are used for categorized decisions that can only be added via interactions
+    addDecisions?: Record<Snowflake, string[]>,
+    attackDecisions?: Record<Snowflake, RiskMovementData[]>,
+    moveDecisions?: Record<Snowflake, RiskMovementData>
 }
 
 export interface ClassicGameState extends AbstractGameState<'CLASSIC_GAME_STATE'> {

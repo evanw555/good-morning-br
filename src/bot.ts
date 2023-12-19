@@ -40,7 +40,7 @@ languageGenerator.setLogger((message) => {
 const r9k = new R9KTextBank();
 const baitR9K = new R9KTextBank();
 const knownYouTubeIds: Set<string> = new Set();
-const messenger = new Messenger();
+const messenger = new Messenger({ alwaysImmediate: config.testing });
 messenger.setLogger((message) => {
     logger.log(message);
 });
@@ -1543,9 +1543,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         // Process the pre-noon game decision endpoint and send any messages
         if (state.getEventType() === DailyEventType.GameDecision && state.hasGame()) {
             const responseMessages = await state.getGame().onDecisionPreNoon();
-            for (const messengerPayload of responseMessages) {
-                await messenger.send(goodMorningChannel, messengerPayload);
-            }
+            await messenger.sendAll(goodMorningChannel, responseMessages);
         }
 
         // Dump state
@@ -2360,7 +2358,11 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
     }
 };
 
-const timeoutManager = new TimeoutManager(storage, TIMEOUT_CALLBACKS);
+const timeoutManager = new TimeoutManager(storage, TIMEOUT_CALLBACKS, {
+    onError: async (id, type, err) => {
+        await logger.log(`Timeout of type \`${type}\` with ID \`${id}\` failed: \`${err}\``);
+    }
+});
 
 const cancelTimeoutsWithType = async (type: TimeoutType): Promise<void> => {
     const canceledIds = await timeoutManager.cancelTimeoutsWithType(type);

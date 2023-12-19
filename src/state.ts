@@ -10,6 +10,7 @@ import IslandGame from "./games/island";
 import { AnonymousSubmissionsState } from "./submissions";
 import ArenaGame from "./games/arena";
 import MasterpieceGame from "./games/masterpiece";
+import RiskGame from "./games/risk";
 
 export default class GoodMorningState {
     private data: RawGoodMorningState;
@@ -34,6 +35,9 @@ export default class GoodMorningState {
                     break;
                 case 'MASTERPIECE_GAME_STATE':
                     this.game = new MasterpieceGame(rawState.game);
+                    break;
+                case 'RISK_GAME_STATE':
+                    this.game = new RiskGame(rawState.game);
                     break;
             }
         }
