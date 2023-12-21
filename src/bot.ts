@@ -1565,6 +1565,14 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         // Start accepting bait
         state.setAcceptingBait(true);
         await dumpState();
+        // If it's the end of the popcorn event...
+        if (state.getEventType() === DailyEventType.Popcorn) {
+            const event = state.getEvent();
+            // If there's still a user on the hook, tell them to hurry up!
+            if (event.user) {
+                await messenger.send(goodMorningChannel, languageGenerator.generate('{popcorn.hurry?}'));
+            }
+        }
     },
     [TimeoutType.NextNoon]: async (): Promise<void> => {
         // If attempting to end the morning while already asleep, warn the admin and abort

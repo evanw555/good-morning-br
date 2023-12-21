@@ -459,6 +459,13 @@
             "Popcorn {$player}!",
             "Go for it, {$player}!",
             "{$player} you can {!have|claim} this turn"
+        ],
+        "hurry": [
+            "Make haste, my {nouns.alliterativeTitle?}!",
+            "Hurry!",
+            "Hurry it up!",
+            "Make haste!",
+            "The clock is ticking!"
         ]
     }
 }
