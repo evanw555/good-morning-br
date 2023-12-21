@@ -452,6 +452,13 @@
             "It's still {$player}'s turn, just to be clear...",
             "Ignore the {!tricks|trickery}! It's still {$player}'s turn!",
             "There {!is|seems to be} some deception {!afoot|astir}... {$player} still has the {!torch|popcorn|talking stick}"
+        ],
+        "typing": [
+            "{$player} I see you typing, {!I'll let you have this turn|I'll let this turn be yours|this turn is yours|popcorn you}!",
+            "It {!looks like|appears} {$player} is already coming up with something. {!Popcorn you|You can have this turn}!",
+            "Popcorn {$player}!",
+            "Go for it, {$player}!",
+            "{$player} you can {!have|claim} this turn"
         ]
     }
 }

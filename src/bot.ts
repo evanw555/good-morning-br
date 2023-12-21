@@ -2925,7 +2925,7 @@ client.on('typingStart', async (typing) => {
                     // It's not this user's turn, but it's up for grabs so let them have it!
                     event.user = userId;
                     await dumpState();
-                    await messenger.send(goodMorningChannel, languageGenerator.generate(`<@${userId}> I see you typing, {!I'll let you have this turn|I'll let this turn be yours|this turn is yours}!`));
+                    await messenger.send(goodMorningChannel, languageGenerator.generate('{popcorn.typing?}', { player: `<@${userId}>` }));
                     // Wipe the typing users map
                     typingUsers.clear();
                     // Register a fallback for this user's turn
