@@ -100,6 +100,18 @@ const getPopcornFallbackUserId = (): Snowflake | undefined => {
     }
 };
 
+const registerPopcornFallbackTimeout = async (userId: Snowflake) => {
+    // If the player is more active, give them more time (5-9 default, +1-4 when in-game, +1m for each day of streak)
+    let fallbackDate = new Date();
+    fallbackDate.setMinutes(fallbackDate.getMinutes() + randInt(5, 10));
+    if (state.hasPlayer(userId)) {
+        fallbackDate.setMinutes(fallbackDate.getMinutes() + randInt(1, 5) + state.getPlayerActivity(userId).getStreak());
+    }
+    await registerTimeout(TimeoutType.PopcornFallback, fallbackDate, { pastStrategy: PastTimeoutStrategy.Invoke});
+    // TODO: Temp logging to see how this goes
+    await logger.log(`Scheduled popcorn fallback for **${state.getPlayerDisplayName(userId)}** at **${getRelativeDateTimeString(fallbackDate)}**`);
+};
+
 // TODO(testing): Use this during testing to directly trigger subsequent timeouts
 const showTimeoutTriggerButton = async (type: TimeoutType, arg?: any) => {
     let customId = `invokeTimeout:${type}`;
@@ -2886,37 +2898,42 @@ client.on('interactionCreate', async (interaction): Promise<void> => {
 
 client.on('typingStart', async (typing) => {
     if (goodMorningChannel && typing.channel.id === goodMorningChannel.id && !typing.user.bot) {
-        // If the popcorn user is typing, postpone the fallback timeout
-        if (state.getEventType() === DailyEventType.Popcorn) {
-            const event = state.getEvent();
-            const userId = typing.user.id;
-            if (event.user && event.user === userId) {
-                // It's currently this user's turn, so postpone the fallback.
-                // Determine the postponed fallback time
-                const inFiveMinutes = new Date();
-                inFiveMinutes.setMinutes(inFiveMinutes.getMinutes() + 5);
-                // Determine the existing fallback time
-                const existingFallbackTime = timeoutManager.getDateForTimeoutWithType(TimeoutType.PopcornFallback);
-                if (!existingFallbackTime) {
-                    await logger.log('Cannot postpone the popcorn fallback, as no existing fallback date was found!');
-                    return;
+        // If it's the morning...
+        if (state.isMorning()) {
+            // Handle typing for the popcorn event
+            if (state.getEventType() === DailyEventType.Popcorn) {
+                const event = state.getEvent();
+                const userId = typing.user.id;
+                if (event.user && event.user === userId) {
+                    // It's currently this user's turn, so postpone the fallback.
+                    // Determine the postponed fallback time
+                    const inFiveMinutes = new Date();
+                    inFiveMinutes.setMinutes(inFiveMinutes.getMinutes() + 5);
+                    // Determine the existing fallback time
+                    const existingFallbackTime = timeoutManager.getDateForTimeoutWithType(TimeoutType.PopcornFallback);
+                    if (!existingFallbackTime) {
+                        await logger.log('Cannot postpone the popcorn fallback, as no existing fallback date was found!');
+                        return;
+                    }
+                    // Only postpone if the existing fallback is sooner than 1m from now (otherwise, it would be moved up constantly with lots of spam)
+                    if (existingFallbackTime.getTime() - new Date().getTime() < 1000 * 60) {
+                        const ids = await timeoutManager.postponeTimeoutsWithType(TimeoutType.PopcornFallback, inFiveMinutes);
+                        // TODO: Temp logging to see how this is working
+                        await logger.log(`**${state.getPlayerDisplayName(userId)}** started typing, postpone fallback ` + naturalJoin(ids.map(id => `**${id}** to **${timeoutManager.getDateForTimeoutWithId(id)?.toLocaleTimeString()}**`)));
+                    }
+                } else if (!event.disabled && !event.user) {
+                    // It's not this user's turn, but it's up for grabs so let them have it!
+                    event.user = userId;
+                    await dumpState();
+                    await messenger.send(goodMorningChannel, languageGenerator.generate(`<@${userId}> I see you typing, {!I'll let you have this turn|I'll let this turn be yours|this turn is yours}!`));
+                    // Wipe the typing users map
+                    typingUsers.clear();
+                    // Register a fallback for this user's turn
+                    await registerPopcornFallbackTimeout(userId);
+                } else {
+                    // In all other cases, add the user to this turn's set of typing users
+                    typingUsers.add(userId);
                 }
-                // Only postpone if the existing fallback is sooner than 1m from now (otherwise, it would be moved up constantly with lots of spam)
-                if (existingFallbackTime.getTime() - new Date().getTime() < 1000 * 60) {
-                    const ids = await timeoutManager.postponeTimeoutsWithType(TimeoutType.PopcornFallback, inFiveMinutes);
-                    // TODO: Temp logging to see how this is working
-                    await logger.log(`**${state.getPlayerDisplayName(userId)}** started typing, postpone fallback ` + naturalJoin(ids.map(id => `**${id}** to **${timeoutManager.getDateForTimeoutWithId(id)?.toLocaleTimeString()}**`)));
-                }
-            } else if (!event.disabled && !event.user) {
-                // It's not this user's turn, but it's up for grabs so let them have it!
-                event.user = userId;
-                await dumpState();
-                await messenger.send(goodMorningChannel, languageGenerator.generate(`<@${userId}> I see you typing, {!I'll let you have this turn|I'll let this turn be yours|this turn is yours}!`));
-                // Wipe the typing users map
-                typingUsers.clear();
-            } else {
-                // In all other cases, add the user to this turn's set of typing users
-                typingUsers.add(userId);
             }
         }
     }
@@ -3573,15 +3590,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     await dumpState();
                     // If a user was selected, schedule a fallback timeout
                     if (event.user) {
-                        // If the player is more active, give them more time (5-9 default, +1-4 when in-game, +1m for each day of streak)
-                        let fallbackDate = new Date();
-                        fallbackDate.setMinutes(fallbackDate.getMinutes() + randInt(5, 10));
-                        if (state.hasPlayer(event.user)) {
-                            fallbackDate.setMinutes(fallbackDate.getMinutes() + randInt(1, 5) + state.getPlayerActivity(event.user).getStreak());
-                        }
-                        await registerTimeout(TimeoutType.PopcornFallback, fallbackDate, { pastStrategy: PastTimeoutStrategy.Invoke});
-                        // TODO: Temp logging to see how this goes
-                        await logger.log(`Scheduled popcorn fallback for **${state.getPlayerDisplayName(event.user)}** at **${getRelativeDateTimeString(fallbackDate)}**`);
+                        await registerPopcornFallbackTimeout(event.user);
                     }
                 }
             }
