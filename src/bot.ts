@@ -1,7 +1,7 @@
 import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, BaseMessageOptions, ButtonStyle, Client, ComponentType, DMChannel, GatewayIntentBits, MessageFlags, PartialMessage, Partials, TextChannel, TextInputStyle, User } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discord.js';
-import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, AnonymousSubmission, GameState, Wordle, SubmissionPromptHistory, ReplyToMessageData, GoodMorningAuth, MessengerPayload, WordleRestartData } from './types';
-import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, canonicalizeText, getScaledPoints, generateSynopsisWithAi } from './util';
+import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, GameState, Wordle, SubmissionPromptHistory, ReplyToMessageData, GoodMorningAuth, MessengerPayload, WordleRestartData, AnonymousSubmission } from './types';
+import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, canonicalizeText, getScaledPoints, generateSynopsisWithAi, getSimpleScaledPoints } from './util';
 import GoodMorningState from './state';
 import { addReactsSync, chance, DiscordTimestampFormat, FileStorage, generateKMeansClusters, getClockTime, getJoinedMentions, getPollChoiceKeys, getRandomDateBetween,
     getRankString, getRelativeDateTimeString, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger,
@@ -954,10 +954,10 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         for (const userId of participatingUserIds) {
             state.getGame().addPoints(userId, state.getPlayerPoints(userId));
         }
-        // Award a prize upfront for this week's submission winner
-        const lastSubmissionWinner = state.getLastSubmissionWinner();
-        if (lastSubmissionWinner) {
-            await awardPrize(lastSubmissionWinner, 'submissions1', 'Congrats on winning the first contest of the season (a few days ago)');
+        // Award a prize upfront for this week's submission winner(s)
+        const lastSubmissionWinners = state.getLastSubmissionWinners();
+        for (const userId of lastSubmissionWinners) {
+            await awardPrize(userId, lastSubmissionWinners.length === 1 ? 'submissions1' : 'submissions1-tied', 'Congrats on winning the first contest of the season (a few days ago)');
         }
     }
 
@@ -1161,7 +1161,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         if (reverseGMRanks) {
             const mostRecentUsers: Snowflake[] = Object.keys(reverseGMRanks);
             mostRecentUsers.sort((x, y) => reverseGMRanks[y] - reverseGMRanks[x]);
-            const scaledPoints = getScaledPoints(mostRecentUsers, { maxPoints: config.miniGameAward, order: 2 });
+            const scaledPoints = getSimpleScaledPoints(mostRecentUsers, { maxPoints: config.miniGameAward, order: 2 });
             for (const scaledPointsEntry of scaledPoints) {
                 const { userId, points, rank } = scaledPointsEntry;
                 // Dump the rank info into the daily status map and assign points accordingly
@@ -1292,10 +1292,9 @@ const finalizeAnonymousSubmissions = async () => {
     }
 
     // Then, assign points based on rank in score (excluding those who didn't vote or forfeit)
-    const { results, audienceVote } = anonymousSubmissions.computeVoteResults({ sungazerTerms: history.sungazers });
+    const { results, audienceVote, scoringDetailsString } = anonymousSubmissions.computeVoteResults();
     const validResults = results.filter(r => !r.disqualified);
-    const winners: Snowflake[] = validResults.map(r => r.userId);
-    const scaledPoints = getScaledPoints(winners, { maxPoints: config.grandContestAward, order: 3 });
+    const scaledPoints = getScaledPoints(validResults, { maxPoints: config.grandContestAward, order: 3 });
     const handicapReceivers: Set<string> = new Set();
     for (const scaledPointsEntry of scaledPoints) {
         const { userId, points, rank } = scaledPointsEntry;
@@ -1328,95 +1327,141 @@ const finalizeAnonymousSubmissions = async () => {
         await sleep(12000);
         await messenger.send(goodMorningChannel, `Now, let us extend our solemn condolences to ${getJoinedMentions(zeroVoteUserIds)}, for they received no votes this fateful morning... 😬`);
     }
-    // TODO: Switch to validResults.toReversed() in Node 20
-    const reversedValidResults = [...validResults].reverse();
-    for (const result of reversedValidResults) {
-        const code: string = result.code
-        const userId: Snowflake = result.userId;
-        const rank: number = result.rank;
-        const submission: AnonymousSubmission = anonymousSubmissions.getSubmissionForUser(userId);
-        if (rank === 1) {
+
+    // Show the 3rd/2nd place winners
+    const showRunnersUp = async (rank: number) => {
+        const runnersUp = validResults.filter(r => r.rank === rank);
+        if (runnersUp.length > 0) {
             await sleep(15000);
-            await messenger.send(goodMorningChannel, `And in first place, with submission **${code}**...`);
-            await sleep(6000);
-            await messenger.send(goodMorningChannel, `Receiving ${result.breakdownString}...`);
-            await sleep(6000);
-            if (anonymousSubmissions.hasUserForfeited(userId)) {
-                await messenger.send(goodMorningChannel, 'Being awarded only participation points on account of them sadly forfeiting...');
-                await sleep(6000);
+            let headerText = '';
+            // Construct the header text
+            if (runnersUp.length === 1) {
+                // If there's only one runner-up
+                const userId = runnersUp[0].userId;
+                const code = runnersUp[0].code;
+                // First, add the headline
+                headerText += `In ${getRankString(rank)}`;
+                // If this one runner-up forfeited, mention it here
+                if (anonymousSubmissions.hasUserForfeited(userId)) {
+                    headerText += ' yet only receiving participation points';
+                }
+                // Finally, mention their name and their submission code
+                const userTitle = anonymousSubmissions.hasUserForfeited(userId) ? `the forfeiting <@${userId}>` : `<@${userId}>`;
+                headerText += `, we have ${userTitle} with submission **${code}**!`;
+            } else {
+                // If there's a tie for this runner-up position
+                const userIds = runnersUp.map(r => r.userId);
+                const codes = runnersUp.map(r => r.code);
+                // First, add the headline
+                if (runnersUp.length === 2) {
+                    headerText += `Tying for ${getRankString(rank)}`;
+                } else {
+                    headerText += `Coming in a ${runnersUp.length}-way tie for ${getRankString(rank)}`
+                }
+                // Mention their names and submission codes
+                headerText += `, we have ${getJoinedMentions(userIds)} with submissions ${naturalJoin(codes, { bold: true })}!`;
+                // If any of them forfeited, mention it after the fact
+                const forfeiters = runnersUp.filter(r => r.forfeited);
+                if (forfeiters.length > 0) {
+                    headerText += ` (${getJoinedMentions(forfeiters.map(f => f.userId))} sadly forfeited and will only receive participation points)`;
+                }
             }
-            // TODO: Integrate this into the Messenger utility
-            await goodMorningChannel.send({
-                content: `We have our winner, <@${userId}>! Congrats!`,
-                embeds: [ toSubmissionEmbed(submission) ]
-            });
-        } else if (rank <= 3) {
-            await sleep(15000);
-            const headerText: string = anonymousSubmissions.hasUserForfeited(userId)
-                ? `In ${getRankString(rank)} place yet only receiving participation points, we have the forfeiting <@${userId}> with submission **${code}**!`
-                : `In ${getRankString(rank)} place, we have <@${userId}> with submission **${code}**!`;
-            // TODO: Integrate this into the Messenger utility
-            await goodMorningChannel.send({
+            await messenger.send(goodMorningChannel, {
                 content: headerText,
-                embeds: [ toSubmissionEmbed(submission) ]
+                embeds: runnersUp.map(r => toSubmissionEmbed(r.submission))
             });
         }
+    };
+    await showRunnersUp(3);
+    await showRunnersUp(2);
+
+    // Now, present the first-place winner
+    const winners = validResults.filter(r => r.rank === 1);
+    if (winners.length > 0) {
+        await sleep(15000);
+        if (winners.length === 1) {
+            await messenger.send(goodMorningChannel, `And in first place, with submission **${winners[0].code}**...`);
+        } else {
+            await messenger.send(goodMorningChannel, `And tying for first place, with submissions ${naturalJoin(winners.map(w => w.code), { bold: true })}...`);
+        }
+        await sleep(6000);
+        await messenger.send(goodMorningChannel, `Receiving ${winners[0].breakdownString}...`);
+        // If only one person won and they forfeited, mention it beforehand
+        if (winners.length === 1 && winners[0].forfeited) {
+            await sleep(6000);
+            await messenger.send(goodMorningChannel, 'Being awarded only participation points on account of them sadly forfeiting...');
+        }
+        // Do the grand reveal
+        await sleep(6000);
+        await messenger.send(goodMorningChannel, {
+            content: `We have our winner${winners.length === 1 ? '' : 's'}, ${getJoinedMentions(winners.map(w => w.userId))}! Congrats!`,
+            embeds: winners.map(w => toSubmissionEmbed(w.submission))
+        });
+        // If more than one person won and any forfeited, mention it after the fact
+        if (winners.length > 1) {
+            const forfeiters = winners.filter(w => w.forfeited);
+            if (forfeiters.length > 0) {
+                await messenger.send(goodMorningChannel, `Sadly, ${getJoinedMentions(forfeiters.map(f => f.userId))} forfeited and has only received participation points...`);
+            }
+        }
+    } else {
+        // Handle the case in which there are somehow no first-place winners
+        await messenger.send(goodMorningChannel, 'Oh dear, it appears as if no one got first place? Mister Admin, I think you\'re gonna wanna see this...');
     }
+
+    // Set the winner(s) as the "last submission winners" for the next week
+    state.setLastSubmissionWinners(winners.map(r => r.userId));
 
     // Send DMs to let each user know their ranking
     for (const result of validResults) {
         const userId = result.userId;
         // Send the DM (let them know about forfeiting and handicapping too)
         await messenger.dm(userId,
-            `Your ${anonymousSubmissions.getPrompt()} placed **${getRankString(result.rank)}** of **${validResults.length}**, receiving ${result.breakdownString}. `
+            `Your ${anonymousSubmissions.getPrompt()} ${result.tied ? 'tied for' : 'placed'} **${getRankString(result.rank)}** of **${validResults.length}**, receiving ${result.breakdownString}. `
                 + `Thanks for participating ${config.defaultGoodMorningEmoji}`
-                + (anonymousSubmissions.hasUserForfeited(userId) ? ' (and sorry that you had to forfeit)' : '')
+                + (result.forfeited ? ' (and sorry that you had to forfeit)' : '')
                 + (handicapReceivers.has(userId) ? ' (since you\'re a little behind, I\'ve doubled the points earned for this win!)' : ''),
             { immediate: true });
     }
 
+    // Set the winner(s) as the "last submission winners" for the next week
+    state.setLastSubmissionWinners(validResults.filter(r => r.rank === 1).map(r => r.userId));
+
     // Award special prizes and notify via DM
-    if (winners[0]) {
-        await awardPrize(winners[0], 'submissions1', 'Congrats on your victory');
-        // Set the winner as the "last submission winner" for the next week
-        state.setLastSubmissionWinner(winners[0]);
-    }
-    if (winners[1]) {
-        await awardPrize(winners[1], 'submissions2', 'Congrats on snagging 2nd place');
-    }
-    if (winners[2]) {
-        await awardPrize(winners[2], 'submissions3', 'Congrats on snagging 3rd place');
+    for (const entry of validResults) {
+        if (entry.rank === 1) {
+            if (entry.tied) {
+                await awardPrize(entry.userId, 'submissions1-tied', 'Congrats on your shared victory');
+            } else {
+                await awardPrize(entry.userId, 'submissions1', 'Congrats on your victory');
+            }
+        } else if (entry.rank === 2) {
+            if (entry.tied) {
+                await awardPrize(entry.userId, 'submissions2-tied', 'Congrats on tying for 2nd place');
+            } else {
+                await awardPrize(entry.userId, 'submissions2', 'Congrats on snagging 2nd place');
+            }
+        } else if (entry.rank === 3) {
+            if (entry.tied) {
+                await awardPrize(entry.userId, 'submissions3-tied', 'Congrats on tying for 3rd place');
+            } else {
+                await awardPrize(entry.userId, 'submissions3', 'Congrats on snagging 3rd place');
+            }
+        }
     }
 
     // Send the details of the scoring to the sungazers
-    // TODO: Remove this try-catch once we're sure it works
     await messenger.send(sungazersChannel, 'FYI gazers, here are the details of today\'s voting...');
-    try {
-        const scoringDetails: string = results.map((r) => {
-            const userId = r.userId;
-            const code = r.code;
-            if (r.disqualified) {
-                return `**DQ**: ${code} ~~<@${userId}>~~ \`${r.medalsString}=${r.score}\``;
-            } else if (anonymousSubmissions.hasUserForfeited(userId)) {
-                return `**${getRankString(r.rank)}(F)**: ${code} ~~<@${userId}>~~ \`${r.medalsString}=${r.score}\``;
-            } else {
-                return `**${getRankString(r.rank)}**: ${code} <@${userId}> \`${r.medalsString}=${r.score}\``;
-            }
-        }).join('\n');
-        await messenger.send(sungazersChannel, scoringDetails);
-        // Let them know how the score is calculated
-        await messenger.send(sungazersChannel, AnonymousSubmissionsState.getVotingFormulaString());
-        // Let them know the audience votes, if any
-        if (audienceVote.length > 0) {
-            await messenger.send(sungazersChannel, `**${Object.keys(anonymousSubmissions.getAudienceVotes()).length}** audience vote(s) merged as: ${naturalJoin(audienceVote, { bold: true })}`);
-        }
-        // Let them know who's on probation, if anyone
-        if (state.getPlayersOnVotingProbation().length > 0) {
-            await messenger.send(sungazersChannel, `Players currently on voting probation: ${getBoldNames(state.getPlayersOnVotingProbation())}`);
-        }
-    } catch (err) {
-        await messenger.send(sungazersChannel, 'Nvm, my brain is melting');
-        await logger.log(`Failed to compute and send voting/scoring log: \`${err}\``);
+    await messenger.send(sungazersChannel, scoringDetailsString);
+    // Let them know how the score is calculated
+    await messenger.send(sungazersChannel, AnonymousSubmissionsState.getVotingFormulaString());
+    // Let them know the audience votes, if any
+    if (audienceVote.length > 0) {
+        await messenger.send(sungazersChannel, `**${Object.keys(anonymousSubmissions.getAudienceVotes()).length}** audience vote(s) merged as: ${naturalJoin(audienceVote, { bold: true })}`);
+    }
+    // Let them know who's on probation, if anyone
+    if (state.getPlayersOnVotingProbation().length > 0) {
+        await messenger.send(sungazersChannel, `Players currently on voting probation: ${getBoldNames(state.getPlayersOnVotingProbation())}`);
     }
 
     // Misc logging
@@ -1475,7 +1520,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                     const winners = Object.keys(wishesReceived).sort((x, y) => (wishesReceived[y] ?? 0) - (wishesReceived[x] ?? 0));
                     await logger.log('Wishful wednesday results:\n' + winners.map(u => `**${state.getPlayerDisplayName(u)}:** ${wishesReceived[u]}`));
                     // Award points based on number of wishes received
-                    const scaledPoints = getScaledPoints(winners, { maxPoints: config.miniGameAward, order: 2 });
+                    const scaledPoints = getSimpleScaledPoints(winners, { maxPoints: config.miniGameAward, order: 2 });
                     for (const scaledPointsEntry of scaledPoints) {
                         const { userId, points } = scaledPointsEntry;
                         state.awardPoints(userId, points);
@@ -1612,7 +1657,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             if (event && event.wordleHiScores) {
                 const scores = event.wordleHiScores;
                 const sortedUserIds: Snowflake[] = Object.keys(scores).sort((x, y) => (scores[y] ?? 0) - (scores[x] ?? 0));
-                const scaledPoints = getScaledPoints(sortedUserIds, { maxPoints: config.focusGameAward, order: 2 });
+                const scaledPoints = getSimpleScaledPoints(sortedUserIds, { maxPoints: config.focusGameAward, order: 2 });
                 const rows: string[] = [];
                 // Award players points based on their score ranking
                 for (const scaledPointsEntry of scaledPoints) {
@@ -3169,7 +3214,7 @@ const processCommands = async (msg: Message): Promise<void> => {
                         + (state.isPlayerInGame(key) ? '' : ' _(NEW)_')
                         + (state.getPlayerDaysSinceLGM(key) ? ` ${state.getPlayerDaysSinceLGM(key)}d` : '')
                         + (state.getPlayerDeductions(key) ? (' -' + state.getPlayerDeductions(key)) : '')
-                        + (state.getLastSubmissionWinner() === key ? '👑' : '')
+                        + (state.isLastSubmissionWinner(key) ? '👑' : '')
                         + (state.doesPlayerNeedHandicap(key) ? '♿' : '')
                         + (state.doesPlayerNeedNerf(key) ? '🎾' : '')
                         + (fullStreakPlayers.includes(key) ? '🔥' : '')
@@ -3400,8 +3445,41 @@ const processCommands = async (msg: Message): Promise<void> => {
         } else if (sanitizedText.includes('scaled')) {
             const [ n, baseline, maxPoints, order ] = sanitizedText.replace('scaled', '').replace('?', '').replace(/\s+/g, ' ').trim().split(' ').map(s => parseInt(s));
             const userIds = state.queryOrderedPlayers({ n });
-            const result = getScaledPoints(userIds, { baseline, maxPoints, order });
+            const result = getSimpleScaledPoints(userIds, { baseline, maxPoints, order });
             await msg.channel.send('Sample result of scaled points:\n' + result.map(r => `**${getRankString(r.rank)}:** _${state.getPlayerDisplayName(r.userId)}_ **${toFixed(r.points)}**`).join('\n'));
+        } else if (sanitizedText.includes('scoring')) {
+            await msg.reply('Simulating a submissions scenario...');
+            const members = shuffle((await guild.members.list({ limit: 75 })).toJSON()).slice(0, randInt(5, 15));
+            const submissions: Record<Snowflake, AnonymousSubmission> = {};
+            const forfeiters: Snowflake[] = [];
+            const submissionOwnersByCode: Record<string, Snowflake> = {};
+            const votes: Record<Snowflake, string[]> = {};
+            let i = 0;
+            for (const member of members) {
+                submissions[member.id] = { text: `I'm ${member.displayName}` };
+                submissionOwnersByCode[toLetterId(i++)] = member.id;
+                if (chance(0.1)) {
+                    forfeiters.push(member.id);
+                }
+            }
+            for (const member of members) {
+                const randomCodes = shuffle(Object.keys(submissionOwnersByCode)).slice(0, 3);
+                if (chance(0.9)) {
+                    votes[member.id] = randomCodes;
+                }
+            }
+            const s = new AnonymousSubmissionsState({
+                prompt: await chooseRandomUnusedSubmissionPrompt(),
+                forfeiters,
+                phase: 'results',
+                submissionOwnersByCode,
+                submissions,
+                votes
+            });
+            const { results, audienceVote, scoringDetailsString } = s.computeVoteResults();
+            msg.channel.send('__Scoring Details__:\n' + scoringDetailsString);
+            const scaledPoints = getScaledPoints(results.filter(r => !r.disqualified), { maxPoints: config.grandContestAward, order: 3 });
+            msg.channel.send('__Points Awarded (n/i forfeits or handicaps)__:\n' + scaledPoints.map(r => `**${r.rank}.** <@${r.userId}> \`${toFixed(r.points)}\``));
         }
     }
 };
@@ -3925,7 +4003,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                         messenger.reply(msg, languageGenerator.generate('{goodMorningReply.absent?}'));
                     }
                     // If this player is one of the first to say GM (or was the last submission winner), reply (or react) specially
-                    else if (rank <= config.goodMorningReplyCount || userId === state.getLastSubmissionWinner()) {
+                    else if (rank <= config.goodMorningReplyCount || state.isLastSubmissionWinner(userId)) {
                         if (state.getEventType() === DailyEventType.Popcorn || chance(config.replyViaReactionProbability)) {
                             reactToMessage(msg, state.getGoodMorningEmoji());
                         } else if (isQuestion) {

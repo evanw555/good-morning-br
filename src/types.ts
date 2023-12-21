@@ -89,7 +89,10 @@ export interface Combo {
     days: number
 }
 
-export type PrizeType = 'submissions1' | 'submissions2' | 'submissions3' | 'streak' | 'nightmare';
+export type PrizeType = 'submissions1' | 'submissions1-tied'
+    | 'submissions2' | 'submissions2-tied'
+    | 'submissions3' | 'submissions3-tied'
+    | 'streak' | 'nightmare';
 
 export interface PlayerState {
     displayName: string,
@@ -232,14 +235,15 @@ export interface IslandPlayerState {
     incomingVotes?: number,
     eliminated?: true,
     locked?: true,
-    finalRank?: number
+    finalRank?: number,
+    mayGrantImmunity?: true,
+    // If the player granted immunity to themselves, this will be their own user ID
+    immunityGrantedBy?: Snowflake
 }
 
 export interface IslandGameState extends AbstractGameState<'ISLAND_GAME_STATE'> {
     numToBeEliminated: number,
-    players: Record<Snowflake, IslandPlayerState>,
-    immunityGranter?: Snowflake,
-    immunityReceiver?: Snowflake
+    players: Record<Snowflake, IslandPlayerState>
 }
 
 export interface ArenaGameState extends AbstractGameState<'ARENA_GAME_STATE'> {
@@ -249,15 +253,18 @@ export interface ArenaGameState extends AbstractGameState<'ARENA_GAME_STATE'> {
 export interface MasterpiecePlayerState {
     displayName: string,
     points: number,
-    // If true, then this player can still choose to select a special action as a prize
-    pendingPrize?: true
+    // If true, then this player can still choose one of these special actions
+    maySell?: true,
+    mayForceAuction?: true
 }
 
 export interface MasterpiecePieceState {
     value: number,
     name: string,
     // Snowflake -> owner ID, false -> unsold, true -> sold
-    owner: Snowflake | boolean
+    owner: Snowflake | boolean,
+    // If true, this piece will be sold during the next game update
+    toBeSold?: true
 }
 
 export interface MasterpieceAuctionState {
@@ -276,8 +283,6 @@ export interface MasterpieceGameState extends AbstractGameState<'MASTERPIECE_GAM
     },
     // ID of the piece being offered in the "silent auction"
     silentAuctionPieceId?: string,
-    // ID of the piece to be sold during the next game update
-    salePieceId?: string
 }
 
 export interface RiskPlayerState {
@@ -369,7 +374,7 @@ export interface RawGoodMorningState {
     event?: DailyEvent,
     nextEvent?: DailyEvent,
     anonymousSubmissions?: RawAnonymousSubmissionsState,
-    lastSubmissionWinner?: Snowflake,
+    lastSubmissionWinners?: Snowflake[],
     dailyStatus: Record<Snowflake, DailyPlayerState>,
     players: Record<Snowflake, PlayerState>,
     game?: GameState,

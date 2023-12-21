@@ -163,28 +163,42 @@ export function canonicalizeText(text: string): string {
         .replace(/[^0-9a-zA-Z]/g, '');
 }
 
-interface ScaledPointsOutputEntry {
+interface ScaledPointsInputEntry {
     userId: Snowflake,
-    points: number,
     rank: number
 }
 
-export function getScaledPoints(userIds: Snowflake[], options?: { baseline?: number, maxPoints?: number, order?: number }): ScaledPointsOutputEntry[] {
+interface ScaledPointsOutputEntry extends ScaledPointsInputEntry {
+    points: number
+}
+
+interface ScaledPointsOptions {
+    baseline?: number,
+    maxPoints?: number,
+    order?: number
+}
+
+export function getSimpleScaledPoints(userIds: Snowflake[], options?: ScaledPointsOptions): ScaledPointsOutputEntry[] {
+    return getScaledPoints(userIds.map((userId, i) => ({ userId, rank: i + 1 })), options);
+}
+
+export function getScaledPoints(entries: { userId: Snowflake, rank: number }[], options?: ScaledPointsOptions): ScaledPointsOutputEntry[] {
     const baseline: number = options?.baseline ?? config.defaultAward;
     const maxPoints: number = options?.maxPoints ?? config.defaultAward;
     const order: number = options?.order ?? 1;
 
-    const n = userIds.length;
+    const n = entries.length;
 
-    const results:ScaledPointsOutputEntry[] = [];
-    for (let i = 0; i < n; i++) {
-        const userId = userIds[i];
-        const x = 1 - (i / (n - 1));
+    const results: ScaledPointsOutputEntry[] = [];
+    for (const entry of entries) {
+        const userId = entry.userId;
+        const rank = entry.rank;
+        const x = 1 - ((rank - 1) / (n - 1));
         const points = baseline + (maxPoints - baseline) * Math.pow(x, order);
         results.push({
             userId,
             points,
-            rank: i + 1
+            rank
         });
     }
 

@@ -1,17 +1,20 @@
 import { Snowflake } from "discord.js";
 import { AnonymousSubmission, AnonymousSubmissionsPhase, RawAnonymousSubmissionsState } from "./types";
-import { naturalJoin, toFixed } from "evanw555.js";
+import { getRankString, naturalJoin, toFixed } from "evanw555.js";
 
 declare interface AnonymousSubmissionVotingResult {
     code: string,
     rank: number,
+    tied: boolean,
     userId: Snowflake,
+    submission: AnonymousSubmission,
     breakdown: number[],
     breakdownString: string,
     medalsString: string,
     score: number,
     noVotes: boolean,
-    disqualified: boolean
+    disqualified: boolean,
+    forfeited: boolean
 }
 
 export class AnonymousSubmissionsState {
@@ -19,7 +22,6 @@ export class AnonymousSubmissionsState {
     static readonly GOLD_VOTE_VALUE = 3.11;
     static readonly SILVER_VOTE_VALUE = 2.1;
     static readonly BRONZE_VOTE_VALUE = 1.1;
-    static readonly GAZER_TERM_BONUS: number = 0.001;
     private static readonly VOTE_VALUES: number[] = [
         AnonymousSubmissionsState.GOLD_VOTE_VALUE,
         AnonymousSubmissionsState.SILVER_VOTE_VALUE,
@@ -195,8 +197,8 @@ export class AnonymousSubmissionsState {
         return this.isUserDeadbeat(this.getOwnerOfSubmission(code));
     }
 
-    private computeAudienceVote(options?: { sungazerTerms?: Record<Snowflake, number> }): string[] {
-        return this.computeScores(this.getAudienceVotes(), options)
+    private computeAudienceVote(): string[] {
+        return this.computeScores(this.getAudienceVotes())
             // Only include results that had any votes at all
             .filter(result => !result.noVotes)
             // Get just the first 0-3 codes
@@ -204,25 +206,24 @@ export class AnonymousSubmissionsState {
             .slice(0, 3);
     }
 
-    computeVoteResults(options?: { sungazerTerms?: Record<Snowflake, number> }): { results: AnonymousSubmissionVotingResult[], audienceVote: string[] } {
+    computeVoteResults(): { results: AnonymousSubmissionVotingResult[], audienceVote: string[], scoringDetailsString: string } {
         const effectiveVotes: Record<Snowflake, string[]> = this.getSubmitterVotes();
-        const audienceVote = this.computeAudienceVote(options);
+        const audienceVote = this.computeAudienceVote();
         effectiveVotes['$AUDIENCE'] = audienceVote;
-        const results = this.computeScores(effectiveVotes, options);
-        return { results, audienceVote };
+        const results = this.computeScores(effectiveVotes);
+        const scoringDetailsString = AnonymousSubmissionsState.getScoringDetailsString(results);
+        return { results, audienceVote, scoringDetailsString };
     }
 
-    private computeScores(votes: Record<Snowflake, string[]>, options?: { sungazerTerms?: Record<Snowflake, number> }): AnonymousSubmissionVotingResult[] {
-        const sungazerTerms: Record<Snowflake, number> = options?.sungazerTerms ?? {};
+    private computeScores(votes: Record<Snowflake, string[]>): AnonymousSubmissionVotingResult[] {
         // First, tally the votes and compute the scores
         const scores: Record<string, number> = {}; // Map (submission code : points)
         const breakdown: Record<string, number[]> = {};
         const gotVotes: Set<string> = new Set();
         // Prime both maps (some submissions may get no votes)
         for (const code of this.getSubmissionCodes()) {
-            const userId: Snowflake = this.getOwnerOfSubmission(code);
             // Prime with a base score to ultimately break ties based on previous GMBR wins
-            scores[code] = (sungazerTerms[userId] ?? 0) * AnonymousSubmissionsState.GAZER_TERM_BONUS;
+            scores[code] = 0;
             breakdown[code] = [0, 0, 0];
         }
 
@@ -247,18 +248,50 @@ export class AnonymousSubmissionsState {
         const allCodesSorted: string[] = this.getSubmissionCodes();
         allCodesSorted.sort((x, y) => scores[y] - scores[x]);
 
-        // Compile the results and return
-        return allCodesSorted.map((code, i) => ({
+        // Compute the final results (without ties)
+        const results = allCodesSorted.map((code, i) => ({
             code,
             rank: i + 1,
+            tied: false,
             userId: this.getOwnerOfSubmission(code),
+            submission: this.getSubmissionForUser(this.getOwnerOfSubmission(code)),
             breakdown: breakdown[code],
             breakdownString: AnonymousSubmissionsState.toBreakdownString(breakdown[code]),
             medalsString: AnonymousSubmissionsState.toMedalsString(breakdown[code]),
             score: scores[code],
             noVotes: !gotVotes.has(code),
-            disqualified: this.isCodeDisqualified(code)
+            disqualified: this.isCodeDisqualified(code),
+            forfeited: this.hasUserForfeited(this.getOwnerOfSubmission(code))
         }));
+
+        // Update entries that are tied
+        for (let i = 1; i < results.length; i++) {
+            const current = results[i];
+            const previous = results[i - 1];
+            // If the score is the same, count these as a tie and assign the same rank
+            if (current.score === previous.score) {
+                current.rank = previous.rank;
+                current.tied = true;
+                previous.tied = true;
+            }
+        }
+
+        // Return the final result
+        return results;
+    }
+
+    private static getScoringDetailsString(results: AnonymousSubmissionVotingResult[]): string {
+        return results.map((r) => {
+            const userId = r.userId;
+            const code = r.code;
+            if (r.disqualified) {
+                return `**DQ**: ${code} ~~<@${userId}>~~ \`${r.medalsString}=${r.score}\``;
+            } else if (r.forfeited) {
+                return `**${getRankString(r.rank)}(F)**: ${code} ~~<@${userId}>~~ \`${r.medalsString}=${r.score}\``;
+            } else {
+                return `**${getRankString(r.rank)}**: ${code} <@${userId}> \`${r.medalsString}=${r.score}\``;
+            }
+        }).join('\n');
     }
 
     private static toBreakdownString(breakdown: number[]): string {
@@ -270,7 +303,7 @@ export class AnonymousSubmissionsState {
                 items.push(`**${n}** ${types[i]} vote` + (n === 1 ? '' : 's'));
             }
         }
-        return naturalJoin(items);
+        return naturalJoin(items) || 'no votes';
     }
 
     private static toMedalsString(breakdown: number[]): string {
@@ -278,7 +311,8 @@ export class AnonymousSubmissionsState {
     }
 
     static getVotingFormulaString(): string {
-        return `(\`score = ${AnonymousSubmissionsState.GOLD_VOTE_VALUE}🥇 + ${AnonymousSubmissionsState.SILVER_VOTE_VALUE}🥈 `
-            + `+ ${AnonymousSubmissionsState.BRONZE_VOTE_VALUE}🥉 + ${AnonymousSubmissionsState.GAZER_TERM_BONUS}🌞\`)`
+        return `(\`score = ${AnonymousSubmissionsState.GOLD_VOTE_VALUE}🥇 `
+            + `+ ${AnonymousSubmissionsState.SILVER_VOTE_VALUE}🥈 `
+            + `+ ${AnonymousSubmissionsState.BRONZE_VOTE_VALUE}🥉\`)`
     }
 }

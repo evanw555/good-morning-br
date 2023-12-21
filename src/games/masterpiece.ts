@@ -3,10 +3,10 @@ import { ActionRowData, AttachmentBuilder, ButtonInteraction, ButtonStyle, Compo
 import { DecisionProcessingResult, MasterpieceGameState, MasterpiecePieceState, MasterpiecePlayerState, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 import { capitalize, naturalJoin, randChoice, shuffle, toFixed, toLetterId } from "evanw555.js";
+import { text } from '../util';
 
 import logger from "../logger";
 import imageLoader from '../image-loader';
-import { text } from '../util';
 
 type AuctionType = 'bank' | 'private';
 
@@ -368,8 +368,12 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
         return naturalJoin(userIds.map(id => this.getPlayerDisplayName(id)), { bold: true });
     }
 
-    private isPlayerPendingPrize(userId: Snowflake): boolean {
-        return this.state.players[userId]?.pendingPrize ?? false;
+    private mayPlayerSell(userId: Snowflake): boolean {
+        return this.state.players[userId]?.maySell ?? false;
+    }
+
+    private mayPlayerForcePrivateAuction(userId: Snowflake): boolean {
+        return this.state.players[userId]?.mayForceAuction ?? false;
     }
 
     private getPiece(pieceId: string): MasterpiecePieceState {
@@ -417,6 +421,10 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
             return 'the museum';
         }
         return this.getPlayerDisplayName(owner);
+    }
+
+    private getPieceIdsToBeSold(): string[] {
+        return this.getPieceIds().filter(id => this.getPiece(id).toBeSold);
     }
 
     private getPieceIdsWithValue(value: number): string[] {
@@ -755,7 +763,8 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
         // Reset metadata for each player
         for (const userId of this.getPlayers()) {
             // Revoke any pending prize offers
-            delete this.state.players[userId].pendingPrize;
+            delete this.state.players[userId].maySell;
+            delete this.state.players[userId].mayForceAuction;
         }
 
         // TODO: Do something here
@@ -823,10 +832,9 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
         }
         switch (type) {
             case 'submissions1':
-                // Set the flag on this player
-                this.state.players[userId].pendingPrize = true;
                 // If the player has no paintings, only allow them to force someone's paintings into auction
                 if (!this.hasAnyPieces(userId)) {
+                    this.state.players[userId].mayForceAuction = true;
                     return [{
                         content: `${intro}! Since you don't currently own any pieces, I will only let you choose an opponent's piece to be forced into auction on Saturday. You have until Saturday morning to select this option`,
                         components: [{
@@ -841,6 +849,8 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
                     }];
                 }
                 // Else, allow them to pick
+                this.state.players[userId].maySell = true;
+                this.state.players[userId].mayForceAuction = true;
                 return [
                     `${intro}, as a reward you may choose to sell one of your paintings to the museum or force another player's piece into auction. `
                         + 'If you choose to sell a piece, it will be sold to a museum at face value on Sunday morning, at which point it will be removed from the game. '
@@ -859,6 +869,29 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
                                 style: ButtonStyle.Danger,
                                 label: 'Force Auction',
                                 customId: 'game:forcePrivateAuction'
+                            }]
+                        }]
+                    }
+                ];
+            case 'submissions1-tied':
+                // If the player has no paintings, don't let them do anything
+                if (!this.hasAnyPieces(userId)) {
+                    return [`${intro}! Since you don't currently own any pieces, there's no special prize for you (I can't let multiple players force a private auction). Sorry!`];
+                }
+                // Else, allow them to sell
+                this.state.players[userId].maySell = true;
+                return [
+                    `${intro}, as a reward you may choose to sell one of your paintings to the museum (I can't let multiple players force a private auction). `
+                        + 'If you choose to sell a piece, it will be sold to a museum at face value on Sunday morning, at which point it will be removed from the game.',
+                    {
+                        content: 'Which would you like to do? You have until Saturday morning to choose',
+                        components: [{
+                            type: ComponentType.ActionRow,
+                            components: [{
+                                type: ComponentType.Button,
+                                style: ButtonStyle.Success,
+                                label: 'Sell',
+                                customId: 'game:sell'
                             }]
                         }]
                     }
@@ -894,17 +927,18 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
 
     override async processPlayerDecisions(): Promise<DecisionProcessingResult> {
         // Process any pending sale first and foremost
-        if (this.state.salePieceId) {
-            const pieceId = this.state.salePieceId;
+        const pendingSaleIds = this.getPieceIdsToBeSold();
+        if (pendingSaleIds.length > 0) {
+            const pieceId = randChoice(...pendingSaleIds);
             const ownerId = this.getPieceOwner(pieceId);
             const value = this.getPieceValue(pieceId);
-            // Clear the sale piece ID from the state to prevent further processing
-            delete this.state.salePieceId;
+            // Clear the piece's to-be-sold flag to prevent further processing
+            delete this.getPiece(pieceId).toBeSold;
             // If for some reason the owner isn't a user, abort now
             if (typeof ownerId !== 'string') {
                 return {
                     continueProcessing: true,
-                    summary: `Tried to sell piece ${this.state.salePieceId}, but the owner value is ${ownerId} (admin help!)`
+                    summary: `Tried to sell piece ${pieceId}, but the owner value is ${ownerId} (admin help!)`
                 };
             }
             // Give funds to the owner of the piece
@@ -1036,7 +1070,7 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
                     break;
                 case 'game:sell':
                     // Validate that this user can do this
-                    if (!this.isPlayerPendingPrize(userId)) {
+                    if (!this.mayPlayerSell(userId)) {
                         await interaction.reply({
                             ephemeral: true,
                             content: 'You can\'t do that right now! Perhaps you\'ve already chosen an action?'
@@ -1073,7 +1107,7 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
                     break;
                 case 'game:forcePrivateAuction':
                     // Validate that this user can do this
-                    if (!this.isPlayerPendingPrize(userId)) {
+                    if (!this.mayPlayerForcePrivateAuction(userId)) {
                         await interaction.reply({
                             ephemeral: true,
                             content: 'You can\'t do that right now! Perhaps you\'ve already chosen an action?'
@@ -1114,7 +1148,7 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
             switch (interaction.customId) {
                 case 'game:sellSelect': {
                     // Validate that this user can do this
-                    if (!this.isPlayerPendingPrize(userId)) {
+                    if (!this.mayPlayerSell(userId)) {
                         await interaction.reply({
                             ephemeral: true,
                             content: 'You can\'t do that right now! Perhaps you\'ve already chosen an action?'
@@ -1138,18 +1172,20 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
                         return;
                     }
                     // Update the state
-                    this.state.salePieceId = pieceId;
-                    delete this.state.players[userId].pendingPrize;
+                    this.getPiece(pieceId).toBeSold = true;
+                    delete this.state.players[userId].maySell;
+                    delete this.state.players[userId].mayForceAuction;
                     // Reply to the user confirming the sale
                     await interaction.reply({
                         ephemeral: true,
                         content: `Confirmed! _"${this.getPieceName(pieceId)}"_ will be sold to the museum Sunday morning for **$${this.getPieceValue(pieceId)}**`
                     });
+                    void logger.log(`<@${userId}> has chosen to sell their piece _${this.getPieceName(pieceId)}_`);
                     break;
                 }
                 case 'game:forcePrivateAuctionSelect': {
                     // Validate that this user can do this
-                    if (!this.isPlayerPendingPrize(userId)) {
+                    if (!this.mayPlayerForcePrivateAuction(userId)) {
                         await interaction.reply({
                             ephemeral: true,
                             content: 'You can\'t do that right now! Perhaps you\'ve already chosen an action?'
@@ -1177,12 +1213,14 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
                         pieceId,
                         bid: 0
                     };
-                    delete this.state.players[userId].pendingPrize;
+                    delete this.state.players[userId].maySell;
+                    delete this.state.players[userId].mayForceAuction;
                     // Reply to the user confirming the forced auction
                     await interaction.reply({
                         ephemeral: true,
                         content: `Confirmed! _"${this.getPieceName(pieceId)}"_ will be forced into a private auction on Saturday morning`
                     });
+                    void logger.log(`<@${userId}> has chosen to force **${this.getPieceOwnerString(pieceId)}'s** piece _${this.getPieceName(pieceId)}_ into a private auction`);
                     break;
                 }
             }

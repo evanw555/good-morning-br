@@ -814,24 +814,24 @@ export default class GoodMorningState {
             .every(userId => anonymousSubmissions.hasUserVoted(userId) || anonymousSubmissions.hasUserForfeited(userId) || this.isPlayerOnVotingProbation(userId));
     }
 
-    getLastSubmissionWinner(): Snowflake | undefined {
-        return this.data.lastSubmissionWinner;
+    isLastSubmissionWinner(userId: Snowflake): boolean {
+        return this.getLastSubmissionWinners().includes(userId);
     }
 
-    hasLastSubmissionWinner(): boolean {
-        return this.data.lastSubmissionWinner !== undefined;
+    getLastSubmissionWinners(): Snowflake[] {
+        return this.data.lastSubmissionWinners ?? [];
     }
 
-    setLastSubmissionWinner(lastSubmissionWinner: Snowflake) {
-        if (lastSubmissionWinner) {
-            this.data.lastSubmissionWinner = lastSubmissionWinner;
+    setLastSubmissionWinners(lastSubmissionWinners: Snowflake[]) {
+        if (lastSubmissionWinners && lastSubmissionWinners.length > 0) {
+            this.data.lastSubmissionWinners = lastSubmissionWinners;
         } else {
-            this.clearLastSubmissionWinner();
+            this.clearLastSubmissionWinners();
         }
     }
 
-    clearLastSubmissionWinner() {
-        delete this.data.lastSubmissionWinner;
+    clearLastSubmissionWinners() {
+        delete this.data.lastSubmissionWinners;
     }
 
     getGame(): AbstractGame<GameState> {

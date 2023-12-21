@@ -853,12 +853,15 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         const goodItems: MazeItemName[] = this.isPlayerFinished(userId) ? ['boulder', 'trap'] : ITEM_NAMES.filter(item => item !== 'trap');
         switch (type) {
             case 'submissions1':
+            case 'submissions1-tied':
                 // For first place, let the user pick between two random "good" items
                 return this.offerItems(userId, shuffle(goodItems).slice(0, 2), intro);
             case 'submissions2':
+            case 'submissions2-tied':
                 // For second place, award a random "good" item
                 return this.awardItem(userId, randChoice(...goodItems), intro);
             case 'submissions3':
+            case 'submissions3-tied':
             case 'streak':
             case 'nightmare':
                 return this.awardItem(userId, 'trap', intro);
