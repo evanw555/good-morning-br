@@ -3479,7 +3479,7 @@ const processCommands = async (msg: Message): Promise<void> => {
             const { results, audienceVote, scoringDetailsString } = s.computeVoteResults();
             msg.channel.send('__Scoring Details__:\n' + scoringDetailsString);
             const scaledPoints = getScaledPoints(results.filter(r => !r.disqualified), { maxPoints: config.grandContestAward, order: 3 });
-            msg.channel.send('__Points Awarded (n/i forfeits or handicaps)__:\n' + scaledPoints.map(r => `**${r.rank}.** <@${r.userId}> \`${toFixed(r.points)}\``));
+            msg.channel.send('__Points Awarded (n/i forfeits or handicaps)__:\n' + scaledPoints.map(r => `**${r.rank}.** <@${r.userId}> \`${toFixed(r.points)}\``).join('\n'));
         }
     }
 };
