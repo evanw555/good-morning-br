@@ -2,120 +2,298 @@ import { APIActionRowComponent, APIMessageActionRowComponent, APISelectMenuOptio
 import { DecisionProcessingResult, MessengerPayload, PrizeType, RiskGameState, RiskMovementData, RiskPlayerState, RiskTerritoryState } from "../types";
 import AbstractGame from "./abstract-game";
 import { Canvas, createCanvas } from "canvas";
-import { DiscordTimestampFormat, chance, getDateBetween, getJoinedMentions, naturalJoin, randChoice, randInt, shuffleWithDependencies, toDiscordTimestamp, toFixed } from "evanw555.js";
+import { DiscordTimestampFormat, getDateBetween, getJoinedMentions, naturalJoin, randChoice, randInt, shuffleWithDependencies, toDiscordTimestamp, toFixed } from "evanw555.js";
 
 import logger from "../logger";
 import imageLoader from "../image-loader";
 
 interface RiskConfig {
+    map: {
+        dimensions: {
+            width: number,
+            height: number
+        }
+    },
+    conflict: {
+        dimensions: {
+            width: number,
+            height: number
+        }
+    },
     territories: Record<string, {
         name: string,
-        connections: string[]
+        center: { x: number, y: number },
+        connections: string[],
+        termini: Record<string, { x: number, y: number }>
     }>
 }
 
 export default class RiskGame extends AbstractGame<RiskGameState> {
     private static config: RiskConfig = {
+        map: {
+            dimensions: {
+                width: 762,
+                height: 718
+            }
+        },
+        conflict: {
+            dimensions: {
+                width: 600,
+                height: 400
+            }
+        },
         territories: {
             A: {
                 name: 'Fairview',
-                connections: ['B', 'D', 'E']
+                center: { x: 313, y: 50 },
+                connections: ['B', 'D', 'E'],
+                termini: {
+                    B: { x: 417, y: 55 },
+                    D: { x: 232, y: 99 },
+                    E: { x: 360, y: 119 }
+                }
             },
             B: {
                 name: 'Santa Ana Heights',
-                connections: ['A', 'C', 'E', 'F']
+                center: { x: 473, y: 106 },
+                connections: ['A', 'C', 'E', 'F'],
+                termini: {
+                    A: { x: 439, y: 71 },
+                    C: { x: 516, y: 107 },
+                    E: { x: 464, y: 165 },
+                    F: { x: 488, y: 187 }
+                }
             },
             C: {
                 name: 'John Wayne',
-                connections: ['B', 'H']
+                center: { x: 612, y: 104 },
+                connections: ['B', 'H'],
+                termini: {
+                    B: { x: 547, y: 104 },
+                    H: { x: 706, y : 106 }
+                }
             },
             D: {
                 name: 'West Side Costa Mesa',
-                connections: ['A', 'E', 'I']
+                center: { x: 222, y: 219 },
+                connections: ['A', 'E', 'I'],
+                termini: {
+                    A: { x: 231, y: 106 },
+                    E: { x: 306, y: 191 },
+                    I: { x: 226, y: 336 }
+                }
             },
             E: {
                 name: 'East Side Costa Mesa',
-                connections: ['A', 'B', 'F', 'I']
+                center: { x: 380, y: 232 },
+                connections: ['A', 'B', 'D', 'F', 'I'],
+                termini: {
+                    A: { x: 382, y: 140 },
+                    B: { x: 447, y: 186 },
+                    D: { x: 332, y: 210 },
+                    F: { x: 399, y: 280 },
+                    I: { x: 348, y: 280 }
+                }
             },
             F: {
                 name: 'Dover',
-                connections: ['B', 'E', 'I', 'J']
+                center: { x: 468, y: 304 },
+                connections: ['B', 'E', 'I', 'J'],
+                termini: {
+                    B: { x: 497, y: 216 },
+                    E: { x: 427, y: 300 },
+                    I: { x: 406, y: 329 },
+                    J: { x: 461, y: 364 }
+                }
             },
             G: {
                 name: 'Eastbluff',
-                connections: ['H', 'L', 'N']
+                center: { x: 606, y: 230 },
+                connections: ['H', 'L', 'N'],
+                termini: {
+                    H: { x: 658, y: 189 },
+                    L: { x: 580, y: 295 },
+                    N: { x: 614, y: 300 }
+                }
             },
             H: {
                 name: 'UCI',
-                connections: ['C', 'G', 'N']
+                center: { x: 718, y: 232 },
+                connections: ['C', 'G', 'N'],
+                termini: {
+                    C: { x: 712, y: 141 },
+                    G: { x: 695, y: 178 },
+                    N: { x: 729, y: 299 }
+                }
             },
             I: {
                 name: 'Newport Heights',
-                connections: ['D', 'E', 'F', 'J', 'T', 'U']
+                center: { x: 307, y: 354 },
+                connections: ['D', 'E', 'F', 'J', 'T', 'U'],
+                termini: {
+                    D: { x: 224, y: 369 },
+                    E: { x: 328, y: 308 },
+                    F: { x: 383, y: 351 },
+                    J: { x: 370, y: 379 },
+                    T: { x: 194, y: 383 },
+                    U: { x: 225, y: 387 }
+                }
             },
             J: {
                 name: 'Castaways',
-                connections: ['F', 'I', 'K']
+                center: { x: 411, y: 379 },
+                connections: ['F', 'I', 'K'],
+                termini: {
+                    F: { x: 430, y: 378 },
+                    I: { x: 397, y: 404 },
+                    K: { x: 389, y: 434 }
+                }
             },
             K: {
                 name: 'The Dunes',
-                connections: ['J', 'L', 'M', 'O']
+                center: { x: 467, y: 429 },
+                connections: ['J', 'L', 'M', 'O'],
+                termini: {
+                    J: { x: 438, y: 430 },
+                    L: { x: 532, y: 402 },
+                    M: { x: 548, y: 425 },
+                    O: { x: 532, y: 445 }
+                }
             },
             L: {
                 name: 'Park Newport',
-                connections: ['G', 'K', 'M', 'N']
+                center: { x: 586, y: 345 },
+                connections: ['G', 'K', 'M', 'N'],
+                termini: {
+                    G: { x: 575, y: 325 },
+                    K: { x: 555, y: 382 },
+                    M: { x: 593, y: 373 },
+                    N: { x: 596, y: 372 }
+                }
             },
             M: {
                 name: 'Fashion Island',
-                connections: ['K', 'L', 'N', 'O', 'P']
+                center: { x: 633, y: 470 },
+                connections: ['K', 'L', 'N', 'O', 'P'],
+                termini: {
+                    K: { x: 576, y: 431 },
+                    L: { x: 616, y: 401 },
+                    N: { x: 650, y: 437 },
+                    O: { x: 591, y: 471 },
+                    P: { x: 639, y: 525 }
+                }
             },
             N: {
                 name: 'Bonita Canyon',
-                connections: ['G', 'H', 'L', 'M']
+                center: { x: 711, y: 391 },
+                connections: ['G', 'H', 'L', 'M'],
+                termini: {
+                    G: { x: 647, y: 317 },
+                    H: { x: 731, y: 339 },
+                    L: { x: 630, y: 356 },
+                    M: { x: 676, y: 412 }
+                }
             },
             O: {
                 name: 'Promontory',
-                connections: ['K', 'M', 'P', 'R']
+                center: { x: 550, y: 486 },
+                connections: ['K', 'M', 'P', 'R'],
+                termini: {
+                    K: { x: 533, y: 472 },
+                    M: { x: 573, y: 490 },
+                    P: { x: 560, y: 507 },
+                    R: { x: 519, y: 484 }
+                }
             },
             P: {
                 name: 'Corona del Mar',
-                connections: ['M', 'O']
+                center: { x: 654, y: 609 },
+                connections: ['M', 'O'],
+                termini: {
+                    M: { x: 653, y: 557 },
+                    O: { x: 577, y: 534 }
+                }
             },
             Q: {
                 name: 'Lido Isle',
-                connections: ['U']
+                center: { x: 306, y: 470 },
+                connections: ['U'],
+                termini: {
+                    U: { x: 287, y: 455 }
+                }
             },
             R: {
                 name: 'Balboa Island',
-                connections: ['R', 'W']
+                center: { x: 493, y: 526 },
+                connections: ['O', 'W'],
+                termini: {
+                    O: { x: 514, y: 517 },
+                    W: { x: 468, y: 530 }
+                }
             },
             S: {
                 name: 'Newport Shores',
-                connections: ['T']
+                center: { x: 66, y: 337 },
+                connections: ['T'],
+                termini: {
+                    T: { x: 85, y: 354 }
+                }
             },
             T: {
                 name: '40th Street',
-                connections: ['I', 'S', 'U']
+                center: { x: 144, y: 380 },
+                connections: ['I', 'S', 'U'],
+                termini: {
+                    I: { x: 160, y: 382 },
+                    S: { x: 112, y: 366 },
+                    U: { x: 188, y: 434 }
+                }
             },
             U: {
                 name: 'Golden Mile',
-                connections: ['I', 'T', 'V']
+                center: { x: 221, y: 460 },
+                connections: ['I', 'T', 'V'],
+                termini: {
+                    I: { x: 225, y: 422 },
+                    T: { x: 203, y: 457 },
+                    V: { x: 237, y: 507 }
+                }
             },
             V: {
                 name: 'Mid-Peninsula',
-                connections: ['U', 'W']
+                center: { x: 310, y: 530 },
+                connections: ['U', 'W'],
+                termini: {
+                    U: { x: 263, y: 518 },
+                    W: { x: 357, y: 542 }
+                }
             },
             W: {
                 name: 'The Fun Zone',
-                connections: ['R', 'V', 'X', 'Y']
+                center: { x: 411, y: 553 },
+                connections: ['R', 'V', 'X', 'Y'],
+                termini: {
+                    R: { x: 432, y: 558 },
+                    V: { x: 387, y: 550 },
+                    X: { x: 451, y: 574 },
+                    Y: { x: 433, y: 570 }
+                }
             },
             X: {
                 name: 'The Wedge',
-                connections: ['W']
+                center: { x: 547, y: 607 },
+                connections: ['W'],
+                termini: {
+                    W: { x: 478, y: 587 }
+                }
             },
             Y: {
                 name: 'Catalina Island',
-                connections: ['W']
+                center: { x: 122, y: 661 },
+                connections: ['W'],
+                termini: {
+                    W: { x: 164, y: 686 }
+                }
             }
         }
     };
@@ -475,7 +653,39 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         return new AttachmentBuilder('assets/risk/map-with-background.png');
     }
 
-    async renderState(options?: { showPlayerDecision?: string | undefined; seasonOver?: boolean | undefined; admin?: boolean | undefined; } | undefined): Promise<Buffer> {
+    private async renderConflict(conflict: RiskMovementData, fromRolls: number[], toRolls: number[]): Promise<AttachmentBuilder> {
+        const { from, to } = conflict;
+        const conflictId = [from, to].sort().join('');
+        const conflictImage = await imageLoader.loadImage(`assets/risk/connections/${conflictId}.png`);
+
+        const WIDTH = RiskGame.config.conflict.dimensions.width;
+        const HEIGHT = RiskGame.config.conflict.dimensions.height;
+        const canvas = createCanvas(WIDTH, HEIGHT);
+        const context = canvas.getContext('2d');
+
+        // Draw the conflict background
+        context.drawImage(conflictImage, 0, 0, WIDTH, HEIGHT);
+
+        // Draw the attacker dice rolls
+        for (let i = 0; i < fromRolls.length; i++) {
+            const DIE_WIDTH = HEIGHT / 8;
+            const roll = fromRolls[i];
+            const dieImage = await imageLoader.loadImage(`assets/common/dice/r${roll}.png`);
+            context.drawImage(dieImage, (WIDTH * 0.25) - DIE_WIDTH / 2, (i + 1) * (DIE_WIDTH * 1.5), DIE_WIDTH, DIE_WIDTH);
+        }
+
+        // Draw the defender dice rolls
+        for (let i = 0; i < toRolls.length; i++) {
+            const DIE_WIDTH = HEIGHT / 8;
+            const roll = toRolls[i];
+            const dieImage = await imageLoader.loadImage(`assets/common/dice/w${roll}.png`);
+            context.drawImage(dieImage, (WIDTH * 0.75) - DIE_WIDTH / 2, (i + 1) * (DIE_WIDTH * 1.5), DIE_WIDTH, DIE_WIDTH);
+        }
+
+        return new AttachmentBuilder(canvas.toBuffer()).setName(`risk-conflict-${conflictId}.png`);
+    }
+
+    private async renderMap(options?: { conflict?: RiskMovementData }): Promise<Canvas> {
         const mapImage = await imageLoader.loadImage('assets/risk/map.png');
 
         // Define the canvas
@@ -489,8 +699,43 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
 
         // Draw the map template as the top layer
         context.drawImage(mapImage, 0, 0);
-    
-        return canvas.toBuffer();
+
+        // Draw the number of troops in each territory
+        for (const territoryId of this.getTerritories()) {
+            const numTroops = this.getTerritoryTroops(territoryId);
+            const { x, y } = RiskGame.config.territories[territoryId].center;
+            if (numTroops > 5) {
+                context.font = 'bold 28px sans-serif';
+                context.fillStyle = 'black';
+                context.fillText(`${numTroops}`, x, y);
+            } else {
+                const troopsImage = await imageLoader.loadImage(`assets/risk/troops/${numTroops}.png`);
+                const troopsWidth = 28;
+                context.drawImage(troopsImage, x - troopsWidth / 2, y - troopsWidth / 2, troopsWidth, troopsWidth);
+            }
+        }
+
+        // If a conflict is specified, draw the invasion line
+        if (options?.conflict) {
+            const { from, to } = options.conflict;
+            const fromCoordinates = RiskGame.config.territories[from].termini[to];
+            const toCoordinates = RiskGame.config.territories[to].termini[from];
+            context.lineWidth = 4;
+            context.strokeStyle = 'red';
+            context.moveTo(fromCoordinates.x, fromCoordinates.y);
+            context.lineTo(toCoordinates.x, toCoordinates.y);
+            context.stroke();
+        }
+
+        return canvas;
+    }
+
+    private async renderInvasion(conflict: RiskMovementData): Promise<AttachmentBuilder> {
+        return new AttachmentBuilder((await this.renderMap({ conflict })).toBuffer()).setName(`risk-invasion.png`);
+    }
+
+    async renderState(options?: { showPlayerDecision?: string | undefined; seasonOver?: boolean | undefined; admin?: boolean | undefined; } | undefined): Promise<Buffer> {
+        return (await this.renderMap()).toBuffer();
     }
 
     private async getTerritoryCutoutRender(territoryId: string): Promise<Canvas> {
@@ -677,7 +922,10 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 // Send a message
                 return {
                     continueProcessing: true,
-                    summary: `${summary}\n**${this.getPlayerDisplayName(defenderId)}** has successfully fended off **${this.getPlayerDisplayName(attackerId)}** at _${this.getTerritoryName(conflict.to)}_!`
+                    summary: {
+                        content: `${summary}\n**${this.getPlayerDisplayName(defenderId)}** has successfully fended off **${this.getPlayerDisplayName(attackerId)}** at _${this.getTerritoryName(conflict.to)}_!`,
+                        files: [await this.renderConflict(conflict, attackerRolls, defenderRolls)]
+                    }
                 };
             }
             // If it's an attacker victory...
@@ -693,13 +941,19 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 // Send a message
                 return {
                     continueProcessing: true,
-                    summary: `${summary}\n**${this.getPlayerDisplayName(attackerId)}** has defeated **${this.getPlayerDisplayName(defenderId)}** at _${this.getTerritoryName(conflict.to)}_!`
+                    summary: {
+                        content: `${summary}\n**${this.getPlayerDisplayName(attackerId)}** has defeated **${this.getPlayerDisplayName(defenderId)}** at _${this.getTerritoryName(conflict.to)}_!`,
+                        files: [await this.renderConflict(conflict, attackerRolls, defenderRolls)]
+                    }
                 };
             }
             // Otherwise, provide an update of the conflict
             return {
                 continueProcessing: true,
-                summary: `${summary}**${conflict.attackerTroops}** attacker troops remaining vs **${conflict.defenderTroops}** defending...`
+                summary: {
+                    content: `${summary}**${conflict.attackerTroops}** attacker troops remaining vs **${conflict.defenderTroops}** defending...`,
+                    files: [await this.renderConflict(conflict, attackerRolls, defenderRolls)]
+                }
             };
         }
         // If there are any attack decisions, process them
@@ -769,8 +1023,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             return {
                 continueProcessing: true,
                 summary: {
-                    content: `**${this.getPlayerDisplayName(ownerId)}** has staged an attack from _${this.getTerritoryName(conflict.from)}_ to _${this.getTerritoryName(conflict.to)}_ with **${conflict.quantity}** troop(s)!`
-                    // TODO: Show a map with arrows
+                    content: `**${this.getPlayerDisplayName(ownerId)}** has staged an attack from _${this.getTerritoryName(conflict.from)}_ to _${this.getTerritoryName(conflict.to)}_ with **${conflict.quantity}** troop(s)!`,
+                    files: [await this.renderInvasion(conflict)]
                 }
             };
         }
