@@ -267,14 +267,14 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
                     this.addPoints(bidder, -bid);
                     // Reply with appropriate message
                     responseMessages.push({
-                        content: `<@${bidder}> has won the auction for _${this.getPieceName(pieceId)}_ with a bid of **$${bid}**!`,
+                        content: `<@${bidder}> has won the auction for _"${this.getPieceName(pieceId)}"_ with a bid of **$${bid}**!`,
                         files: [await this.renderAuction(pieceId, `${capitalize(type)} Auction`, type)],
                         components: this.getDecisionActionRow()
                     });
                 } else {
                     // Reply with appropriate message
                     responseMessages.push({
-                        content: `No one bid on _${this.getPieceName(pieceId)}_! What??? I guess we'll save that one for another day...`
+                        content: `No one bid on _"${this.getPieceName(pieceId)}"_! What??? I guess we'll save that one for another day...`
                     });
                 }
             }
@@ -946,12 +946,12 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
             // Mark this piece as sold
             this.getPiece(pieceId).owner = true;
             // Return a summary
+            const museumTopic = randChoice('Gaming History', 'Internet Culture', 'MCMP Lore', 'Autism Awareness');
             return {
                 continueProcessing: true,
                 summary: {
-                    content: `**${this.getPlayerDisplayName(ownerId)}** sold their piece _"${this.getPieceName(pieceId)}"_ to the Museum of Gaming History for **$${value}**, removing this piece from the game!`,
-                    // TODO: Render this piece on the wall at a museum
-                    files: [await this.renderAuction(pieceId, 'Sold!', 'silent')]
+                    content: `**${this.getPlayerDisplayName(ownerId)}** sold their piece _"${this.getPieceName(pieceId)}"_ to the Museum of ${museumTopic} for **$${value}**, removing this piece from the game!`,
+                    files: [await this.renderAuction(pieceId, 'Museum Sale', `sold${randChoice('1', '2')}`)]
                 }
             };
         }
@@ -979,6 +979,16 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
             }
             // Determine the highest bidders
             const highBidders = Object.keys(bids).filter(id => bids[id].value === maxValue);
+            // If no one bid, leave the piece in the bank's inventory
+            if (highBidders.length === 0) {
+                return {
+                    continueProcessing: true,
+                    summary: {
+                        content: `What's this?? It looks like no one placed a bid on _"${this.getPieceName(pieceId)}"_! I guess I'll save this one for another time...`,
+                        files: [await this.renderAuction(pieceId, 'Silent Auction', 'silent')]
+                    }
+                }
+            }
             // Sort the list so that the first bidder is first
             highBidders.sort((x, y) => bids[x].timestamp - bids[y].timestamp);
             const userId = highBidders[0];
@@ -1180,7 +1190,7 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
                         ephemeral: true,
                         content: `Confirmed! _"${this.getPieceName(pieceId)}"_ will be sold to the museum Sunday morning for **$${this.getPieceValue(pieceId)}**`
                     });
-                    void logger.log(`<@${userId}> has chosen to sell their piece _${this.getPieceName(pieceId)}_`);
+                    void logger.log(`<@${userId}> has chosen to sell their piece _"${this.getPieceName(pieceId)}"_`);
                     break;
                 }
                 case 'game:forcePrivateAuctionSelect': {
@@ -1220,7 +1230,7 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
                         ephemeral: true,
                         content: `Confirmed! _"${this.getPieceName(pieceId)}"_ will be forced into a private auction on Saturday morning`
                     });
-                    void logger.log(`<@${userId}> has chosen to force **${this.getPieceOwnerString(pieceId)}'s** piece _${this.getPieceName(pieceId)}_ into a private auction`);
+                    void logger.log(`<@${userId}> has chosen to force **${this.getPieceOwnerString(pieceId)}'s** piece _"${this.getPieceName(pieceId)}"_ into a private auction`);
                     break;
                 }
             }
@@ -1283,10 +1293,10 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
         const pieceName = this.getPiece(pieceId).name;
         await interaction.reply({
             ephemeral: true,
-            content: `You've placed a bid on _${pieceName}_!`
+            content: `You've placed a bid on _"${pieceName}"_!`
         });
         await interaction.channel?.send({
-            content: `<@${userId}> has raised the bid on _${pieceName}_ to **$${bidAmount}**!`,
+            content: `<@${userId}> has raised the bid on _"${pieceName}"_ to **$${bidAmount}**!`,
             flags: MessageFlags.SuppressNotifications
         });
         await interaction.channel?.send({
