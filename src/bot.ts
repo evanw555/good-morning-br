@@ -2430,9 +2430,13 @@ const timeoutManager = new TimeoutManager(storage, TIMEOUT_CALLBACKS, {
 });
 
 const cancelTimeoutsWithType = async (type: TimeoutType): Promise<void> => {
-    const canceledIds = await timeoutManager.cancelTimeoutsWithType(type);
-    if (canceledIds.length > 0) {
-        await logger.log(`Canceled \`${type}\` timeouts \`${JSON.stringify(canceledIds)}\``);
+    try {
+        const canceledIds = await timeoutManager.cancelTimeoutsWithType(type);
+        if (canceledIds.length > 0) {
+            await logger.log(`Canceled \`${type}\` timeouts \`${JSON.stringify(canceledIds)}\``);
+        }
+    } catch (err) {
+        await logger.log(`Failed to cancel \`${type}\` timeouts: \`${err}\``);
     }
 }
 
