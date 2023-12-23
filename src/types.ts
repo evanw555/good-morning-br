@@ -305,6 +305,8 @@ export interface RiskMovementData {
 }
 
 export interface RiskConflictState extends RiskMovementData {
+    readonly attackerId?: Snowflake,
+    readonly defenderId?: Snowflake,
     readonly initialAttackerTroops: number,
     readonly initialDefenderTroops: number,
     attackerTroops: number,

@@ -6,7 +6,7 @@ import { DiscordTimestampFormat, getDateBetween, getJoinedMentions, naturalJoin,
 
 import logger from "../logger";
 import imageLoader from "../image-loader";
-import { getMinKey, getMaxKey } from "../util";
+import { getMinKey, getMaxKey, drawTextCentered } from "../util";
 
 interface Coordinates {
     x: number,
@@ -376,7 +376,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 }
             },
             U: {
-                name: 'Golden Mile',
+                name: 'The Golden Mile',
                 center: { x: 221, y: 460 },
                 troopBounds: [
                     { x: 194, y: 454 },
@@ -809,7 +809,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         return new AttachmentBuilder('assets/risk/map-with-background.png');
     }
 
-    private async renderConflict(conflict: RiskConflictState, options: { attackerRolls: number[], defenderRolls: number[] }): Promise<AttachmentBuilder> {
+    private async renderConflict(conflict: RiskConflictState, options: { attackerRolls: number[], defenderRolls: number[], attackersLost: number, defendersLost: number }): Promise<AttachmentBuilder> {
         const { from, to } = conflict;
         const conflictId = [from, to].sort().join('');
         const conflictImage = await imageLoader.loadImage(`assets/risk/connections/${conflictId}.png`);
@@ -823,22 +823,20 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         context.drawImage(conflictImage, 0, 0, WIDTH, HEIGHT);
 
         // Draw the attacker avatar
-        const attackerId = this.getTerritoryOwner(conflict.from);
-        if (attackerId) {
+        if (conflict.attackerId) {
             const AVATAR_WIDTH = HEIGHT / 8;
             const x = HEIGHT * (1 / 12);
             const y = HEIGHT * (1 / 12);
-            const attackerAvatarImage = toCircle(await imageLoader.loadAvatar(attackerId, 128));
+            const attackerAvatarImage = toCircle(await imageLoader.loadAvatar(conflict.attackerId, 128));
             context.drawImage(attackerAvatarImage, x - AVATAR_WIDTH / 2, y - AVATAR_WIDTH / 2, AVATAR_WIDTH, AVATAR_WIDTH);
         }
 
         // Draw the defender avatar
-        const defenderId = this.getTerritoryOwner(conflict.to);
-        if (defenderId) {
+        if (conflict.defenderId) {
             const AVATAR_WIDTH = HEIGHT / 8;
             const x = WIDTH - HEIGHT * (1 / 12);
             const y = HEIGHT * (1 / 12);
-            const defenderAvatarImage = toCircle(await imageLoader.loadAvatar(defenderId, 128));
+            const defenderAvatarImage = toCircle(await imageLoader.loadAvatar(conflict.defenderId, 128));
             context.drawImage(defenderAvatarImage, x - AVATAR_WIDTH / 2, y - AVATAR_WIDTH / 2, AVATAR_WIDTH, AVATAR_WIDTH);
         }
 
@@ -847,19 +845,24 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         const crossOutImage = await imageLoader.loadImage('assets/common/crossout.png');
         for (let i = 0; i < conflict.initialAttackerTroops; i++) {
             const TROOP_WIDTH = HEIGHT / 8;
-            const x = WIDTH * (1 / 6);
-            const y = HEIGHT * (i + 2) / (Math.max(3, conflict.initialAttackerTroops) + 3);
-            context.drawImage(troopImage, x - TROOP_WIDTH / 2, y - TROOP_WIDTH / 2, TROOP_WIDTH, TROOP_WIDTH);
+            const frontLine = i < 3;
+            const x = WIDTH * ((frontLine ? 2 : 1) / 8);
+            const y = HEIGHT * ((frontLine ? i : i - 3) + 2) / ((frontLine ? 3 : conflict.initialAttackerTroops - 3) + 3);
             const defeated = i >= conflict.attackerTroops;
-            if (defeated) {
+            const newlyDefeated = defeated && i - conflict.attackerTroops < options.attackersLost;
+            const previouslyDefeated = defeated && !newlyDefeated;
+            context.globalAlpha = previouslyDefeated ? 0.25 : 1;
+            context.drawImage(troopImage, x - TROOP_WIDTH / 2, y - TROOP_WIDTH / 2, TROOP_WIDTH, TROOP_WIDTH);
+            if (newlyDefeated) {
                 context.drawImage(crossOutImage, x - TROOP_WIDTH / 2, y - TROOP_WIDTH / 2, TROOP_WIDTH, TROOP_WIDTH);
             }
+            context.globalAlpha = 1;
         }
 
         // Draw the attacker dice rolls
         for (let i = 0; i < options.attackerRolls.length; i++) {
             const DIE_WIDTH = HEIGHT / 8;
-            const x = WIDTH * (2 / 6);
+            const x = WIDTH * (3 / 8);
             const y = HEIGHT * ((2 + i) / 6);
             const roll = options.attackerRolls[i];
             const dieImage = await imageLoader.loadImage(`assets/common/dice/r${roll}.png`);
@@ -869,9 +872,9 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         // Draw the arrows in the center depending on the results
         const numRolls = Math.min(options.attackerRolls.length, options.defenderRolls.length);
         for (let i = 0; i < numRolls; i++) {
-            const ARROW_WIDTH = HEIGHT / 4;
+            const ARROW_WIDTH = HEIGHT / 6;
             const ARROW_HEIGHT = HEIGHT / 8;
-            const x = WIDTH * (3 / 6);
+            const x = WIDTH * (4 / 8);
             const y = HEIGHT * ((2 + i) / 6);
             if (options.attackerRolls[i] > options.defenderRolls[i]) {
                 const attackerArrowImage = await imageLoader.loadImage('assets/risk/attacker-arrow.png');
@@ -885,7 +888,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         // Draw the defender dice rolls
         for (let i = 0; i < options.defenderRolls.length; i++) {
             const DIE_WIDTH = HEIGHT / 8;
-            const x = WIDTH * (4 / 6);
+            const x = WIDTH * (5 / 8);
             const y = HEIGHT * ((2 + i) / 6);
             const roll = options.defenderRolls[i];
             const dieImage = await imageLoader.loadImage(`assets/common/dice/w${roll}.png`);
@@ -895,14 +898,24 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         // Draw the defender troops
         for (let i = 0; i < conflict.initialDefenderTroops; i++) {
             const TROOP_WIDTH = HEIGHT / 8;
-            const x = WIDTH * (5 / 6);
-            const y = HEIGHT * (i + 2) / (Math.max(3, conflict.initialDefenderTroops) + 3);
-            context.drawImage(troopImage, x - TROOP_WIDTH / 2, y - TROOP_WIDTH / 2, TROOP_WIDTH, TROOP_WIDTH);
+            const frontLine = i < 3;
+            const x = WIDTH * ((frontLine ? 6 : 7) / 8);
+            const y = HEIGHT * ((frontLine ? i : i - 3) + 2) / ((frontLine ? 3 : conflict.initialDefenderTroops - 3) + 3);
             const defeated = i >= conflict.defenderTroops;
-            if (defeated) {
+            const newlyDefeated = defeated && i - conflict.defenderTroops < options.defendersLost;
+            const previouslyDefeated = defeated && !newlyDefeated;
+            context.globalAlpha = previouslyDefeated ? 0.25 : 1;
+            context.drawImage(troopImage, x - TROOP_WIDTH / 2, y - TROOP_WIDTH / 2, TROOP_WIDTH, TROOP_WIDTH);
+            if (newlyDefeated) {
                 context.drawImage(crossOutImage, x - TROOP_WIDTH / 2, y - TROOP_WIDTH / 2, TROOP_WIDTH, TROOP_WIDTH);
             }
+            context.globalAlpha = 1;
         }
+
+        // Draw the title
+        context.font = `italic bold ${HEIGHT / 12}px serif`;
+        context.fillStyle = 'white';
+        drawTextCentered(context, `Battle for ${this.getTerritoryName(conflict.to)}`, WIDTH * (3 / 16), WIDTH * (13 / 16), HEIGHT / 6);
 
         return new AttachmentBuilder(canvas.toBuffer()).setName(`risk-conflict-${conflictId}.png`);
     }
@@ -971,7 +984,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         return result;
     }
 
-    private async renderMap(options?: { conflict?: RiskMovementData, additions?: Record<string, number> }): Promise<Canvas> {
+    private async renderMap(options?: { invasion?: RiskMovementData, additions?: Record<string, number> }): Promise<Canvas> {
         const mapImage = await imageLoader.loadImage('assets/risk/map.png');
 
         // Define the canvas
@@ -989,22 +1002,25 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         // Draw the number of troops in each territory
         const troopsImage = await imageLoader.loadImage('assets/risk/troops/1.png');
         const newTroopsImage = await imageLoader.loadImage('assets/risk/troops/1new.png');
+        const invadingTroopsImage = await imageLoader.loadImage('assets/risk/troops/1invading.png');
         const troopsWidth = 24;
         for (const territoryId of this.getTerritories()) {
             // const troopsImage = await imageLoader.loadAvatar(this.getTerritoryOwner(territoryId) ?? '', 16);
             const numTroops = this.getTerritoryTroops(territoryId);
             const additions = (options?.additions ?? {})[territoryId] ?? 0;
+            const invadingTroops = (options?.invasion?.from === territoryId) ? options.invasion.quantity : 0;
             const troopLocations = this.getRandomTerritoryTroopLocations(territoryId, numTroops);
             for (let i = 0; i < troopLocations.length; i++) {
                 const { x, y } = troopLocations[i];
                 const newAddition = troopLocations.length - i <= additions;
-                context.drawImage(newAddition ? newTroopsImage : troopsImage, x - troopsWidth / 2, y - troopsWidth / 2, troopsWidth, troopsWidth);
+                const invading = troopLocations.length - i <= invadingTroops;
+                context.drawImage(invading ? invadingTroopsImage : (newAddition ? newTroopsImage : troopsImage), x - troopsWidth / 2, y - troopsWidth / 2, troopsWidth, troopsWidth);
             }
         }
 
-        // If a conflict is specified, draw the invasion line
-        if (options?.conflict) {
-            const { from, to } = options.conflict;
+        // If an invasion is specified, draw the invasion line
+        if (options?.invasion) {
+            const { from, to } = options.invasion;
             const fromCoordinates = RiskGame.config.territories[from].termini[to];
             const toCoordinates = RiskGame.config.territories[to].termini[from];
             context.lineWidth = 4;
@@ -1021,8 +1037,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         return new AttachmentBuilder((await this.renderMap({ additions })).toBuffer()).setName('risk-additions.png');
     }
 
-    private async renderInvasion(conflict: RiskMovementData): Promise<AttachmentBuilder> {
-        return new AttachmentBuilder((await this.renderMap({ conflict })).toBuffer()).setName(`risk-invasion.png`);
+    private async renderInvasion(invasion: RiskMovementData): Promise<AttachmentBuilder> {
+        return new AttachmentBuilder((await this.renderMap({ invasion })).toBuffer()).setName(`risk-invasion.png`);
     }
 
     async renderState(options?: { showPlayerDecision?: string | undefined; seasonOver?: boolean | undefined; admin?: boolean | undefined; } | undefined): Promise<Buffer> {
@@ -1186,22 +1202,28 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             const attackerRolls = this.getSortedDiceRolls(attackerDice);
             const defenderRolls = this.getSortedDiceRolls(defenderDice);
             const numComparisons = Math.min(2, attackerDice, defenderDice);
+            let attackersLost = 0;
+            let defendersLost = 0;
             // Compare the first set
             let summary = `Attacker rolls **${attackerRolls}**, defender rolls **${defenderRolls}**. `;
             if (attackerRolls[0] > defenderRolls[0]) {
                 conflict.defenderTroops--;
+                defendersLost++;
                 summary += `Attacker's **${attackerRolls[0]}** beats **${defenderRolls[0]}**. `;
             } else {
                 conflict.attackerTroops--;
+                attackersLost++;
                 summary += `Defender's **${defenderRolls[0]}** beats **${attackerRolls[0]}**. `;
             }
             // If there are enough dice, compare the second set
             if (numComparisons === 2) {
                 if (attackerRolls[1] > defenderRolls[1]) {
                     conflict.defenderTroops--;
+                    defendersLost++;
                     summary += `Attacker's **${attackerRolls[1]}** beats **${defenderRolls[1]}**. `;
                 } else {
                     conflict.attackerTroops--;
+                    attackersLost++;
                     summary += `Defender's **${defenderRolls[1]}** beats **${attackerRolls[1]}**. `;
                 }
             }
@@ -1216,7 +1238,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     continueProcessing: true,
                     summary: {
                         content: `${summary}\n**${this.getPlayerDisplayName(defenderId)}** has successfully fended off **${this.getPlayerDisplayName(attackerId)}** at _${this.getTerritoryName(conflict.to)}_!`,
-                        files: [await this.renderConflict(conflict, { attackerRolls, defenderRolls })]
+                        files: [await this.renderConflict(conflict, { attackerRolls, defenderRolls, attackersLost, defendersLost })]
                     }
                 };
             }
@@ -1235,7 +1257,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     continueProcessing: true,
                     summary: {
                         content: `${summary}\n**${this.getPlayerDisplayName(attackerId)}** has defeated **${this.getPlayerDisplayName(defenderId)}** at _${this.getTerritoryName(conflict.to)}_!`,
-                        files: [await this.renderConflict(conflict, { attackerRolls, defenderRolls })]
+                        files: [await this.renderConflict(conflict, { attackerRolls, defenderRolls, attackersLost, defendersLost })]
                     }
                 };
             }
@@ -1244,7 +1266,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 continueProcessing: true,
                 summary: {
                     content: `${summary}**${conflict.attackerTroops}** attacker troops remaining vs **${conflict.defenderTroops}** defending...`,
-                    files: [await this.renderConflict(conflict, { attackerRolls, defenderRolls })]
+                    files: [await this.renderConflict(conflict, { attackerRolls, defenderRolls, attackersLost, defendersLost })]
                 }
             };
         }
@@ -1297,6 +1319,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 from: conflict.from,
                 to: conflict.to,
                 quantity: actualQuantity,
+                attackerId: this.getTerritoryOwner(conflict.from),
+                defenderId: this.getTerritoryOwner(conflict.to),
                 initialAttackerTroops: actualQuantity,
                 initialDefenderTroops: this.getTerritoryTroops(conflict.to),
                 attackerTroops: actualQuantity,

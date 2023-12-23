@@ -233,6 +233,19 @@ export function getMinKey<T>(keys: T[], valueFn: (x: T) => number): T {
     return bestKey;
 }
 
+
+// TODO: Move to common library
+export async function drawTextCentered(context: CanvasRenderingContext2D, text: string, left: number, right: number, y: number, options?: { padding?: number }) {
+    const titleWidth = context.measureText(text).width;
+    const padding = options?.padding ?? 0;
+    const areaWidth = right - left - (2 * padding);
+    if (titleWidth > areaWidth) {
+        context.fillText(text, left + padding, y, areaWidth);
+    } else {
+        context.fillText(text, left + padding + (areaWidth - titleWidth) / 2, y);
+    }
+}
+
 /**
  * Generates text with a config-less language generator object.
  */
