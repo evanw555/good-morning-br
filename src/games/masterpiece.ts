@@ -1,8 +1,8 @@
-import canvas, { Canvas, NodeCanvasRenderingContext2D } from 'canvas';
+import canvas, { Canvas, CanvasRenderingContext2D } from 'canvas';
 import { ActionRowData, AttachmentBuilder, ButtonInteraction, ButtonStyle, ComponentType, GuildMember, Interaction, MessageActionRowComponentData, MessageFlags, Snowflake } from "discord.js";
 import { DecisionProcessingResult, MasterpieceGameState, MasterpiecePieceState, MasterpiecePlayerState, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
-import { capitalize, naturalJoin, randChoice, shuffle, toFixed, toLetterId } from "evanw555.js";
+import { capitalize, naturalJoin, randChoice, shuffle, toCircle, toFixed, toLetterId } from "evanw555.js";
 import { text } from '../util';
 
 import logger from "../logger";
@@ -490,29 +490,7 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
             .reduce((a, b) => a + b, 0);
     }
 
-    private async drawImageAsCircle(context: NodeCanvasRenderingContext2D, image: canvas.Image, alpha: number, centerX: number, centerY: number, radius: number): Promise<void> {
-        // Set the global alpha
-        context.globalAlpha = alpha;
-
-        // Save the context so we can undo the clipping region at a later time
-        context.save();
-
-        // Define the clipping region as an 360 degrees arc at point x and y
-        context.beginPath();
-        context.arc(centerX, centerY, radius, 0, Math.PI * 2, false);
-
-        // Clip!
-        context.clip();
-
-        // Draw the image at imageX, imageY
-        context.drawImage(image, centerX - radius, centerY - radius, radius * 2, radius * 2);
-
-        // Restore the context to undo the clipping
-        context.restore();
-        context.globalAlpha = 1;
-    }
-
-    private async drawTextCentered(context: NodeCanvasRenderingContext2D, text: string, left: number, right: number, y: number, options?: { padding?: number }) {
+    private async drawTextCentered(context: CanvasRenderingContext2D, text: string, left: number, right: number, y: number, options?: { padding?: number }) {
         const titleWidth = context.measureText(text).width;
         const padding = options?.padding ?? 0;
         const areaWidth = right - left - (2 * padding);
@@ -627,10 +605,10 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
         // Show the owner (if it's a player
         const owner = this.getPieceOwner(pieceId);
         if (typeof owner === 'string') {
-            const ownerAvatar = await imageLoader.loadAvatar(owner, 128);
+            const ownerAvatar = toCircle(await imageLoader.loadAvatar(owner, 128));
             const ownerCenterX = 242;
             const ownerCenterY = 374;
-            await this.drawImageAsCircle(context, ownerAvatar, 1, ownerCenterX, ownerCenterY, 64);
+            context.drawImage(ownerAvatar, ownerCenterX - 64, ownerCenterY - 64, 128, 128);
             // Write the display name
             context.fillStyle = 'white';
             context.font = 'italic 30px serif';
@@ -707,8 +685,8 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
             await this.drawTextCentered(context, this.getPlayerDisplayName(userId), baseX, baseX + AVATAR_WIDTH * 3 + HORIZONTAL_MARGIN, textY);
             baseX += 3 * (AVATAR_WIDTH + HORIZONTAL_MARGIN);
             // Draw player avatar
-            const avatar = await imageLoader.loadAvatar(userId, 32);
-            await this.drawImageAsCircle(context, avatar, 1, baseX + 0.5 * AVATAR_WIDTH, baseY + 0.5 * AVATAR_WIDTH, AVATAR_WIDTH * 0.5);
+            const avatar = toCircle(await imageLoader.loadAvatar(userId, 32));
+            context.drawImage(avatar, baseX, baseY, AVATAR_WIDTH, AVATAR_WIDTH);
             baseX += AVATAR_WIDTH + HORIZONTAL_MARGIN;
             // Draw truncated cash stack
             context.font = '20px sans-serif';

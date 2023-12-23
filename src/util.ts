@@ -205,6 +205,34 @@ export function getScaledPoints(entries: { userId: Snowflake, rank: number }[], 
     return results;
 }
 
+// TODO: Move to common library
+export function getMaxKey<T>(keys: T[], valueFn: (x: T) => number): T {
+    let maxValue = Number.MIN_SAFE_INTEGER;
+    let bestKey: T = keys[0];
+    for (const key of keys) {
+        const value = valueFn(key);
+        if (value > maxValue) {
+            bestKey = key;
+            maxValue = value;
+        }
+    }
+    return bestKey;
+}
+
+// TODO: Move to common library
+export function getMinKey<T>(keys: T[], valueFn: (x: T) => number): T {
+    let minValue = Number.MAX_SAFE_INTEGER;
+    let bestKey: T = keys[0];
+    for (const key of keys) {
+        const value = valueFn(key);
+        if (value < minValue) {
+            bestKey = key;
+            minValue = value;
+        }
+    }
+    return bestKey;
+}
+
 /**
  * Generates text with a config-less language generator object.
  */

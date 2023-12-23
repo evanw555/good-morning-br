@@ -135,9 +135,18 @@ const showTimeoutTriggerButton = async (type: TimeoutType, arg?: any) => {
 /**
  * This is a wrapper for the timeout manager that allows us to spawn buttons instead of timeouts when testing locally.
  */
-const registerTimeout = async (type: TimeoutType, date: Date, options?: TimeoutOptions) => {
+const registerTimeout = async (type: TimeoutType, date: Date, options?: TimeoutOptions, testOptions?: { testingSeconds?: number }) => {
     if (config.testing) {
-        await showTimeoutTriggerButton(type, options?.arg);
+        const testingSeconds = testOptions?.testingSeconds ?? 0;
+        if (testingSeconds > 0) {
+            // If a test delay was specified, register it as a brief timeout
+            const d = new Date();
+            d.setSeconds(d.getSeconds() + testingSeconds);
+            await timeoutManager.registerTimeout(type, d, options);
+        } else {
+            // Otherwise, spawn a test button
+            await showTimeoutTriggerButton(type, options?.arg);
+        }
     } else {
         await timeoutManager.registerTimeout(type, date, options);
     }
@@ -903,7 +912,7 @@ const registerGoodMorningTimeout = async (): Promise<void> => {
     }
 
     // We register this with the "Increment Day" strategy since it happens at a particular time and it's not competing with any other triggers.
-    await registerTimeout(TimeoutType.NextGoodMorning, nextMorning, { pastStrategy: PastTimeoutStrategy.IncrementDay });
+    await registerTimeout(TimeoutType.NextGoodMorning, nextMorning, { pastStrategy: PastTimeoutStrategy.IncrementDay }, { testingSeconds: 5 });
 };
 
 const registerGuestReveilleFallbackTimeout = async (): Promise<void> => {
@@ -1489,13 +1498,13 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         noonToday.setHours(12, 0, 0, 0);
         noonToday.setMinutes(noonToday.getMinutes() - minutesEarly);
         // We register this with the "Increment Hour" strategy since its subsequent timeout (GoodMorning) is registered in series
-        await registerTimeout(TimeoutType.NextNoon, noonToday, { pastStrategy: PastTimeoutStrategy.IncrementHour });
+        await registerTimeout(TimeoutType.NextNoon, noonToday, { pastStrategy: PastTimeoutStrategy.IncrementHour }, { testingSeconds: 5 });
         // Set timeout for when baiting starts
         const baitingStartTime: Date = new Date();
         baitingStartTime.setHours(11, 59, 0, 0);
         baitingStartTime.setMinutes(baitingStartTime.getMinutes() - minutesEarly);
         // We register this with the "Delete" strategy since it doesn't schedule any events and it's non-critical
-        await registerTimeout(TimeoutType.BaitingStart, baitingStartTime, { pastStrategy: PastTimeoutStrategy.Delete });
+        await registerTimeout(TimeoutType.BaitingStart, baitingStartTime, { pastStrategy: PastTimeoutStrategy.Delete }, { testingSeconds: 4 });
 
         // Check the results of anonymous submissions
         if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
@@ -2665,15 +2674,7 @@ client.on('ready', async (): Promise<void> => {
     // If we're testing locally, delete all existing timeouts and jump straight to the morning of the decision
     if (config.testing) {
         // First, create a new state altogether
-        state = new GoodMorningState({
-            season: 99,
-            startedOn: getTodayDateString(),
-            isMorning: false,
-            isGracePeriod: true,
-            goodMorningEmoji: config.defaultGoodMorningEmoji,
-            dailyStatus: {},
-            players: {}
-        });
+        state = new GoodMorningState(await storage.readJson('test-state.json'));
         // Add players with random starting points
         for (const member of (await guild.members.fetch()).toJSON()) {
             if (!member.user.bot) {

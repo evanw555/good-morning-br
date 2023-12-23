@@ -1,11 +1,17 @@
 import { APIActionRowComponent, APIMessageActionRowComponent, APISelectMenuOption, ActionRowData, AttachmentBuilder, ButtonStyle, ComponentType, GuildMember, Interaction, InteractionReplyOptions, MessageActionRowComponentData, MessageFlags, Snowflake } from "discord.js";
-import { DecisionProcessingResult, MessengerPayload, PrizeType, RiskGameState, RiskMovementData, RiskPlayerState, RiskTerritoryState } from "../types";
+import { DecisionProcessingResult, MessengerPayload, PrizeType, RiskConflictState, RiskGameState, RiskMovementData, RiskPlayerState, RiskTerritoryState } from "../types";
 import AbstractGame from "./abstract-game";
 import { Canvas, createCanvas } from "canvas";
-import { DiscordTimestampFormat, getDateBetween, getJoinedMentions, naturalJoin, randChoice, randInt, shuffleWithDependencies, toDiscordTimestamp, toFixed } from "evanw555.js";
+import { DiscordTimestampFormat, getDateBetween, getJoinedMentions, naturalJoin, randChoice, randInt, shuffleWithDependencies, toCircle, toDiscordTimestamp, toFixed } from "evanw555.js";
 
 import logger from "../logger";
 import imageLoader from "../image-loader";
+import { getMinKey, getMaxKey } from "../util";
+
+interface Coordinates {
+    x: number,
+    y: number
+}
 
 interface RiskConfig {
     map: {
@@ -22,9 +28,10 @@ interface RiskConfig {
     },
     territories: Record<string, {
         name: string,
-        center: { x: number, y: number },
+        center: Coordinates,
+        troopBounds: Coordinates[],
         connections: string[],
-        termini: Record<string, { x: number, y: number }>
+        termini: Record<string, Coordinates>
     }>
 }
 
@@ -46,6 +53,12 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             A: {
                 name: 'Fairview',
                 center: { x: 313, y: 50 },
+                troopBounds: [
+                    { x: 171, y: 7 },
+                    { x: 455, y: 7 },
+                    { x: 221, y: 98 },
+                    { x: 362, y: 122 },
+                ],
                 connections: ['B', 'D', 'E'],
                 termini: {
                     B: { x: 417, y: 55 },
@@ -56,6 +69,12 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             B: {
                 name: 'Santa Ana Heights',
                 center: { x: 473, y: 106 },
+                troopBounds: [
+                    { x: 487, y: 9 },
+                    { x: 618, y: 25 },
+                    { x: 394, y: 119 },
+                    { x: 486, y: 195 }
+                ],
                 connections: ['A', 'C', 'E', 'F'],
                 termini: {
                     A: { x: 439, y: 71 },
@@ -67,6 +86,12 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             C: {
                 name: 'John Wayne',
                 center: { x: 612, y: 104 },
+                troopBounds: [
+                    { x: 641, y: 11 },
+                    { x: 755, y: 9 },
+                    { x: 558, y: 136 },
+                    { x: 756, y: 105 }
+                ],
                 connections: ['B', 'H'],
                 termini: {
                     B: { x: 547, y: 104 },
@@ -76,6 +101,12 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             D: {
                 name: 'West Side Costa Mesa',
                 center: { x: 222, y: 219 },
+                troopBounds: [
+                    { x: 176, y: 126 },
+                    { x: 348, y: 142 },
+                    { x: 130, y: 220 },
+                    { x: 231, y: 327 }
+                ],
                 connections: ['A', 'E', 'I'],
                 termini: {
                     A: { x: 231, y: 106 },
@@ -86,6 +117,12 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             E: {
                 name: 'East Side Costa Mesa',
                 center: { x: 380, y: 232 },
+                troopBounds: [
+                    { x: 383, y: 134 },
+                    { x: 471, y: 206 },
+                    { x: 298, y: 250 },
+                    { x: 381, y: 318 }
+                ],
                 connections: ['A', 'B', 'D', 'F', 'I'],
                 termini: {
                     A: { x: 382, y: 140 },
@@ -98,6 +135,12 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             F: {
                 name: 'Dover',
                 center: { x: 468, y: 304 },
+                troopBounds: [
+                    { x: 500, y: 212 },
+                    { x: 515, y: 289 },
+                    { x: 396, y: 329 },
+                    { x: 467, y: 371 }
+                ],
                 connections: ['B', 'E', 'I', 'J'],
                 termini: {
                     B: { x: 497, y: 216 },
@@ -109,6 +152,12 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             G: {
                 name: 'Eastbluff',
                 center: { x: 606, y: 230 },
+                troopBounds: [
+                    { x: 581, y: 166 },
+                    { x: 667, y: 180 },
+                    { x: 538, y: 267 },
+                    { x: 610, y: 319 }
+                ],
                 connections: ['H', 'L', 'N'],
                 termini: {
                     H: { x: 658, y: 189 },
@@ -119,6 +168,12 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             H: {
                 name: 'UCI',
                 center: { x: 718, y: 232 },
+                troopBounds: [
+                    { x: 700, y: 141 },
+                    { x: 757, y: 137 },
+                    { x: 667, y: 283 },
+                    { x: 751, y: 310 }
+                ],
                 connections: ['C', 'G', 'N'],
                 termini: {
                     C: { x: 712, y: 141 },
@@ -129,6 +184,12 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             I: {
                 name: 'Newport Heights',
                 center: { x: 307, y: 354 },
+                troopBounds: [
+                    { x: 290, y: 269 },
+                    { x: 395, y: 351 },
+                    { x: 216, y: 387 },
+                    { x: 362, y: 420 }
+                ],
                 connections: ['D', 'E', 'F', 'J', 'T', 'U'],
                 termini: {
                     D: { x: 224, y: 369 },
@@ -142,6 +203,12 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             J: {
                 name: 'Castaways',
                 center: { x: 411, y: 379 },
+                troopBounds: [
+                    { x: 409, y: 361 },
+                    { x: 448, y: 382 },
+                    { x: 355, y: 452 },
+                    { x: 384, y: 446 }
+                ],
                 connections: ['F', 'I', 'K'],
                 termini: {
                     F: { x: 430, y: 378 },
@@ -152,6 +219,12 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             K: {
                 name: 'The Dunes',
                 center: { x: 467, y: 429 },
+                troopBounds: [
+                    { x: 531, y: 390 },
+                    { x: 557, y: 409 },
+                    { x: 555, y: 452 },
+                    { x: 432, y: 435 }
+                ],
                 connections: ['J', 'L', 'M', 'O'],
                 termini: {
                     J: { x: 438, y: 430 },
@@ -163,6 +236,12 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             L: {
                 name: 'Park Newport',
                 center: { x: 586, y: 345 },
+                troopBounds: [
+                    { x: 561, y: 314 },
+                    { x: 607, y: 338 },
+                    { x: 544, y: 379 },
+                    { x: 605, y: 385 }
+                ],
                 connections: ['G', 'K', 'M', 'N'],
                 termini: {
                     G: { x: 575, y: 325 },
@@ -174,6 +253,12 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             M: {
                 name: 'Fashion Island',
                 center: { x: 633, y: 470 },
+                troopBounds: [
+                    { x: 619, y: 388 },
+                    { x: 688, y: 469 },
+                    { x: 568, y: 438 },
+                    { x: 638, y: 535 }
+                ],
                 connections: ['K', 'L', 'N', 'O', 'P'],
                 termini: {
                     K: { x: 576, y: 431 },
@@ -186,6 +271,12 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             N: {
                 name: 'Bonita Canyon',
                 center: { x: 711, y: 391 },
+                troopBounds: [
+                    { x: 651, y: 293 },
+                    { x: 754, y: 347 },
+                    { x: 622, y: 367 },
+                    { x: 752, y: 508 }
+                ],
                 connections: ['G', 'H', 'L', 'M'],
                 termini: {
                     G: { x: 647, y: 317 },
@@ -197,6 +288,12 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             O: {
                 name: 'Promontory',
                 center: { x: 550, y: 486 },
+                troopBounds: [
+                    { x: 447, y: 448 },
+                    { x: 550, y: 465 },
+                    { x: 448, y: 490 },
+                    { x: 588, y: 500 }
+                ],
                 connections: ['K', 'M', 'P', 'R'],
                 termini: {
                     K: { x: 533, y: 472 },
@@ -208,6 +305,12 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             P: {
                 name: 'Corona del Mar',
                 center: { x: 654, y: 609 },
+                troopBounds: [
+                    { x: 570, y: 527 },
+                    { x: 693, y: 561 },
+                    { x: 617, y: 640 },
+                    { x: 673, y: 661 }
+                ],
                 connections: ['M', 'O'],
                 termini: {
                     M: { x: 653, y: 557 },
@@ -217,6 +320,11 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             Q: {
                 name: 'Lido Isle',
                 center: { x: 306, y: 470 },
+                troopBounds: [
+                    { x: 273, y: 441 },
+                    { x: 370, y: 496 },
+                    { x: 289, y: 475 }
+                ],
                 connections: ['U'],
                 termini: {
                     U: { x: 287, y: 455 }
@@ -225,6 +333,12 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             R: {
                 name: 'Balboa Island',
                 center: { x: 493, y: 526 },
+                troopBounds: [
+                    { x: 453, y: 513 },
+                    { x: 533, y: 515 },
+                    { x: 465, y: 537 },
+                    { x: 543, y: 539 }
+                ],
                 connections: ['O', 'W'],
                 termini: {
                     O: { x: 514, y: 517 },
@@ -234,6 +348,12 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             S: {
                 name: 'Newport Shores',
                 center: { x: 66, y: 337 },
+                troopBounds: [
+                    { x: 31, y: 313 },
+                    { x: 82, y: 307 },
+                    { x: 32, y: 339 },
+                    { x: 92, y: 366 }
+                ],
                 connections: ['T'],
                 termini: {
                     T: { x: 85, y: 354 }
@@ -242,6 +362,12 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             T: {
                 name: '40th Street',
                 center: { x: 144, y: 380 },
+                troopBounds: [
+                    { x: 105, y: 362 },
+                    { x: 170, y: 379 },
+                    { x: 187, y: 445 },
+                    { x: 208, y: 436 }
+                ],
                 connections: ['I', 'S', 'U'],
                 termini: {
                     I: { x: 160, y: 382 },
@@ -252,9 +378,16 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             U: {
                 name: 'Golden Mile',
                 center: { x: 221, y: 460 },
-                connections: ['I', 'T', 'V'],
+                troopBounds: [
+                    { x: 194, y: 454 },
+                    { x: 225, y: 415 },
+                    { x: 240, y: 517 },
+                    { x: 265, y: 480 }
+                ],
+                connections: ['I', 'Q', 'T', 'V'],
                 termini: {
                     I: { x: 225, y: 422 },
+                    Q: { x: 239, y: 436 },
                     T: { x: 203, y: 457 },
                     V: { x: 237, y: 507 }
                 }
@@ -262,6 +395,12 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             V: {
                 name: 'Mid-Peninsula',
                 center: { x: 310, y: 530 },
+                troopBounds: [
+                    { x: 259, y: 507 },
+                    { x: 370, y: 538 },
+                    { x: 251, y: 525 },
+                    { x: 364, y: 554 }
+                ],
                 connections: ['U', 'W'],
                 termini: {
                     U: { x: 263, y: 518 },
@@ -271,17 +410,28 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             W: {
                 name: 'The Fun Zone',
                 center: { x: 411, y: 553 },
+                troopBounds: [
+                    { x: 398, y: 534 },
+                    { x: 463, y: 569 },
+                    { x: 376, y: 556 },
+                    { x: 457, y: 585 }
+                ],
                 connections: ['R', 'V', 'X', 'Y'],
                 termini: {
                     R: { x: 432, y: 558 },
                     V: { x: 387, y: 550 },
-                    X: { x: 451, y: 574 },
-                    Y: { x: 433, y: 570 }
+                    Y: { x: 433, y: 570 },
+                    X: { x: 451, y: 574 }
                 }
             },
             X: {
                 name: 'The Wedge',
                 center: { x: 547, y: 607 },
+                troopBounds: [
+                    { x: 470, y: 583 },
+                    { x: 544, y: 588 },
+                    { x: 578, y: 635 },
+                ],
                 connections: ['W'],
                 termini: {
                     W: { x: 478, y: 587 }
@@ -290,6 +440,12 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             Y: {
                 name: 'Catalina Island',
                 center: { x: 122, y: 661 },
+                troopBounds: [
+                    { x: 88, y: 619 },
+                    { x: 141, y: 640 },
+                    { x: 101, y: 686 },
+                    { x: 177, y: 700 }
+                ],
                 connections: ['W'],
                 termini: {
                     W: { x: 164, y: 686 }
@@ -653,7 +809,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         return new AttachmentBuilder('assets/risk/map-with-background.png');
     }
 
-    private async renderConflict(conflict: RiskMovementData, fromRolls: number[], toRolls: number[]): Promise<AttachmentBuilder> {
+    private async renderConflict(conflict: RiskConflictState, options: { attackerRolls: number[], defenderRolls: number[] }): Promise<AttachmentBuilder> {
         const { from, to } = conflict;
         const conflictId = [from, to].sort().join('');
         const conflictImage = await imageLoader.loadImage(`assets/risk/connections/${conflictId}.png`);
@@ -666,26 +822,156 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         // Draw the conflict background
         context.drawImage(conflictImage, 0, 0, WIDTH, HEIGHT);
 
+        // Draw the attacker avatar
+        const attackerId = this.getTerritoryOwner(conflict.from);
+        if (attackerId) {
+            const AVATAR_WIDTH = HEIGHT / 8;
+            const x = HEIGHT * (1 / 12);
+            const y = HEIGHT * (1 / 12);
+            const attackerAvatarImage = toCircle(await imageLoader.loadAvatar(attackerId, 128));
+            context.drawImage(attackerAvatarImage, x - AVATAR_WIDTH / 2, y - AVATAR_WIDTH / 2, AVATAR_WIDTH, AVATAR_WIDTH);
+        }
+
+        // Draw the defender avatar
+        const defenderId = this.getTerritoryOwner(conflict.to);
+        if (defenderId) {
+            const AVATAR_WIDTH = HEIGHT / 8;
+            const x = WIDTH - HEIGHT * (1 / 12);
+            const y = HEIGHT * (1 / 12);
+            const defenderAvatarImage = toCircle(await imageLoader.loadAvatar(defenderId, 128));
+            context.drawImage(defenderAvatarImage, x - AVATAR_WIDTH / 2, y - AVATAR_WIDTH / 2, AVATAR_WIDTH, AVATAR_WIDTH);
+        }
+
+        // Draw the attacker troops
+        const troopImage = await imageLoader.loadImage('assets/risk/troops/1.png');
+        const crossOutImage = await imageLoader.loadImage('assets/common/crossout.png');
+        for (let i = 0; i < conflict.initialAttackerTroops; i++) {
+            const TROOP_WIDTH = HEIGHT / 8;
+            const x = WIDTH * (1 / 6);
+            const y = HEIGHT * (i + 2) / (Math.max(3, conflict.initialAttackerTroops) + 3);
+            context.drawImage(troopImage, x - TROOP_WIDTH / 2, y - TROOP_WIDTH / 2, TROOP_WIDTH, TROOP_WIDTH);
+            const defeated = i >= conflict.attackerTroops;
+            if (defeated) {
+                context.drawImage(crossOutImage, x - TROOP_WIDTH / 2, y - TROOP_WIDTH / 2, TROOP_WIDTH, TROOP_WIDTH);
+            }
+        }
+
         // Draw the attacker dice rolls
-        for (let i = 0; i < fromRolls.length; i++) {
+        for (let i = 0; i < options.attackerRolls.length; i++) {
             const DIE_WIDTH = HEIGHT / 8;
-            const roll = fromRolls[i];
+            const x = WIDTH * (2 / 6);
+            const y = HEIGHT * ((2 + i) / 6);
+            const roll = options.attackerRolls[i];
             const dieImage = await imageLoader.loadImage(`assets/common/dice/r${roll}.png`);
-            context.drawImage(dieImage, (WIDTH * 0.25) - DIE_WIDTH / 2, (i + 1) * (DIE_WIDTH * 1.5), DIE_WIDTH, DIE_WIDTH);
+            context.drawImage(dieImage, x - DIE_WIDTH / 2, y - DIE_WIDTH / 2, DIE_WIDTH, DIE_WIDTH);
+        }
+
+        // Draw the arrows in the center depending on the results
+        const numRolls = Math.min(options.attackerRolls.length, options.defenderRolls.length);
+        for (let i = 0; i < numRolls; i++) {
+            const ARROW_WIDTH = HEIGHT / 4;
+            const ARROW_HEIGHT = HEIGHT / 8;
+            const x = WIDTH * (3 / 6);
+            const y = HEIGHT * ((2 + i) / 6);
+            if (options.attackerRolls[i] > options.defenderRolls[i]) {
+                const attackerArrowImage = await imageLoader.loadImage('assets/risk/attacker-arrow.png');
+                context.drawImage(attackerArrowImage, x - ARROW_WIDTH / 2, y - ARROW_HEIGHT / 2, ARROW_WIDTH, ARROW_HEIGHT);
+            } else {
+                const defenderArrowImage = await imageLoader.loadImage('assets/risk/defender-arrow.png');
+                context.drawImage(defenderArrowImage, x - ARROW_WIDTH / 2, y - ARROW_HEIGHT / 2, ARROW_WIDTH, ARROW_HEIGHT);
+            }
         }
 
         // Draw the defender dice rolls
-        for (let i = 0; i < toRolls.length; i++) {
+        for (let i = 0; i < options.defenderRolls.length; i++) {
             const DIE_WIDTH = HEIGHT / 8;
-            const roll = toRolls[i];
+            const x = WIDTH * (4 / 6);
+            const y = HEIGHT * ((2 + i) / 6);
+            const roll = options.defenderRolls[i];
             const dieImage = await imageLoader.loadImage(`assets/common/dice/w${roll}.png`);
-            context.drawImage(dieImage, (WIDTH * 0.75) - DIE_WIDTH / 2, (i + 1) * (DIE_WIDTH * 1.5), DIE_WIDTH, DIE_WIDTH);
+            context.drawImage(dieImage, x - DIE_WIDTH / 2, y - DIE_WIDTH / 2, DIE_WIDTH, DIE_WIDTH);
+        }
+
+        // Draw the defender troops
+        for (let i = 0; i < conflict.initialDefenderTroops; i++) {
+            const TROOP_WIDTH = HEIGHT / 8;
+            const x = WIDTH * (5 / 6);
+            const y = HEIGHT * (i + 2) / (Math.max(3, conflict.initialDefenderTroops) + 3);
+            context.drawImage(troopImage, x - TROOP_WIDTH / 2, y - TROOP_WIDTH / 2, TROOP_WIDTH, TROOP_WIDTH);
+            const defeated = i >= conflict.defenderTroops;
+            if (defeated) {
+                context.drawImage(crossOutImage, x - TROOP_WIDTH / 2, y - TROOP_WIDTH / 2, TROOP_WIDTH, TROOP_WIDTH);
+            }
         }
 
         return new AttachmentBuilder(canvas.toBuffer()).setName(`risk-conflict-${conflictId}.png`);
     }
 
-    private async renderMap(options?: { conflict?: RiskMovementData }): Promise<Canvas> {
+    private getDistanceBetween(a: Coordinates, b: Coordinates): number {
+        return Math.sqrt(Math.pow(a.x - b.x, 2) + Math.pow(a.y - b.y, 2));
+    }
+
+    private getRandomTerritoryTroopLocations(territoryId: string, n: number): Coordinates[] {
+        const center = RiskGame.config.territories[territoryId].center;
+        // const corners = RiskGame.config.territories[territoryId].troopBounds;
+        const result: Coordinates[] = [];
+        const getMinDistance = (location): number => {
+            // TODO: Should corner repelling be re-enabled?
+            const distToCorners = []; //corners.map(l => this.getDistanceBetween(location, l));
+            const distToResults = result.map(l => this.getDistanceBetween(location, l));
+            return Math.min(...distToCorners, ...distToResults);
+        };
+        while (result.length < n) {
+            if (result.length === 0) {
+                result.push({ ...center });
+                continue;
+            }
+            const grid = this.getTerritoryCoordinateGrid(territoryId, 20);
+            // Don't place troops more than 20 pixels away from the closest troop
+            // const validGrid = grid.filter(l => result.length === 0 || getMinDistance(l) < 20);
+            const idealLocations = grid.filter(l => getMinDistance(l) > 10 + this.getDistanceBetween(l, center) / 8);
+            if (idealLocations.length > 0) {
+                result.push(getMinKey(idealLocations, (l) => this.getDistanceBetween(l, center)));
+                continue;
+            }
+            const maxMinDistanceLocation = getMaxKey(grid, (l) => getMinDistance(l));
+            result.push(maxMinDistanceLocation);
+        }
+        return result.sort((a, b) => a.y - b.y);
+    }
+
+    private getPointAlong(a: Coordinates, b: Coordinates, along: number): Coordinates {
+        return {
+            x: Math.round(a.x + along * (b.x - a.x)),
+            y: Math.round(a.y + along * (b.y - a.y))
+        };
+    }
+
+    private getPointAlong2D(a: Coordinates, b: Coordinates, c: Coordinates, d: Coordinates, alongX: number, alongY: number): Coordinates {
+        const t1 = this.getPointAlong(a, b, alongX);
+        const t2 = this.getPointAlong(c, d, alongX);
+        return this.getPointAlong(t1, t2, alongY);
+    }
+
+    private getTerritoryCoordinateGrid(territoryId: string, n: number): Coordinates[] {
+        const troopBounds = RiskGame.config.territories[territoryId].troopBounds;
+
+        // If there are fewer than 4 vertices, just duplicate the last one until there are 4
+        const points = [...troopBounds];
+        while (points.length < 4) {
+            points.push(points[points.length - 1]);
+        }
+
+        const result: Coordinates[] = [];
+        for (let i = 0; i < n; i++) {
+            for (let j = 0; j < n; j++) {
+                result.push(this.getPointAlong2D(points[0], points[1], points[2], points[3], i / (n - 1), j / (n - 1)));
+            }
+        }
+        return result;
+    }
+
+    private async renderMap(options?: { conflict?: RiskMovementData, additions?: Record<string, number> }): Promise<Canvas> {
         const mapImage = await imageLoader.loadImage('assets/risk/map.png');
 
         // Define the canvas
@@ -701,17 +987,18 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         context.drawImage(mapImage, 0, 0);
 
         // Draw the number of troops in each territory
+        const troopsImage = await imageLoader.loadImage('assets/risk/troops/1.png');
+        const newTroopsImage = await imageLoader.loadImage('assets/risk/troops/1new.png');
+        const troopsWidth = 24;
         for (const territoryId of this.getTerritories()) {
+            // const troopsImage = await imageLoader.loadAvatar(this.getTerritoryOwner(territoryId) ?? '', 16);
             const numTroops = this.getTerritoryTroops(territoryId);
-            const { x, y } = RiskGame.config.territories[territoryId].center;
-            if (numTroops > 5) {
-                context.font = 'bold 28px sans-serif';
-                context.fillStyle = 'black';
-                context.fillText(`${numTroops}`, x, y);
-            } else {
-                const troopsImage = await imageLoader.loadImage(`assets/risk/troops/${numTroops}.png`);
-                const troopsWidth = 28;
-                context.drawImage(troopsImage, x - troopsWidth / 2, y - troopsWidth / 2, troopsWidth, troopsWidth);
+            const additions = (options?.additions ?? {})[territoryId] ?? 0;
+            const troopLocations = this.getRandomTerritoryTroopLocations(territoryId, numTroops);
+            for (let i = 0; i < troopLocations.length; i++) {
+                const { x, y } = troopLocations[i];
+                const newAddition = troopLocations.length - i <= additions;
+                context.drawImage(newAddition ? newTroopsImage : troopsImage, x - troopsWidth / 2, y - troopsWidth / 2, troopsWidth, troopsWidth);
             }
         }
 
@@ -728,6 +1015,10 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         }
 
         return canvas;
+    }
+
+    private async renderAdditions(additions: Record<string, number>): Promise<AttachmentBuilder> {
+        return new AttachmentBuilder((await this.renderMap({ additions })).toBuffer()).setName('risk-additions.png');
     }
 
     private async renderInvasion(conflict: RiskMovementData): Promise<AttachmentBuilder> {
@@ -866,10 +1157,12 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         // If there are pending add decisions, process them
         if (this.state.addDecisions) {
             const addDecisions = this.state.addDecisions;
+            const additions: Record<string, number> = {};
             for (const userId of Object.keys(addDecisions)) {
                 const territoryIds = addDecisions[userId];
                 for (const territoryId of territoryIds) {
                     this.addTerritoryTroops(territoryId, 1);
+                    additions[territoryId] = (additions[territoryId] ?? 0) + 1;
                 }
             }
             // Delete the add decisions to prevent further processing on them
@@ -878,8 +1171,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 continueProcessing: true,
                 summary: {
                     content: 'Troops were added!',
-                    // TODO: Show a render that depicts what was added where
-                    files: [await this.renderStateAttachment()]
+                    files: [await this.renderAdditions(additions)]
                 }
             };
         }
@@ -924,7 +1216,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     continueProcessing: true,
                     summary: {
                         content: `${summary}\n**${this.getPlayerDisplayName(defenderId)}** has successfully fended off **${this.getPlayerDisplayName(attackerId)}** at _${this.getTerritoryName(conflict.to)}_!`,
-                        files: [await this.renderConflict(conflict, attackerRolls, defenderRolls)]
+                        files: [await this.renderConflict(conflict, { attackerRolls, defenderRolls })]
                     }
                 };
             }
@@ -943,7 +1235,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     continueProcessing: true,
                     summary: {
                         content: `${summary}\n**${this.getPlayerDisplayName(attackerId)}** has defeated **${this.getPlayerDisplayName(defenderId)}** at _${this.getTerritoryName(conflict.to)}_!`,
-                        files: [await this.renderConflict(conflict, attackerRolls, defenderRolls)]
+                        files: [await this.renderConflict(conflict, { attackerRolls, defenderRolls })]
                     }
                 };
             }
@@ -952,7 +1244,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 continueProcessing: true,
                 summary: {
                     content: `${summary}**${conflict.attackerTroops}** attacker troops remaining vs **${conflict.defenderTroops}** defending...`,
-                    files: [await this.renderConflict(conflict, attackerRolls, defenderRolls)]
+                    files: [await this.renderConflict(conflict, { attackerRolls, defenderRolls })]
                 }
             };
         }
@@ -1005,6 +1297,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 from: conflict.from,
                 to: conflict.to,
                 quantity: actualQuantity,
+                initialAttackerTroops: actualQuantity,
+                initialDefenderTroops: this.getTerritoryTroops(conflict.to),
                 attackerTroops: actualQuantity,
                 defenderTroops: this.getTerritoryTroops(conflict.to)
             };

@@ -304,6 +304,13 @@ export interface RiskMovementData {
     quantity: number
 }
 
+export interface RiskConflictState extends RiskMovementData {
+    readonly initialAttackerTroops: number,
+    readonly initialDefenderTroops: number,
+    attackerTroops: number,
+    defenderTroops: number
+}
+
 export interface RiskGameState extends AbstractGameState<'RISK_GAME_STATE'> {
     readonly players: Record<Snowflake, RiskPlayerState>,
     readonly territories: Record<string, RiskTerritoryState>,
@@ -313,10 +320,7 @@ export interface RiskGameState extends AbstractGameState<'RISK_GAME_STATE'> {
     attackDecisions?: Record<Snowflake, RiskMovementData[]>,
     moveDecisions?: Record<Snowflake, RiskMovementData>,
     // This represents the current conflict being processed
-    currentConflict?: {
-        attackerTroops: number,
-        defenderTroops: number
-    } & RiskMovementData
+    currentConflict?: RiskConflictState
 }
 
 export interface ClassicGameState extends AbstractGameState<'CLASSIC_GAME_STATE'> {

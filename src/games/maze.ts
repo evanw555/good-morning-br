@@ -1,6 +1,6 @@
-import canvas, { NodeCanvasRenderingContext2D } from 'canvas';
+import canvas, { CanvasRenderingContext2D } from 'canvas';
 import { AttachmentBuilder, GuildMember, MessageFlags, Snowflake } from 'discord.js';
-import { getRankString, getNumberBetween, naturalJoin, randInt, shuffle, toLetterId, fromLetterId, AStarPathFinder, shuffleWithDependencies, toFixed, collapseRedundantStrings, chance, randChoice } from 'evanw555.js';
+import { getRankString, getNumberBetween, naturalJoin, randInt, shuffle, toLetterId, fromLetterId, AStarPathFinder, shuffleWithDependencies, toFixed, collapseRedundantStrings, chance, randChoice, toCircle } from 'evanw555.js';
 import { DecisionProcessingResult, MazeGameState, MazeItemName, MazeLine, MazeLocation, MazePlayerState, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 
@@ -500,7 +500,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         return masterImage.toBuffer();
     }
 
-    private async renderPlayer(context: NodeCanvasRenderingContext2D, userId: Snowflake): Promise<void> {
+    private async renderPlayer(context: CanvasRenderingContext2D, userId: Snowflake): Promise<void> {
         const player = this.state.players[userId];
 
         // Draw outline (rainbow if invincible, black otherwise)
@@ -527,8 +527,8 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         }
 
         // Draw inner stuff
-        const avatarImage = await imageLoader.loadAvatar(userId);
-        await this.drawImageAsCircle(context, avatarImage, this.isPlayerStunned(userId) ? 0.4 : 1, (player.c + .5) * MazeGame.TILE_SIZE, (player.r + .5) * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE / 2);
+        const avatarImage = toCircle(await imageLoader.loadAvatar(userId), { alpha: this.isPlayerStunned(userId) ? 0.4 : 1 });
+        context.drawImage(avatarImage, player.c * MazeGame.TILE_SIZE, player.r * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE, MazeGame.TILE_SIZE);
 
         // If the user is stunned, draw something to indicate this
         if (this.isPlayerStunned(userId)) {
@@ -551,29 +551,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         }
     }
 
-    private async drawImageAsCircle(context: NodeCanvasRenderingContext2D, image: canvas.Image, alpha: number, centerX: number, centerY: number, radius: number): Promise<void> {
-        // Set the global alpha
-        context.globalAlpha = alpha;
-
-        // Save the context so we can undo the clipping region at a later time
-        context.save();
-
-        // Define the clipping region as an 360 degrees arc at point x and y
-        context.beginPath();
-        context.arc(centerX, centerY, radius, 0, Math.PI * 2, false);
-
-        // Clip!
-        context.clip();
-
-        // Draw the image at imageX, imageY
-        context.drawImage(image, centerX - radius, centerY - radius, radius * 2, radius * 2);
-
-        // Restore the context to undo the clipping
-        context.restore();
-        context.globalAlpha = 1;
-    }
-
-    private fillTextOnTile(context: NodeCanvasRenderingContext2D, text: string, r: number, c: number): void {
+    private fillTextOnTile(context: CanvasRenderingContext2D, text: string, r: number, c: number): void {
         const width = context.measureText(text).width;
         const baseX = c * MazeGame.TILE_SIZE;
         const horizontalMargin = (MazeGame.TILE_SIZE - width) / 2;
@@ -583,7 +561,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         context.fillText(text, baseX + horizontalMargin, baseY + verticalMargin + ascent);
     }
 
-    private drawRandomPolygonOnTile(context: NodeCanvasRenderingContext2D, r: number, c: number, options?: { numVertices?: number, minRadius?: number, maxRadius?: number }): void {
+    private drawRandomPolygonOnTile(context: CanvasRenderingContext2D, r: number, c: number, options?: { numVertices?: number, minRadius?: number, maxRadius?: number }): void {
         const numVertices = options?.numVertices ?? randInt(8, 16);
         const minRadius = options?.minRadius ?? 0.4;
         const maxRadius = options?.maxRadius ?? 0.55;
@@ -683,8 +661,8 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
             context.arc((finalLocation.c + .5) * MazeGame.TILE_SIZE, (finalLocation.r + .5) * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE / 2 + 1, 0, Math.PI * 2, false);
             context.stroke();
             // Render the player's avatar faintly
-            const avatarImage = await imageLoader.loadAvatar(userId);
-            await this.drawImageAsCircle(context, avatarImage, 0.35, (finalLocation.c + .5) * MazeGame.TILE_SIZE, (finalLocation.r + .5) * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE / 2);
+            const avatarImage = toCircle(await imageLoader.loadAvatar(userId), { alpha: 0.35 });
+            context.drawImage(avatarImage, finalLocation.c * MazeGame.TILE_SIZE, finalLocation.r * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE, MazeGame.TILE_SIZE);
         }
         // Show attempted "placement" actions
         context.font = `${MazeGame.TILE_SIZE * .5}px sans-serif`;
