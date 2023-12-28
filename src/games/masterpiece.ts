@@ -734,7 +734,7 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
         return c.toBuffer();
     }
 
-    override beginTurn(): string[] {
+    override async beginTurn(): Promise<MessengerPayload[]> {
         this.state.turn++;
         this.state.decisions = {};
 

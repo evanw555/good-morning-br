@@ -146,6 +146,10 @@ export default abstract class AbstractGame<T extends GameState> {
     abstract updatePlayer(member: GuildMember): void
     abstract removePlayer(userId: Snowflake): void
 
+    addNPCs() {
+        
+    }
+
     /**
      * @returns True if the player needs a handicap (e.g. buffed contest award) for core GMBR activities.
      */
@@ -180,7 +184,7 @@ export default abstract class AbstractGame<T extends GameState> {
         return new AttachmentBuilder(await this.renderState({ seasonOver: true })).setName(`game-final.png`);
     }
 
-    abstract beginTurn(): string[]
+    abstract beginTurn(): Promise<MessengerPayload[]>
 
     /**
      * @returns List of messages to send before any game decisions are processed

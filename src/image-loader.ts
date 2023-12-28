@@ -32,6 +32,9 @@ class ImageLoader {
     }
 
     async loadAvatar(userId: Snowflake, size: 16 | 32 | 64 | 128 | 256 = 32): Promise<canvas.Image> {
+        if (userId.startsWith('npc')) {
+            return await this.loadImage(`assets/common/avatars/${userId}.png`);
+        }
         const user = await this.getUser(userId);
         if (user) {
             const avatarUrl = user.displayAvatarURL({ extension: 'png', size });

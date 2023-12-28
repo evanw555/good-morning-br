@@ -38,7 +38,7 @@ export default class ArenaGame extends AbstractGame<ArenaGameState> {
     renderState(options?: { showPlayerDecision?: string | undefined; admin?: boolean | undefined } | undefined): Promise<Buffer> {
         throw new Error("Method not implemented.");
     }
-    beginTurn(): string[] {
+    beginTurn(): Promise<MessengerPayload[]> {
         throw new Error("Method not implemented.");
     }
     getPoints(userId: string): number {

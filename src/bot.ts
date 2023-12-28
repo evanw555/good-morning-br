@@ -236,6 +236,10 @@ const logJsonAsFile = async (title: string, data: Record<string, any> | string) 
  * For each player currently in the state, fetch their current member info and update it everywhere in the state (e.g. display name, avatar).
  */
 const refreshStateMemberInfo = async (): Promise<void> => {
+    if (config.testing) {
+        await logger.log('Skipping state member info refresh in testing mode...');
+        return;
+    }
     try {
         const members = await fetchMembers(state.getPlayers());
         for (const [userId, member] of Object.entries(members)) {
@@ -972,7 +976,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
 
     // If today is a decision day
     const newlyAddedPlayers: Snowflake[] = [];
-    let beginTurnMessages: string[] = [];
+    let beginTurnMessages: MessengerPayload[] = [];
     if (state.getEventType() === DailyEventType.GameDecision && state.hasGame()) {
         // First, attempt to refresh state member info
         await refreshStateMemberInfo();
@@ -989,8 +993,14 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
             state.getGame().addPoints(userId, state.getPlayerPoints(userId));
         }
         await logger.log(addPlayerLogs.join('\n') || 'No new players were added this week.');
+        // If testing, add a random number of points
+        if (config.testing) {
+            for (const userId of state.getGame().getPlayers()) {
+                state.getGame().addPoints(userId, randInt(0, 18));
+            }
+        }
         // Begin this week's turn
-        beginTurnMessages = state.getGame().beginTurn();
+        beginTurnMessages = await state.getGame().beginTurn();
         // Start accepting game decisions
         state.setAcceptingGameDecisions(true);
     } else {
@@ -2675,11 +2685,8 @@ client.on('ready', async (): Promise<void> => {
     if (config.testing) {
         // First, create a new state altogether
         state = new GoodMorningState(await storage.readJson('test-state.json'));
-        // Add players with random starting points
-        for (const member of (await guild.members.fetch()).toJSON()) {
-            if (!member.user.bot) {
-                state.awardPoints(member.id, randInt(0, 10));
-            }
+        if (state.hasGame()) {
+            state.getGame().addNPCs();
         }
         await dumpState();
         // Jump straight to the morning of the decision
@@ -2726,6 +2733,7 @@ client.on('shardReady', async (shardId, unavailableGuilds) => {
     await logger.log(`Shard Ready: \`${shardId}\` (**${unavailableGuilds?.size ?? 'N/A'}** unavailable guilds), restarting bot...`);
     // This event typically results in the bot becoming unreachable/disconnected for some reason, so just reboot (but not on reboot)
     if (guildOwnerDmChannel && goodMorningChannel) {
+        await logger.log('Shard Ready after bot is already ready, exiting...');
         process.exit(0);
     }
 });
@@ -3159,7 +3167,7 @@ const processCommands = async (msg: Message): Promise<void> => {
                 const randomPlayer = randChoice(...tempDungeon.getPlayers());
                 tempDungeon.awardPrize(randomPlayer, 'submissions1', 'TEMP');
             }
-            const beginTurnMessages = tempDungeon.beginTurn();
+            const beginTurnMessages = await tempDungeon.beginTurn();
             for (const text of beginTurnMessages) {
                 await msg.channel.send(text);
             }

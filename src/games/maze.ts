@@ -713,7 +713,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         };
     }
 
-    override beginTurn(): string[] {
+    override async beginTurn(): Promise<MessengerPayload[]> {
         // Increment turn and reset action counter
         this.state.turn++;
         this.state.action = 0;

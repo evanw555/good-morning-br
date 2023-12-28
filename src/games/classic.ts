@@ -173,7 +173,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         }
     }
 
-    override beginTurn(): string[] {
+    override async beginTurn(): Promise<MessengerPayload[]> {
         this.state.turn++;
 
         this.state.actionPointDiffs = {};

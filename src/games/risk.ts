@@ -2,7 +2,7 @@ import { APIActionRowComponent, APIMessageActionRowComponent, APISelectMenuOptio
 import { DecisionProcessingResult, MessengerPayload, PrizeType, RiskConflictState, RiskGameState, RiskMovementData, RiskPlayerState, RiskTerritoryState } from "../types";
 import AbstractGame from "./abstract-game";
 import { Canvas, createCanvas } from "canvas";
-import { DiscordTimestampFormat, getDateBetween, getJoinedMentions, naturalJoin, randChoice, randInt, shuffleWithDependencies, toCircle, toDiscordTimestamp, toFixed } from "evanw555.js";
+import { DiscordTimestampFormat, chance, getDateBetween, getJoinedMentions, joinCanvasesVertically, naturalJoin, randChoice, randInt, shuffleWithDependencies, toCircle, toDiscordTimestamp, toFixed } from "evanw555.js";
 
 import logger from "../logger";
 import imageLoader from "../image-loader";
@@ -804,6 +804,31 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         }
     }
 
+    override addNPCs(): void {
+        // Add 10 NPCs
+        const userIds: string[] = [];
+        for (let i = 0; i < 10; i++) {
+            const userId = `npc${i}`;
+            userIds.push(userId);
+            this.state.players[userId] = {
+                displayName: `NPC ${i}`,
+                points: 0,
+                color: `hsl(${Math.floor(i * 35)}, 30%, 60%)`
+            };
+            // Give them one territory
+            const potentialTerritories = this.getOwnerlessTerritories();
+            if (potentialTerritories.length > 0) {
+                const randomTerritoryId = randChoice(...potentialTerritories);
+                this.state.territories[randomTerritoryId].owner = userId;
+            }
+        }
+        // For each remaining territory, give it to one random NPC
+        const remainingTerritories = this.getOwnerlessTerritories();
+        for (const territoryId of remainingTerritories) {
+            this.state.territories[territoryId].owner = randChoice(...userIds);
+        }
+    }
+
     private async renderRules(): Promise<AttachmentBuilder> {
         // TODO: Create real rules sheet
         return new AttachmentBuilder('assets/risk/map-with-background.png');
@@ -984,7 +1009,112 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         return result;
     }
 
-    private async renderMap(options?: { invasion?: RiskMovementData, additions?: Record<string, number> }): Promise<Canvas> {
+    private renderArrow(context: CanvasRenderingContext2D, from: Coordinates, to: Coordinates, options?: { thickness?: number, tipLength?: number }) {
+        const getPointRelative = (point: Coordinates, distance: number, angle: number): Coordinates => {
+            const { x, y } = point;
+            const dx = distance * Math.cos(angle);
+            const dy = distance * Math.sin(angle);
+            return {
+                x: x + dx,
+                y: y + dy
+            };
+        };
+
+        const t = options?.thickness ?? 10;
+        const l = this.getDistanceBetween(from, to);
+        const tl = options?.tipLength ?? t;
+        const tt = t * 2;
+
+        const theta = Math.atan2(to.y - from.y, to.x - from.x);
+        const hpi = Math.PI / 2;
+
+        const rear1 = getPointRelative(from, t / 2, theta + hpi);
+        const rear2 = getPointRelative(from, t / 2, theta - hpi);
+        const notch1 = getPointRelative(rear1, l - tl, theta);
+        const notch2 = getPointRelative(rear2, l - tl, theta);
+        const side1 = getPointRelative(notch1, (tt - t) / 2, theta + hpi);
+        const side2 = getPointRelative(notch2, (tt - t) / 2, theta - hpi);
+        const tip = to;
+
+        context.beginPath();
+        context.moveTo(rear1.x, rear1.y);
+        context.lineTo(notch1.x, notch1.y);
+        context.lineTo(side1.x, side1.y);
+        context.lineTo(tip.x, tip.y);
+        context.lineTo(side2.x, side2.y);
+        context.lineTo(notch2.x, notch2.y);
+        context.lineTo(rear2.x, rear2.y);
+        context.lineTo(rear1.x, rear1.y);
+        context.closePath();
+
+        context.fillStyle = 'white';
+        context.fill();
+        context.strokeStyle = 'black';
+        context.lineWidth = 2;
+        context.stroke();
+    }
+
+    private async renderWeeklyPoints(entries: { userId: Snowflake, points: number, troops: number, extraTroops: number }[]): Promise<AttachmentBuilder> {
+        const ROW_HEIGHT = 32;
+        const MARGIN = 8;
+        const MAX_BAR_WIDTH = 128;
+
+        const maxPoints = Math.max(...entries.map(e => e.points));
+
+        const renders: Canvas[] = [];
+
+        // First, render the headline
+        const WIDTH = 7 * ROW_HEIGHT + MAX_BAR_WIDTH + 5 * MARGIN;
+        const HEIGHT = ROW_HEIGHT + MARGIN;
+        const headerCanvas = createCanvas(WIDTH, 2 * HEIGHT);
+        const headerContext = headerCanvas.getContext('2d');
+        headerContext.fillStyle = 'black';
+        headerContext.fillRect(0, 0, WIDTH, 2 * HEIGHT);
+        headerContext.fillStyle = 'white';
+        headerContext.font = '18px sans-serif';
+        drawTextCentered(headerContext, `Week ${this.getTurn()} Reinforcements`, 0, WIDTH, ROW_HEIGHT * 0.75);
+        headerContext.fillText('From Points', 0, ROW_HEIGHT * 1.75);
+        headerContext.fillText('From Territories', WIDTH * 0.6, ROW_HEIGHT * 1.75);
+        renders.push(headerCanvas);
+
+        // Then, render each row
+        for (const entry of entries) {
+            const { userId, points, troops, extraTroops } = entry;
+            const canvas = createCanvas(WIDTH, HEIGHT);
+            const context = canvas.getContext('2d');
+            context.fillStyle = 'black';
+            context.fillRect(0, 0, WIDTH, HEIGHT);
+
+            let baseX = MARGIN;
+            // Draw the avatar
+            context.drawImage(toCircle(await imageLoader.loadAvatar(userId)), baseX, 0, ROW_HEIGHT, ROW_HEIGHT);
+            baseX += ROW_HEIGHT + MARGIN;
+            // Draw the bar
+            const barWidth = MAX_BAR_WIDTH * points / maxPoints;
+            context.fillStyle = this.getPlayerColor(userId);
+            context.fillRect(baseX, 0, barWidth, ROW_HEIGHT);
+            baseX += barWidth + MARGIN;
+            // Draw the troop icons
+            const troopsImage = await imageLoader.loadImage('assets/risk/troops/1.png');
+            for (let i = 0; i < troops; i++) {
+                context.drawImage(troopsImage, baseX, 0, ROW_HEIGHT, ROW_HEIGHT);
+                baseX += ROW_HEIGHT / 2;
+            }
+            // Now, draw the extra troop formula
+            baseX = WIDTH - ROW_HEIGHT * 3;
+            context.fillStyle = 'white';
+            context.fillText(`${this.getNumTerritoriesForPlayer(userId)}/3 = `, baseX, ROW_HEIGHT / 2);
+            baseX += ROW_HEIGHT;
+            for (let i = 0; i < extraTroops; i++) {
+                context.drawImage(troopsImage, baseX, 0, ROW_HEIGHT, ROW_HEIGHT);
+                baseX += ROW_HEIGHT / 2;
+            }
+            renders.push(canvas);
+        }
+        return new AttachmentBuilder(joinCanvasesVertically(renders).toBuffer()).setName('risk-weekly.png');
+    }
+
+    private async renderMap(options?: { invasion?: RiskMovementData, additions?: Record<string, number>, movements?: RiskMovementData[] }): Promise<Canvas> {
         const mapImage = await imageLoader.loadImage('assets/risk/map.png');
 
         // Define the canvas
@@ -993,7 +1123,14 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
 
         // Draw each territory cutout
         for (const territoryId of this.getTerritories()) {
+            const invasion = options?.invasion;
             context.drawImage(await this.getTerritoryCutoutRender(territoryId), 0, 0);
+            // If this isn't a part of the invasion being rendered, add a gray shade over it
+            if (invasion && !(invasion.from === territoryId || invasion.to === territoryId)) {
+                context.globalAlpha = 0.8;
+                context.drawImage(await this.getTerritoryCutoutRender(territoryId, { grayedOut: true }), 0, 0);
+                context.globalAlpha = 1;
+            }
         }
 
         // Draw the map template as the top layer
@@ -1018,16 +1155,22 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             }
         }
 
-        // If an invasion is specified, draw the invasion line
+        // If an invasion is specified, draw the invasion arrow
         if (options?.invasion) {
             const { from, to } = options.invasion;
             const fromCoordinates = RiskGame.config.territories[from].termini[to];
             const toCoordinates = RiskGame.config.territories[to].termini[from];
-            context.lineWidth = 4;
-            context.strokeStyle = 'red';
-            context.moveTo(fromCoordinates.x, fromCoordinates.y);
-            context.lineTo(toCoordinates.x, toCoordinates.y);
-            context.stroke();
+            this.renderArrow(context, fromCoordinates, toCoordinates);
+        }
+
+        // If movements are specified, draw the movement arrows
+        if (options?.movements) {
+            for (const movement of options.movements) {
+                const { from, to } = movement;
+                const fromCoordinates = RiskGame.config.territories[from].termini[to];
+                const toCoordinates = RiskGame.config.territories[to].termini[from];
+                this.renderArrow(context, fromCoordinates, toCoordinates);
+            }
         }
 
         return canvas;
@@ -1038,14 +1181,18 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
     }
 
     private async renderInvasion(invasion: RiskMovementData): Promise<AttachmentBuilder> {
-        return new AttachmentBuilder((await this.renderMap({ invasion })).toBuffer()).setName(`risk-invasion.png`);
+        return new AttachmentBuilder((await this.renderMap({ invasion })).toBuffer()).setName('risk-invasion.png');
+    }
+
+    private async renderMovements(movements: RiskMovementData[]): Promise<AttachmentBuilder> {
+        return new AttachmentBuilder((await this.renderMap({ movements })).toBuffer()).setName('risk-movements.png');
     }
 
     async renderState(options?: { showPlayerDecision?: string | undefined; seasonOver?: boolean | undefined; admin?: boolean | undefined; } | undefined): Promise<Buffer> {
         return (await this.renderMap()).toBuffer();
     }
 
-    private async getTerritoryCutoutRender(territoryId: string): Promise<Canvas> {
+    private async getTerritoryCutoutRender(territoryId: string, options?: { grayedOut?: true }): Promise<Canvas> {
         const maskImage = await imageLoader.loadImage(`assets/risk/territories/${territoryId.toLowerCase()}.png`);
         const canvas = createCanvas(maskImage.width, maskImage.height);
         const context = canvas.getContext('2d');
@@ -1055,13 +1202,13 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
 
         // Then, fill the entire canvas with the owner's color using the cutout as a mask
         context.globalCompositeOperation = 'source-in';
-        context.fillStyle = this.getTerritoryColor(territoryId);
+        context.fillStyle = options?.grayedOut ? 'rgb(35, 35, 35)' : this.getTerritoryColor(territoryId);
         context.fillRect(0, 0, canvas.width, canvas.height);
 
         return canvas;
     }
 
-    override beginTurn(): string[] {
+    override async beginTurn(): Promise<MessengerPayload[]> {
         this.state.turn++;
 
         // If we're on the first turn, determine the draft order
@@ -1076,17 +1223,84 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             this.state.moveDecisions = {};
         }
 
-        // TODO: Temp logic to give random new troops to players
-        for (const userId of this.getPlayers()) {
-            this.addPlayerNewTroops(userId, randInt(1, 4));
+        // Save a snapshot of weekly point-ordered players
+        const weeklyPointOrderedPlayers = this.getPointOrderedPlayers();
+        const weeklyPoints: Record<Snowflake, number> = {};
+        const weeklyTroops: Record<Snowflake, number> = {};
+        const weeklyExtraTroops: Record<Snowflake, number> = {};
+        for (const userId of weeklyPointOrderedPlayers) {
+            weeklyPoints[userId] = this.getPoints(userId);
+            // Reset their weekly points
+            this.resetPoints(userId);
+        }
+        const n = weeklyPointOrderedPlayers.length;
+        for (let i = 0; i < n; i++) {
+            const userId = weeklyPointOrderedPlayers[i];
+            let troops = 0;
+            if (weeklyPoints[userId] > 0) {
+                troops++;
+                if (i < n / 4) {
+                    troops++;
+                }
+                if (i < n / 2) {
+                    troops++;
+                }
+            }
+            weeklyTroops[userId] = troops;
+            this.addPlayerNewTroops(userId, troops);
+            // Determine territory-based troop bonus
+            const extraTroops = Math.floor(this.getNumTerritoriesForPlayer(userId) / 3);
+            weeklyExtraTroops[userId] = extraTroops;
+            this.addPlayerNewTroops(userId, extraTroops);
         }
 
-        // TODO: Determine how many "new troops" are awarded to each player
-        // TODO: Can we somehow generate a graphic showing who got troops this round?
+        // If there are NPCs, choose actions for them
+        for (const userId of this.getPlayers()) {
+            if (userId.startsWith('npc')) {
+                // Choose additions
+                const possibleAdditionTerritories = this.getTerritoriesForPlayer(userId);
+                if (this.state.addDecisions && possibleAdditionTerritories.length > 0) {
+                    const additions: string[] = [];
+                    for (let i = 0; i < this.getPlayerNewTroops(userId); i++) {
+                        additions.push(randChoice(...possibleAdditionTerritories));
+                    }
+                    this.state.addDecisions[userId] = additions;
+                }
+                // Choose attacks
+                const possibleAttackTerritories = this.getValidAttackSourceTerritoriesForPlayer(userId);
+                if (this.state.attackDecisions && possibleAttackTerritories.length > 0) {
+                    const attacks: RiskMovementData[] = [];
+                    for (const territoryId of possibleAttackTerritories) {
+                        const target = randChoice(...this.getTerritoryConnections(territoryId).filter(otherId => this.getTerritoryOwner(otherId) !== userId));
+                        const p = this.getTerritoryTroops(territoryId) > this.getTerritoryTroops(target) ? 1 : 0.25;
+                        if (chance(p)) {
+                            attacks.push({
+                                from: territoryId,
+                                to: target,
+                                quantity: randInt(1, this.getTerritoryTroops(territoryId))
+                            });
+                        }
+                    }
+                    this.state.attackDecisions[userId] = attacks;
+                }
+                // Choose movements
+                const possibleMovementTerritories = this.getValidMovementSourceTerritoriesForPlayer(userId);
+                if (this.state.moveDecisions && possibleMovementTerritories.length > 0) {
+                    const source = randChoice(...possibleMovementTerritories);
+                    const destination = randChoice(...this.getTerritoryConnections(source).filter(otherId => this.getTerritoryOwner(otherId) === userId));
+                    this.state.moveDecisions[userId] = {
+                        from: source,
+                        to: destination,
+                        quantity: randInt(1, this.getTerritoryTroops(source))
+                    };
+                }
+            }
+        }
 
-        // TODO: Do more here...
-
-        return [];
+        // Show a chart indicating how many troops were awarded this week
+        return [{
+            files: [await this.renderWeeklyPoints(weeklyPointOrderedPlayers.map(userId => ({ userId, points: weeklyPoints[userId], troops: weeklyTroops[userId], extraTroops: weeklyExtraTroops[userId] })))]
+        }];
     }
 
     override async endTurn(): Promise<MessengerPayload[]> {
@@ -1128,6 +1342,10 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             throw new Error(`Player ${userId} not in-game, can't award points!`);
         }
         this.state.players[userId].points = toFixed(this.getPoints(userId) + points);
+    }
+
+    private resetPoints(userId: Snowflake) {
+        this.addPoints(userId, -this.getPoints(userId));
     }
 
     awardPrize(userId: string, type: PrizeType, intro: string): MessengerPayload[] {
@@ -1230,6 +1448,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             // If it's a defender victory...
             if (conflict.attackerTroops === 0) {
                 // Update the source territory's troop count
+                this.setTerritoryTroops(conflict.to, conflict.defenderTroops);
                 this.addTerritoryTroops(conflict.from, -conflict.quantity);
                 // Delete the conflict
                 delete this.state.currentConflict;
@@ -1272,12 +1491,11 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         }
         // If there are any attack decisions, process them
         if (this.state.attackDecisions) {
-            const attackDecisions = this.state.attackDecisions;
             // First, determine the attack dependencies
             // TODO: This assumes each source only depends on one destination, can we guarantee this?
             const dependencies: Record<string, string> = {};
-            for (const userId of Object.keys(attackDecisions)) {
-                const attackDataEntries = attackDecisions[userId];
+            for (const userId of Object.keys(this.state.attackDecisions)) {
+                const attackDataEntries = this.state.attackDecisions[userId];
                 for (const attackData of attackDataEntries) {
                     dependencies[attackData.from] = attackData.to;
                 }
@@ -1290,7 +1508,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             if (!territoryId) {
                 return {
                     continueProcessing: true,
-                    summary: 'Couldn\'t find the next territory attack node to process...'
+                    summary: `Couldn\'t find the next territory attack node to process... \`${JSON.stringify(this.state.attackDecisions)}\` \`${JSON.stringify(dependencies)}\``
                 };
             }
             const ownerId = this.getTerritoryOwner(territoryId);
@@ -1314,6 +1532,25 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 void logger.log(`<@${ownerId}> tried to attack _${this.getTerritoryName(conflict.to)}_ with **${conflict.quantity}** troop(s) `
                     + `but _${this.getTerritoryName(conflict.from)}_ only has **${this.getTerritoryTroops(conflict.from)}**, so only attacking with **${actualQuantity}**`);
             }
+            // Delete this attack decision
+            // TODO: This assumes each source only depends on one destination, can we guarantee this?
+            // TODO: Also, REALLY hacky. Can we index the conflicts by some sort of conflict ID?
+            this.state.attackDecisions[ownerId] = this.state.attackDecisions[ownerId].filter(x => x.from !== conflict.from);
+            // Delete this user's attack decisions if there are none left
+            if (this.state.attackDecisions[ownerId].length === 0) {
+                delete this.state.attackDecisions[ownerId];
+            }
+            // Delete the attack decision map if there are no decisions left from anyone
+            if (Object.keys(this.state.attackDecisions).length === 0 || Object.values(this.state.attackDecisions).every(d => d.length === 0)) {
+                delete this.state.attackDecisions;
+            }
+            // Validation just in case this conflict isn't possible
+            if (actualQuantity < 1) {
+                return {
+                    continueProcessing: true,
+                    summary: `**${this.getPlayerDisplayName(ownerId)}** tried to launch an attack from _${this.getTerritoryName(conflict.from)}_ to _${this.getTerritoryName(conflict.to)}_, but couldn't due to a lack of troops...`
+                };
+            }
             // Save this node as the current conflict
             this.state.currentConflict = {
                 from: conflict.from,
@@ -1326,18 +1563,6 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 attackerTroops: actualQuantity,
                 defenderTroops: this.getTerritoryTroops(conflict.to)
             };
-            // Delete this attack decision
-            // TODO: This assumes each source only depends on one destination, can we guarantee this?
-            // TODO: Also, REALLY hacky. Can we index the conflicts by some sort of conflict ID?
-            this.state.attackDecisions[ownerId] = this.state.attackDecisions[ownerId].filter(x => x.from !== conflict.from);
-            // Delete this user's attack decisions if there are none left
-            if (this.state.attackDecisions[ownerId].length === 0) {
-                delete this.state.attackDecisions[ownerId];
-            }
-            // Delete the attack decision map if there are no decisions left from anyone
-            if (Object.keys(this.state.attackDecisions).length === 0) {
-                delete this.state.attackDecisions;
-            }
             return {
                 continueProcessing: true,
                 summary: {
@@ -1349,6 +1574,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         // If there are any move decisions, process them last
         if (this.state.moveDecisions) {
             const moveDecisions = this.state.moveDecisions;
+            const actualMovements: RiskMovementData[] = [];
             for (const [ userId, data ] of Object.entries(moveDecisions)) {
                 // Validate that there are enough troops left, and that they still own the destination
                 if (this.getTerritoryTroops(data.from) > 1 && this.getTerritoryOwner(data.to) === userId) {
@@ -1360,6 +1586,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     }
                     this.addTerritoryTroops(data.from, -actualQuantity);
                     this.addTerritoryTroops(data.to, actualQuantity);
+                    // Add this to the list of actual movements to render
+                    actualMovements.push(data);
                 }
             }
             // Delete the decision map
@@ -1368,7 +1596,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 continueProcessing: false,
                 summary: {
                     content: 'Troops were moved!',
-                    // TODO: Post a map showing the newly moved troops with arrows
+                    files: [await this.renderMovements(actualMovements)]
                 }
             };
         }

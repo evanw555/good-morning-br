@@ -357,7 +357,7 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
         return c.toBuffer();
     }
 
-    override beginTurn(): string[] {
+    override async beginTurn(): Promise<MessengerPayload[]> {
         const text: string[] = [];
 
         // Increment the turn counter
