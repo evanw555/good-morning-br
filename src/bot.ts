@@ -2390,7 +2390,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             } else {
                 nextProcessDate.setMinutes(nextProcessDate.getMinutes() + randInt(20, 35));
             }
-            await registerTimeout(TimeoutType.ProcessGameDecisions, nextProcessDate, { pastStrategy: PastTimeoutStrategy.Invoke });
+            await registerTimeout(TimeoutType.ProcessGameDecisions, nextProcessDate, { pastStrategy: PastTimeoutStrategy.Invoke }, { testingSeconds: 3 });
         } else {
             // Trigger turn-end logic and send turn-end messages
             const turnEndMessages = await game.endTurn();
@@ -2700,6 +2700,7 @@ client.on('ready', async (): Promise<void> => {
         await timeoutManager.cancelTimeoutsWithType(TimeoutType.NextNoon);
         await timeoutManager.cancelTimeoutsWithType(TimeoutType.NextGoodMorning);
         await timeoutManager.cancelTimeoutsWithType(TimeoutType.GameDecisionPhase);
+        await timeoutManager.cancelTimeoutsWithType(TimeoutType.ProcessGameDecisions);
         await wakeUp(true);
     }
 });

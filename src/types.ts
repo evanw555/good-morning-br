@@ -290,7 +290,9 @@ export interface RiskPlayerState {
     points: number,
     newTroops?: number,
     color?: string,
-    finalRank?: number
+    troopIcon?: string,
+    finalRank?: number,
+    eliminator?: Snowflake
 }
 
 export interface RiskTerritoryState {
@@ -309,6 +311,7 @@ export interface RiskConflictState extends RiskMovementData {
     readonly defenderId?: Snowflake,
     readonly initialAttackerTroops: number,
     readonly initialDefenderTroops: number,
+    readonly counterAttack?: true,
     attackerTroops: number,
     defenderTroops: number
 }
