@@ -1,6 +1,6 @@
 import canvas, { CanvasRenderingContext2D } from 'canvas';
 import { AttachmentBuilder, GuildMember, MessageFlags, Snowflake } from 'discord.js';
-import { getRankString, getNumberBetween, naturalJoin, randInt, shuffle, toLetterId, fromLetterId, AStarPathFinder, shuffleWithDependencies, toFixed, collapseRedundantStrings, chance, randChoice, toCircle } from 'evanw555.js';
+import { getRankString, getNumberBetween, naturalJoin, randInt, shuffle, toLetterId, fromLetterId, AStarPathFinder, shuffleWithDependencies, toFixed, collapseRedundantStrings, chance, randChoice, toCircle, findCycle } from 'evanw555.js';
 import { DecisionProcessingResult, MazeGameState, MazeItemName, MazeLine, MazeLocation, MazePlayerState, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 
@@ -997,7 +997,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
      */
     getDecisionShuffledPlayers(): Snowflake[] {
         // Compute player step dependency map
-        const dependencies: Record<Snowflake, Snowflake> = {};
+        const dependencies: Record<Snowflake, Snowflake[]> = {};
         // For each player...
         for (const userId of this.getPlayers()) {
             const nextDecision: string | undefined = this.getNextDecidedAction(userId);
@@ -1005,17 +1005,26 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
             if (nextDecision && nextDecision in OFFSETS_BY_DIRECTION) {
                 const [ dr, dc ] = OFFSETS_BY_DIRECTION[nextDecision];
                 const player = this.state.players[userId];
-                // Check if there's a player blocking that direction...
-                // TODO: Can we account for multiple players on a tile when constructing the dependencies map?
-                const blockingUserId = this.getPlayersAtLocation({ r: player.r + dr, c: player.c + dc })[0];
-                // If there's a blocking player, then the blocking player must be earlier in the list than this player
-                // Also, only add this dependency if it doesn't create a cycle
-                if (blockingUserId && dependencies[blockingUserId] !== userId) {
-                    dependencies[userId] = blockingUserId;
+                // Check if there are players blocking that direction...
+                const blockingUserIds = this.getPlayersAtLocation({ r: player.r + dr, c: player.c + dc });
+                // If there are blocking players, then the blocking players must be earlier in the list than this player
+                for (const blockingUserId of blockingUserIds) {
+                    const priorDependencies = dependencies[userId] ?? [];
+                    // Add the dependency
+                    dependencies[userId] = [...priorDependencies, blockingUserId];
+                    // If this addition results in a cycle, revert it
+                    if (findCycle(dependencies)) {
+                        dependencies[userId] = priorDependencies;
+                    }
                 }
             }
         }
-        return shuffleWithDependencies(this.getPlayers(), dependencies);
+        try {
+            return shuffleWithDependencies(this.getPlayers(), dependencies);
+        } catch (err) {
+            // If it still somehow fails or contains a cycle, fall back to a naive shuffle
+            return this.getShuffledPlayers();
+        }
     }
 
     /**

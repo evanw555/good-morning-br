@@ -303,6 +303,7 @@ export interface RiskTerritoryState {
 export interface RiskMovementData {
     from: string,
     to: string,
+    // Note that the quantity is only the target quantity of a conflict, it may not be the actual quantity used
     quantity: number
 }
 
@@ -311,9 +312,16 @@ export interface RiskConflictState extends RiskMovementData {
     readonly defenderId?: Snowflake,
     readonly initialAttackerTroops: number,
     readonly initialDefenderTroops: number,
-    readonly counterAttack?: true,
+    readonly symmetrical?: true,
     attackerTroops: number,
     defenderTroops: number
+}
+
+export interface RiskPlannedAttack {
+    readonly id: string,
+    readonly userId: Snowflake,
+    readonly attack: RiskMovementData,
+    actualQuantity: number
 }
 
 export interface RiskGameState extends AbstractGameState<'RISK_GAME_STATE'> {
@@ -324,6 +332,8 @@ export interface RiskGameState extends AbstractGameState<'RISK_GAME_STATE'> {
     addDecisions?: Record<Snowflake, string[]>,
     attackDecisions?: Record<Snowflake, RiskMovementData[]>,
     moveDecisions?: Record<Snowflake, RiskMovementData>,
+    // At the beginning of the game update, the attack decisions are deleted and processed into one indexable map
+    plannedAttacks?: Record<string, RiskPlannedAttack>,
     // This represents the current conflict being processed
     currentConflict?: RiskConflictState
 }

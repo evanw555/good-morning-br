@@ -1,8 +1,8 @@
 import { APIActionRowComponent, APIMessageActionRowComponent, APISelectMenuOption, ActionRowData, AttachmentBuilder, ButtonStyle, ComponentType, GuildMember, Interaction, InteractionReplyOptions, MessageActionRowComponentData, MessageFlags, Snowflake } from "discord.js";
-import { DecisionProcessingResult, MessengerPayload, PrizeType, RiskConflictState, RiskGameState, RiskMovementData, RiskPlayerState, RiskTerritoryState } from "../types";
+import { DecisionProcessingResult, MessengerPayload, PrizeType, RiskConflictState, RiskGameState, RiskMovementData, RiskPlannedAttack, RiskPlayerState, RiskTerritoryState } from "../types";
 import AbstractGame from "./abstract-game";
 import { Canvas, Image, createCanvas } from "canvas";
-import { DiscordTimestampFormat, chance, getDateBetween, getJoinedMentions, getRankString, joinCanvasesHorizontal, joinCanvasesVertically, naturalJoin, randChoice, randInt, shuffle, shuffleWithDependencies, toCircle, toDiscordTimestamp, toFixed } from "evanw555.js";
+import { DiscordTimestampFormat, chance, findCycle, getDateBetween, getJoinedMentions, getRankString, joinCanvasesHorizontal, joinCanvasesVertically, naturalJoin, randChoice, randInt, shuffle, shuffleWithDependencies, toCircle, toDiscordTimestamp, toFixed } from "evanw555.js";
 
 import logger from "../logger";
 import imageLoader from "../image-loader";
@@ -954,7 +954,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             const x = WIDTH * (5 / 8);
             const y = HEIGHT * ((2 + i) / 6);
             const roll = options.defenderRolls[i];
-            const dieImage = await imageLoader.loadImage(`assets/common/dice/${conflict.counterAttack ? 'r' : 'w'}${roll}.png`);
+            const dieImage = await imageLoader.loadImage(`assets/common/dice/${conflict.symmetrical ? 'r' : 'w'}${roll}.png`);
             context.drawImage(dieImage, x - DIE_WIDTH / 2, y - DIE_WIDTH / 2, DIE_WIDTH, DIE_WIDTH);
         }
 
@@ -1194,7 +1194,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         return canvas;
     }
 
-    private async renderMap(options?: { showRoster?: boolean, invasion?: RiskConflictState, additions?: Record<string, number>, movements?: RiskMovementData[] }): Promise<Canvas> {
+    private async renderMap(options?: { showRoster?: boolean, invasions?: RiskPlannedAttack[], additions?: Record<string, number>, movements?: RiskMovementData[] }): Promise<Canvas> {
         const mapImage = await imageLoader.loadImage('assets/risk/map.png');
 
         // Define the canvas
@@ -1219,8 +1219,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             const numTroops = this.getTerritoryTroops(territoryId);
             const additions = (options?.additions ?? {})[territoryId] ?? 0;
             // TODO: Improve this logic
-            const invadingTroops = ((options?.invasion?.from === territoryId) ? options.invasion.quantity : 0)
-                || ((options?.invasion?.counterAttack && options?.invasion.to === territoryId) ? options.invasion.initialDefenderTroops : 0);
+            const invadingTroops = options?.invasions?.filter(m => m.attack.from == territoryId)[0]?.actualQuantity ?? 0;
             const movedTroops = options?.movements?.filter(m => m.to === territoryId)[0]?.quantity ?? 0;
             const troopLocations = this.getRandomTerritoryTroopLocations(territoryId, numTroops);
             for (let i = 0; i < troopLocations.length; i++) {
@@ -1240,9 +1239,12 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         //         highlightedTerritories.add(territoryId);
         //     }
         // }
-        if (options?.invasion) {
-            highlightedTerritories.add(options.invasion.from);
-            highlightedTerritories.add(options.invasion.to);
+        if (options?.invasions) {
+            for (const plannedAttack of options.invasions) {
+                const { from, to } = plannedAttack.attack;
+                highlightedTerritories.add(from);
+                highlightedTerritories.add(to);
+            }
         }
         if (options?.movements) {
             for (const { from, to } of options.movements) {
@@ -1257,18 +1259,19 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             context.globalAlpha = 1;
         }
 
-        // If an invasion is specified, draw the invasion arrow
-        if (options?.invasion) {
-            const { from, to } = options.invasion;
-            const fromCoordinates = RiskGame.config.territories[from].termini[to];
-            const toCoordinates = RiskGame.config.territories[to].termini[from];
-            this.renderArrow(context, fromCoordinates, toCoordinates);
+        // If an invasion is specified, draw the invasion arrow(s)
+        if (options?.invasions) {
+            for (const plannedAttack of options.invasions) {
+                const { from, to } = plannedAttack.attack;
+                const fromCoordinates = RiskGame.config.territories[from].termini[to];
+                const toCoordinates = RiskGame.config.territories[to].termini[from];
+                this.renderArrow(context, fromCoordinates, toCoordinates);
+            }
         }
 
         // If movements are specified, draw the movement arrows
         if (options?.movements) {
-            for (const movement of options.movements) {
-                const { from, to } = movement;
+            for (const { from, to } of options.movements) {
                 const fromCoordinates = RiskGame.config.territories[from].termini[to];
                 const toCoordinates = RiskGame.config.territories[to].termini[from];
                 this.renderArrow(context, fromCoordinates, toCoordinates);
@@ -1286,8 +1289,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         return new AttachmentBuilder((await this.renderMap({ additions })).toBuffer()).setName('risk-additions.png');
     }
 
-    private async renderInvasion(invasion: RiskConflictState): Promise<AttachmentBuilder> {
-        return new AttachmentBuilder((await this.renderMap({ invasion })).toBuffer()).setName('risk-invasion.png');
+    private async renderInvasion(invasions: RiskPlannedAttack[]): Promise<AttachmentBuilder> {
+        return new AttachmentBuilder((await this.renderMap({ invasions })).toBuffer()).setName('risk-invasion.png');
     }
 
     private async renderMovements(movements: RiskMovementData[]): Promise<AttachmentBuilder> {
@@ -1455,8 +1458,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     const attacks: RiskMovementData[] = [];
                     for (const territoryId of possibleAttackTerritories) {
                         const targets = this.getTerritoryConnections(territoryId).filter(otherId => this.getTerritoryOwner(otherId) !== userId);
-                        const target = getMinKey(shuffle(targets), (territoryId) => this.getTerritoryTroops(territoryId));
-                        const p = this.getTerritoryTroops(territoryId) > 5 ? 1 : (this.getTerritoryTroops(territoryId) >= this.getTerritoryTroops(target) ? 0.5 : 0.25);
+                        const target = targets[0]; // getMinKey(shuffle(targets), (territoryId) => this.getTerritoryTroops(territoryId));
+                        const p = 1; // this.getTerritoryTroops(territoryId) > 5 ? 1 : (this.getTerritoryTroops(territoryId) >= this.getTerritoryTroops(target) ? 0.5 : 0.25);
                         if (chance(p)) {
                             attacks.push({
                                 from: territoryId,
@@ -1609,33 +1612,49 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             }
             // Now, roll all the dice
             const attackerDice = Math.min(3, conflict.attackerTroops);
-            const defenderDice = Math.min(conflict.counterAttack ? 3 : 2, conflict.defenderTroops);
+            const defenderDice = Math.min(conflict.symmetrical ? 3 : 2, conflict.defenderTroops);
             const attackerRolls = this.getSortedDiceRolls(attackerDice);
             const defenderRolls = this.getSortedDiceRolls(defenderDice);
             const numComparisons = Math.min(attackerDice, defenderDice);
             let attackersLost = 0;
             let defendersLost = 0;
             // Compare each set
-            let summary = `Attacker rolls **${attackerRolls}**, defender rolls **${defenderRolls}**. `;
             let rollWinners: ('attacker' | 'defender' | 'neither')[] = [];
             for (let i = 0; i < numComparisons; i++) {
                 if (attackerRolls[i] > defenderRolls[i]) {
                     conflict.defenderTroops--;
                     defendersLost++;
-                    summary += `Attacker's **${attackerRolls[i]}** beats **${defenderRolls[i]}**. `;
                     rollWinners.push('attacker');
-                } else if (conflict.counterAttack && attackerRolls[i] === defenderRolls[i]) {
-                    summary += `Both draw with **${attackerRolls[i]}**. `;
+                } else if (conflict.symmetrical && attackerRolls[i] === defenderRolls[i]) {
                     rollWinners.push('neither');
                 } else {
                     conflict.attackerTroops--;
                     attackersLost++;
-                    summary += `Defender's **${defenderRolls[i]}** beats **${attackerRolls[i]}**. `;
                     rollWinners.push('defender');
                 }
             }
+            // Say something interesting about this exchange
+            // TODO: Add a lot more cool stuff here
+            let summary = '';
+            if (rollWinners.every(w => w === 'neither')) {
+                summary += 'A total standstill as neither attacker overpowers the other!\n';
+            } else if (rollWinners.length === 3) {
+                if (rollWinners.every(w => w === 'attacker')) {
+                    summary += 'Absolute bloodshed!\n';
+                } else if (rollWinners.every(w => w === 'defender')) {
+                    summary += 'A triple success by the defense!\n';
+                } else {
+                    summary += 'A little more triple action!\n';
+                }
+            } else if (conflict.defenderTroops === 1 && rollWinners.every(w => w === 'defender')) {
+                summary += 'The defender makes a valiant last stand!\n';
+            } else if (conflict.attackerTroops === 1 && rollWinners.every(w => w === 'attacker')) {
+                summary += 'The last attacker standing continues the fight!\n';
+            } else {
+                summary += 'Stuff happened!\n';
+            }
             // If the counter-attack is over...
-            if (conflict.counterAttack && (conflict.attackerTroops === 0 || conflict.defenderTroops === 0)) {
+            if (conflict.symmetrical && (conflict.attackerTroops === 0 || conflict.defenderTroops === 0)) {
                 // Update the troop counts for both territories
                 this.addTerritoryTroops(conflict.to, -conflict.initialDefenderTroops + conflict.defenderTroops);
                 this.addTerritoryTroops(conflict.from, -conflict.initialAttackerTroops + conflict.attackerTroops);
@@ -1645,7 +1664,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 return {
                     continueProcessing: true,
                     summary: {
-                        content: `${summary}\nThe conflict has reached an end. No territories have changed hands.`,
+                        content: `${summary}The conflict has reached an end. No territories have changed hands.`,
                         files: [await this.renderConflict(conflict, { attackerRolls, defenderRolls, attackersLost, defendersLost, rollWinners })]
                     }
                 };
@@ -1661,7 +1680,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 return {
                     continueProcessing: true,
                     summary: {
-                        content: `${summary}\n**${this.getPlayerDisplayName(defenderId)}** has successfully fended off **${this.getPlayerDisplayName(attackerId)}** at _${this.getTerritoryName(conflict.to)}_!`,
+                        content: `${summary}**${this.getPlayerDisplayName(defenderId)}** has successfully fended off **${this.getPlayerDisplayName(attackerId)}** at _${this.getTerritoryName(conflict.to)}_!`,
                         files: [await this.renderConflict(conflict, { attackerRolls, defenderRolls, attackersLost, defendersLost, rollWinners })]
                     }
                 };
@@ -1693,13 +1712,13 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     delete this.state.players[defenderId].color;
                     this.state.players[defenderId].eliminator = attackerId;
                     // TODO: Send a proper message/image
-                    summary += `\n**${this.getPlayerDisplayName(defenderId)}** has been eliminated, finishing at rank **${getRankString(finalRank)}**!`;
+                    summary += `**${this.getPlayerDisplayName(defenderId)}** has been eliminated, finishing at rank **${getRankString(finalRank)}**!\n`;
                 }
                 // Send a message
                 return {
                     continueProcessing: true,
                     summary: {
-                        content: `${summary}\n**${this.getPlayerDisplayName(attackerId)}** has defeated **${this.getPlayerDisplayName(defenderId)}** at _${this.getTerritoryName(conflict.to)}_!`,
+                        content: `${summary}**${this.getPlayerDisplayName(attackerId)}** has defeated **${this.getPlayerDisplayName(defenderId)}** at _${this.getTerritoryName(conflict.to)}_!`,
                         files: [render]
                     }
                 };
@@ -1713,109 +1732,133 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 }
             };
         }
-        // If there are any attack decisions, process them
+        // If the attack decisions haven't been processed yet, process them
         if (this.state.attackDecisions) {
-            const attacks = Object.values(this.state.attackDecisions).flat();
-            // First, if there are any attacks with a counterattack, choose those
-            let territoryId: string;
-            let counterAttack: RiskMovementData | undefined = undefined;
-            const symmetricalAttacks = attacks.filter(a1 => attacks.some(a2 => a1.to === a2.from && a1.from === a2.to));
-            let symmetrical = false;
-            if (symmetricalAttacks.length > 0) {
-                const symmetricalAttack = randChoice(...symmetricalAttacks);
-                // TODO: This is a little hacky...
-                counterAttack = attacks.filter(a => a.to === symmetricalAttack.from && a.from === symmetricalAttack.to)[0];
-                // Determine the territory based on which attack has more troops
-                // TODO: This logic is horrible... Do this in a cleaner and much less flimsy way...
-                // 1. If there are symmetrical attack decisions with differing quantities, discard the decision with fewer troops (and show interesting message)
-                // 2. If there are symmetrical attack decisions with the same quantity, start a symmetrical attack (and show relevant message)
-                if (symmetricalAttack.quantity > counterAttack.quantity) {
-                    territoryId = symmetricalAttack.from;
-                } else if (symmetricalAttack.quantity < counterAttack.quantity) {
-                    territoryId = counterAttack.from;
-                    counterAttack = symmetricalAttack;
+            // First, construct the processed attack data map
+            this.state.plannedAttacks = {};
+            let i = 0;
+            for (const [ userId, attacks ] of Object.entries(this.state.attackDecisions)) {
+                for (const attack of attacks) {
+                    const id = `${i++}`;
+                    this.state.plannedAttacks[id] = {
+                        id,
+                        userId,
+                        attack,
+                        actualQuantity: attack.quantity
+                    };
+                }
+            }
+            // Then, delete the unprocessed attack decisions from the state
+            delete this.state.attackDecisions;
+            // If for some reason there are no planned attacks, delete it now to avoid processing
+            if (i === 0) {
+                delete this.state.plannedAttacks;
+            }
+            // TODO: Temp message to show that this worked
+            return {
+                continueProcessing: true,
+                summary: {
+                    content: `Processed attack decisions into **${i}** attacks...`,
+                    files: [await this.renderMovements(Object.values(this.state.plannedAttacks ?? {}).map(a => a.attack))]
+                }
+            };
+        }
+        // If there are any attack decisions, process them
+        if (this.state.plannedAttacks) {
+            // First, comb through the planned attacks and fix the actual quantity of the attack
+            const plannedAttacks = this.state.plannedAttacks;
+            for (const plannedAttack of Object.values(plannedAttacks)) {
+                plannedAttack.actualQuantity = Math.min(plannedAttack.attack.quantity, this.getTerritoryTroops(plannedAttack.attack.from) - 1);
+            }
+            // Find any possible cyclical attacks
+            let plannedAttack: RiskPlannedAttack;
+            let symmetricAttack: RiskPlannedAttack | undefined = undefined;
+            let summaryContent = '';
+            const dependencies = this.getPlannedAttackDependencyMap();
+            const cyclicalAttacks = findCycle(dependencies, { randomize: true })?.map(id => plannedAttacks[id]);
+            if (cyclicalAttacks) {
+                // Sort the cyclical attacks by quantity
+                cyclicalAttacks.sort((a, b) => b.actualQuantity - a.actualQuantity);
+                if (cyclicalAttacks.length === 2) {
+                    // If there's a reciprocal attack, choose the biggest one...
+                    plannedAttack = cyclicalAttacks[0];
+                    const reciprocalAttack = cyclicalAttacks[1];
+                    // The planned reciprocal attack must be discarded regardless of whether it will be symmetric
+                    delete this.state.plannedAttacks[reciprocalAttack.id];
+                    // Handle it depending on how the quantities compare...
+                    if (plannedAttack.actualQuantity === reciprocalAttack.actualQuantity) {
+                        // The attacks are of the same quantity, so initiate a symmetrical attack
+                        symmetricAttack = reciprocalAttack;
+                        summaryContent = `**${this.getPlayerDisplayName(plannedAttack.userId)}** and **${this.getPlayerDisplayName(symmetricAttack.userId)}** `
+                            + `have launched attacks against each other with the same number of troops! A conflict will begin with two attackers no potential for territory capture...`;
+                    } else {
+                        // One attack is larger, so pick that one and leave the other discarded
+                        // TODO: Construct a summary and render explaining this situation
+                        summaryContent = `**${this.getPlayerDisplayName(reciprocalAttack.userId)}** tried to launch an attack `
+                            + `from _${this.getTerritoryName(reciprocalAttack.attack.from)}_ to _${this.getTerritoryName(reciprocalAttack.attack.to)}_ `
+                            + `with **${reciprocalAttack.actualQuantity}** troop(s), but **${this.getPlayerDisplayName(plannedAttack.userId)}** `
+                            + `launched an even larger counter-attack with **${plannedAttack.actualQuantity}** troops!`;
+                    }
+                } else if (cyclicalAttacks.length > 2) {
+                    // If there's a cycle of 3+ planned attacks, choose the largest attack to go first
+                    plannedAttack = cyclicalAttacks[0];
+                    // TODO: Construct a summary and render explaining this situation
+                    if (cyclicalAttacks.filter(a => a.actualQuantity === plannedAttack.actualQuantity).length > 1) {
+                        summaryContent = `**${cyclicalAttacks.length}** teams started a circular battle! `
+                            + `**${this.getPlayerDisplayName(plannedAttack.userId)}'s** army at _${this.getTerritoryName(plannedAttack.attack.from)}_ has been randomly selected to begin the conflict...`;
+                    } else {
+                        summaryContent = `**${cyclicalAttacks.length}** teams started a circular battle! `
+                            + `**${this.getPlayerDisplayName(plannedAttack.userId)}'s** army at _${this.getTerritoryName(plannedAttack.attack.from)}_ is the strongest, so it'll begin the first leg of the conflict...`;
+                    }
                 } else {
-                    territoryId = symmetricalAttack.from;
-                    symmetrical = true;
+                    // Fallback just in case there's a 0/1-node cycle
+                    return {
+                        continueProcessing: true,
+                        summary: `WTF! I found a cycle of planned attacks of length **${cyclicalAttacks.length}**. Admin?`
+                    };
                 }
             } else {
-                // First, determine the attack dependencies
-                // TODO: This assumes each source only depends on one destination, can we guarantee this?
-                const dependencies: Record<string, string> = {};
-                for (const userId of Object.keys(this.state.attackDecisions)) {
-                    const attackDataEntries = this.state.attackDecisions[userId];1
-                    for (const attackData of attackDataEntries) {
-                        dependencies[attackData.from] = attackData.to;
-                    }
-                }
-                // Then, shuffle the list of attacking territories with these dependencies
-                // TODO: Add a try-catch to handle cycles, in which case we should just choose a random territory
-                let orderedTerritories;
+                // There are no cycles, so shuffle with dependencies and choose the first one
                 try {
-                    orderedTerritories = shuffleWithDependencies(Object.keys(dependencies), dependencies);
+                    const orderedAttackIds = shuffleWithDependencies(Object.keys(dependencies), dependencies);
+                    plannedAttack = plannedAttacks[orderedAttackIds[0]];
                 } catch (err) {
-                    void logger.log('Attack decisions contain a cycle, so picking one at random!');
-                    orderedTerritories = shuffle(Object.keys(dependencies));
+                    void logger.log('Attack decisions still contain a cycle, so picking one at random!');
+                    plannedAttack = randChoice(...Object.values(plannedAttacks));
                 }
-                // Get the first element from the shuffled list
-                territoryId = orderedTerritories[0];
+                summaryContent = `**${this.getPlayerDisplayName(plannedAttack.userId)}** has staged an attack from `
+                    + `_${this.getTerritoryName(plannedAttack.attack.from)}_ to _${this.getTerritoryName(plannedAttack.attack.to)}_ with **${plannedAttack.actualQuantity}** troop(s)!`;
             }
-            if (!territoryId) {
+            // Validate that the chosen planned attack actually exists
+            if (!plannedAttack) {
+                void logger.log(`Couldn't find next territory to attack. Planned attacks: \`${JSON.stringify(plannedAttacks)}\``);
                 return {
                     continueProcessing: true,
-                    summary: `Couldn\'t find the next territory attack node to process... \`${JSON.stringify(this.state.attackDecisions)}\``
+                    summary: 'WTF! Couldn\'t find the next territory attack node to process...'
                 };
             }
-            const ownerId = this.getTerritoryOwner(territoryId);
-            if (!ownerId) {
-                return {
-                    continueProcessing: true,
-                    summary: `Couldn't find the owner for territory _${this.getTerritoryName(territoryId)}_ staging an attack...`
-                };
-            }
-            // TODO: This assumes each source only depends on one destination, can we guarantee this?
-            const conflict = this.state.attackDecisions[ownerId].filter(x => x.from === territoryId)[0];
-            if (!conflict) {
-                return {
-                    continueProcessing: true,
-                    summary: `Couldn't find decision conflict for <@${ownerId}>'s territory _${this.getTerritoryName(territoryId)}_ staging an attack...`
-                };
-            }
-            // Determine how many troops can actually be used
-            const actualQuantity = Math.min(conflict.quantity, this.getTerritoryTroops(conflict.from) - 1);
-            if (actualQuantity !== conflict.quantity) {
+            const { id: attackId, userId: ownerId, attack: conflict, actualQuantity } = plannedAttack;
+            if (conflict.quantity !== actualQuantity) {
                 void logger.log(`<@${ownerId}> tried to attack _${this.getTerritoryName(conflict.to)}_ with **${conflict.quantity}** troop(s) `
                     + `but _${this.getTerritoryName(conflict.from)}_ only has **${this.getTerritoryTroops(conflict.from)}**, so only attacking with **${actualQuantity}**`);
             }
             // Delete this attack decision
-            const deleteDecision = (_tid) => {
-                const _ownerId = this.getTerritoryOwner(_tid);
-                if (!_ownerId || !this.state.attackDecisions) {
-                    return;
-                }
-                // TODO: This assumes each source only depends on one destination, can we guarantee this?
-                // TODO: Also, REALLY hacky. Can we index the conflicts by some sort of conflict ID?
-                this.state.attackDecisions[_ownerId] = this.state.attackDecisions[_ownerId].filter(x => x.from !== _tid);
-                // Delete this user's attack decisions if there are none left
-                if (this.state.attackDecisions[_ownerId].length === 0) {
-                    delete this.state.attackDecisions[_ownerId];
-                }
-                // Delete the attack decision map if there are no decisions left from anyone
-                if (Object.keys(this.state.attackDecisions).length === 0 || Object.values(this.state.attackDecisions).every(d => d.length === 0)) {
-                    delete this.state.attackDecisions;
-                }
-            };
-            deleteDecision(territoryId);
-            if (counterAttack) {
-                // Also remove the counter attack decision...
-                // TODO: ALSO VERY HACKY
-                deleteDecision(counterAttack.from);
+            delete this.state.plannedAttacks[attackId];
+            // Delete the planned attacks if there are none yet left
+            if (Object.keys(this.state.plannedAttacks).length === 0) {
+                delete this.state.plannedAttacks;
             }
             // Validation just in case this conflict isn't possible
             if (actualQuantity < 1) {
                 return {
                     continueProcessing: true,
                     summary: `**${this.getPlayerDisplayName(ownerId)}** tried to launch an attack from _${this.getTerritoryName(conflict.from)}_ to _${this.getTerritoryName(conflict.to)}_, but couldn't due to a lack of troops...`
+                };
+            }
+            if (plannedAttack.userId !== this.getTerritoryOwner(plannedAttack.attack.from)) {
+                return {
+                    continueProcessing: true,
+                    summary: `**${this.getPlayerDisplayName(plannedAttack.userId)}** tried to launch an attack from _${this.getTerritoryName(conflict.from)}_ to _${this.getTerritoryName(conflict.to)}_, but that territory no longer belongs to him...`
                 };
             }
             if (this.getTerritoryOwner(conflict.from) === this.getTerritoryOwner(conflict.to)) {
@@ -1826,9 +1869,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             }
             // Save this node as the current conflict
             // TODO: Validate this better, e.g. with logging...
-            const initialDefenderTroops = (counterAttack && symmetrical)
-                ? Math.min(counterAttack.quantity, this.getTerritoryTroops(conflict.to) - 1)
-                : this.getTerritoryTroops(conflict.to);
+            const initialDefenderTroops = symmetricAttack?.actualQuantity ?? this.getTerritoryTroops(conflict.to);
             this.state.currentConflict = {
                 from: conflict.from,
                 to: conflict.to,
@@ -1837,16 +1878,15 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 defenderId: this.getTerritoryOwner(conflict.to),
                 initialAttackerTroops: actualQuantity,
                 initialDefenderTroops,
-                counterAttack: symmetrical ? true : undefined,
+                symmetrical: symmetricAttack ? true : undefined,
                 attackerTroops: actualQuantity,
                 defenderTroops: initialDefenderTroops
             };
             return {
                 continueProcessing: true,
                 summary: {
-                    content: `**${this.getPlayerDisplayName(ownerId)}** has staged an attack from _${this.getTerritoryName(conflict.from)}_ to _${this.getTerritoryName(conflict.to)}_ with **${conflict.quantity}** troop(s)!`
-                        + (counterAttack ? ` However, **${this.getPlayerDisplayName(this.getTerritoryOwner(counterAttack.from))}** launched a counter-attack with **${counterAttack.quantity}** troop(s)!` : ''),
-                    files: [await this.renderInvasion(this.state.currentConflict)]
+                    content: summaryContent,
+                    files: [await this.renderInvasion(cyclicalAttacks ? cyclicalAttacks : [plannedAttack])]
                 }
             };
         }
@@ -1891,6 +1931,21 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             continueProcessing: false,
             summary: 'That\'s all!'
         };
+    }
+
+    private getPlannedAttackDependencyMap(): Record<string, string[]> {
+        if (!this.state.plannedAttacks) {
+            return {};
+        }
+        const plannedAttacks = Object.values(this.state.plannedAttacks);
+        const dependencies: Record<string, string[]> = {};
+        for (const { id, attack } of plannedAttacks) {
+            // Get the ID of each planned attack in this attack's target territory
+            const dependencyIds = plannedAttacks.filter(a => a.attack.from === attack.to).map(a => a.id);
+            dependencies[id] = [...(dependencies[id] ?? []), ...dependencyIds];
+        }
+
+        return dependencies;
     }
 
     private getSortedDiceRolls(n: number): number[] {
