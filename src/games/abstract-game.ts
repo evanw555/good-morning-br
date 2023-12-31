@@ -1,6 +1,7 @@
 import { ActionRowData, AttachmentBuilder, GuildMember, Interaction, MessageActionRowComponentData, Snowflake } from "discord.js";
-import { DecisionProcessingResult, GameState, MessengerPayload, PrizeType } from "../types";
+import { DecisionProcessingResult, GamePlayerAddition, GameState, MessengerPayload, PrizeType } from "../types";
 import { text } from "../util";
+import { getJoinedMentions } from "evanw555.js";
 
 export default abstract class AbstractGame<T extends GameState> {
     protected readonly state: T;
@@ -142,9 +143,19 @@ export default abstract class AbstractGame<T extends GameState> {
     }
 
     abstract hasPlayer(userId: Snowflake): boolean
-    abstract addPlayer(member: GuildMember): string
+    abstract addLatePlayers(players: GamePlayerAddition[]): MessengerPayload[]
     abstract updatePlayer(member: GuildMember): void
     abstract removePlayer(userId: Snowflake): void
+
+    protected getStandardWelcomeMessages(userIds: Snowflake[]): MessengerPayload[] {
+        if (userIds.length === 1) {
+            return [`Let's all give a warm welcome to ${getJoinedMentions(userIds)}, for this puppy is joining the game this week!`];
+        } else if (userIds.length > 1) {
+            return [`Let's all give a warm welcome to ${getJoinedMentions(userIds)}, for they are joining the game this week!`];
+        } else {
+            return [];
+        }
+    }
 
     addNPCs() {
         

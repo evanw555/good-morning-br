@@ -352,6 +352,12 @@ export interface ClassicGameState extends AbstractGameState<'CLASSIC_GAME_STATE'
 
 export type GameState = MazeGameState | IslandGameState | ArenaGameState | MasterpieceGameState | RiskGameState | ClassicGameState;
 
+export interface GamePlayerAddition {
+    userId: Snowflake,
+    displayName: string,
+    points: number
+}
+
 export interface Bait {
     userId: Snowflake,
     messageId: Snowflake

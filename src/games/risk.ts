@@ -1,12 +1,12 @@
 import { APIActionRowComponent, APIMessageActionRowComponent, APISelectMenuOption, ActionRowData, AttachmentBuilder, ButtonStyle, ComponentType, GuildMember, Interaction, InteractionReplyOptions, MessageActionRowComponentData, MessageFlags, Snowflake } from "discord.js";
-import { DecisionProcessingResult, MessengerPayload, PrizeType, RiskConflictState, RiskGameState, RiskMovementData, RiskPlannedAttack, RiskPlayerState, RiskTerritoryState } from "../types";
+import { DecisionProcessingResult, GamePlayerAddition, MessengerPayload, PrizeType, RiskConflictState, RiskGameState, RiskMovementData, RiskPlannedAttack, RiskPlayerState, RiskTerritoryState } from "../types";
 import AbstractGame from "./abstract-game";
 import { Canvas, Image, createCanvas } from "canvas";
-import { DiscordTimestampFormat, chance, fillBackground, findCycle, getDateBetween, getJoinedMentions, getRankString, joinCanvasesHorizontal, joinCanvasesVertically, naturalJoin, randChoice, randInt, shuffle, shuffleWithDependencies, toCircle, toDiscordTimestamp, toFixed } from "evanw555.js";
+import { DiscordTimestampFormat, chance, findCycle, getDateBetween, getJoinedMentions, getRankString, joinCanvasesHorizontal, joinCanvasesVertically, naturalJoin, randChoice, randInt, shuffle, shuffleWithDependencies, toCircle, toDiscordTimestamp, toFixed } from "evanw555.js";
+import { getMinKey, getMaxKey, drawTextCentered, getTextLabel, withDropShadow } from "../util";
 
 import logger from "../logger";
 import imageLoader from "../image-loader";
-import { getMinKey, getMaxKey, drawTextCentered, applyMask, getTextLabel, withDropShadow } from "../util";
 
 interface Coordinates {
     x: number,
@@ -849,16 +849,33 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         return userId in this.state.players;
     }
 
-    addPlayer(member: GuildMember): string {
-        // TODO: If it's the first turn still (second week), allow them to join at a random spot
-        // Late players get a terrible dummy rank that's necessarily larger than all other ranks
-        const finalRank = this.getNumPlayers() + 1;
-        this.state.players[member.id] = {
-            displayName: member.displayName,
-            points: 0,
-            finalRank
-        };
-        return `Added **${member.displayName}** at final rank **${finalRank}**`;
+    override addLatePlayers(players: GamePlayerAddition[]): MessengerPayload[] {
+        const lateAdditions: string[] = [];
+        for (const { userId, displayName, points } of players) {
+            // If adding right before the beginning of week 2 (during week 1), assign this player to a random free territory (if any exist)
+            if (this.getTurn() === 1) {
+                const ownerlessTerritoryIds = this.getOwnerlessTerritories();
+                if (ownerlessTerritoryIds.length > 0) {
+                    const color = randChoice(...this.getAvailableColors());
+                    this.state.players[userId] = {
+                        displayName,
+                        points,
+                        color
+                    };
+                    const territoryId = randChoice(...ownerlessTerritoryIds);
+                    this.state.territories[territoryId].owner = userId;
+                    this.state.territories[territoryId].troops = 1;
+                    lateAdditions.push(`<@${userId}> at _${this.getTerritoryName(territoryId)}_`);
+                    continue;
+                }
+            }
+            // Else, refuse to add the player
+            void logger.log(`Refusing to add late joiner **${displayName}**`);
+        }
+        if (lateAdditions.length > 0) {
+            return [`We have a few new players joining the game just in time! They've been randomly placed as such: ${naturalJoin(lateAdditions)}`];
+        }
+        return [];
     }
 
     updatePlayer(member: GuildMember): void {
@@ -879,37 +896,37 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
     }
 
     override addNPCs(): void {
-        // Add 3 NPCs
-        const userIds: string[] = [];
-        for (let i = 0; i < 3; i++) {
-            const userId = `npc${i}`;
-            userIds.push(userId);
-            this.state.players[userId] = {
-                displayName: `NPC ${i}`,
-                points: 0,
-                troopIcon: randChoice('king', 'queen', 'rook', 'davidbeers', 'sickf', 'soldier', 'knight', 'cat', undefined)
-            };
-            // Give them one territory
-            if (this.getTurn() > 0) {
-                const potentialTerritories = this.getOwnerlessTerritories();
-                if (potentialTerritories.length > 0) {
-                    const randomTerritoryId = randChoice(...potentialTerritories);
-                    this.state.territories[randomTerritoryId].owner = userId;
-                }
-            }
-        }
-        if (this.getTurn() > 0) {
-            // For each remaining territory, give it to one random NPC
-            const remainingTerritories = this.getOwnerlessTerritories();
-            for (const territoryId of remainingTerritories) {
-                this.state.territories[territoryId].owner = randChoice(...userIds);
-            }
-            // Assign random colors to all players (even existing non-NPC players)
-            const colors = shuffle(Object.keys(RiskGame.config.colors));
-            for (const userId of this.getPlayers()) {
-                this.state.players[userId].color = colors.pop();
-            }
-        }
+        // // Add 3 NPCs
+        // const userIds: string[] = [];
+        // for (let i = 0; i < 3; i++) {
+        //     const userId = `npc${i}`;
+        //     userIds.push(userId);
+        //     this.state.players[userId] = {
+        //         displayName: `NPC ${i}`,
+        //         points: 0,
+        //         troopIcon: randChoice('king', 'queen', 'rook', 'davidbeers', 'sickf', 'soldier', 'knight', 'cat', undefined)
+        //     };
+        //     // Give them one territory
+        //     if (this.getTurn() > 0) {
+        //         const potentialTerritories = this.getOwnerlessTerritories();
+        //         if (potentialTerritories.length > 0) {
+        //             const randomTerritoryId = randChoice(...potentialTerritories);
+        //             this.state.territories[randomTerritoryId].owner = userId;
+        //         }
+        //     }
+        // }
+        // if (this.getTurn() > 0) {
+        //     // For each remaining territory, give it to one random NPC
+        //     const remainingTerritories = this.getOwnerlessTerritories();
+        //     for (const territoryId of remainingTerritories) {
+        //         this.state.territories[territoryId].owner = randChoice(...userIds);
+        //     }
+        //     // Assign random colors to all players (even existing non-NPC players)
+        //     const colors = shuffle(Object.keys(RiskGame.config.colors));
+        //     for (const userId of this.getPlayers()) {
+        //         this.state.players[userId].color = colors.pop();
+        //     }
+        // }
     }
 
     private async renderRules(): Promise<AttachmentBuilder> {
@@ -1481,7 +1498,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         this.state.turn++;
 
         // If we're on the first turn, determine the draft order
-        if (this.state.turn === 1) {
+        if (this.getTurn() === 1) {
             this.state.draft = this.constructDraftData();
         } else {
             // Just in case the draft data is still present, but this shouldn't happen...
@@ -1490,6 +1507,13 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             this.state.addDecisions = {};
             this.state.attackDecisions = {};
             this.state.moveDecisions = {};
+        }
+
+        // If starting the second turn, add troops to each remaining unclaimed territory so players can fight for it
+        if (this.getTurn() === 2) {
+            for (const territoryId of this.getOwnerlessTerritories()) {
+                this.addTerritoryTroops(territoryId, 3);
+            }
         }
 
         // Save a snapshot of weekly point-ordered players
@@ -1664,7 +1688,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             delete this.state.draft;
             return {
                 continueProcessing: false,
-                summary: 'Alright, everyone\'s settled in! See you all next week when the bloodshed begins...'
+                summary: 'Alright, everyone\'s settled in! Any remaining unclaimed territories will be doled out randomly to new players who participate before next weekend, when the bloodshed begins...'
             };
         }
         // If there are pending add decisions, process them
@@ -2280,10 +2304,14 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     if (!this.state.addDecisions) {
                         throw new Error('I\'m not accepting any decisions related to _adding troops_ right now...');
                     }
-                    // Validate the selected territory
+                    // Validate that the selected territory belong's to this user's team
                     const selectedTerritoryId = interaction.values[0];
-                    if (this.getTerritoryOwner(selectedTerritoryId) !== userId) {
-                        throw new Error(`You don't own _${this.getTerritoryName(selectedTerritoryId)}_!`);
+                    if (this.getTerritoryOwner(selectedTerritoryId) !== this.getPlayerTeam(userId)) {
+                        if (this.isPlayerEliminated(userId)) {
+                            throw new Error(`Your team doesn't own _${this.getTerritoryName(selectedTerritoryId)}_!`);
+                        } else {
+                            throw new Error(`You don't own _${this.getTerritoryName(selectedTerritoryId)}_!`);
+                        }
                     }
                     // Add the pending decision
                     if (!this.state.addDecisions[userId]) {

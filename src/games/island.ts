@@ -1,6 +1,6 @@
 import { GuildMember, MessageFlags, Snowflake } from "discord.js";
 import canvas from 'canvas';
-import { DecisionProcessingResult, IslandGameState, IslandPlayerState, MessengerPayload, PrizeType } from "../types";
+import { DecisionProcessingResult, GamePlayerAddition, IslandGameState, IslandPlayerState, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 import { getMostSimilarByNormalizedEditDistance, naturalJoin, randChoice, shuffle, toFixed } from "evanw555.js";
 
@@ -144,21 +144,25 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
         return userId in this.state.players;
     }
 
-    addPlayer(member: GuildMember): string {
-        if (member.id in this.state.players) {
-            void logger.log(`Refusing to add **${member.displayName}** to the island, as they're already in it!`);
-            return `Cannot add **${member.displayName}** (already in-game)`;
+    override addLatePlayers(players: GamePlayerAddition[]): MessengerPayload[] {
+        for (const { userId, displayName, points } of players) {
+            if (userId in this.state.players) {
+                void logger.log(`Refusing to add **${displayName}** to the island, as they're already in it!`);
+                continue;
+            }
+            this.state.players[userId] = {
+                displayName,
+                points,
+                eliminated: true,
+                // This player is joining late, so lock them (don't let them vote)
+                locked: true,
+                // Give them a terrible dummy rank that's necessarily larger than all other ranks
+                finalRank: this.getNumPlayers() + 1
+            };
+            void logger.log(`Added **${displayName}** at final rank **${this.getFinalRank(userId)}**`);
         }
-        this.state.players[member.id] = {
-            displayName: member.displayName,
-            points: 0,
-            eliminated: true,
-            // This player is joining late, so lock them (don't let them vote)
-            locked: true,
-            // Give them a terrible dummy rank that's necessarily larger than all other ranks
-            finalRank: this.getNumPlayers() + 1
-        };
-        return `Added **${member.displayName}** at final rank **${this.getFinalRank(member.id)}**`;
+        // Never return any sort of message for new players
+        return [];
     }
 
     updatePlayer(member: GuildMember): void {

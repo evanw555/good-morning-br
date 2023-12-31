@@ -1,6 +1,6 @@
 import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, BaseMessageOptions, ButtonStyle, Client, ComponentType, DMChannel, GatewayIntentBits, MessageFlags, PartialMessage, Partials, TextChannel, TextInputStyle, User } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discord.js';
-import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, GameState, Wordle, SubmissionPromptHistory, ReplyToMessageData, GoodMorningAuth, MessengerPayload, WordleRestartData, AnonymousSubmission } from './types';
+import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, GameState, Wordle, SubmissionPromptHistory, ReplyToMessageData, GoodMorningAuth, MessengerPayload, WordleRestartData, AnonymousSubmission, GamePlayerAddition } from './types';
 import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, canonicalizeText, getScaledPoints, generateSynopsisWithAi, getSimpleScaledPoints } from './util';
 import GoodMorningState from './state';
 import { addReactsSync, chance, DiscordTimestampFormat, FileStorage, generateKMeansClusters, getClockTime, getJoinedMentions, getPollChoiceKeys, getRandomDateBetween,
@@ -975,24 +975,31 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     }
 
     // If today is a decision day
-    const newlyAddedPlayers: Snowflake[] = [];
-    let beginTurnMessages: MessengerPayload[] = [];
+    let extraGameMessages: MessengerPayload[] = [];
     if (state.getEventType() === DailyEventType.GameDecision && state.hasGame()) {
         // First, attempt to refresh state member info
         await refreshStateMemberInfo();
         // Add new players to the game
-        const addPlayerLogs: string[] = [];
         const newPlayers: Snowflake[] = state.getPlayers().filter(userId => !state.getGame().hasPlayer(userId));
         const newMembersById = await fetchMembers(newPlayers);
-        for (const [userId, member] of Object.entries(newMembersById)) {
-            // Add player to the game (for the first week, this should be handled by the dungeon initialization logic above)
-            const addPlayerLog: string = state.getGame().addPlayer(member);
-            addPlayerLogs.push(addPlayerLog);
-            newlyAddedPlayers.push(userId);
-            // Add all points earned before this player was added to the game
-            state.getGame().addPoints(userId, state.getPlayerPoints(userId));
+        const gamePlayerAdditions: GamePlayerAddition[] = Object.values(newMembersById)
+            .map(m => ({
+                userId: m.id,
+                displayName: m.displayName,
+                points: state.getPlayerPoints(m.id)
+            }));
+        // If testing, add one random new NPC each week
+        if (config.testing) {
+            const npcNumber = state.getGame().getNumPlayers();
+            gamePlayerAdditions.push({
+                userId: `npc${npcNumber}`,
+                displayName: `NPC ${npcNumber}`,
+                points: randInt(0, 10)
+            });
         }
-        await logger.log(addPlayerLogs.join('\n') || 'No new players were added this week.');
+        // Process the late additions and keep track of the response payload
+        const addPlayersMessengerPayloads = state.getGame().addLatePlayers(gamePlayerAdditions);
+        extraGameMessages.push(...addPlayersMessengerPayloads);
         // If testing, add a random number of points
         if (config.testing) {
             for (const userId of state.getGame().getPlayers()) {
@@ -1000,7 +1007,8 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
             }
         }
         // Begin this week's turn
-        beginTurnMessages = await state.getGame().beginTurn();
+        const beginTurnMessages = await state.getGame().beginTurn();
+        extraGameMessages.push(...beginTurnMessages);
         // Start accepting game decisions
         state.setAcceptingGameDecisions(true);
     } else {
@@ -1142,17 +1150,10 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         }
     }
 
-    // Let the channel know of all the newly joined players
-    if (newlyAddedPlayers.length === 1) {
-        await messenger.send(goodMorningChannel, `Let's all give a warm welcome to ${getJoinedMentions(newlyAddedPlayers)}, for this puppy is joining the game this week!`)
-    } else if (newlyAddedPlayers.length > 1) {
-        await messenger.send(goodMorningChannel, `Let's all give a warm welcome to ${getJoinedMentions(newlyAddedPlayers)}, for they are joining the game this week!`);
-    }
-
     // If there are any extra begin-turn messages, send them now
-    if (beginTurnMessages.length > 0) {
-        for (const beginTurnMessage of beginTurnMessages) {
-            await messenger.send(goodMorningChannel, beginTurnMessage);
+    if (extraGameMessages.length > 0) {
+        for (const extraGameMessage of extraGameMessages) {
+            await messenger.send(goodMorningChannel, extraGameMessage);
         }
     }
 

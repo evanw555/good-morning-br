@@ -1,6 +1,6 @@
 import canvas, { Canvas, CanvasRenderingContext2D } from 'canvas';
 import { ActionRowData, AttachmentBuilder, ButtonInteraction, ButtonStyle, ComponentType, GuildMember, Interaction, MessageActionRowComponentData, MessageFlags, Snowflake } from "discord.js";
-import { DecisionProcessingResult, MasterpieceGameState, MasterpiecePieceState, MasterpiecePlayerState, MessengerPayload, PrizeType } from "../types";
+import { DecisionProcessingResult, GamePlayerAddition, MasterpieceGameState, MasterpiecePieceState, MasterpiecePlayerState, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 import { capitalize, naturalJoin, randChoice, shuffle, toCircle, toFixed, toLetterId } from "evanw555.js";
 import { text } from '../util';
@@ -331,16 +331,20 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
         return userId in this.state.players;
     }
 
-    override addPlayer(member: GuildMember): string {
-        if (member.id in this.state.players) {
-            void logger.log(`Refusing to add **${member.displayName}** to the masterpiece state, as they're already in it!`);
-            return `Cannot add **${member.displayName}** (already in-game)`;
+    override addLatePlayers(players: GamePlayerAddition[]): MessengerPayload[] {
+        const userIds: Snowflake[] = [];
+        for (const { userId, displayName, points } of players) {
+            if (userId in this.state.players) {
+                void logger.log(`Refusing to add **${displayName}** to the masterpiece state, as they're already in it!`);
+                continue;
+            }
+            this.state.players[userId] = {
+                displayName,
+                points
+            };
+            userIds.push(userId);
         }
-        this.state.players[member.id] = {
-            displayName: member.displayName,
-            points: 0
-        };
-        return `Added ${member.displayName}`;
+        return this.getStandardWelcomeMessages(userIds);
     }
 
     override updatePlayer(member: GuildMember): void {

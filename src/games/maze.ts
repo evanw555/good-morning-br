@@ -1,7 +1,7 @@
 import canvas, { CanvasRenderingContext2D } from 'canvas';
 import { AttachmentBuilder, GuildMember, MessageFlags, Snowflake } from 'discord.js';
 import { getRankString, getNumberBetween, naturalJoin, randInt, shuffle, toLetterId, fromLetterId, AStarPathFinder, shuffleWithDependencies, toFixed, collapseRedundantStrings, chance, randChoice, toCircle, findCycle } from 'evanw555.js';
-import { DecisionProcessingResult, MazeGameState, MazeItemName, MazeLine, MazeLocation, MazePlayerState, MessengerPayload, PrizeType } from "../types";
+import { DecisionProcessingResult, GamePlayerAddition, MazeGameState, MazeItemName, MazeLine, MazeLocation, MazePlayerState, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 
 import logger from '../logger';
@@ -195,34 +195,41 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         return userId in this.state.players;
     }
 
-    addPlayer(member: GuildMember): string {
-        if (member.id in this.state.players) {
-            logger.log(`Refusing to add **${member.displayName}** to the maze, as they're already in it!`);
-            return `Cannot add **${member.displayName}** (already in-game)`;
+    override addLatePlayers(players: GamePlayerAddition[]): MessengerPayload[] {
+        const lateAdditions: string[] = [];
+        for (const { userId, displayName, points } of players) {
+            if (userId in this.state.players) {
+                void logger.log(`Refusing to add **${displayName}** to the maze, as they're already in it!`);
+                continue;
+            }
+            // Get the worst 33% of players based on location
+            const playersClosestToGoal: Snowflake[] = this.getUnfinishedPlayersClosestToGoal();
+            const worstPlayers = playersClosestToGoal.slice(-Math.floor(playersClosestToGoal.length / 3));
+            // Choose a random vacant spawn location around any of these players
+            const spawnLocation = this.getSpawnableLocationAroundPlayers(worstPlayers);
+            // If there was no available spawn location, then just choose a random tile in the top row
+            const spawnR = spawnLocation?.location.r ?? 0;
+            const spawnC = spawnLocation?.location.c ?? randInt(0, this.state.columns);
+            // This new player gets starter points (plus more if later in the game) as a balance
+            const lateStarterPoints: number = MazeGame.STARTER_POINTS + this.getTurn();
+            // Create the player at this spawn location
+            this.state.players[userId] = {
+                r: spawnR,
+                c: spawnC,
+                rank: this.getNumPlayers() + 1,
+                points: points + lateStarterPoints,
+                displayName
+            };
+            // Refresh all player ranks
+            this.refreshPlayerRanks();
+            // Return log text describing this player being added
+            const locationText: string = spawnLocation ? `near **${this.getDisplayName(spawnLocation.userId)}**` : `at \`${MazeGame.getLocationString(spawnR, spawnC)}\``;
+            lateAdditions.push(`<@${userId}> ${locationText} with **${lateStarterPoints}** starter points`);
         }
-        // Get the worst 33% of players based on location
-        const playersClosestToGoal: Snowflake[] = this.getUnfinishedPlayersClosestToGoal();
-        const worstPlayers = playersClosestToGoal.slice(-Math.floor(playersClosestToGoal.length / 3));
-        // Choose a random vacant spawn location around any of these players
-        const spawnLocation = this.getSpawnableLocationAroundPlayers(worstPlayers);
-        // If there was no available spawn location, then just choose a random tile in the top row
-        const spawnR = spawnLocation?.location.r ?? 0;
-        const spawnC = spawnLocation?.location.c ?? randInt(0, this.state.columns);
-        // This new player gets starter points (plus more if later in the game) as a balance
-        const lateStarterPoints: number = MazeGame.STARTER_POINTS + this.getTurn();
-        // Create the player at this spawn location
-        this.state.players[member.id] = {
-            r: spawnR,
-            c: spawnC,
-            rank: this.getNumPlayers() + 1,
-            points: lateStarterPoints,
-            displayName: member.displayName
-        };
-        // Refresh all player ranks
-        this.refreshPlayerRanks();
-        // Return log text describing this player being added
-        const locationText: string = spawnLocation ? `near **${this.getDisplayName(spawnLocation.userId)}**` : `at \`${MazeGame.getLocationString(spawnR, spawnC)}\``;
-        return `Added player **${member.displayName}** ${locationText} with **${lateStarterPoints}** starter points`;
+        if (lateAdditions.length > 0) {
+            return [`Let's all give a warm welcome to this week's new players! I've added the following: ${naturalJoin(lateAdditions)}`];
+        }
+        return [];
     }
 
     updatePlayer(member: GuildMember): void {

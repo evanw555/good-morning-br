@@ -1,11 +1,11 @@
 import canvas, {  } from 'canvas';
-import { ActionRowData, AttachmentBuilder, ButtonStyle, ComponentType, GuildMember, MessageActionRowComponentData, MessageFlags, Snowflake } from "discord.js";
+import { ActionRowData, ButtonStyle, ComponentType, GuildMember, MessageActionRowComponentData, MessageFlags, Snowflake } from "discord.js";
 import { DiscordTimestampFormat, getMostSimilarByNormalizedEditDistance, getRankString, getTodayDateString, naturalJoin, randChoice, getNumberOfDaysUntil, toDiscordTimestamp, toFixed, toDateString } from 'evanw555.js';
-import { ClassicGameState, DecisionProcessingResult, Medals, MessengerPayload, PrizeType } from "../types";
+import { ClassicGameState, DecisionProcessingResult, GamePlayerAddition, Medals, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
+import { text } from '../util';
 
 import imageLoader from '../image-loader';
-import { text } from '../util';
 
 export default class ClassicGame extends AbstractGame<ClassicGameState> {
     private static NERFED_TAKE_AMOUNT = 3;
@@ -115,10 +115,12 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         return userId in this.state.points;
     }
 
-    addPlayer(member: GuildMember): string {
-        this.addPoints(member.id, 0);
-        this.state.names[member.id] = member.displayName;
-        return `Added ${member.displayName}`;
+    override addLatePlayers(players: GamePlayerAddition[]): MessengerPayload[] {
+        for (const { userId, displayName, points } of players) {
+            this.addPoints(userId, points);
+            this.state.names[userId] = displayName;
+        }
+        return this.getStandardWelcomeMessages(players.map(p => p.userId));
     }
 
     updatePlayer(member: GuildMember): void {
