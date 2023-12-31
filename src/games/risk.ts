@@ -2,7 +2,7 @@ import { APIActionRowComponent, APIMessageActionRowComponent, APISelectMenuOptio
 import { DecisionProcessingResult, MessengerPayload, PrizeType, RiskConflictState, RiskGameState, RiskMovementData, RiskPlannedAttack, RiskPlayerState, RiskTerritoryState } from "../types";
 import AbstractGame from "./abstract-game";
 import { Canvas, Image, createCanvas } from "canvas";
-import { DiscordTimestampFormat, chance, findCycle, getDateBetween, getJoinedMentions, getRankString, joinCanvasesHorizontal, joinCanvasesVertically, naturalJoin, randChoice, randInt, shuffle, shuffleWithDependencies, toCircle, toDiscordTimestamp, toFixed } from "evanw555.js";
+import { DiscordTimestampFormat, chance, fillBackground, findCycle, getDateBetween, getJoinedMentions, getRankString, joinCanvasesHorizontal, joinCanvasesVertically, naturalJoin, randChoice, randInt, shuffle, shuffleWithDependencies, toCircle, toDiscordTimestamp, toFixed } from "evanw555.js";
 
 import logger from "../logger";
 import imageLoader from "../image-loader";
@@ -32,7 +32,8 @@ interface RiskConfig {
         troopBounds: Coordinates[],
         connections: string[],
         termini: Record<string, Coordinates>
-    }>
+    }>,
+    colors: Record<string, string>
 }
 
 export default class RiskGame extends AbstractGame<RiskGameState> {
@@ -451,14 +452,43 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     W: { x: 164, y: 686 }
                 }
             }
+        },
+        colors: {
+            'rgb(250, 128, 114)': 'Salmon',
+            'rgb(255, 0, 0)': 'Red',
+            'rgb(139, 0, 0)': 'Dark Red',
+            'rgb(255, 192, 203)': 'Pink',
+            'rgb(255, 105, 180)': 'Hot Pink',
+            'rgb(255, 69, 0)': 'Red Orange',
+            'rgb(255, 140, 0)': 'Dark Orange',
+            'rgb(255, 224, 51)': 'Yellow',
+            'rgb(186, 186, 247)': 'Lavender',
+            'rgb(147, 112, 219)': 'Medium Purple',
+            'rgb(128, 0, 128)': 'Purple',
+            'rgb(75, 0, 130)': 'Indigo',
+            'rgb(173, 255, 47)': 'Chartreuse',
+            'rgb(152, 251, 152)': 'Pale Green',
+            'rgb(0, 255, 127)': 'Spring Green',
+            'rgb(0, 128, 0)': 'Green',
+            'rgb(128, 128, 0)': 'Olive',
+            'rgb(32, 178, 170)': 'Light Sea Green',
+            'rgb(6, 249, 249)': 'Cyan',
+            'rgb(57, 106, 147)': 'Steel Blue',
+            'rgb(4, 4, 174)': 'Dark Blue',
+            'rgb(30, 144, 255)': 'Dodger Blue',
+            'rgb(139, 69, 19)': 'Saddle Brown',
+            'rgb(210, 180, 140)': 'Tan',
+            'rgb(248, 248, 255)': 'Ghost White'
         }
     };
 
+    private pendingColorSelections: Record<Snowflake, string>;
     private pendingAttackDecisions: Record<Snowflake, Partial<RiskMovementData>>;
     private pendingMoveDecisions: Record<Snowflake, Partial<RiskMovementData>>;
 
     constructor(state: RiskGameState) {
         super(state);
+        this.pendingColorSelections = {};
         this.pendingAttackDecisions = {};
         this.pendingMoveDecisions = {};
     }
@@ -469,15 +499,14 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         for (const member of members) {
             players[member.id] = {
                 displayName: member.displayName,
-                points: 0,
-                color: `hsl(${randInt(0, 360)}, 40%, 60%)`
+                points: 0
             };
         }
         // Construct the territories map
         const territories: Record<string, RiskTerritoryState> = {};
         for (const territoryId of Object.keys(RiskGame.config.territories)) {
             territories[territoryId] = {
-                troops: 1
+                troops: 0
             };
         }
         // Return the constructed state
@@ -724,6 +753,14 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         return this.getPlayerTeamColor(this.getTerritoryOwner(territoryId) ?? '');
     }
 
+    private isColorClaimed(color: string): boolean {
+        return Object.values(this.state.players).some(p => p.color === color);
+    }
+
+    private getAvailableColors(): string[] {
+        return Object.keys(RiskGame.config.colors).filter(color => !this.isColorClaimed(color));
+    }
+
     private isPlayerEliminated(userId: Snowflake): boolean {
         // Player is considered "eliminated" if they have a final rank assigned to them
         return this.state.players[userId]?.finalRank !== undefined;
@@ -842,33 +879,74 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
     }
 
     override addNPCs(): void {
-        // Add 10 NPCs
+        // Add 3 NPCs
         const userIds: string[] = [];
-        for (let i = 0; i < 10; i++) {
+        for (let i = 0; i < 3; i++) {
             const userId = `npc${i}`;
             userIds.push(userId);
             this.state.players[userId] = {
                 displayName: `NPC ${i}`,
                 points: 0,
-                color: `hsl(${Math.floor(i * 35)}, 30%, 60%)`
+                troopIcon: randChoice('king', 'queen', 'rook', 'davidbeers', 'sickf', 'soldier', 'knight', 'cat', undefined)
             };
             // Give them one territory
-            const potentialTerritories = this.getOwnerlessTerritories();
-            if (potentialTerritories.length > 0) {
-                const randomTerritoryId = randChoice(...potentialTerritories);
-                this.state.territories[randomTerritoryId].owner = userId;
+            if (this.getTurn() > 0) {
+                const potentialTerritories = this.getOwnerlessTerritories();
+                if (potentialTerritories.length > 0) {
+                    const randomTerritoryId = randChoice(...potentialTerritories);
+                    this.state.territories[randomTerritoryId].owner = userId;
+                }
             }
         }
-        // For each remaining territory, give it to one random NPC
-        const remainingTerritories = this.getOwnerlessTerritories();
-        for (const territoryId of remainingTerritories) {
-            this.state.territories[territoryId].owner = randChoice(...userIds);
+        if (this.getTurn() > 0) {
+            // For each remaining territory, give it to one random NPC
+            const remainingTerritories = this.getOwnerlessTerritories();
+            for (const territoryId of remainingTerritories) {
+                this.state.territories[territoryId].owner = randChoice(...userIds);
+            }
+            // Assign random colors to all players (even existing non-NPC players)
+            const colors = shuffle(Object.keys(RiskGame.config.colors));
+            for (const userId of this.getPlayers()) {
+                this.state.players[userId].color = colors.pop();
+            }
         }
     }
 
     private async renderRules(): Promise<AttachmentBuilder> {
         // TODO: Create real rules sheet
         return new AttachmentBuilder('assets/risk/map-with-background.png');
+    }
+
+    private async renderAvailableColors(userId: Snowflake): Promise<AttachmentBuilder> {
+        const colors = this.getAvailableColors();
+
+        const ROW_HEIGHT = 32;
+        const MARGIN = 8;
+
+        const panels: Canvas[][] = [[]];
+        for (const color of colors) {
+            // If the first panel list is full, append a new one
+            if (panels[panels.length - 1].length >= 8) {
+                panels.push([]);
+            }
+            const canvas = createCanvas(ROW_HEIGHT * 4 + MARGIN * 3, ROW_HEIGHT + 2 * MARGIN);
+            const context = canvas.getContext('2d');
+            const avatarImage = await this.getAvatar(userId, { colorOverride: color });
+            context.drawImage(avatarImage, MARGIN, MARGIN, ROW_HEIGHT, ROW_HEIGHT);
+            const textLabel = getTextLabel(RiskGame.config.colors[color], ROW_HEIGHT * 3, ROW_HEIGHT, { style: color });
+            context.drawImage(textLabel, ROW_HEIGHT + 2 * MARGIN, MARGIN);
+            panels[panels.length - 1].push(canvas);
+        }
+
+        // Merge all canvases in a grid
+        const composite = withDropShadow(joinCanvasesHorizontal(panels.map(p => joinCanvasesVertically(p))));
+        // Fill the background underneath everything
+        const compositeContext = composite.getContext('2d');
+        compositeContext.fillStyle = 'rgb(10,10,10)';
+        compositeContext.globalCompositeOperation = 'destination-over';
+        compositeContext.fillRect(0, 0, composite.width, composite.height);
+
+        return new AttachmentBuilder(composite.toBuffer()).setName('risk-colors.png');
     }
 
     private async renderConflict(conflict: RiskConflictState, options: { attackerRolls: number[], defenderRolls: number[], attackersLost: number, defendersLost: number, rollWinners: ('attacker' | 'defender' | 'neither')[] }): Promise<AttachmentBuilder> {
@@ -1140,7 +1218,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
 
             let baseX = MARGIN;
             // Draw the avatar
-            context.drawImage(toCircle(await imageLoader.loadAvatar(userId)), baseX, 0, ROW_HEIGHT, ROW_HEIGHT);
+            context.drawImage(await this.getAvatar(userId), baseX, 0, ROW_HEIGHT, ROW_HEIGHT);
             baseX += ROW_HEIGHT + MARGIN;
             // Draw the bar
             const barWidth = MAX_BAR_WIDTH * points / maxPoints;
@@ -1254,7 +1332,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         }
         if (highlightedTerritories.size > 0) {
             const inverseMask = await this.getInverseTerritoryCutoutMask(Array.from(highlightedTerritories));
-            context.globalAlpha = 0.75;
+            context.globalAlpha = 0.8;
             context.drawImage(inverseMask, 0, 0);
             context.globalAlpha = 1;
         }
@@ -1338,14 +1416,14 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         return canvas;
     }
 
-    private async getAvatar(userId: Snowflake): Promise<Canvas> {
+    private async getAvatar(userId: Snowflake, options?: { colorOverride?: string }): Promise<Canvas> {
         const avatar = await imageLoader.loadAvatar(userId, 64);
         const ringWidth = 6;
 
         const canvas = createCanvas(64 + 2 * ringWidth, 64 + 2 * ringWidth);
         const context = canvas.getContext('2d');
 
-        context.fillStyle = this.getPlayerTeamColor(userId);
+        context.fillStyle = options?.colorOverride ?? this.getPlayerTeamColor(userId);
         context.fillRect(0, 0, canvas.width, canvas.height);
         context.drawImage(toCircle(avatar), ringWidth, ringWidth, 64, 64);
 
@@ -1354,41 +1432,46 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
 
     private async getTroopImage(userId: Snowflake | undefined, modifier?: 'added' | 'moved' | 'attacking' | 'eliminated'): Promise<Canvas | Image> {
         // TODO: Refactor this to another method or something
-        const troopIconName = userId ? (this.state.players[userId]?.troopIcon ?? '1') : '1';
-        // If there's no modifier specified, just return the plain white troop icon
-        if (!modifier) {
-            return await imageLoader.loadImage(`assets/risk/troops/${troopIconName}.png`);
-        }
-        // Else, do some adjustments to the colored troop
-        const baseImage = await imageLoader.loadImage(`assets/risk/troops/${troopIconName}invading.png`);
+        const troopIconName = userId ? (this.state.players[userId]?.troopIcon ?? 'default') : 'default';
+
+        // Load up the 2 component images
+        const baseImage = await imageLoader.loadImage(`assets/risk/troops/${troopIconName}.png`);
+        const fillImage = await imageLoader.loadImage(`assets/risk/troops/${troopIconName}_fill.png`);
+
+        // Initialize the canvas for the resulting troop image
         const canvas = createCanvas(baseImage.width, baseImage.height);
         const context = canvas.getContext('2d');
         context.save();
 
-        context.drawImage(baseImage, 0, 0);
+        // First, draw the fill image using different strategies
+        context.drawImage(fillImage, 0, 0);
+        context.globalCompositeOperation = 'source-in';
         switch (modifier) {
             case 'added':
-                context.globalCompositeOperation = 'hue';
                 context.fillStyle = 'green';
                 break;
             case 'moved':
-                context.globalCompositeOperation = 'hue';
                 context.fillStyle = 'blue';
                 break;
             case 'attacking':
-                context.globalCompositeOperation = 'hue';
                 context.fillStyle = 'red';
                 break;
             case 'eliminated':
-                context.globalCompositeOperation = 'saturation';
-                context.fillStyle = 'black';
+                context.fillStyle = 'gray';
+                break;
+            case undefined:
+                context.fillStyle = 'white';
                 break;
         }
         context.fillRect(0, 0, canvas.width, canvas.height);
 
-        // Trim the outside
-        context.globalCompositeOperation = 'destination-in';
+        // Then, draw the base image
+        context.globalCompositeOperation = 'source-over';
         context.drawImage(baseImage, 0, 0);
+
+        // Trim the outside
+        // context.globalCompositeOperation = 'destination-in';
+        // context.drawImage(baseImage, 0, 0);
         context.restore();
 
         return canvas;
@@ -1419,6 +1502,12 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             // Reset their weekly points
             this.resetPoints(userId);
         }
+
+        // If we're on the first turn, abort now before handing out troops
+        if (this.getTurn() === 1) {
+            return [];
+        }
+
         const n = weeklyPointOrderedPlayers.length;
         for (let i = 0; i < n; i++) {
             const userId = weeklyPointOrderedPlayers[i];
@@ -1554,8 +1643,11 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 // Pick a random user and random available territory
                 const randomUserId = randChoice(...remainingAvailableUserIds);
                 const randomTerritoryId = randChoice(...this.getOwnerlessTerritories());
-                // Assign the territory to this user and mark them as draft-complete
+                // Assign the territory to this user and give them a random color
                 this.state.territories[randomTerritoryId].owner = randomUserId;
+                this.state.territories[randomTerritoryId].troops = 1;
+                this.state.players[randomUserId].color = randChoice(...this.getAvailableColors());
+                // Mark the player as draft-complete
                 delete this.state.draft[randomUserId];
                 // Send a payload about it and continue processing
                 return {
@@ -1996,18 +2088,19 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     if (!playerDraftInfo.available) {
                         throw new Error('It\'s not your turn to draft, silly!');
                     }
-                    // Respond with a prompt for the user to pick a location
+                    // Respond with a prompt for the user to pick a color first
                     await interaction.reply({
                         ephemeral: true,
-                        content: 'Where would you like to start?',
+                        content: 'First, choose a color:',
+                        files: [await this.renderAvailableColors(userId)],
                         components: [{
                             type: ComponentType.ActionRow,
                             components: [{
                                 type: ComponentType.StringSelect,
-                                custom_id: 'game:selectStartingLocation',
+                                custom_id: 'game:selectColor',
                                 min_values: 1,
                                 max_values: 1,
-                                options: this.getTerritorySelectOptions(this.getOwnerlessTerritories())
+                                options: this.getAvailableColorSelectOptions()
                             }]
                         }]
                     });
@@ -2094,6 +2187,46 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         } else if (interaction.isStringSelectMenu()) {
             const customId = interaction.customId;
             switch (customId) {
+                case 'game:selectColor': {
+                    // Do basic validation before processing
+                    const draft = this.state.draft;
+                    if (!draft) {
+                        throw new Error('The draft has already ended, why are you clicking this?');
+                    }
+                    const playerDraftInfo = draft[userId];
+                    if (!playerDraftInfo) {
+                        throw new Error('You\'re not in the game... yet?');
+                    }
+                    if (!playerDraftInfo.available) {
+                        throw new Error('It\'s not your turn to draft, silly!');
+                    }
+                    // Validate the player's selected color
+                    const color = interaction.values[0];
+                    if (!color) {
+                        throw new Error('You were supposed to choose a color! (see admin)');
+                    }
+                    if (this.isColorClaimed(color)) {
+                        throw new Error(`**${RiskGame.config.colors[color] ?? 'That color'}** has already been claimed. Pick another color!`);
+                    }
+                    // Save the color as a pending color decision
+                    this.pendingColorSelections[userId] = color;
+                    // Now, prompt for them to choose a starting location
+                    await interaction.reply({
+                        ephemeral: true,
+                        content: `You've selected **${RiskGame.config.colors[color] ?? color}**. Now, where would you like to start?`,
+                        components: [{
+                            type: ComponentType.ActionRow,
+                            components: [{
+                                type: ComponentType.StringSelect,
+                                custom_id: 'game:selectStartingLocation',
+                                min_values: 1,
+                                max_values: 1,
+                                options: this.getTerritorySelectOptions(this.getOwnerlessTerritories())
+                            }]
+                        }]
+                    });
+                    break;
+                }
                 case 'game:selectStartingLocation': {
                     // Do basic validation before processing
                     const draft = this.state.draft;
@@ -2110,22 +2243,26 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     // Validate the player's selected location
                     const territoryId = interaction.values[0];
                     if (!territoryId) {
-                        await interaction.reply({
-                            ephemeral: true,
-                            content: 'Ummmmm... you were supposed to select a territory...'
-                        });
-                        return;
+                        throw new Error('Ummmmm... you were supposed to select a territory...');
                     }
                     const existingOwnerId = this.getTerritoryOwner(territoryId);
                     if (existingOwnerId) {
-                        await interaction.reply({
-                            ephemeral: true,
-                            content: `You can't select _${this.getTerritoryName(territoryId)}_, it's already been claimed by ${this.getPlayerDisplayName(existingOwnerId)}!`
-                        });
-                        return;
+                        throw new Error(`You can't select _${this.getTerritoryName(territoryId)}_, it's already been claimed by ${this.getPlayerDisplayName(existingOwnerId)}!`);
                     }
-                    // Confirm the selected location
+                    // Validate the pending selected color too, since it may have been claimed since the last interaction
+                    const color = this.pendingColorSelections[userId];
+                    if (!color) {
+                        throw new Error('You were supposed to choose a color! (see admin)');
+                    }
+                    if (this.isColorClaimed(color)) {
+                        throw new Error(`**${RiskGame.config.colors[color] ?? 'That color'}** has already been claimed. Go back and pick another color!`);
+                    }
+                    // Confirm the selected color and location
+                    this.state.players[userId].color = color;
                     this.state.territories[territoryId].owner = userId;
+                    this.state.territories[territoryId].troops = 1;
+                    // Delete the pending color selection and mark this player as draft-complete
+                    delete this.pendingColorSelections[userId];
                     delete draft[userId].available;
                     // Reply to the interaction
                     await interaction.reply({
@@ -2697,6 +2834,13 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 result.push(`${this.getNumTerritoryConnections(territoryId)} neighbor(s)`);
                 return result.join(', ');
             })()
+        }));
+    }
+
+    private getAvailableColorSelectOptions(): APISelectMenuOption[] {
+        return this.getAvailableColors().map(color => ({
+            label: RiskGame.config.colors[color] ?? color,
+            value: color
         }));
     }
 }
