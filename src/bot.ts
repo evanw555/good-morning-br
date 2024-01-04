@@ -988,14 +988,16 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
                 displayName: m.displayName,
                 points: state.getPlayerPoints(m.id)
             }));
-        // If testing, add one random new NPC each week
+        // If testing, add 3 random new NPCs each week
         if (config.testing) {
-            const npcNumber = state.getGame().getNumPlayers();
-            gamePlayerAdditions.push({
-                userId: `npc${npcNumber}`,
-                displayName: `NPC ${npcNumber}`,
-                points: randInt(0, 10)
-            });
+            for (let i = 0; i < 3; i++) {
+                const npcNumber = state.getGame().getNumPlayers() + i;
+                gamePlayerAdditions.push({
+                    userId: `npc${npcNumber}`,
+                    displayName: `NPC ${npcNumber}`,
+                    points: randInt(0, 10)
+                });
+            }
         }
         // Process the late additions and keep track of the response payload
         const addPlayersMessengerPayloads = state.getGame().addLatePlayers(gamePlayerAdditions);
@@ -2377,6 +2379,9 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
 
         // Send out the message payload for the updated game state (may contain attachments or just be text)
         await messenger.send(goodMorningChannel, processingResult.summary);
+        if (processingResult.extraSummaries) {
+            await messenger.sendAll(goodMorningChannel, processingResult.extraSummaries);
+        }
 
         if (processingResult.continueProcessing) {
             // If there are more decisions to be processed, schedule the next processing timeout
@@ -3135,6 +3140,9 @@ const processCommands = async (msg: Message): Promise<void> => {
                     } catch (err) {}
                     // TODO: This may result in messages with too much text, can we truncate that somehow?
                     await msg.channel.send(processingData.summary);
+                    if (processingData.extraSummaries) {
+                        await messenger.sendAll(goodMorningChannel, processingData.extraSummaries);
+                    }
                     await sleep(2500);
                 }
                 if (!processingData.continueProcessing) {

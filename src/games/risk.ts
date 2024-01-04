@@ -799,6 +799,13 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         return userId;
     }
 
+    /**
+     * Gets all players on a given player's team (other than the player himself).
+     */
+    private getPlayerVassals(userId: Snowflake): Snowflake[] {
+        return this.getPlayers().filter(otherId => userId !== otherId && this.getPlayerTeam(otherId) === userId);
+    }
+
     override async onDecisionPreNoon(): Promise<MessengerPayload[]> {
         // If there's an active draft, send a special message if anyone still needs to select a starting location
         if (this.state.draft) {
@@ -964,6 +971,46 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         compositeContext.fillRect(0, 0, composite.width, composite.height);
 
         return new AttachmentBuilder(composite.toBuffer()).setName('risk-colors.png');
+    }
+
+    private async renderElimination(eliminatedUserId: Snowflake, eliminatorUserId: Snowflake, inheritedVassals: Snowflake[]): Promise<AttachmentBuilder> {
+        const WIDTH = 400;
+        const HEIGHT = 400;
+        const canvas = createCanvas(WIDTH, HEIGHT);
+        const context = canvas.getContext('2d');
+
+        // Fill black background
+        context.fillStyle = 'black';
+        context.fillRect(0, 0, WIDTH, HEIGHT);
+
+        // Draw the eliminated player's avatar taking up half the height
+        const eliminatedAvatar = await this.getAvatar(eliminatedUserId);
+        const crossOutImage = await imageLoader.loadImage('assets/common/crossout.png');
+        context.drawImage(eliminatedAvatar, HEIGHT / 4, 0, HEIGHT / 2, HEIGHT / 2);
+        context.drawImage(crossOutImage, HEIGHT / 4, 0, HEIGHT / 2, HEIGHT / 2);
+
+        // Draw the text labels in the third quarter
+        context.fillStyle = 'white';
+        const finalRankString = getRankString(this.state.players[eliminatedUserId].finalRank ?? 0);
+        const rankLabel = await getTextLabel(finalRankString, WIDTH / 2, HEIGHT / 8);
+        context.drawImage(rankLabel, WIDTH / 4, HEIGHT / 2);
+        const nameLabel = await getTextLabel(this.getPlayerDisplayName(eliminatedUserId), WIDTH, HEIGHT / 8);
+        context.drawImage(nameLabel, 0, HEIGHT * (5 / 8));
+
+        // Draw the inherited vassals in the bottom quarter
+        // TODO: Render the vassals better here
+        const vassalsToRender = [eliminatedUserId, ...inheritedVassals];
+        const v = vassalsToRender.length;
+        for (let i = v - 1; i >= 0; i--) {
+            const vassalAvatar = await this.getAvatar(vassalsToRender[i]);
+            const x = 0.2 * WIDTH - (i / v) * 0.2 * WIDTH;
+            context.drawImage(vassalAvatar, x, HEIGHT * 0.75, WIDTH / 5, WIDTH / 5);
+        }
+        this.renderArrow(context, { x: WIDTH * 0.4, y: HEIGHT * (7 / 8) }, { x: WIDTH * 0.6, y: HEIGHT * (7 / 8)}, { thickness: HEIGHT / 12 });
+        const eliminatorAvatar = await this.getAvatar(eliminatorUserId);
+        context.drawImage(eliminatorAvatar, WIDTH * 0.6, HEIGHT * 0.75, WIDTH / 5, WIDTH / 5);
+
+        return new AttachmentBuilder(canvas.toBuffer()).setName(`risk-elimination-${finalRankString}.png`);
     }
 
     private async renderConflict(conflict: RiskConflictState, options: { attackerRolls: number[], defenderRolls: number[], attackersLost: number, defendersLost: number, rollWinners: ('attacker' | 'defender' | 'neither')[] }): Promise<AttachmentBuilder> {
@@ -1434,15 +1481,15 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
     }
 
     private async getAvatar(userId: Snowflake, options?: { colorOverride?: string }): Promise<Canvas> {
-        const avatar = await imageLoader.loadAvatar(userId, 64);
-        const ringWidth = 6;
+        const avatar = await imageLoader.loadAvatar(userId, 128);
+        const ringWidth = 12;
 
-        const canvas = createCanvas(64 + 2 * ringWidth, 64 + 2 * ringWidth);
+        const canvas = createCanvas(128 + 2 * ringWidth, 128 + 2 * ringWidth);
         const context = canvas.getContext('2d');
 
         context.fillStyle = options?.colorOverride ?? this.getPlayerTeamColor(userId);
         context.fillRect(0, 0, canvas.width, canvas.height);
-        context.drawImage(toCircle(avatar), ringWidth, ringWidth, 64, 64);
+        context.drawImage(toCircle(avatar), ringWidth, ringWidth, 128, 128);
 
         return toCircle(canvas);
     }
@@ -1813,6 +1860,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 // Render the image now before the defender's color is possibly updated
                 const render = await this.renderConflict(conflict, { attackerRolls, defenderRolls, attackersLost, defendersLost, rollWinners });
                 // If the defender is now eliminated, handle that
+                const extraSummaries: MessengerPayload[] = [];
                 if (defenderId && this.getNumTerritoriesForPlayer(defenderId) === 0) {
                     // Mark them as eliminated and assign their final rank
                     const finalRank = this.getNumRemainingPlayers();
@@ -1824,11 +1872,17 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                         // TODO: This is pretty hacky and seems flimsy. Can we add winners differently?
                         this.addWinner(this.getPlayerWithFinalRank(3));
                     }
+                    // Before adjusting this player's eliminator/color, render the elimination image
+                    const inheritedVassals = this.getPlayerVassals(defenderId);
+                    extraSummaries.push({
+                        content: `**${this.getPlayerDisplayName(defenderId)}** has been eliminated, finishing the season in **${getRankString(finalRank)}** place! `
+                            + `This player is now a vassal of **${this.getPlayerDisplayName(attackerId)}**`
+                            + (inheritedVassals.length === 0 ? '' : `, who hereby inherits their **${inheritedVassals.length}** vassal(s)`),
+                        files: [await this.renderElimination(defenderId, attackerId, inheritedVassals)]
+                    })
                     // Delete their color and assign them to the attacker's team
                     delete this.state.players[defenderId].color;
                     this.state.players[defenderId].eliminator = attackerId;
-                    // TODO: Send a proper message/image
-                    summary += `**${this.getPlayerDisplayName(defenderId)}** has been eliminated, finishing at rank **${getRankString(finalRank)}**!\n`;
                 }
                 // Send a message
                 return {
@@ -1836,7 +1890,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     summary: {
                         content: `${summary}**${this.getPlayerDisplayName(attackerId)}** has defeated **${this.getPlayerDisplayName(defenderId)}** at _${this.getTerritoryName(conflict.to)}_!`,
                         files: [render]
-                    }
+                    },
+                    extraSummaries
                 };
             }
             // Otherwise, provide an update of the conflict

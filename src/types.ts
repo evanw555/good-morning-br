@@ -201,6 +201,7 @@ export interface MazePlayerState {
 
 export interface DecisionProcessingResult {
     summary: MessengerPayload,
+    extraSummaries?: MessengerPayload[],
     continueProcessing: boolean
 }
 
