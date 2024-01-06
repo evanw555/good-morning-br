@@ -629,7 +629,7 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
         const AVATAR_WIDTH = 32;
         const HORIZONTAL_MARGIN = 16;
         const VERTICAL_MARGIN = 12;
-        const ROWS = 3 + this.getNumPlayers();
+        const ROWS = 4 + this.getNumPlayers();
         const HEIGHT = ROWS * (AVATAR_WIDTH + VERTICAL_MARGIN) + VERTICAL_MARGIN;
         const MAX_INVENTORY_SIZE = Math.max(1, ...this.getPlayers().map(id => this.getNumPiecesForUser(id)));
         const WIDTH = (5 + MAX_INVENTORY_SIZE) * (AVATAR_WIDTH + HORIZONTAL_MARGIN) + HORIZONTAL_MARGIN;
@@ -708,6 +708,11 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
             }
             baseY += AVATAR_WIDTH + VERTICAL_MARGIN;
         }
+
+        // Draw the ordering disclaimer at the bottom
+        context.fillStyle = 'white';
+        context.font = '12px serif';
+        context.fillText(`(This ordering uses an assumed value of $${this.getAverageUnsoldPieceValue().toFixed(2)} for each piece)`, HORIZONTAL_MARGIN, baseY + (0.7 * AVATAR_WIDTH));
 
         return c;
     }

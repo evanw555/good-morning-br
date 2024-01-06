@@ -2401,9 +2401,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             // Trigger turn-end logic and send turn-end messages
             const turnEndMessages = await game.endTurn();
             await dumpState();
-            for (const messengerPayload of turnEndMessages) {
-                await messenger.send(goodMorningChannel, messengerPayload);
-            }
+            await messenger.sendAll(goodMorningChannel, turnEndMessages);
         }
     },
     [TimeoutType.GameDecisionPhase]: async (arg): Promise<void> => {
