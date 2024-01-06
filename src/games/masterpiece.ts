@@ -2,8 +2,8 @@ import canvas, { Canvas, CanvasRenderingContext2D } from 'canvas';
 import { ActionRowData, AttachmentBuilder, ButtonInteraction, ButtonStyle, ComponentType, GuildMember, Interaction, MessageActionRowComponentData, MessageFlags, Snowflake } from "discord.js";
 import { DecisionProcessingResult, GamePlayerAddition, MasterpieceGameState, MasterpiecePieceState, MasterpiecePlayerState, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
-import { capitalize, naturalJoin, randChoice, shuffle, toCircle, toFixed, toLetterId } from "evanw555.js";
-import { text } from '../util';
+import { capitalize, joinCanvasesHorizontal, naturalJoin, randChoice, shuffle, toCircle, toFixed, toLetterId } from "evanw555.js";
+import { getTextLabel, text, withDropShadow } from '../util';
 
 import logger from "../logger";
 import imageLoader from '../image-loader';
@@ -460,6 +460,9 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
      * @returns The average value of all unsold pieces
      */
     private getAverageUnsoldPieceValue(): number {
+        if (this.getNumUnsoldPieces() === 0) {
+            return 0;
+        }
         return this.getSumValueOfUnsoldPieces() / this.getNumUnsoldPieces();
     }
 
@@ -480,7 +483,7 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
             // Sum up the true value of this player's pieces
             + this.getPieceIdsForUser(userId)
                 .map(pieceId => this.getPieceValue(pieceId))
-                .reduce((a, b) => a + b);
+                .reduce((a, b) => a + b, 0);
     }
 
     /**
@@ -564,26 +567,35 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
         return new AttachmentBuilder('assets/masterpiece/rules.png');
     }
 
-    private async renderInventory(userId: Snowflake): Promise<AttachmentBuilder> {
-        const inventoryImage = await imageLoader.loadImage('assets/masterpiece/inventory.png');
-        const pieceIds = this.getPieceIdsForUser(userId);
-        const c = canvas.createCanvas(inventoryImage.width * pieceIds.length, inventoryImage.height);
+    private async renderGallery(pieceIds: string[], background: string, options?: { showAvatars?: boolean }): Promise<AttachmentBuilder> {
+        const backgroundImage = await imageLoader.loadImage(`assets/masterpiece/gallery/${background}.png`);
+        const c = canvas.createCanvas(backgroundImage.width * pieceIds.length, backgroundImage.height);
         const context = c.getContext('2d');
         for (let i = 0; i < pieceIds.length; i++) {
             const pieceId = pieceIds[i];
-            const baseX = i * inventoryImage.width;
-            context.drawImage(inventoryImage, baseX, 0);
+            const baseX = i * backgroundImage.width;
+            context.drawImage(backgroundImage, baseX, 0);
             // Draw the painting on the wall
             const pieceImage = await imageLoader.loadImage(`assets/masterpiece/pieces/${pieceId.toLowerCase()}.png`);
             context.drawImage(pieceImage, baseX + 154, 59);
             // Draw text below the piece
-            context.fillStyle = 'white';
-            context.font = 'italic 30px serif';
-            await this.drawTextCentered(context, this.getPieceName(pieceId), baseX + 157, baseX + 407, 405);
-            context.font = '30px serif';
-            await this.drawTextCentered(context, `$${this.getPieceValue(pieceId)}`, baseX + 157, baseX + 407, 440);
+            context.drawImage(withDropShadow(getTextLabel(this.getPieceName(pieceId), 250, 40, { font: 'italic 30px serif', style: 'white' }), { expandCanvas: true }), baseX + 157, 369);
+            context.drawImage(withDropShadow(getTextLabel(`$${this.getPieceValue(pieceId)}`, 250, 40, { font: '30px serif',  style: 'white' }), { expandCanvas: true }), baseX + 157, 405);
+            // If enabled, draw the owner's avatar
+            if (options?.showAvatars) {
+                const ownerId = this.getPieceOwner(pieceId);
+                if (typeof ownerId === 'string') {
+                    const avatarImage = withDropShadow(toCircle(await imageLoader.loadAvatar(ownerId, 64)), { expandCanvas: true });
+                    context.drawImage(avatarImage, baseX + 40, 369, 85, 85);
+                }
+            }
         }
-        return new AttachmentBuilder(c.toBuffer()).setName('bank-inventory.png');
+        return new AttachmentBuilder(c.toBuffer()).setName(`gallery-${background}.png`);
+    }
+
+    private async renderInventory(userId: Snowflake): Promise<AttachmentBuilder> {
+        const pieceIds = this.getPieceIdsForUser(userId);
+        return await this.renderGallery(pieceIds, 'inventory');
     }
 
     private async renderAuction(pieceId: string, title: string, imageName: string): Promise<AttachmentBuilder> {
@@ -709,36 +721,37 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
             baseY += AVATAR_WIDTH + VERTICAL_MARGIN;
         }
 
-        // Draw the ordering disclaimer at the bottom
-        context.fillStyle = 'white';
-        context.font = '12px serif';
-        context.fillText(`(This ordering uses an assumed value of $${this.getAverageUnsoldPieceValue().toFixed(2)} for each piece)`, HORIZONTAL_MARGIN, baseY + (0.7 * AVATAR_WIDTH));
+        // If there are any owned pieces, draw the ordering disclaimer at the bottom
+        if (this.getNumOwnedPieces() > 0) {
+            context.fillStyle = 'white';
+            context.font = '11px serif';
+            context.fillText(`(Ordered with an assumed value of $${this.getAverageUnsoldPieceValue().toFixed(2)} per piece)`, HORIZONTAL_MARGIN, baseY + (0.7 * AVATAR_WIDTH));
+        }
 
         return c;
     }
 
     override async renderState(options?: { showPlayerDecision?: string | undefined; seasonOver?: boolean | undefined; admin?: boolean | undefined } | undefined): Promise<Buffer> {
-        // Get the roster canvas
-        const rosterCanvas = await this.renderRoster();
-
         // Get the legend canvas
-        const legendCanvas = await this.renderLegend();
+        const canvases: Canvas[] = [await this.renderRoster()];
+        // Get the roster canvas if there's at least one unsold piece
+        if (this.getNumUnsoldPieces() > 0) {
+            canvases.push(await this.renderLegend());
+        }
+        const innerCanvas = joinCanvasesHorizontal(canvases);
 
         // Create composite canvas
-        const innerWidth = rosterCanvas.width + legendCanvas.width;
-        const innerHeight = Math.max(rosterCanvas.height, legendCanvas.height);
-        const margin = Math.floor(Math.max(.05 * innerWidth, .05 * innerHeight));
-        const c = canvas.createCanvas(innerWidth + 2 * margin, innerHeight + 2 * margin);
+        const margin = Math.floor(Math.max(.05 * innerCanvas.width, .05 * innerCanvas.height));
+        const c = canvas.createCanvas(innerCanvas.width + 2 * margin, innerCanvas.height + 2 * margin);
         const context = c.getContext('2d');
         // Draw background
         context.fillStyle = 'black';
         context.fillRect(0, 0, c.width, c.height);
-        const borderType = (innerHeight / innerWidth > 1.75) ? 'border-tall' : 'border';
+        const borderType = (innerCanvas.height / innerCanvas.width > 1.75) ? 'border-tall' : 'border';
         const border = await imageLoader.loadImage(`assets/masterpiece/design/${borderType}.png`);
         context.drawImage(border, 0, 0, c.width, c.height);
-        // Draw both sub-canvases
-        context.drawImage(rosterCanvas, margin, margin);
-        context.drawImage(legendCanvas, margin + rosterCanvas.width, margin);
+        // Draw the inner canvas
+        context.drawImage(innerCanvas, margin, margin);
 
         return c.toBuffer();
     }
@@ -767,34 +780,16 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
     }
 
     override async endTurn(): Promise<MessengerPayload[]> {
-        // If the game is over, hint at that
-        if (this.getNumAvailablePieces() === 0) {
-            return [
-                'Well my dear friends, it looks like I\'ve auctioned off all the pieces in the bank vault! This means our _Art Auction Adventure_ is coming to a close today...',
-                {
-                    content: 'Here are the current standings (with the value of each unsold piece still hidden)',
-                    files: [new AttachmentBuilder(await this.renderState()).setName(`game-week${this.getTurn()}-end.png`)],
-                    components: this.getDecisionActionRow()
-                },
-                'At noon, I\'ll reveal the value of everyone\'s collection... and thus: the wealthiest three dogs who shall be named our winners!'
-            ];
-        }
-        // Else, show a generic closing message
-        return [{
-            content: text('{!Well|Alright}, that\'s all the {!art trading|auctioneering} for now. Have a blessed week and remember to {!stack your cheddar|count your bills|cherish each morning}!'),
-            files: [new AttachmentBuilder(await this.renderState()).setName(`game-week${this.getTurn()}-end.png`)],
-            components: this.getDecisionActionRow()
-        }];
+        // This is effectively handled at the end of decision processing, so don't show anything here
+        return [];
     }
 
     override endDay(): void {
-        // At noon after the final game update, do some processing to determine the winners and how to reveal the final pieces
-        if (this.getNumAvailablePieces() === 0) {
-            // First, add the winners
+        // At noon after the final game update all the pieces should be sold, so add the winners here to complete the game
+        if (this.getNumUnsoldPieces() === 0) {
             for (const userId of this.getTrueOrderedPlayers().slice(0, 3)) {
                 this.addWinner(userId);
             }
-            // TODO: Do some processing here to determine what exactly gets revealed in the season end text
         }
     }
 
@@ -986,7 +981,7 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
             // Reply according to how many bidders there were
             if (highBidders.length === 1) {
                 return {
-                    continueProcessing: false,
+                    continueProcessing: true,
                     summary: {
                         content: `**${this.getPlayerDisplayName(userId)}** has purchased _"${this.getPieceName(pieceId)}"_ with the high offer of **$${maxValue}**!`,
                         files: [await this.renderAuction(pieceId, 'Silent Auction', 'silent')]
@@ -994,7 +989,7 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
                 };
             } else {
                 return {
-                    continueProcessing: false,
+                    continueProcessing: true,
                     summary: {
                         content: `${this.getJoinedDisplayNames(highBidders)} tied with a high offer of **$${maxValue}**, but **${this.getPlayerDisplayName(userId)}** acted the quickest. _"${this.getPieceName(pieceId)}"_ is theirs!`,
                         files: [await this.renderAuction(pieceId, 'Silent Auction', 'silent')]
@@ -1003,13 +998,78 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
             }
         }
 
-        // Fallback message that shows only if there's no active silent auction
-        // TODO: Can we just short-circuit instead of showing this?
+        // If the game is effectively over, begin the reveal process
+        if (!this.state.finalReveal && this.getNumAvailablePieces() === 0) {
+            this.state.finalReveal = true;
+            return {
+                continueProcessing: true,
+                summary: 'Well my dear friends, it looks like I\'ve auctioned off all the pieces in the bank vault! This means our _Art Auction Adventure_ is coming to a close today...',
+                extraSummaries: [
+                    {
+                        content: 'Here are the current standings (with the value of each unsold piece still hidden)',
+                        files: [new AttachmentBuilder(await this.renderState()).setName(`game-week${this.getTurn()}-end.png`)],
+                        components: this.getDecisionActionRow()
+                    },
+                    'In a few hours, I\'ll reveal the value of everyone\'s collection... and thus: the wealthiest three dogs who shall be named our winners!'
+                ],
+                nextUpdateTime: [10, 0, 0]
+            }
+        }
+
+        // If the reveal process has begun, auction sets off one-by-one
+        if (this.state.finalReveal) {
+            // If everything has been revealed, end the game here
+            if (this.getNumUnsoldPieces() === 0) {
+                return {
+                    continueProcessing: false,
+                    summary: 'Everything has been sold away!'
+                };
+            }
+            // Else, find the lowest unsold piece value
+            const lowestValue = Math.min(...this.getUnsoldPieceIds().map(pieceId => this.getPieceValue(pieceId)));
+            // Get all piece IDs with this value
+            const pieceIds = this.getUnsoldPieceIds().filter(pieceId => this.getPieceValue(pieceId) === lowestValue);
+            // Create the summary before updating the state
+            const summary: MessengerPayload = {
+                // TODO: This message could be improved
+                content: pieceIds.length === 1
+                    ? `Revealing... the **$${lowestValue}** piece!`
+                    : `All the **$${lowestValue}** pieces have been sold off!`,
+                files: [await this.renderGallery(pieceIds, 'reveal', { showAvatars: true })]
+            };
+            // Sell each piece
+            for (const pieceId of pieceIds) {
+                const ownerId = this.getPieceOwner(pieceId);
+                if (typeof ownerId === 'string') {
+                    this.addPoints(ownerId, this.getPieceValue(pieceId));
+                } else {
+                    void logger.log(`Couldn't do final reveal sale for piece _${this.getPieceName(pieceId)}_ worth **$${lowestValue}**, as the owner isn't a user ID...`);
+                }
+                // Mark the piece as sold regardless of whether the sale could go through, otherwise the game will loop infinitely
+                this.state.pieces[pieceId].owner = true;
+            }
+            // Return the update message with an extra state render after the sale of these pieces
+            const gameOver = this.getNumUnsoldPieces() === 0;
+            return {
+                continueProcessing: !gameOver,
+                summary,
+                extraSummaries: [{
+                    content: gameOver
+                        ? 'That concludes the game! Here are the final standings!'
+                        : text('{!Here are|These are|Check out} the updated {!standings|ranks}... Who will {!come out on top|prevail|unveil the big cheddar piece}?'),
+                    files: [new AttachmentBuilder(await this.renderState()).setName('game-reveal-standings.png')],
+                    flags: MessageFlags.SuppressNotifications
+                }]
+            }
+        }
+
+        // Show the final state update here instead of in endTurn because it's easier to end the processing using a final fallback
         return {
             continueProcessing: false,
             summary: {
-                content: 'Nothing happened! Since there\'s no silent auction going on',
-                files: [await this.renderStateAttachment()]
+                content: text('{!Well|Alright}, that\'s all the {!art trading|auctioneering} for now. Have a blessed week and remember to {!stack your cheddar|count your bills|cherish each morning}!'),
+                files: [new AttachmentBuilder(await this.renderState()).setName(`game-week${this.getTurn()}-end.png`)],
+                components: this.getDecisionActionRow()
             }
         };
     }
@@ -1311,10 +1371,10 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
 
     override async getSeasonEndMessages(): Promise<MessengerPayload[]> {
         return [
-            // TODO: Reveal the true value of all the pieces in a dramatic fashion (starting with all weak pieces and finally with the most valuable pieces)
-            // TODO: Show some render of the true order of players, showing their true wealth (show the true value of their pieces)
-            // TODO: Show a cool render of the three winners on golden pedestals
-            'TODO: Yeah the game is over!'
+            'I\'d like to thank you all for participating and bidding on the treasured artwork which was once locked away in my vault',
+            `I'd like to give a special thanks to <@${this.getWinners()[0]}>, for this dog has been crowned _King of the Auction House_!`,
+            `Thanks also to our runners-up <@${this.getWinners()[1]}> and <@${this.getWinners()[2]}>, putting in a valiant, baroque effort...`,
+            'If you have any suggestions for how this game could be improved, please drop a suggestion in the suggestion box (this channel)'
         ];
     }
 }

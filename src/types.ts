@@ -202,7 +202,11 @@ export interface MazePlayerState {
 export interface DecisionProcessingResult {
     summary: MessengerPayload,
     extraSummaries?: MessengerPayload[],
-    continueProcessing: boolean
+    continueProcessing: boolean,
+    // If specified, the delay for the subsequent update will be scaled by this amount.
+    delayMultiplier?: number,
+    // If specified, the next update will be scheduled for this particular time (as arguments of Date#setHours). Overrides the relative delay and multiplier system.
+    nextUpdateTime?: [number, number, number]
 }
 
 export interface AbstractGameState<T> {
@@ -282,6 +286,8 @@ export interface MasterpieceGameState extends AbstractGameState<'MASTERPIECE_GAM
         bank?: MasterpieceAuctionState,
         private?: MasterpieceAuctionState
     },
+    // If true, all pieces should be sold off and revealed
+    finalReveal?: true,
     // ID of the piece being offered in the "silent auction"
     silentAuctionPieceId?: string,
 }

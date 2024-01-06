@@ -332,8 +332,12 @@ const updateSungazers = async (winners: { gold?: Snowflake, silver?: Snowflake, 
         await sleep(30000);
         for (let userId of expirees) {
             delete history.sungazers[userId];
-            const member: GuildMember = await guild.members.fetch(userId);
-            await member.roles.remove(config.sungazers.role);
+            try {
+                const member: GuildMember = await guild.members.fetch(userId);
+                await member.roles.remove(config.sungazers.role);
+            } catch (err) {
+                await logger.log(`Failed to remove role \`${config.sungazers.role}\` for user <@${userId}>: \`${err}\``);
+            }
         }
     }
     const soonToBeExpirees: Snowflake[] = Object.keys(history.sungazers).filter(userId => history.sungazers[userId] === 1);
@@ -827,9 +831,7 @@ const sendSeasonEndMessages = async (channel: TextBasedChannel, previousState: G
     await sleep(10000);
     // Send custom messages for each game
     const seasonEndMessages = await game.getSeasonEndMessages();
-    for (const messengerPayload of seasonEndMessages) {
-        await messenger.send(goodMorningChannel, messengerPayload);
-    }
+    await messenger.sendAll(goodMorningChannel, seasonEndMessages);
     // await messenger.send(channel, 'In a couple minutes, I\'ll reveal the winners and the final standings...');
     // await messenger.send(channel, 'In the meantime, please congratulate yourselves (penalties are disabled), take a deep breath, and appreciate the friends you\'ve made in this channel 🙂');
     // Send the "final results image"
@@ -988,8 +990,8 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
                 displayName: m.displayName,
                 points: state.getPlayerPoints(m.id)
             }));
-        // If testing, add 3 random new NPCs each week
-        if (config.testing) {
+        // If testing and not just starting the game, add 3 random new NPCs each week
+        if (config.testing && state.getGame().getTurn() !== 0) {
             for (let i = 0; i < 3; i++) {
                 const npcNumber = state.getGame().getNumPlayers() + i;
                 gamePlayerAdditions.push({
@@ -2386,16 +2388,29 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         if (processingResult.continueProcessing) {
             // If there are more decisions to be processed, schedule the next processing timeout
             const nextProcessDate: Date = new Date();
-            // Schedule the next processing time to be sooner if it's later in the day
-            if (new Date().getHours() >= 11) {
-                nextProcessDate.setMinutes(nextProcessDate.getMinutes() + randInt(1, 5));
-            } else if (new Date().getHours() >= 10) {
-                nextProcessDate.setMinutes(nextProcessDate.getMinutes() + randInt(5, 15));
-            } else if (new Date().getHours() >= 9) {
-                nextProcessDate.setMinutes(nextProcessDate.getMinutes() + randInt(10, 25));
+            // Determine the time of the next game update
+            if (processingResult.nextUpdateTime) {
+                // If a specific time was set for the next update...
+                // It's possible that this might be in the past, but that's ok (see below)
+                nextProcessDate.setHours(...processingResult.nextUpdateTime);
             } else {
-                nextProcessDate.setMinutes(nextProcessDate.getMinutes() + randInt(20, 35));
+                // Else, schedule the next update using a random delay (shorter if it's later in the day)
+                let baseDelayMinutes: number = 1;
+                if (new Date().getHours() >= 11) {
+                    baseDelayMinutes = randInt(1, 5);
+                } else if (new Date().getHours() >= 10) {
+                    baseDelayMinutes = randInt(5, 15);
+                } else if (new Date().getHours() >= 9) {
+                    baseDelayMinutes = randInt(10, 25);
+                } else {
+                    baseDelayMinutes = randInt(20, 35);
+                }
+                // Apply a multiplier at the granularity of seconds
+                const delaySeconds = Math.floor((baseDelayMinutes * 60) * (processingResult.delayMultiplier ?? 1));
+                // Now, actually apply the delay to the scheduled date
+                nextProcessDate.setSeconds(nextProcessDate.getSeconds() + delaySeconds);
             }
+            // Schedule the next update using this calculated date (use the "invoke" past strategy just in case the specified date is in the past)
             await registerTimeout(TimeoutType.ProcessGameDecisions, nextProcessDate, { pastStrategy: PastTimeoutStrategy.Invoke }, { testingSeconds: 3 });
         } else {
             // Trigger turn-end logic and send turn-end messages
