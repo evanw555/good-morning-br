@@ -1,7 +1,7 @@
 import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, BaseMessageOptions, ButtonStyle, Client, ComponentType, DMChannel, GatewayIntentBits, MessageFlags, PartialMessage, Partials, TextChannel, TextInputStyle, User } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discord.js';
 import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, GameState, Wordle, SubmissionPromptHistory, ReplyToMessageData, GoodMorningAuth, MessengerPayload, WordleRestartData, AnonymousSubmission, GamePlayerAddition } from './types';
-import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, canonicalizeText, getScaledPoints, generateSynopsisWithAi, getSimpleScaledPoints } from './util';
+import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, canonicalizeText, getScaledPoints, generateSynopsisWithAi, getSimpleScaledPoints, text } from './util';
 import GoodMorningState from './state';
 import { addReactsSync, chance, DiscordTimestampFormat, FileStorage, generateKMeansClusters, getClockTime, getJoinedMentions, getPollChoiceKeys, getRandomDateBetween,
     getRankString, getRelativeDateTimeString, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger,
@@ -298,10 +298,10 @@ const updateSungazer = async (userId: Snowflake, terms: number): Promise<void> =
 const updateSungazers = async (winners: { gold?: Snowflake, silver?: Snowflake, bronze?: Snowflake }): Promise<void> => {
     // Get the sungazer channel
     const sungazerChannel: TextBasedChannel = (await guild.channels.fetch(config.sungazers.channel)) as TextBasedChannel;
-    const newSungazers: boolean = (winners.gold  !== undefined && history.sungazers[winners.gold] === undefined)
-        || (winners.silver  !== undefined && history.sungazers[winners.silver] === undefined)
-        || (winners.bronze  !== undefined && history.sungazers[winners.bronze] === undefined);
-    if (newSungazers) {
+    const newGoldGazer = winners.gold !== undefined && history.sungazers[winners.gold] === undefined;
+    const newSilverGazer = winners.silver !== undefined && history.sungazers[winners.silver] === undefined;
+    const newBronzeGazer = winners.bronze !== undefined && history.sungazers[winners.bronze] === undefined;
+    if (newGoldGazer || newSilverGazer || newBronzeGazer) {
         await messenger.send(sungazerChannel, 'As the sun fades into the horizon on yet another sunny season, let us welcome the new Sungazers to the Council!');
     } else {
         await messenger.send(sungazerChannel, 'Well, my dear dogs... it appears there are no new additions to the council this season. Cheers to our continued hegemony!');
@@ -314,22 +314,36 @@ const updateSungazers = async (winners: { gold?: Snowflake, silver?: Snowflake, 
     // Then, add terms for each winner (and add roles if necessary)
     if (winners.gold) {
         await updateSungazer(winners.gold, 3);
-        await messenger.send(sungazerChannel, `Our newest champion <@${winners.gold}> has earned **3** terms on the council!`);
+        if (newGoldGazer) {
+            await messenger.send(sungazerChannel, text(`Our {!newest|latest} champion {$tag} has earned **3** terms on the council!`, { tag: `<@${winners.gold}>` }));
+        } else {
+            await messenger.send(sungazerChannel, `Returning sungazer <@${winners.gold}> has been crowned champion of this season, gaining **3** more terms on the council!`);
+        }
     }
     if (winners.silver) {
         await updateSungazer(winners.silver, 2);
-        await messenger.send(sungazerChannel, `The runner-up <@${winners.silver}> has earned **2** terms`);
+        if (newSilverGazer) {
+            await messenger.send(sungazerChannel, `The runner-up <@${winners.silver}> joins the council, earning **2** terms`);
+        } else {
+            await messenger.send(sungazerChannel, `The runner-up <@${winners.silver}> has gained **2** more terms`);
+        }
     }
     if (winners.bronze) {
         await updateSungazer(winners.bronze, 1);
-        await messenger.send(sungazerChannel, `And sweet old <@${winners.bronze}> has earned **1** term`);
+        if (newBronzeGazer) {
+            await messenger.send(sungazerChannel, text(`And sweet {!old|young|little} <@${winners.bronze}> scrapes by, earning **1** sneak-peek term on the council`));
+        } else if (history.sungazers[winners.bronze] === 1) {
+            await messenger.send(sungazerChannel, text(`And sweet {!old|young|little} <@${winners.bronze}> holds on for dear life, gaining **1** more term`));
+        } else {
+            await messenger.send(sungazerChannel, text(`And sweet {!old|young|little} <@${winners.bronze}> has gained **1** more term`));
+        }
     }
     // Finally, remove any sungazer who's reached the end of their term
     const expirees: Snowflake[] = Object.keys(history.sungazers).filter(userId => history.sungazers[userId] === 0);
     if (expirees.length > 0) {
         await sleep(10000);
         await messenger.send(sungazerChannel, `The time has come, though, to say goodbye to some now-former sungazers... ${getJoinedMentions(expirees)}, farewell!`);
-        await sleep(30000);
+        await sleep(60000);
         for (let userId of expirees) {
             delete history.sungazers[userId];
             try {

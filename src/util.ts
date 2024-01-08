@@ -318,9 +318,9 @@ export function getTextLabel(text: string, width: number, height: number, option
 /**
  * Generates text with a config-less language generator object.
  */
-export function text(input: string): string {
+export function text(input: string, variables?: Record<string, string>): string {
     const generator = new LanguageGenerator({});
-    return generator.generate(input);
+    return generator.generate(input, variables);
 }
 
 /**
