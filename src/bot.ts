@@ -403,7 +403,9 @@ const advanceSeason = async (): Promise<{ gold?: Snowflake, silver?: Snowflake, 
         isGracePeriod: true,
         goodMorningEmoji: config.defaultGoodMorningEmoji,
         dailyStatus: {},
-        players: {}
+        players: {},
+        // Just in case there's a prompt that needs to be held over into the next season
+        anonymousSubmissions: state.getRawAnonymousSubmissions()
     });
     // Dump the state and history
     await dumpState();
@@ -1791,47 +1793,50 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                 await registerTimeout(TimeoutType.Nightmare, nightmareDate, { pastStrategy: PastTimeoutStrategy.Delete });
                 await logger.log(`Scheduled nightmare event for **${getRelativeDateTimeString(nightmareDate)}**`);
             }
-            // Poll for tomorrow's submission prompt (if tomorrow is a submissions day and there's not already a pre-determined prompt)
-            // TODO: If the high-effort poll gets delayed for long enough, this could theoretically kick off in parallel. HANDLE THIS!
-            if (state.getEventType() === DailyEventType.AnonymousSubmissions && !state.hasAnonymousSubmissions()) {
-                // Accept suggestions for 2 hours
-                const pollStartDate = new Date();
-                pollStartDate.setHours(pollStartDate.getHours() + 2);
-                // In 2 hours, fetch replies to this message and start a poll for the submission type
-                const fyiText: string = 'FYI gazers: it\'s time to pick a submission prompt for tomorrow! '
-                    + `Reply to this message before ${toDiscordTimestamp(pollStartDate, DiscordTimestampFormat.ShortTime)} to suggest a prompt ${config.defaultGoodMorningEmoji}`;
-                const fyiMessage = await sungazersChannel.send(fyiText);
-                // Schedule a timeout to prime the suggestions with a random unused prompt (use delete strategy because it's not required)
-                const arg: ReplyToMessageData = {
-                    channelId: fyiMessage.channelId,
-                    messageId: fyiMessage.id,
-                    content: await chooseRandomUnusedSubmissionPrompt()
-                };
-                await registerTimeout(TimeoutType.ReplyToMessage, getRandomDateBetween(new Date(), pollStartDate, { maxAlong: 0.8, bates: 2 }), { arg, pastStrategy: PastTimeoutStrategy.Delete });
-                // Use the delete strategy because it's not required and we want to ensure it's before the morning date
-                await registerTimeout(TimeoutType.AnonymousSubmissionTypePollStart, pollStartDate, { arg: fyiMessage.id, pastStrategy: PastTimeoutStrategy.Delete });
-            }
-            // Alternatively, if it's the first Saturday of the month then start a high-effort submissions prompt poll
-            else if (new Date().getDay() === 6 && new Date().getDate() <= 7) {
-                // Accept suggestions for 5 hours
-                const pollStartDate = new Date();
-                pollStartDate.setHours(pollStartDate.getHours() + 5);
-                // In 5 hours, fetch replies to this message and start a poll for the submission type
-                const fyiText: string = 'Hello gazers, this upcoming Tuesday will be this month\'s _high-effort_ submissions contest! '
-                    + `Reply to this message before ${toDiscordTimestamp(pollStartDate, DiscordTimestampFormat.ShortTime)} to suggest a prompt ${config.defaultGoodMorningEmoji}`;
-                const fyiMessage = await sungazersChannel.send(fyiText);
-                // Schedule timeouts to prime the suggestions with a few random unused prompts (use delete strategy because it's not required)
-                const unusedPrompts = await chooseRandomUnusedSubmissionPrompts(3);
-                for (const unusedPrompt of unusedPrompts) {
+            // If the anonymous submissions prompt hasn't been set, see if the prompt selection process should start
+            if (!state.hasAnonymousSubmissions()) {
+                // If tomorrow is a submissions day then kick off a basic prompt poll now
+                // TODO: If the high-effort poll gets delayed for long enough, this could theoretically kick off in parallel. HANDLE THIS!
+                if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
+                    // Accept suggestions for 2 hours
+                    const pollStartDate = new Date();
+                    pollStartDate.setHours(pollStartDate.getHours() + 2);
+                    // In 2 hours, fetch replies to this message and start a poll for the submission type
+                    const fyiText: string = 'FYI gazers: it\'s time to pick a submission prompt for tomorrow! '
+                        + `Reply to this message before ${toDiscordTimestamp(pollStartDate, DiscordTimestampFormat.ShortTime)} to suggest a prompt ${config.defaultGoodMorningEmoji}`;
+                    const fyiMessage = await sungazersChannel.send(fyiText);
+                    // Schedule a timeout to prime the suggestions with a random unused prompt (use delete strategy because it's not required)
                     const arg: ReplyToMessageData = {
                         channelId: fyiMessage.channelId,
                         messageId: fyiMessage.id,
-                        content: unusedPrompt
+                        content: await chooseRandomUnusedSubmissionPrompt()
                     };
                     await registerTimeout(TimeoutType.ReplyToMessage, getRandomDateBetween(new Date(), pollStartDate, { maxAlong: 0.8, bates: 2 }), { arg, pastStrategy: PastTimeoutStrategy.Delete });
+                    // Use the delete strategy because it's not required and we want to ensure it's before the morning date
+                    await registerTimeout(TimeoutType.AnonymousSubmissionTypePollStart, pollStartDate, { arg: fyiMessage.id, pastStrategy: PastTimeoutStrategy.Delete });
                 }
-                // Use the delete strategy because it's not required and we want to ensure it's before the morning date
-                await registerTimeout(TimeoutType.AnonymousSubmissionTypePollStart, pollStartDate, { arg: fyiMessage.id, pastStrategy: PastTimeoutStrategy.Delete });
+                // Alternatively, if it's the first Saturday of the month then start a high-effort submissions prompt poll
+                else if (new Date().getDay() === 6 && new Date().getDate() <= 7) {
+                    // Accept suggestions for 5 hours
+                    const pollStartDate = new Date();
+                    pollStartDate.setHours(pollStartDate.getHours() + 5);
+                    // In 5 hours, fetch replies to this message and start a poll for the submission type
+                    const fyiText: string = 'Hello gazers, this upcoming Tuesday will be this month\'s _high-effort_ submissions contest! '
+                        + `Reply to this message before ${toDiscordTimestamp(pollStartDate, DiscordTimestampFormat.ShortTime)} to suggest a prompt ${config.defaultGoodMorningEmoji}`;
+                    const fyiMessage = await sungazersChannel.send(fyiText);
+                    // Schedule timeouts to prime the suggestions with a few random unused prompts (use delete strategy because it's not required)
+                    const unusedPrompts = await chooseRandomUnusedSubmissionPrompts(3);
+                    for (const unusedPrompt of unusedPrompts) {
+                        const arg: ReplyToMessageData = {
+                            channelId: fyiMessage.channelId,
+                            messageId: fyiMessage.id,
+                            content: unusedPrompt
+                        };
+                        await registerTimeout(TimeoutType.ReplyToMessage, getRandomDateBetween(new Date(), pollStartDate, { maxAlong: 0.8, bates: 2 }), { arg, pastStrategy: PastTimeoutStrategy.Delete });
+                    }
+                    // Use the delete strategy because it's not required and we want to ensure it's before the morning date
+                    await registerTimeout(TimeoutType.AnonymousSubmissionTypePollStart, pollStartDate, { arg: fyiMessage.id, pastStrategy: PastTimeoutStrategy.Delete });
+                }
             }
         }
 
@@ -1871,6 +1876,10 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             nextSeasonStart.setDate(nextSeasonStart.getDate() + 8 - nextSeasonStart.getDay());
             await registerTimeout(TimeoutType.NextGoodMorning, nextSeasonStart, { pastStrategy: PastTimeoutStrategy.IncrementDay });
             await logger.log(`Registered next season's first GM for **${getRelativeDateTimeString(nextSeasonStart)}**`);
+            // If the submissions prompt was held over, notify the sungazers
+            if (state.hasAnonymousSubmissions()) {
+                await messenger.send(sungazersChannel, `BTW gazers: looks like this week's submissions prompt _"${state.getAnonymousSubmissions().getPrompt()}"_ will be postponed until the first week of next season...`);
+            }
         }
 
         // Update the bot's status

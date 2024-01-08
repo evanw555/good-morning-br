@@ -794,6 +794,10 @@ export default class GoodMorningState {
         delete this.data.anonymousSubmissions;
     }
 
+    getRawAnonymousSubmissions(): RawAnonymousSubmissionsState | undefined {
+        return this.data.anonymousSubmissions;
+    }
+
     isAcceptingAnonymousSubmissions(): boolean {
         return this.hasAnonymousSubmissions() && this.getAnonymousSubmissions().isSubmissionsPhase();
     }
