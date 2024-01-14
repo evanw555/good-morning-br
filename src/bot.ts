@@ -1006,9 +1006,9 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
                 displayName: m.displayName,
                 points: state.getPlayerPoints(m.id)
             }));
-        // If testing and not just starting the game, add 3 random new NPCs each week
+        // If testing and not just starting the game, add 12 random new NPCs each week
         if (config.testing && state.getGame().getTurn() !== 0) {
-            for (let i = 0; i < 3; i++) {
+            for (let i = 0; i < 12; i++) {
                 const npcNumber = state.getGame().getNumPlayers() + i;
                 gamePlayerAdditions.push({
                     userId: `npc${npcNumber}`,
@@ -2486,7 +2486,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
 
 const timeoutManager = new TimeoutManager(storage, TIMEOUT_CALLBACKS, {
     onError: async (id, type, err) => {
-        await logger.log(`Timeout of type \`${type}\` with ID \`${id}\` failed: \`${err}\``);
+        await logger.log(`Timeout of type \`${type}\` with ID \`${id}\` failed: \`${err}\`\n${(err as Error).stack}`);
     }
 });
 

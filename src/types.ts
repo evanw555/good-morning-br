@@ -314,14 +314,18 @@ export interface RiskMovementData {
     quantity: number
 }
 
-export interface RiskConflictState extends RiskMovementData {
-    readonly attackerId?: Snowflake,
-    readonly defenderId?: Snowflake,
-    readonly initialAttackerTroops: number,
-    readonly initialDefenderTroops: number,
-    readonly symmetrical?: true,
-    attackerTroops: number,
-    defenderTroops: number
+export interface RiskConflictAgentData {
+    readonly userId: Snowflake,
+    readonly territoryId: string,
+    readonly initialTroops: number,
+    troops: number
+}
+
+export interface RiskConflictState {
+    // The attacker at the front of the list is the next one to be processed
+    readonly attackers: RiskConflictAgentData[],
+    // If omitted, then this conflict is a "circular" or "symmetric" conflict with no defenders
+    defender?: RiskConflictAgentData
 }
 
 export interface RiskPlannedAttack {

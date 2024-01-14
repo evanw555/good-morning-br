@@ -1,5 +1,5 @@
 import { APIActionRowComponent, APIMessageActionRowComponent, APISelectMenuOption, ActionRowData, AttachmentBuilder, ButtonStyle, ComponentType, GuildMember, Interaction, InteractionReplyOptions, MessageActionRowComponentData, MessageFlags, Snowflake } from "discord.js";
-import { DecisionProcessingResult, GamePlayerAddition, MessengerPayload, PrizeType, RiskConflictState, RiskGameState, RiskMovementData, RiskPlannedAttack, RiskPlayerState, RiskTerritoryState } from "../types";
+import { DecisionProcessingResult, GamePlayerAddition, MessengerPayload, PrizeType, RiskConflictAgentData, RiskConflictState, RiskGameState, RiskMovementData, RiskPlannedAttack, RiskPlayerState, RiskTerritoryState } from "../types";
 import AbstractGame from "./abstract-game";
 import { Canvas, Image, createCanvas } from "canvas";
 import { DiscordTimestampFormat, chance, findCycle, getDateBetween, getJoinedMentions, getRankString, joinCanvasesHorizontal, joinCanvasesVertically, naturalJoin, randChoice, randInt, shuffle, shuffleWithDependencies, toCircle, toDiscordTimestamp, toFixed } from "evanw555.js";
@@ -1013,8 +1013,108 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         return new AttachmentBuilder(canvas.toBuffer()).setName(`risk-elimination-${finalRankString}.png`);
     }
 
+    private async renderCircularConflict(conflict: RiskConflictState, options: { attackerRolls: number[][], troopsLost: number[], rollWinners: ('attacker' | 'defender' | 'neither')[][] }): Promise<AttachmentBuilder> {
+        // Get and validate attacker data
+        const attackers = conflict.attackers;
+        if (!attackers || attackers.length < 2) {
+            return new AttachmentBuilder('Invalid circular conflict data').setName('error.txt');
+        }
+
+        const n = attackers.length;
+        const numColumns = 3 * n + 2;
+
+        // TODO: Temp logic to get a background, do something better
+        const conflictId = [attackers[0].territoryId, attackers[1].territoryId].sort().join('');
+        const conflictImage = await imageLoader.loadImage(`assets/risk/connections/${conflictId}.png`);
+
+        const WIDTH = RiskGame.config.conflict.dimensions.width;
+        const HEIGHT = RiskGame.config.conflict.dimensions.height;
+        const canvas = createCanvas(WIDTH, HEIGHT);
+        const context = canvas.getContext('2d');
+
+        // Draw each attacker column
+        const crossOutImage = await imageLoader.loadImage('assets/common/crossout.png');
+        const TROOP_WIDTH = HEIGHT / 8;
+        for (let j = 0; j < n; j++) {
+            const attacker = attackers[j];
+            const rolls = options.attackerRolls[j];
+            const troopsLost = options.troopsLost[j];
+            const rollWinners = options.rollWinners[j];
+            // Draw the attacker troops in one column
+            const attackerTroopImage = await this.getTroopImage(attacker.userId);
+            for (let i = 0; i < attacker.initialTroops; i++) {
+                const x = WIDTH * ((2 + j * 3) / numColumns);
+                const y = HEIGHT * (i + 2) / (attacker.initialTroops + 3);
+                const defeated = i >= attacker.troops;
+                const newlyDefeated = defeated && i - attacker.troops < troopsLost;
+                const previouslyDefeated = defeated && !newlyDefeated;
+                context.globalAlpha = previouslyDefeated ? 0.1 : 1;
+                context.drawImage(attackerTroopImage, x - TROOP_WIDTH / 2, y - TROOP_WIDTH / 2, TROOP_WIDTH, TROOP_WIDTH);
+                if (newlyDefeated) {
+                    context.drawImage(crossOutImage, x - TROOP_WIDTH / 2, y - TROOP_WIDTH / 2, TROOP_WIDTH, TROOP_WIDTH);
+                }
+                context.globalAlpha = 1;
+            }
+            // Draw the dice rolls in the next column
+            const DIE_WIDTH = HEIGHT / 8;
+            for (let i = 0; i < rolls.length; i++) {
+                const x = WIDTH * ((3 + j * 3) / numColumns);
+                const y = HEIGHT * ((2 + i) / 6);
+                const roll = rolls[i];
+                const dieImage = await imageLoader.loadImage(`assets/common/dice/r${roll}.png`);
+                context.drawImage(dieImage, x - DIE_WIDTH / 2, y - DIE_WIDTH / 2, DIE_WIDTH, DIE_WIDTH);
+            }
+            // Draw the avatar above the dice column
+            context.drawImage(await this.getAvatar(attacker.userId), WIDTH * ((3 + j * 3) / numColumns) - DIE_WIDTH / 2, HEIGHT * (1 / 6) - DIE_WIDTH / 2, DIE_WIDTH, DIE_WIDTH);
+            // Draw the arrows in the next column
+            const ARROW_WIDTH = HEIGHT / 6;
+            const ARROW_HEIGHT = HEIGHT / 8;
+            for (let i = 0; i < rollWinners.length; i++) {
+                const x = WIDTH * ((4 + j * 3) / numColumns);
+                const y = HEIGHT * ((2 + i) / 6);
+                const rollWinner = rollWinners[i];
+                const left = { x: x - ARROW_WIDTH / 2, y };
+                const right = { x: x + ARROW_WIDTH / 2, y };
+                if (rollWinner === 'attacker') {
+                    this.renderArrow(context, left, right, { thickness: ARROW_HEIGHT / 2, fillStyle: this.getPlayerTeamColor(attacker.userId) });
+                }
+            }
+        }
+
+        // Draw the title
+        // const title = n === 2 ? 'Symmetric Battle' : `${n}-Way Battle`;
+        // const titleImage = getTextLabel(title, WIDTH * (5 / 8), HEIGHT / 8, {
+        //     font: `italic bold ${HEIGHT / 12}px serif`
+        // });
+        // context.drawImage(titleImage, WIDTH * (3 / 16), (HEIGHT / 6) - (HEIGHT / 16));
+
+        // Repost the entire canvas with a drop shadow on everything
+        context.drawImage(withDropShadow(canvas), 0, 0);
+
+        // Draw the conflict background
+        context.globalCompositeOperation = 'destination-over';
+        // Make it a little darker...
+        context.globalAlpha = 0.3;
+        context.fillStyle = 'black';
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        context.globalAlpha = 1;
+        // Draw the image itself
+        context.drawImage(conflictImage, 0, 0, WIDTH, HEIGHT);
+
+        return new AttachmentBuilder(canvas.toBuffer()).setName(`risk-conflict-${conflictId}.png`);
+    }
+
     private async renderConflict(conflict: RiskConflictState, options: { attackerRolls: number[], defenderRolls: number[], attackersLost: number, defendersLost: number, rollWinners: ('attacker' | 'defender' | 'neither')[] }): Promise<AttachmentBuilder> {
-        const { from, to } = conflict;
+        // Get and validate attacker and defender data
+        const attacker = conflict.attackers[0];
+        const defender = conflict.defender;
+        if (!attacker || !defender) {
+            return new AttachmentBuilder('Invalid conflict data').setName('error.txt');
+        }
+
+        const from = attacker.territoryId;
+        const to = defender.territoryId;
+
         const conflictId = [from, to].sort().join('');
         const conflictImage = await imageLoader.loadImage(`assets/risk/connections/${conflictId}.png`);
 
@@ -1023,35 +1123,43 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         const canvas = createCanvas(WIDTH, HEIGHT);
         const context = canvas.getContext('2d');
 
-        // Draw the attacker avatar
-        if (conflict.attackerId) {
-            const AVATAR_WIDTH = HEIGHT / 8;
-            const x = HEIGHT * (1 / 12);
-            const y = HEIGHT * (1 / 12);
-            const attackerAvatarImage = await this.getAvatar(conflict.attackerId);
-            context.drawImage(attackerAvatarImage, x - AVATAR_WIDTH / 2, y - AVATAR_WIDTH / 2, AVATAR_WIDTH, AVATAR_WIDTH);
+        // Draw the attacker avatars
+        const AVATAR_WIDTH = HEIGHT / 8;
+        const AVATAR_MARGIN = HEIGHT * (1 / 12) - (AVATAR_WIDTH / 2);
+        let baseAttackerAvatarX = AVATAR_MARGIN;
+        for (let i = 0; i < conflict.attackers.length; i++) {
+            const queuedAttacker = conflict.attackers[i];
+            const actualAvatarWidth = i === 0 ? AVATAR_WIDTH : (AVATAR_WIDTH / 2);
+            const avatarImage = await this.getAvatar(queuedAttacker.userId);
+            context.drawImage(avatarImage, baseAttackerAvatarX, AVATAR_MARGIN, actualAvatarWidth, actualAvatarWidth);
+            // If this is a queued attacker, write their troop counts
+            if (i > 0) {
+                const counts = `${queuedAttacker.troops}/${queuedAttacker.initialTroops}`;
+                const countsLabel = getTextLabel(counts, actualAvatarWidth, 0.75 * actualAvatarWidth);
+                context.drawImage(countsLabel, baseAttackerAvatarX, AVATAR_MARGIN + actualAvatarWidth);
+            }
+            baseAttackerAvatarX += actualAvatarWidth + AVATAR_MARGIN;
         }
 
         // Draw the defender avatar
-        if (conflict.defenderId) {
+        if (defender.userId) {
             const AVATAR_WIDTH = HEIGHT / 8;
             const x = WIDTH - HEIGHT * (1 / 12);
             const y = HEIGHT * (1 / 12);
-            const defenderAvatarImage = await this.getAvatar(conflict.defenderId);
+            const defenderAvatarImage = await this.getAvatar(defender.userId);
             context.drawImage(defenderAvatarImage, x - AVATAR_WIDTH / 2, y - AVATAR_WIDTH / 2, AVATAR_WIDTH, AVATAR_WIDTH);
         }
 
         // Draw the attacker troops
-        const attackerTroopImage = await this.getTroopImage(conflict.attackerId);
+        const attackerTroopImage = await this.getTroopImage(attacker.userId);
         const crossOutImage = await imageLoader.loadImage('assets/common/crossout.png');
-        for (let i = 0; i < conflict.initialAttackerTroops; i++) {
+        for (let i = 0; i < attacker.initialTroops; i++) {
             const TROOP_WIDTH = HEIGHT / 8;
             const frontLine = i < 3;
             const x = WIDTH * ((frontLine ? 2 : 1) / 8);
-            const y = HEIGHT * ((frontLine ? i : i - 3) + 2) / ((frontLine ? 3 : conflict.initialAttackerTroops - 3) + 3);
-            const defeated = i >= conflict.attackerTroops;
-            const newlyDefeated = defeated && i - conflict.attackerTroops < options.attackersLost;
-            const previouslyDefeated = defeated && !newlyDefeated;
+            const y = HEIGHT * ((frontLine ? i : i - 3) + 2) / ((frontLine ? 3 : attacker.initialTroops - 3) + 3);
+            const previouslyDefeated = i >= attacker.troops + options.attackersLost;
+            const newlyDefeated = options.rollWinners[i] === 'defender';
             context.globalAlpha = previouslyDefeated ? 0.1 : 1;
             context.drawImage(attackerTroopImage, x - TROOP_WIDTH / 2, y - TROOP_WIDTH / 2, TROOP_WIDTH, TROOP_WIDTH);
             if (newlyDefeated) {
@@ -1080,11 +1188,11 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             const left = { x: x - ARROW_WIDTH / 2, y };
             const right = { x: x + ARROW_WIDTH / 2, y };
             if (rollWinner === 'attacker') {
-                this.renderArrow(context, left, right, { thickness: ARROW_HEIGHT / 2, fillStyle: this.getPlayerTeamColor(conflict.attackerId) });
+                this.renderArrow(context, left, right, { thickness: ARROW_HEIGHT / 2, fillStyle: this.getPlayerTeamColor(attacker.userId) });
                 // const attackerArrowImage = await imageLoader.loadImage('assets/risk/attacker-arrow.png');
                 // context.drawImage(attackerArrowImage, x - ARROW_WIDTH / 2, y - ARROW_HEIGHT / 2, ARROW_WIDTH, ARROW_HEIGHT);
             } else if (rollWinner === 'defender') {
-                this.renderArrow(context, right, left, { thickness: ARROW_HEIGHT / 2, fillStyle: this.getPlayerTeamColor(conflict.defenderId) });
+                this.renderArrow(context, right, left, { thickness: ARROW_HEIGHT / 2, fillStyle: this.getPlayerTeamColor(defender.userId) });
                 // const defenderArrowImage = await imageLoader.loadImage('assets/risk/defender-arrow.png');
                 // context.drawImage(defenderArrowImage, x - ARROW_WIDTH / 2, y - ARROW_HEIGHT / 2, ARROW_WIDTH, ARROW_HEIGHT);
             }
@@ -1096,20 +1204,19 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             const x = WIDTH * (5 / 8);
             const y = HEIGHT * ((2 + i) / 6);
             const roll = options.defenderRolls[i];
-            const dieImage = await imageLoader.loadImage(`assets/common/dice/${conflict.symmetrical ? 'r' : 'w'}${roll}.png`);
+            const dieImage = await imageLoader.loadImage(`assets/common/dice/w${roll}.png`);
             context.drawImage(dieImage, x - DIE_WIDTH / 2, y - DIE_WIDTH / 2, DIE_WIDTH, DIE_WIDTH);
         }
 
         // Draw the defender troops
-        const defenderTroopImage = await this.getTroopImage(conflict.defenderId);
-        for (let i = 0; i < conflict.initialDefenderTroops; i++) {
+        const defenderTroopImage = await this.getTroopImage(defender.userId);
+        for (let i = 0; i < defender.initialTroops; i++) {
             const TROOP_WIDTH = HEIGHT / 8;
             const frontLine = i < 3;
             const x = WIDTH * ((frontLine ? 6 : 7) / 8);
-            const y = HEIGHT * ((frontLine ? i : i - 3) + 2) / ((frontLine ? 3 : conflict.initialDefenderTroops - 3) + 3);
-            const defeated = i >= conflict.defenderTroops;
-            const newlyDefeated = defeated && i - conflict.defenderTroops < options.defendersLost;
-            const previouslyDefeated = defeated && !newlyDefeated;
+            const y = HEIGHT * ((frontLine ? i : i - 3) + 2) / ((frontLine ? 3 : defender.initialTroops - 3) + 3);
+            const previouslyDefeated = i >= defender.troops + options.defendersLost;
+            const newlyDefeated = options.rollWinners[i] === 'attacker';
             context.globalAlpha = previouslyDefeated ? 0.2 : 1;
             context.drawImage(defenderTroopImage, x - TROOP_WIDTH / 2, y - TROOP_WIDTH / 2, TROOP_WIDTH, TROOP_WIDTH);
             if (newlyDefeated) {
@@ -1119,7 +1226,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         }
 
         // Draw the title
-        const titleImage = getTextLabel(`Battle for ${this.getTerritoryName(conflict.to)}`, WIDTH * (5 / 8), HEIGHT / 8, {
+        const titleImage = getTextLabel(`Battle for ${this.getTerritoryName(to)}`, WIDTH * (5 / 8), HEIGHT / 8, {
             font: `italic bold ${HEIGHT / 12}px serif`
         });
         context.drawImage(titleImage, WIDTH * (3 / 16), (HEIGHT / 6) - (HEIGHT / 16));
@@ -1336,7 +1443,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         return canvas;
     }
 
-    private async renderMap(options?: { showRoster?: boolean, invasions?: RiskPlannedAttack[], additions?: Record<string, number>, movements?: RiskMovementData[] }): Promise<Canvas> {
+    private async renderMap(options?: { showRoster?: boolean, invasion?: RiskConflictState, additions?: Record<string, number>, movements?: RiskMovementData[] }): Promise<Canvas> {
         const mapImage = await imageLoader.loadImage('assets/risk/map.png');
 
         // Define the canvas
@@ -1361,7 +1468,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             const numTroops = this.getTerritoryTroops(territoryId);
             const additions = (options?.additions ?? {})[territoryId] ?? 0;
             // TODO: Improve this logic
-            const invadingTroops = options?.invasions?.filter(m => m.attack.from == territoryId)[0]?.actualQuantity ?? 0;
+            const invadingTroops = options?.invasion?.attackers.filter(a => a.territoryId == territoryId)[0]?.initialTroops ?? 0;
             const movedTroops = options?.movements?.filter(m => m.to === territoryId)[0]?.quantity ?? 0;
             const troopLocations = this.getRandomTerritoryTroopLocations(territoryId, numTroops);
             for (let i = 0; i < troopLocations.length; i++) {
@@ -1381,11 +1488,16 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         //         highlightedTerritories.add(territoryId);
         //     }
         // }
-        if (options?.invasions) {
-            for (const plannedAttack of options.invasions) {
-                const { from, to } = plannedAttack.attack;
-                highlightedTerritories.add(from);
-                highlightedTerritories.add(to);
+        // Set all territories involved in the specified conflict to be highlighted
+        if (options?.invasion) {
+            const attackers = options.invasion.attackers;
+            // If there is a defending territory, highlight it
+            if (options?.invasion.defender) {
+                highlightedTerritories.add(options?.invasion.defender.territoryId);
+            }
+            // Highlight each attacking territory
+            for (const attacker of attackers) {
+                highlightedTerritories.add(attacker.territoryId);
             }
         }
         if (options?.movements) {
@@ -1402,12 +1514,28 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         }
 
         // If an invasion is specified, draw the invasion arrow(s)
-        if (options?.invasions) {
-            for (const plannedAttack of options.invasions) {
-                const { from, to } = plannedAttack.attack;
-                const fromCoordinates = RiskGame.config.territories[from].termini[to];
-                const toCoordinates = RiskGame.config.territories[to].termini[from];
-                this.renderArrow(context, fromCoordinates, toCoordinates);
+        if (options?.invasion) {
+            const attackers = options.invasion.attackers;
+            // If the invasion is non-circular, render the arrows from all attackers to all defenders
+            if (options?.invasion.defender) {
+                const to = options?.invasion.defender.territoryId;
+                for (const attacker of attackers) {
+                    const from = attacker.territoryId;
+                    const fromCoordinates = RiskGame.config.territories[from].termini[to];
+                    const toCoordinates = RiskGame.config.territories[to].termini[from];
+                    this.renderArrow(context, fromCoordinates, toCoordinates);
+                }
+            }
+            // Else, render the arrows between attackers
+            else {
+                for (let i = 0; i < attackers.length; i++) {
+                    // TODO: Validate that this is going in the correct order
+                    const from = attackers[i].territoryId;
+                    const to = attackers[(i + 1) % attackers.length].territoryId;
+                    const fromCoordinates = RiskGame.config.territories[from].termini[to];
+                    const toCoordinates = RiskGame.config.territories[to].termini[from];
+                    this.renderArrow(context, fromCoordinates, toCoordinates);
+                }
             }
         }
 
@@ -1431,8 +1559,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         return new AttachmentBuilder((await this.renderMap({ additions })).toBuffer()).setName('risk-additions.png');
     }
 
-    private async renderInvasion(invasions: RiskPlannedAttack[]): Promise<AttachmentBuilder> {
-        return new AttachmentBuilder((await this.renderMap({ invasions })).toBuffer()).setName('risk-invasion.png');
+    private async renderInvasion(invasion: RiskConflictState): Promise<AttachmentBuilder> {
+        return new AttachmentBuilder((await this.renderMap({ invasion })).toBuffer()).setName('risk-invasion.png');
     }
 
     private async renderMovements(movements: RiskMovementData[]): Promise<AttachmentBuilder> {
@@ -1618,7 +1746,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     const attacks: RiskMovementData[] = [];
                     for (const territoryId of possibleAttackTerritories) {
                         const targets = this.getTerritoryConnections(territoryId).filter(otherId => this.getTerritoryOwner(otherId) !== userId);
-                        const target = targets[0]; // getMinKey(shuffle(targets), (territoryId) => this.getTerritoryTroops(territoryId));
+                        const target = randChoice(...targets); // getMinKey(shuffle(targets), (territoryId) => this.getTerritoryTroops(territoryId));
                         const p = 1; // this.getTerritoryTroops(territoryId) > 5 ? 1 : (this.getTerritoryTroops(territoryId) >= this.getTerritoryTroops(target) ? 0.5 : 0.25);
                         if (chance(p)) {
                             attacks.push({
@@ -1763,145 +1891,248 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         // If there's an active conflict, process it
         if (this.state.currentConflict) {
             const conflict = this.state.currentConflict;
-            const attackerId = this.getTerritoryOwner(conflict.from);
-            const defenderId = this.getTerritoryOwner(conflict.to);
-            // Validate that the attacker ID exists
-            if (!attackerId) {
-                delete this.state.currentConflict;
-                return {
-                    continueProcessing: true,
-                    summary: 'Attempted to process conflict with no attacker territory owner... WTF??'
-                };
-            }
-            // Now, roll all the dice
-            const attackerDice = Math.min(3, conflict.attackerTroops);
-            const defenderDice = Math.min(conflict.symmetrical ? 3 : 2, conflict.defenderTroops);
-            const attackerRolls = this.getSortedDiceRolls(attackerDice);
-            const defenderRolls = this.getSortedDiceRolls(defenderDice);
-            const numComparisons = Math.min(attackerDice, defenderDice);
-            let attackersLost = 0;
-            let defendersLost = 0;
-            // Compare each set
-            let rollWinners: ('attacker' | 'defender' | 'neither')[] = [];
-            for (let i = 0; i < numComparisons; i++) {
-                if (attackerRolls[i] > defenderRolls[i]) {
-                    conflict.defenderTroops--;
-                    defendersLost++;
-                    rollWinners.push('attacker');
-                } else if (conflict.symmetrical && attackerRolls[i] === defenderRolls[i]) {
-                    rollWinners.push('neither');
+            const attackers = conflict.attackers;
+            const defender = conflict.defender;
+            // If the conflict is a standard conflict...
+            if (defender) {
+                // The attacker at the head of the queue is the one attacking
+                const attacker = attackers[0];
+                // Now, roll all the dice
+                const attackerDice = Math.min(3, attacker.troops);
+                const defenderDice = Math.min(2, defender.troops);
+                const attackerRolls = this.getSortedDiceRolls(attackerDice);
+                const defenderRolls = this.getSortedDiceRolls(defenderDice);
+                const numComparisons = Math.min(attackerDice, defenderDice);
+                let attackersLost = 0;
+                let defendersLost = 0;
+                // Compare each set and update the conflict state
+                let rollWinners: ('attacker' | 'defender' | 'neither')[] = [];
+                for (let i = 0; i < numComparisons; i++) {
+                    if (attackerRolls[i] > defenderRolls[i]) {
+                        defender.troops--;
+                        defendersLost++;
+                        rollWinners.push('attacker');
+                    } else {
+                        attacker.troops--;
+                        attackersLost++;
+                        rollWinners.push('defender');
+                    }
+                }
+                // Render the conflict state before altering the attacker queue
+                const conflictRender = await this.renderConflict(conflict, { attackerRolls, defenderRolls, attackersLost, defendersLost, rollWinners });
+                // Remove the current attacker from the front of the queue
+                attackers.shift();
+                // Say something interesting about this exchange
+                // TODO: Add a lot more cool stuff here
+                let summary = '';
+                if (rollWinners.every(w => w === 'neither')) {
+                    summary += 'A total standstill as neither attacker overpowers the other!\n';
+                } else if (rollWinners.length === 3) {
+                    if (rollWinners.every(w => w === 'attacker')) {
+                        summary += 'Absolute bloodshed!\n';
+                    } else if (rollWinners.every(w => w === 'defender')) {
+                        summary += 'A triple success by the defense!\n';
+                    } else {
+                        summary += 'A little more triple action!\n';
+                    }
+                } else if (defender.troops === 1 && rollWinners.every(w => w === 'defender')) {
+                    summary += 'The defender makes a valiant last stand!\n';
+                } else if (attacker.troops === 1 && rollWinners.every(w => w === 'attacker')) {
+                    summary += 'The last attacker standing continues the fight!\n';
                 } else {
-                    conflict.attackerTroops--;
-                    attackersLost++;
-                    rollWinners.push('defender');
+                    summary += 'Stuff happened!\n';
                 }
-            }
-            // Say something interesting about this exchange
-            // TODO: Add a lot more cool stuff here
-            let summary = '';
-            if (rollWinners.every(w => w === 'neither')) {
-                summary += 'A total standstill as neither attacker overpowers the other!\n';
-            } else if (rollWinners.length === 3) {
-                if (rollWinners.every(w => w === 'attacker')) {
-                    summary += 'Absolute bloodshed!\n';
-                } else if (rollWinners.every(w => w === 'defender')) {
-                    summary += 'A triple success by the defense!\n';
-                } else {
-                    summary += 'A little more triple action!\n';
+                // If the counter-attack is over...
+                // if (conflict.symmetrical && (conflict.attackerTroops === 0 || conflict.defenderTroops === 0)) {
+                //     // Update the troop counts for both territories
+                //     this.addTerritoryTroops(conflict.to, -conflict.initialDefenderTroops + conflict.defenderTroops);
+                //     this.addTerritoryTroops(conflict.from, -conflict.initialAttackerTroops + conflict.attackerTroops);
+                //     // Delete the current conflict
+                //     delete this.state.currentConflict;
+                //     // Send a message
+                //     return {
+                //         continueProcessing: true,
+                //         summary: {
+                //             content: `${summary}The conflict has reached an end. No territories have changed hands.`,
+                //             files: [conflictRender]
+                //         }
+                //     };
+                // }
+                // If it's a defender victory...
+                if (attacker.troops === 0) {
+                    // Update the attacker territory's troop count
+                    this.addTerritoryTroops(attacker.territoryId, -attacker.initialTroops);
+                    // If there are other remaining attackers, proceed with the conflict...
+                    if (attackers.length > 0) {
+                        return {
+                            continueProcessing: true,
+                            summary: {
+                                content: `${summary}**${this.getPlayerDisplayName(defender.userId)}** has fended off the attacking army from _${this.getTerritoryName(attacker.territoryId)}_! `
+                                    + `**${attackers.length}** army(s) to go...`,
+                                files: [conflictRender]
+                            }
+                        };
+                    }
+                    // Otherwise, update the defending territory's troop count
+                    this.setTerritoryTroops(defender.territoryId, defender.troops);
+                    // Delete the conflict
+                    delete this.state.currentConflict;
+                    // Send a message
+                    return {
+                        continueProcessing: true,
+                        summary: {
+                            content: `${summary}**${this.getPlayerDisplayName(defender.userId)}** has successfully fended off **${this.getPlayerDisplayName(attacker.userId)}** at _${this.getTerritoryName(defender.territoryId)}_!`,
+                            files: [conflictRender]
+                        }
+                    };
                 }
-            } else if (conflict.defenderTroops === 1 && rollWinners.every(w => w === 'defender')) {
-                summary += 'The defender makes a valiant last stand!\n';
-            } else if (conflict.attackerTroops === 1 && rollWinners.every(w => w === 'attacker')) {
-                summary += 'The last attacker standing continues the fight!\n';
-            } else {
-                summary += 'Stuff happened!\n';
-            }
-            // If the counter-attack is over...
-            if (conflict.symmetrical && (conflict.attackerTroops === 0 || conflict.defenderTroops === 0)) {
-                // Update the troop counts for both territories
-                this.addTerritoryTroops(conflict.to, -conflict.initialDefenderTroops + conflict.defenderTroops);
-                this.addTerritoryTroops(conflict.from, -conflict.initialAttackerTroops + conflict.attackerTroops);
-                // Delete the current conflict
-                delete this.state.currentConflict;
-                // Send a message
+                // If it's an attacker victory...
+                if (defender.troops === 0) {
+                    // Update the troop counts of both territories
+                    this.setTerritoryTroops(defender.territoryId, attacker.troops);
+                    this.addTerritoryTroops(attacker.territoryId, -attacker.initialTroops);
+                    // Update the ownership of the target territory
+                    this.state.territories[defender.territoryId].owner = attacker.userId;
+                    // If the defender is now eliminated, handle that
+                    const extraSummaries: MessengerPayload[] = [];
+                    // TODO: Can we somehow handle the NPC defender case more properly?
+                    if (defender.userId && this.getNumTerritoriesForPlayer(defender.userId) === 0) {
+                        // Mark them as eliminated and assign their final rank
+                        const finalRank = this.getNumRemainingPlayers();
+                        this.setPlayerFinalRank(defender.userId, finalRank);
+                        // If they're eliminated for 2nd, assign the final winners
+                        if (finalRank === 2) {
+                            this.addWinner(attacker.userId);
+                            this.addWinner(defender.userId);
+                            // TODO: This is pretty hacky and seems flimsy. Can we add winners differently?
+                            this.addWinner(this.getPlayerWithFinalRank(3));
+                        }
+                        // Before adjusting this player's eliminator/color, render the elimination image
+                        const inheritedVassals = this.getPlayerVassals(defender.userId);
+                        extraSummaries.push({
+                            content: `**${this.getPlayerDisplayName(defender.userId)}** has been eliminated, finishing the season in **${getRankString(finalRank)}** place! `
+                                + `This player is now a vassal of **${this.getPlayerDisplayName(attacker.userId)}**`
+                                + (inheritedVassals.length === 0 ? '' : `, who hereby inherits their **${inheritedVassals.length}** vassal(s)`),
+                            files: [await this.renderElimination(defender.userId, attacker.userId, inheritedVassals)]
+                        });
+                        // Delete their color and assign them to the attacker's team
+                        delete this.state.players[defender.userId].color;
+                        this.state.players[defender.userId].eliminator = attacker.userId;
+                    }
+                    // Remove any of the attacker's other armies from the attackers list
+                    // TODO: This is a hacky way to filter elements from a readonly property, should we change this?
+                    const nf = attackers.length;
+                    for (let i = 0; i < nf; i++) {
+                        const e = attackers.shift();
+                        if (e && e.userId !== attacker.userId) {
+                            attackers.push(e);
+                        } else {
+                            void logger.log(`Removed other attacker at _${this.getTerritoryName(e?.territoryId ?? '')}_ from the ongoing conflict (same owner?)`);
+                        }
+                    }
+                    // If there are other remaining attackers, proceed with the conflict...
+                    if (attackers.length > 0) {
+                        // Set the winner as the new defender
+                        conflict.defender = {
+                            userId: attacker.userId,
+                            territoryId: defender.territoryId,
+                            initialTroops: attacker.troops,
+                            troops: attacker.troops
+                        };
+                        // Send a message
+                        return {
+                            continueProcessing: true,
+                            summary: {
+                                content: `${summary}**${this.getPlayerDisplayName(attacker.userId)}** has defeated **${this.getPlayerDisplayName(defender.userId)}** at _${this.getTerritoryName(defender.territoryId)}_! `
+                                    + `Now, he must fend off the other **${attackers.length}** attacking army(s)...`,
+                                files: [conflictRender]
+                            },
+                            extraSummaries
+                        };
+                    }
+                    // Otherwise, delete the conflict
+                    delete this.state.currentConflict;
+                    // Send a message
+                    return {
+                        continueProcessing: true,
+                        summary: {
+                            content: `${summary}**${this.getPlayerDisplayName(attacker.userId)}** has defeated **${this.getPlayerDisplayName(defender.userId)}** at _${this.getTerritoryName(defender.territoryId)}_!`,
+                            files: [conflictRender]
+                        },
+                        extraSummaries
+                    };
+                }
+                // Otherwise, the attacker is still engaged in this ongoing conflict so add them back to the queue
+                attackers.push(attacker);
+                // Provide an update of the conflict
                 return {
                     continueProcessing: true,
                     summary: {
-                        content: `${summary}The conflict has reached an end. No territories have changed hands.`,
-                        files: [await this.renderConflict(conflict, { attackerRolls, defenderRolls, attackersLost, defendersLost, rollWinners })]
+                        content: `${summary}**${attacker.troops}** attacker troops remaining vs **${defender.troops}** defending...`,
+                        files: [conflictRender]
                     }
                 };
             }
-            // If it's a defender victory...
-            if (conflict.attackerTroops === 0) {
-                // Update the source territory's troop count
-                this.setTerritoryTroops(conflict.to, conflict.defenderTroops);
-                this.addTerritoryTroops(conflict.from, -conflict.quantity);
-                // Delete the conflict
-                delete this.state.currentConflict;
-                // Send a message
+            // Else, the conflict is a circular conflict...
+            else {
+                // Roll attacker dice for each attacker in the cycle
+                const n = attackers.length;
+                const attackerRolls: number[][] = [];
+                for (let i = 0; i < n; i++) {
+                    const attacker = attackers[i];
+                    const dice = Math.min(3, attacker.troops);
+                    const rolls = this.getSortedDiceRolls(dice);
+                    attackerRolls[i] = rolls;
+                }
+                // Now compare each set of rolls with the set ahead
+                const troopsLost: number[] = [];
+                const rollWinners: ('attacker' | 'defender' | 'neither')[][] = [];
+                for (let i = 0; i < n; i++) {
+                    const attacker = attackers[i];
+                    const targetIndex = (i + 1) % n;
+                    const target = attackers[targetIndex];
+                    const sourceRolls = attackerRolls[i];
+                    const targetRolls = attackerRolls[targetIndex];
+                    const numComparisons = Math.min(sourceRolls.length, targetRolls.length);
+                    rollWinners[i] = [];
+                    for (let j = 0; j < numComparisons; j++) {
+                        if (sourceRolls[j] > targetRolls[j]) {
+                            target.troops--;
+                            troopsLost[targetIndex] = (troopsLost[targetIndex] ?? 0) + 1;
+                            rollWinners[i][j] = 'attacker';
+                        } else {
+                            rollWinners[i][j] = 'neither';
+                        }
+                    }
+                }
+                // Render the conflict state
+                const conflictRender = await this.renderCircularConflict(conflict, { attackerRolls, rollWinners, troopsLost });
+                // If any army has been reduced to zero troops, end the conflict
+                if (attackers.some(a => a.troops === 0)) {
+                    // Reduce the troop count of each territory
+                    for (const attacker of attackers) {
+                        this.addTerritoryTroops(attacker.territoryId, attacker.troops - attacker.initialTroops);
+                    }
+                    // Delete the conflict
+                    delete this.state.currentConflict;
+                    // Send a message
+                    return {
+                        continueProcessing: true,
+                        summary: {
+                            content: 'One army has been reduced to zero troops! The conflict is now over',
+                            files: [conflictRender]
+                        }
+                    };
+                }
+                // Otherwise, provide an update of the conflict
                 return {
                     continueProcessing: true,
                     summary: {
-                        content: `${summary}**${this.getPlayerDisplayName(defenderId)}** has successfully fended off **${this.getPlayerDisplayName(attackerId)}** at _${this.getTerritoryName(conflict.to)}_!`,
-                        files: [await this.renderConflict(conflict, { attackerRolls, defenderRolls, attackersLost, defendersLost, rollWinners })]
+                        content: 'The circular conflict rages on!',
+                        files: [conflictRender]
                     }
                 };
             }
-            // If it's an attacker victory...
-            if (conflict.defenderTroops === 0) {
-                // Update the troop counts of both territories
-                this.setTerritoryTroops(conflict.to, conflict.attackerTroops);
-                this.addTerritoryTroops(conflict.from, -conflict.quantity);
-                // Update the ownership of the target territory
-                this.state.territories[conflict.to].owner = attackerId;
-                // Delete the conflict
-                delete this.state.currentConflict;
-                // Render the image now before the defender's color is possibly updated
-                const render = await this.renderConflict(conflict, { attackerRolls, defenderRolls, attackersLost, defendersLost, rollWinners });
-                // If the defender is now eliminated, handle that
-                const extraSummaries: MessengerPayload[] = [];
-                if (defenderId && this.getNumTerritoriesForPlayer(defenderId) === 0) {
-                    // Mark them as eliminated and assign their final rank
-                    const finalRank = this.getNumRemainingPlayers();
-                    this.setPlayerFinalRank(defenderId, finalRank);
-                    // If they're eliminated for 2nd, assign the final winners
-                    if (finalRank === 2) {
-                        this.addWinner(attackerId);
-                        this.addWinner(defenderId);
-                        // TODO: This is pretty hacky and seems flimsy. Can we add winners differently?
-                        this.addWinner(this.getPlayerWithFinalRank(3));
-                    }
-                    // Before adjusting this player's eliminator/color, render the elimination image
-                    const inheritedVassals = this.getPlayerVassals(defenderId);
-                    extraSummaries.push({
-                        content: `**${this.getPlayerDisplayName(defenderId)}** has been eliminated, finishing the season in **${getRankString(finalRank)}** place! `
-                            + `This player is now a vassal of **${this.getPlayerDisplayName(attackerId)}**`
-                            + (inheritedVassals.length === 0 ? '' : `, who hereby inherits their **${inheritedVassals.length}** vassal(s)`),
-                        files: [await this.renderElimination(defenderId, attackerId, inheritedVassals)]
-                    })
-                    // Delete their color and assign them to the attacker's team
-                    delete this.state.players[defenderId].color;
-                    this.state.players[defenderId].eliminator = attackerId;
-                }
-                // Send a message
-                return {
-                    continueProcessing: true,
-                    summary: {
-                        content: `${summary}**${this.getPlayerDisplayName(attackerId)}** has defeated **${this.getPlayerDisplayName(defenderId)}** at _${this.getTerritoryName(conflict.to)}_!`,
-                        files: [render]
-                    },
-                    extraSummaries
-                };
-            }
-            // Otherwise, provide an update of the conflict
-            return {
-                continueProcessing: true,
-                summary: {
-                    content: `${summary}**${conflict.attackerTroops}** attacker troops remaining vs **${conflict.defenderTroops}** defending...`,
-                    files: [await this.renderConflict(conflict, { attackerRolls, defenderRolls, attackersLost, defendersLost, rollWinners })]
-                }
-            };
         }
         // If the attack decisions haven't been processed yet, process them
         if (this.state.attackDecisions) {
@@ -1942,45 +2173,54 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 plannedAttack.actualQuantity = Math.min(plannedAttack.attack.quantity, this.getTerritoryTroops(plannedAttack.attack.from) - 1);
             }
             // Find any possible cyclical attacks
-            let plannedAttack: RiskPlannedAttack;
-            let symmetricAttack: RiskPlannedAttack | undefined = undefined;
+            const selectedAttacks: RiskPlannedAttack[] = [];
+            let selectedDefender: RiskConflictAgentData | undefined;
+            // let symmetricAttack: RiskPlannedAttack | undefined = undefined;
             let summaryContent = '';
             const dependencies = this.getPlannedAttackDependencyMap();
             const cyclicalAttacks = findCycle(dependencies, { randomize: true })?.map(id => plannedAttacks[id]);
             if (cyclicalAttacks) {
-                // Sort the cyclical attacks by quantity
-                cyclicalAttacks.sort((a, b) => b.actualQuantity - a.actualQuantity);
+                // Get the biggest attack
+                const largestAttack = getMaxKey(cyclicalAttacks, a => a.actualQuantity);
+                // Shift the array such that the largest attack is at the front
+                // TODO: Can we guarantee this is in the right order?
+                while (cyclicalAttacks[0].id !== largestAttack.id) {
+                    cyclicalAttacks.push(cyclicalAttacks.shift() as RiskPlannedAttack);
+                }
+                // cyclicalAttacks.sort((a, b) => b.actualQuantity - a.actualQuantity);
                 if (cyclicalAttacks.length === 2) {
                     // If there's a reciprocal attack, choose the biggest one...
-                    plannedAttack = cyclicalAttacks[0];
-                    const reciprocalAttack = cyclicalAttacks[1];
+                    selectedAttacks.push(...cyclicalAttacks);
                     // The planned reciprocal attack must be discarded regardless of whether it will be symmetric
-                    delete this.state.plannedAttacks[reciprocalAttack.id];
+                    const reciprocalAttack = cyclicalAttacks[1];
+                    // delete this.state.plannedAttacks[reciprocalAttack.id];
                     // Handle it depending on how the quantities compare...
-                    if (plannedAttack.actualQuantity === reciprocalAttack.actualQuantity) {
-                        // The attacks are of the same quantity, so initiate a symmetrical attack
-                        symmetricAttack = reciprocalAttack;
-                        summaryContent = `**${this.getPlayerDisplayName(plannedAttack.userId)}** and **${this.getPlayerDisplayName(symmetricAttack.userId)}** `
+                    if (largestAttack.actualQuantity === reciprocalAttack.actualQuantity) {
+                        // The attacks are of the same quantity, so initiate a circular attack between the two territories
+                        summaryContent = `**${this.getPlayerDisplayName(largestAttack.userId)}** and **${this.getPlayerDisplayName(reciprocalAttack.userId)}** `
                             + `have launched attacks against each other with the same number of troops! A conflict will begin with two attackers no potential for territory capture...`;
                     } else {
-                        // One attack is larger, so pick that one and leave the other discarded
+                        // One attack is larger, so initiate a standard attack and consider the smaller army the "defender"
+                        selectedAttacks.push(largestAttack);
+                        selectedDefender = {
+                           userId: reciprocalAttack.userId,
+                           territoryId: reciprocalAttack.attack.from,
+                           initialTroops: this.getTerritoryTroops(reciprocalAttack.attack.from) ,
+                           troops: this.getTerritoryTroops(reciprocalAttack.attack.from)
+                        };
+                        // The planned reciprocal attack must be discarded because it's been converted to a "defense"
+                        delete this.state.plannedAttacks[reciprocalAttack.id];
                         // TODO: Construct a summary and render explaining this situation
                         summaryContent = `**${this.getPlayerDisplayName(reciprocalAttack.userId)}** tried to launch an attack `
                             + `from _${this.getTerritoryName(reciprocalAttack.attack.from)}_ to _${this.getTerritoryName(reciprocalAttack.attack.to)}_ `
-                            + `with **${reciprocalAttack.actualQuantity}** troop(s), but **${this.getPlayerDisplayName(plannedAttack.userId)}** `
-                            + `launched an even larger counter-attack with **${plannedAttack.actualQuantity}** troops!`;
+                            + `with **${reciprocalAttack.actualQuantity}** troop(s), but **${this.getPlayerDisplayName(largestAttack.userId)}** `
+                            + `launched an even larger counter-attack with **${largestAttack.actualQuantity}** troops!`;
                     }
                 } else if (cyclicalAttacks.length > 2) {
-                    // If there's a cycle of 3+ planned attacks, choose the largest attack to go first
-                    plannedAttack = cyclicalAttacks[0];
+                    // If there's a cycle of 3+ planned attacks, initiate a circular attack (the order of attacks must be maintained, but the largest will be at the front)
+                    selectedAttacks.push(...cyclicalAttacks);
                     // TODO: Construct a summary and render explaining this situation
-                    if (cyclicalAttacks.filter(a => a.actualQuantity === plannedAttack.actualQuantity).length > 1) {
-                        summaryContent = `**${cyclicalAttacks.length}** teams started a circular battle! `
-                            + `**${this.getPlayerDisplayName(plannedAttack.userId)}'s** army at _${this.getTerritoryName(plannedAttack.attack.from)}_ has been randomly selected to begin the conflict...`;
-                    } else {
-                        summaryContent = `**${cyclicalAttacks.length}** teams started a circular battle! `
-                            + `**${this.getPlayerDisplayName(plannedAttack.userId)}'s** army at _${this.getTerritoryName(plannedAttack.attack.from)}_ is the strongest, so it'll begin the first leg of the conflict...`;
-                    }
+                    summaryContent = `A circular battle has broken out between **${cyclicalAttacks.length}** territories!`;
                 } else {
                     // Fallback just in case there's a 0/1-node cycle
                     return {
@@ -1990,6 +2230,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 }
             } else {
                 // There are no cycles, so shuffle with dependencies and choose the first one
+                let plannedAttack: RiskPlannedAttack;
                 try {
                     const orderedAttackIds = shuffleWithDependencies(Object.keys(dependencies), dependencies);
                     plannedAttack = plannedAttacks[orderedAttackIds[0]];
@@ -1997,67 +2238,114 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     void logger.log('Attack decisions still contain a cycle, so picking one at random!');
                     plannedAttack = randChoice(...Object.values(plannedAttacks));
                 }
-                summaryContent = `**${this.getPlayerDisplayName(plannedAttack.userId)}** has staged an attack from `
-                    + `_${this.getTerritoryName(plannedAttack.attack.from)}_ to _${this.getTerritoryName(plannedAttack.attack.to)}_ with **${plannedAttack.actualQuantity}** troop(s)!`;
+                // Validate that one was actually chosen
+                if (!plannedAttack) {
+                    void logger.log(`Couldn't find next territory to attack. Planned attacks: \`${JSON.stringify(plannedAttacks)}\``);
+                    return {
+                        continueProcessing: true,
+                        summary: 'WTF! Couldn\'t find the next territory attack node to process...'
+                    };
+                }
+                // Construct the defender agent data
+                const defenderTerritoryId = plannedAttack.attack.to;
+                selectedDefender = {
+                    // TODO: Is there a better way to support NPC defenders?
+                    userId: this.getTerritoryOwner(defenderTerritoryId) ?? '',
+                    territoryId: defenderTerritoryId,
+                    initialTroops: this.getTerritoryTroops(defenderTerritoryId),
+                    troops: this.getTerritoryTroops(defenderTerritoryId)
+                };
+                // Determine the total set of attacks targeting this territory
+                const parallelAttacks = Object.values(this.state.plannedAttacks).filter(a => a.attack.to === defenderTerritoryId);
+                // Sort the attacks such that the largest attacks go first
+                parallelAttacks.sort((a, b) => b.actualQuantity - a.actualQuantity);
+                // Set them all as attackers
+                selectedAttacks.push(...parallelAttacks);
+                // Construct a summary depending on how many attackers have targeted this territory
+                const largestAttack = parallelAttacks[0];
+                if (parallelAttacks.length === 1) {
+                    // One single attack by one player
+                    summaryContent = `**${this.getPlayerDisplayName(largestAttack.userId)}** has staged an attack from `
+                        + `_${this.getTerritoryName(largestAttack.attack.from)}_ to _${this.getTerritoryName(largestAttack.attack.to)}_ with **${largestAttack.actualQuantity}** troop(s)!`;
+                } else if (parallelAttacks.every(a => a.userId === largestAttack.userId)) {
+                    // Special case where one user launches all the attacks
+                    summaryContent += `**${this.getPlayerDisplayName(largestAttack.userId)}** has begun a **${parallelAttacks.length}**-pronged invasion of _${this.getTerritoryName(selectedDefender.territoryId)}_!`;
+                } else if (parallelAttacks.length === 2) {
+                    // Two parallel attacks by different players
+                    summaryContent = `**${this.getPlayerDisplayName(parallelAttacks[0].userId)}** and **${this.getPlayerDisplayName(parallelAttacks[1].userId)}** `
+                        + `have temporarily joined forces to squeeze **${this.getPlayerDisplayName(selectedDefender.userId)}** at _${this.getTerritoryName(selectedDefender.territoryId)}_!`;
+                } else {
+                    // Three or more parallel attacks by two or more players
+                    summaryContent = `**${parallelAttacks.length}** territories have launched attacks against **${this.getPlayerDisplayName(selectedDefender.userId)}** at _${this.getTerritoryName(selectedDefender.territoryId)}_! `
+                        + ` **${this.getPlayerDisplayName(largestAttack.userId)}** will go first, having the largest army of **${largestAttack.actualQuantity}** troop(s) from _${this.getTerritoryName(largestAttack.attack.from)}_`;
+                }
             }
-            // Validate that the chosen planned attack actually exists
-            if (!plannedAttack) {
+            // Validate that the chosen planned attacks actually exist
+            if (selectedAttacks.length === 0) {
                 void logger.log(`Couldn't find next territory to attack. Planned attacks: \`${JSON.stringify(plannedAttacks)}\``);
                 return {
                     continueProcessing: true,
                     summary: 'WTF! Couldn\'t find the next territory attack node to process...'
                 };
             }
-            const { id: attackId, userId: ownerId, attack: conflict, actualQuantity } = plannedAttack;
-            if (conflict.quantity !== actualQuantity) {
-                void logger.log(`<@${ownerId}> tried to attack _${this.getTerritoryName(conflict.to)}_ with **${conflict.quantity}** troop(s) `
-                    + `but _${this.getTerritoryName(conflict.from)}_ only has **${this.getTerritoryTroops(conflict.from)}**, so only attacking with **${actualQuantity}**`);
+            // Validate each individual attack decision and discard any that fail validation (leaving the remaining)
+            for (const attack of selectedAttacks) {
+                const { userId, actualQuantity } = attack;
+                const { from, to, quantity } = attack.attack;
+                // Log in the case of adjusted quantity
+                if (quantity !== actualQuantity) {
+                    void logger.log(`<@${userId}> tried to attack _${this.getTerritoryName(to)}_ with **${quantity}** troop(s) `
+                        + `but _${this.getTerritoryName(from)}_ only has **${this.getTerritoryTroops(from)}**, so only attacking with **${actualQuantity}**`);
+                }
+                // Ensure there are enough troops to launch a valid attack
+                if (attack.actualQuantity < 1) {
+                    delete this.state.plannedAttacks[attack.id];
+                    return {
+                        continueProcessing: true,
+                        summary: `**${this.getPlayerDisplayName(attack.userId)}** tried to launch an attack from _${this.getTerritoryName(from)}_ to _${this.getTerritoryName(to)}_, but couldn't due to a lack of troops...`
+                    };
+                }
+                // Ensure the user still owns this territory
+                if (attack.userId !== this.getTerritoryOwner(from)) {
+                    delete this.state.plannedAttacks[attack.id];
+                    return {
+                        continueProcessing: true,
+                        summary: `**${this.getPlayerDisplayName(attack.userId)}** tried to launch an attack from _${this.getTerritoryName(from)}_ to _${this.getTerritoryName(to)}_, but that territory no longer belongs to him...`
+                    };
+                }
+                // Ensure the user isn't attacking their own territory 
+                if (this.getTerritoryOwner(from) === this.getTerritoryOwner(to)) {
+                    delete this.state.plannedAttacks[attack.id];
+                    return {
+                        continueProcessing: true,
+                        summary: `**${this.getPlayerDisplayName(attack.userId)}** tried to launch an attack from _${this.getTerritoryName(from)}_ to _${this.getTerritoryName(to)}_, but called it off moments before firing on his own troops...`
+                    };
+                }
             }
-            // Delete this attack decision
-            delete this.state.plannedAttacks[attackId];
+            // Now that the conflict is confirmed valid, delete all related attack decisions
+            for (const attack of selectedAttacks) {
+                delete this.state.plannedAttacks[attack.id];
+            }
             // Delete the planned attacks if there are none yet left
             if (Object.keys(this.state.plannedAttacks).length === 0) {
                 delete this.state.plannedAttacks;
             }
-            // Validation just in case this conflict isn't possible
-            if (actualQuantity < 1) {
-                return {
-                    continueProcessing: true,
-                    summary: `**${this.getPlayerDisplayName(ownerId)}** tried to launch an attack from _${this.getTerritoryName(conflict.from)}_ to _${this.getTerritoryName(conflict.to)}_, but couldn't due to a lack of troops...`
-                };
-            }
-            if (plannedAttack.userId !== this.getTerritoryOwner(plannedAttack.attack.from)) {
-                return {
-                    continueProcessing: true,
-                    summary: `**${this.getPlayerDisplayName(plannedAttack.userId)}** tried to launch an attack from _${this.getTerritoryName(conflict.from)}_ to _${this.getTerritoryName(conflict.to)}_, but that territory no longer belongs to him...`
-                };
-            }
-            if (this.getTerritoryOwner(conflict.from) === this.getTerritoryOwner(conflict.to)) {
-                return {
-                    continueProcessing: true,
-                    summary: `**${this.getPlayerDisplayName(ownerId)}** tried to launch an attack from _${this.getTerritoryName(conflict.from)}_ to _${this.getTerritoryName(conflict.to)}_, but called it off moments before firing on his own troops...`
-                };
-            }
             // Save this node as the current conflict
             // TODO: Validate this better, e.g. with logging...
-            const initialDefenderTroops = symmetricAttack?.actualQuantity ?? this.getTerritoryTroops(conflict.to);
             this.state.currentConflict = {
-                from: conflict.from,
-                to: conflict.to,
-                quantity: actualQuantity,
-                attackerId: this.getTerritoryOwner(conflict.from),
-                defenderId: this.getTerritoryOwner(conflict.to),
-                initialAttackerTroops: actualQuantity,
-                initialDefenderTroops,
-                symmetrical: symmetricAttack ? true : undefined,
-                attackerTroops: actualQuantity,
-                defenderTroops: initialDefenderTroops
+                attackers: selectedAttacks.map(a => ({
+                    userId: a.userId,
+                    territoryId: a.attack.from,
+                    initialTroops: a.actualQuantity,
+                    troops: a.actualQuantity
+                })),
+                defender: selectedDefender
             };
             return {
                 continueProcessing: true,
                 summary: {
                     content: summaryContent,
-                    files: [await this.renderInvasion(cyclicalAttacks ? cyclicalAttacks : [plannedAttack])]
+                    files: [await this.renderInvasion(this.state.currentConflict)]
                 }
             };
         }
@@ -2077,7 +2365,11 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     this.addTerritoryTroops(data.from, -actualQuantity);
                     this.addTerritoryTroops(data.to, actualQuantity);
                     // Add this to the list of actual movements to render
-                    actualMovements.push(data);
+                    actualMovements.push({
+                        from: data.from,
+                        to: data.to,
+                        quantity: actualQuantity
+                    });
                 }
             }
             // Delete the decision map
