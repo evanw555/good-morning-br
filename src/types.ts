@@ -299,7 +299,9 @@ export interface RiskPlayerState {
     color?: string,
     troopIcon?: string,
     finalRank?: number,
-    eliminator?: Snowflake
+    eliminator?: Snowflake,
+    kills?: number,
+    deaths?: number
 }
 
 export interface RiskTerritoryState {

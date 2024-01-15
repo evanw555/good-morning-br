@@ -2731,11 +2731,13 @@ client.on('ready', async (): Promise<void> => {
             state.getGame().addNPCs();
         }
         await dumpState();
-        // Jump straight to the morning of the decision
-        state.setNextEvent({
-            type: DailyEventType.GameDecision
-        });
-        state.dequeueNextEvent();
+        // If no event is manually specified in the state, jump straight to the morning of the decision
+        if (!state.hasEvent() && !state.hasNextEvent()) {
+            state.setNextEvent({
+                type: DailyEventType.GameDecision
+            });
+            state.dequeueNextEvent();
+        }
         state.setMorning(false);
         // TODO: Can we somehow delete all scheduled events? May need to add a new library method
         await timeoutManager.cancelTimeoutsWithType(TimeoutType.NextPreNoon);

@@ -1,5 +1,5 @@
 import { APIEmbed, Message, Snowflake } from "discord.js";
-import { Canvas, Image, createCanvas } from "canvas";
+import { Canvas, Image, createCanvas, CanvasRenderingContext2D as NodeCanvasRenderingContext2D } from "canvas";
 import OpenAI from 'openai';
 import { randChoice, randInt, loadJson, LanguageGenerator } from "evanw555.js";
 import { AnonymousSubmission, GoodMorningAuth, GoodMorningConfig } from "./types";
@@ -236,7 +236,7 @@ export function getMinKey<T>(keys: T[], valueFn: (x: T) => number): T {
 
 
 // TODO: Move to common library
-export async function drawTextCentered(context: CanvasRenderingContext2D, text: string, left: number, right: number, y: number, options?: { padding?: number }) {
+export async function drawTextCentered(context: NodeCanvasRenderingContext2D, text: string, left: number, right: number, y: number, options?: { padding?: number }) {
     const titleWidth = context.measureText(text).width;
     const padding = options?.padding ?? 0;
     const areaWidth = right - left - (2 * padding);
@@ -313,6 +313,20 @@ export function getTextLabel(text: string, width: number, height: number, option
     drawTextCentered(context, text, 0, width, verticalMargin + ascent);
 
     return canvas;
+}
+
+export function drawBackground(context: NodeCanvasRenderingContext2D, image: Canvas | Image) {
+    const widthRatio = context.canvas.width / image.width;
+    const heightRatio = context.canvas.height / image.height;
+    const resizeFactor = Math.max(widthRatio, heightRatio);
+    const resizedWidth = image.width * resizeFactor;
+    const resizedHeight = image.height * resizeFactor;
+    const x = (context.canvas.width - resizedWidth) / 2;
+    const y = (context.canvas.height - resizedHeight) / 2;
+    context.save();
+    context.globalCompositeOperation = 'destination-over';
+    context.drawImage(image, x, y, resizedWidth, resizedHeight);
+    context.restore();
 }
 
 /**

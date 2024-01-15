@@ -14,7 +14,7 @@ class ImageLoader {
         this.users = users;
     }
 
-    async loadImage(key: string): Promise<canvas.Image> {
+    async loadImage(key: string, options?: { fallbacks?: string[] }): Promise<canvas.Image> {
         if (key in this.imageCache) {
             return this.imageCache[key];
         }
@@ -24,6 +24,11 @@ class ImageLoader {
             this.imageCache[key] = image;
             return image;
         } catch (err) {
+            // If any fallbacks are specified, try the next one
+            if (options?.fallbacks && options.fallbacks.length > 0) {
+                return this.loadImage(options.fallbacks[0], { fallbacks: options.fallbacks.slice(1)})
+            }
+            // Else, return the generic "broken" image
             if (key !== ImageLoader.BROKEN_IMAGE_PATH) {
                 return this.loadImage(ImageLoader.BROKEN_IMAGE_PATH);
             }

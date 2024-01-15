@@ -3,7 +3,7 @@ import { DecisionProcessingResult, GamePlayerAddition, MessengerPayload, PrizeTy
 import AbstractGame from "./abstract-game";
 import { Canvas, Image, createCanvas } from "canvas";
 import { DiscordTimestampFormat, chance, findCycle, getDateBetween, getJoinedMentions, getRankString, joinCanvasesHorizontal, joinCanvasesVertically, naturalJoin, randChoice, randInt, shuffle, shuffleWithDependencies, toCircle, toDiscordTimestamp, toFixed } from "evanw555.js";
-import { getMinKey, getMaxKey, drawTextCentered, getTextLabel, withDropShadow } from "../util";
+import { getMinKey, getMaxKey, drawTextCentered, getTextLabel, withDropShadow, drawBackground } from "../util";
 
 import logger from "../logger";
 import imageLoader from "../image-loader";
@@ -730,6 +730,22 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         this.state.players[userId].newTroops = this.getPlayerNewTroops(userId) + quantity;
     }
 
+    private getPlayerKills(userId: Snowflake): number {
+        return this.state.players[userId]?.kills ?? 0;
+    }
+
+    private addPlayerKills(userId: Snowflake, kills: number) {
+        this.state.players[userId].kills = this.getPlayerKills(userId) + kills;
+    }
+
+    private getPlayerDeaths(userId: Snowflake): number {
+        return this.state.players[userId]?.deaths ?? 0;
+    }
+
+    private addPlayerDeaths(userId: Snowflake, deaths: number) {
+        this.state.players[userId].deaths = this.getPlayerDeaths(userId) + deaths;
+    }
+
     private getJoinedDisplayNames(userIds: Snowflake[]): string {
         return naturalJoin(userIds.map(userId => this.getPlayerDisplayName(userId)), { bold: true });
     }
@@ -1021,20 +1037,39 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         }
 
         const n = attackers.length;
-        const numColumns = 3 * n + 2;
+        const numColumns = 3 * n;
 
-        // TODO: Temp logic to get a background, do something better
-        const conflictId = [attackers[0].territoryId, attackers[1].territoryId].sort().join('');
-        const conflictImage = await imageLoader.loadImage(`assets/risk/connections/${conflictId}.png`);
+        // Determine the priority of background images to load
+        const backgroundImagePaths: string[] = [];
+        if (conflict.attackers.length > 1) {
+            // Just add each forward and reverse connection in order (attackers aren't rotated, so this shouldn't change)
+            const an = conflict.attackers.length;
+            for (let i = 0; i < an; i++) {
+                const from = conflict.attackers[i].territoryId;
+                const to = conflict.attackers[(i + 1) % an].territoryId;
+                backgroundImagePaths.push(
+                    `assets/risk/connections/${from}${to}.png`,
+                    `assets/risk/connections/${to}${from}.png`
+                );
+            }
+        } else {
+            // This should never happen...
+            backgroundImagePaths.push(`assets/risk/territories/${conflict.attackers[0].territoryId}.png`);
+        }
+        // Ultimate generic fallback...
+        backgroundImagePaths.push('assets/risk/usa.png');
+        // TODO: Can we somehow have cool cycle-specific images?
+        const conflictImage = await imageLoader.loadImage(backgroundImagePaths[0], { fallbacks: backgroundImagePaths.slice(1) });
 
-        const WIDTH = RiskGame.config.conflict.dimensions.width;
+        const TYPICAL_WIDTH = RiskGame.config.conflict.dimensions.width;
+        const COLUMN_WIDTH = TYPICAL_WIDTH / 7;
+        const WIDTH = COLUMN_WIDTH * (numColumns - 1);
         const HEIGHT = RiskGame.config.conflict.dimensions.height;
         const canvas = createCanvas(WIDTH, HEIGHT);
         const context = canvas.getContext('2d');
 
         // Draw each attacker column
         const crossOutImage = await imageLoader.loadImage('assets/common/crossout.png');
-        const TROOP_WIDTH = HEIGHT / 8;
         for (let j = 0; j < n; j++) {
             const attacker = attackers[j];
             const rolls = options.attackerRolls[j];
@@ -1043,11 +1078,19 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             // Draw the attacker troops in one column
             const attackerTroopImage = await this.getTroopImage(attacker.userId);
             for (let i = 0; i < attacker.initialTroops; i++) {
-                const x = WIDTH * ((2 + j * 3) / numColumns);
-                const y = HEIGHT * (i + 2) / (attacker.initialTroops + 3);
-                const defeated = i >= attacker.troops;
-                const newlyDefeated = defeated && i - attacker.troops < troopsLost;
-                const previouslyDefeated = defeated && !newlyDefeated;
+                const frontLine = i < 3;
+                // In the special case that there are 4 total troops, render the one extra troop as full sized
+                const TROOP_WIDTH = (frontLine || attacker.initialTroops === 4)
+                    ? HEIGHT / 8
+                    : HEIGHT / 12;
+                const x = frontLine
+                    ? WIDTH * ((1 + j * 3) / numColumns)
+                    : WIDTH * (((Math.floor((i - 3) / 3) * 0.25) + 1 + j * 3) / numColumns);
+                const y = frontLine
+                    ? HEIGHT * (i + 2) / 6
+                    : HEIGHT * (((i - 3) % 3) * 0.25 + 5) / 6;
+                const previouslyDefeated = i >= attacker.troops + troopsLost;
+                const newlyDefeated = options.rollWinners[(j + n - 1) % n][i] === 'attacker';
                 context.globalAlpha = previouslyDefeated ? 0.1 : 1;
                 context.drawImage(attackerTroopImage, x - TROOP_WIDTH / 2, y - TROOP_WIDTH / 2, TROOP_WIDTH, TROOP_WIDTH);
                 if (newlyDefeated) {
@@ -1058,25 +1101,31 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             // Draw the dice rolls in the next column
             const DIE_WIDTH = HEIGHT / 8;
             for (let i = 0; i < rolls.length; i++) {
-                const x = WIDTH * ((3 + j * 3) / numColumns);
+                const x = WIDTH * ((2 + j * 3) / numColumns);
                 const y = HEIGHT * ((2 + i) / 6);
                 const roll = rolls[i];
                 const dieImage = await imageLoader.loadImage(`assets/common/dice/r${roll}.png`);
                 context.drawImage(dieImage, x - DIE_WIDTH / 2, y - DIE_WIDTH / 2, DIE_WIDTH, DIE_WIDTH);
             }
             // Draw the avatar above the dice column
-            context.drawImage(await this.getAvatar(attacker.userId), WIDTH * ((3 + j * 3) / numColumns) - DIE_WIDTH / 2, HEIGHT * (1 / 6) - DIE_WIDTH / 2, DIE_WIDTH, DIE_WIDTH);
+            context.drawImage(await this.getAvatar(attacker.userId), WIDTH * ((1.5 + j * 3) / numColumns) - DIE_WIDTH / 2, HEIGHT * (1 / 6) - DIE_WIDTH / 2, DIE_WIDTH, DIE_WIDTH);
             // Draw the arrows in the next column
             const ARROW_WIDTH = HEIGHT / 6;
             const ARROW_HEIGHT = HEIGHT / 8;
             for (let i = 0; i < rollWinners.length; i++) {
-                const x = WIDTH * ((4 + j * 3) / numColumns);
+                const x = WIDTH * ((3 + j * 3) / numColumns);
                 const y = HEIGHT * ((2 + i) / 6);
                 const rollWinner = rollWinners[i];
                 const left = { x: x - ARROW_WIDTH / 2, y };
                 const right = { x: x + ARROW_WIDTH / 2, y };
                 if (rollWinner === 'attacker') {
                     this.renderArrow(context, left, right, { thickness: ARROW_HEIGHT / 2, fillStyle: this.getPlayerTeamColor(attacker.userId) });
+                    // If this player is in the rightmost column, render an arrow on the far left too
+                    if (j === n - 1) {
+                        const otherLeft = { x: -ARROW_WIDTH / 2, y: left.y };
+                        const otherRight = { x: ARROW_WIDTH / 2, y: right.y };
+                        this.renderArrow(context, otherLeft, otherRight, { thickness: ARROW_HEIGHT / 2, fillStyle: this.getPlayerTeamColor(attacker.userId) });
+                    }
                 }
             }
         }
@@ -1099,9 +1148,9 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         context.fillRect(0, 0, canvas.width, canvas.height);
         context.globalAlpha = 1;
         // Draw the image itself
-        context.drawImage(conflictImage, 0, 0, WIDTH, HEIGHT);
+        drawBackground(context, conflictImage);
 
-        return new AttachmentBuilder(canvas.toBuffer()).setName(`risk-conflict-${conflictId}.png`);
+        return new AttachmentBuilder(canvas.toBuffer()).setName('risk-conflict.png');
     }
 
     private async renderConflict(conflict: RiskConflictState, options: { attackerRolls: number[], defenderRolls: number[], attackersLost: number, defendersLost: number, rollWinners: ('attacker' | 'defender' | 'neither')[] }): Promise<AttachmentBuilder> {
@@ -1115,40 +1164,25 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         const from = attacker.territoryId;
         const to = defender.territoryId;
 
-        const conflictId = [from, to].sort().join('');
-        const conflictImage = await imageLoader.loadImage(`assets/risk/connections/${conflictId}.png`);
+        // Determine the priority of background images to load
+        const backgroundImagePaths: string[] = [];
+        if (conflict.attackers.length > 1) {
+            // If there are multiple attackers, prioritize an image of just the defending territory
+            backgroundImagePaths.push(`assets/risk/territories/${defender.territoryId}.png`);
+        }
+        backgroundImagePaths.push(
+            // Then, prioritize an image in the proper direction, but fallback to the opposite if not possible
+            `assets/risk/connections/${from}${to}.png`,
+            `assets/risk/connections/${to}${from}.png`,
+            // Ultimate generic fallback...
+            'assets/risk/usa.png'
+        );
+        const conflictImage = await imageLoader.loadImage(backgroundImagePaths[0], { fallbacks: backgroundImagePaths.slice(1) });
 
         const WIDTH = RiskGame.config.conflict.dimensions.width;
         const HEIGHT = RiskGame.config.conflict.dimensions.height;
         const canvas = createCanvas(WIDTH, HEIGHT);
         const context = canvas.getContext('2d');
-
-        // Draw the attacker avatars
-        const AVATAR_WIDTH = HEIGHT / 8;
-        const AVATAR_MARGIN = HEIGHT * (1 / 12) - (AVATAR_WIDTH / 2);
-        let baseAttackerAvatarX = AVATAR_MARGIN;
-        for (let i = 0; i < conflict.attackers.length; i++) {
-            const queuedAttacker = conflict.attackers[i];
-            const actualAvatarWidth = i === 0 ? AVATAR_WIDTH : (AVATAR_WIDTH / 2);
-            const avatarImage = await this.getAvatar(queuedAttacker.userId);
-            context.drawImage(avatarImage, baseAttackerAvatarX, AVATAR_MARGIN, actualAvatarWidth, actualAvatarWidth);
-            // If this is a queued attacker, write their troop counts
-            if (i > 0) {
-                const counts = `${queuedAttacker.troops}/${queuedAttacker.initialTroops}`;
-                const countsLabel = getTextLabel(counts, actualAvatarWidth, 0.75 * actualAvatarWidth);
-                context.drawImage(countsLabel, baseAttackerAvatarX, AVATAR_MARGIN + actualAvatarWidth);
-            }
-            baseAttackerAvatarX += actualAvatarWidth + AVATAR_MARGIN;
-        }
-
-        // Draw the defender avatar
-        if (defender.userId) {
-            const AVATAR_WIDTH = HEIGHT / 8;
-            const x = WIDTH - HEIGHT * (1 / 12);
-            const y = HEIGHT * (1 / 12);
-            const defenderAvatarImage = await this.getAvatar(defender.userId);
-            context.drawImage(defenderAvatarImage, x - AVATAR_WIDTH / 2, y - AVATAR_WIDTH / 2, AVATAR_WIDTH, AVATAR_WIDTH);
-        }
 
         // Draw the attacker troops
         const attackerTroopImage = await this.getTroopImage(attacker.userId);
@@ -1225,6 +1259,33 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             context.globalAlpha = 1;
         }
 
+        // Draw the attacker avatars
+        const AVATAR_WIDTH = HEIGHT / 8;
+        const AVATAR_MARGIN = HEIGHT * (1 / 12) - (AVATAR_WIDTH / 2);
+        let baseAttackerAvatarX = AVATAR_MARGIN;
+        for (let i = 0; i < conflict.attackers.length; i++) {
+            const queuedAttacker = conflict.attackers[i];
+            const actualAvatarWidth = i === 0 ? AVATAR_WIDTH : (AVATAR_WIDTH / 2);
+            const avatarImage = await this.getAvatar(queuedAttacker.userId);
+            context.drawImage(avatarImage, baseAttackerAvatarX, AVATAR_MARGIN, actualAvatarWidth, actualAvatarWidth);
+            // If this is a queued attacker, write their troop counts
+            if (i > 0) {
+                const counts = `${queuedAttacker.troops}/${queuedAttacker.initialTroops}`;
+                const countsLabel = getTextLabel(counts, actualAvatarWidth, 0.75 * actualAvatarWidth);
+                context.drawImage(countsLabel, baseAttackerAvatarX, AVATAR_MARGIN + actualAvatarWidth);
+            }
+            baseAttackerAvatarX += actualAvatarWidth + AVATAR_MARGIN;
+        }
+
+        // Draw the defender avatar
+        if (defender.userId) {
+            const AVATAR_WIDTH = HEIGHT / 8;
+            const x = WIDTH - HEIGHT * (1 / 12);
+            const y = HEIGHT * (1 / 12);
+            const defenderAvatarImage = await this.getAvatar(defender.userId);
+            context.drawImage(defenderAvatarImage, x - AVATAR_WIDTH / 2, y - AVATAR_WIDTH / 2, AVATAR_WIDTH, AVATAR_WIDTH);
+        }
+
         // Draw the title
         const titleImage = getTextLabel(`Battle for ${this.getTerritoryName(to)}`, WIDTH * (5 / 8), HEIGHT / 8, {
             font: `italic bold ${HEIGHT / 12}px serif`
@@ -1244,7 +1305,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         // Draw the image itself
         context.drawImage(conflictImage, 0, 0, WIDTH, HEIGHT);
 
-        return new AttachmentBuilder(canvas.toBuffer()).setName(`risk-conflict-${conflictId}.png`);
+        return new AttachmentBuilder(canvas.toBuffer()).setName('risk-conflict.png');
     }
 
     private getDistanceBetween(a: Coordinates, b: Coordinates): number {
@@ -1517,8 +1578,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         if (options?.invasion) {
             const attackers = options.invasion.attackers;
             // If the invasion is non-circular, render the arrows from all attackers to all defenders
-            if (options?.invasion.defender) {
-                const to = options?.invasion.defender.territoryId;
+            if (options.invasion.defender) {
+                const to = options.invasion.defender.territoryId;
                 for (const attacker of attackers) {
                     const from = attacker.territoryId;
                     const fromCoordinates = RiskGame.config.territories[from].termini[to];
@@ -1572,7 +1633,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
     }
 
     private async getTerritoryCutoutRender(territoryId: string, options?: { grayedOut?: true }): Promise<Canvas> {
-        const maskImage = await imageLoader.loadImage(`assets/risk/territories/${territoryId.toLowerCase()}.png`);
+        const maskImage = await imageLoader.loadImage(`assets/risk/cutouts/${territoryId.toLowerCase()}.png`);
         const canvas = createCanvas(maskImage.width, maskImage.height);
         const context = canvas.getContext('2d');
 
@@ -1588,7 +1649,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
     }
 
     private async getInverseTerritoryCutoutMask(territoryIds: string[]): Promise<Canvas> {
-        const maskImages = await Promise.all(territoryIds.map(async (territoryId) => imageLoader.loadImage(`assets/risk/territories/${territoryId.toLowerCase()}.png`)));
+        const maskImages = await Promise.all(territoryIds.map(async (territoryId) => imageLoader.loadImage(`assets/risk/cutouts/${territoryId.toLowerCase()}.png`)));
 
         const canvas = createCanvas(maskImages[0].width, maskImages[0].height);
         const context = canvas.getContext('2d');
@@ -1911,10 +1972,14 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     if (attackerRolls[i] > defenderRolls[i]) {
                         defender.troops--;
                         defendersLost++;
+                        this.addPlayerKills(attacker.userId, 1);
+                        this.addPlayerDeaths(defender.userId, 1);
                         rollWinners.push('attacker');
                     } else {
                         attacker.troops--;
                         attackersLost++;
+                        this.addPlayerKills(defender.userId, 1);
+                        this.addPlayerDeaths(attacker.userId, 1);
                         rollWinners.push('defender');
                     }
                 }
@@ -2039,19 +2104,16 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                             initialTroops: attacker.troops,
                             troops: attacker.troops
                         };
-                        // Send a message
-                        return {
-                            continueProcessing: true,
-                            summary: {
-                                content: `${summary}**${this.getPlayerDisplayName(attacker.userId)}** has defeated **${this.getPlayerDisplayName(defender.userId)}** at _${this.getTerritoryName(defender.territoryId)}_! `
-                                    + `Now, he must fend off the other **${attackers.length}** attacking army(s)...`,
-                                files: [conflictRender]
-                            },
-                            extraSummaries
-                        };
+                        // Add an extra summary showing the updated invasion
+                        extraSummaries.push({
+                            content: `Now, **${this.getPlayerDisplayName(attacker.userId)}** must fend off the other **${attackers.length}** attacking army(s)...`,
+                            files: [await this.renderInvasion(conflict)]
+                        });
                     }
                     // Otherwise, delete the conflict
-                    delete this.state.currentConflict;
+                    else {
+                        delete this.state.currentConflict;
+                    }
                     // Send a message
                     return {
                         continueProcessing: true,
@@ -2090,6 +2152,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 for (let i = 0; i < n; i++) {
                     const attacker = attackers[i];
                     const targetIndex = (i + 1) % n;
+                    // Prime the map to ensure to NaN operations
+                    troopsLost[targetIndex] = troopsLost[targetIndex] ?? 0;
                     const target = attackers[targetIndex];
                     const sourceRolls = attackerRolls[i];
                     const targetRolls = attackerRolls[targetIndex];
@@ -2098,7 +2162,9 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     for (let j = 0; j < numComparisons; j++) {
                         if (sourceRolls[j] > targetRolls[j]) {
                             target.troops--;
-                            troopsLost[targetIndex] = (troopsLost[targetIndex] ?? 0) + 1;
+                            troopsLost[targetIndex]++;
+                            this.addPlayerKills(attacker.userId, 1);
+                            this.addPlayerDeaths(target.userId, 1);
                             rollWinners[i][j] = 'attacker';
                         } else {
                             rollWinners[i][j] = 'neither';
@@ -2182,23 +2248,21 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             if (cyclicalAttacks) {
                 // Get the biggest attack
                 const largestAttack = getMaxKey(cyclicalAttacks, a => a.actualQuantity);
-                // Shift the array such that the largest attack is at the front
+                // Rotate the array such that the largest attack is at the front
                 // TODO: Can we guarantee this is in the right order?
                 while (cyclicalAttacks[0].id !== largestAttack.id) {
                     cyclicalAttacks.push(cyclicalAttacks.shift() as RiskPlannedAttack);
                 }
-                // cyclicalAttacks.sort((a, b) => b.actualQuantity - a.actualQuantity);
                 if (cyclicalAttacks.length === 2) {
-                    // If there's a reciprocal attack, choose the biggest one...
-                    selectedAttacks.push(...cyclicalAttacks);
-                    // The planned reciprocal attack must be discarded regardless of whether it will be symmetric
+                    // Consider the "reciprocal" attack to be the other (smaller) one
                     const reciprocalAttack = cyclicalAttacks[1];
-                    // delete this.state.plannedAttacks[reciprocalAttack.id];
                     // Handle it depending on how the quantities compare...
                     if (largestAttack.actualQuantity === reciprocalAttack.actualQuantity) {
                         // The attacks are of the same quantity, so initiate a circular attack between the two territories
+                        selectedAttacks.push(...cyclicalAttacks);
+                        // Construct summary
                         summaryContent = `**${this.getPlayerDisplayName(largestAttack.userId)}** and **${this.getPlayerDisplayName(reciprocalAttack.userId)}** `
-                            + `have launched attacks against each other with the same number of troops! A conflict will begin with two attackers no potential for territory capture...`;
+                            + `have launched attacks against each other with the same number of troops! A conflict will begin with two attackers and no potential for territory capture...`;
                     } else {
                         // One attack is larger, so initiate a standard attack and consider the smaller army the "defender"
                         selectedAttacks.push(largestAttack);
@@ -2210,7 +2274,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                         };
                         // The planned reciprocal attack must be discarded because it's been converted to a "defense"
                         delete this.state.plannedAttacks[reciprocalAttack.id];
-                        // TODO: Construct a summary and render explaining this situation
+                        // Construct summary
                         summaryContent = `**${this.getPlayerDisplayName(reciprocalAttack.userId)}** tried to launch an attack `
                             + `from _${this.getTerritoryName(reciprocalAttack.attack.from)}_ to _${this.getTerritoryName(reciprocalAttack.attack.to)}_ `
                             + `with **${reciprocalAttack.actualQuantity}** troop(s), but **${this.getPlayerDisplayName(largestAttack.userId)}** `
@@ -2219,7 +2283,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 } else if (cyclicalAttacks.length > 2) {
                     // If there's a cycle of 3+ planned attacks, initiate a circular attack (the order of attacks must be maintained, but the largest will be at the front)
                     selectedAttacks.push(...cyclicalAttacks);
-                    // TODO: Construct a summary and render explaining this situation
+                    // Construct summary
                     summaryContent = `A circular battle has broken out between **${cyclicalAttacks.length}** territories!`;
                 } else {
                     // Fallback just in case there's a 0/1-node cycle

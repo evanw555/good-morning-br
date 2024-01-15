@@ -755,6 +755,14 @@ export default class GoodMorningState {
         return this.data.event;
     }
 
+    hasEvent(): boolean {
+        return this.data.event !== undefined;
+    }
+
+    hasNextEvent(): boolean {
+        return this.data.nextEvent !== undefined;
+    }
+
     setNextEvent(nextEvent: DailyEvent): void {
         this.data.nextEvent = nextEvent;
     }
