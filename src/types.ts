@@ -19,7 +19,8 @@ export enum TimeoutType {
     ProcessGameDecisions = 'PROCESS_GAME_DECISIONS',
     GameDecisionPhase = 'GAME_DECISION_PHASE',
     // Utilities
-    ReplyToMessage = 'REPLY_TO_MESSAGE'
+    ReplyToMessage = 'REPLY_TO_MESSAGE',
+    RobertismShiftFallback = 'ROBERTISM_SHIFT_FALLBACK'
 }
 
 /**
@@ -62,6 +63,11 @@ export interface GoodMorningConfig {
     sungazers: {
         role: Snowflake,
         channel: Snowflake
+    },
+    readonly robertism?: {
+        readonly role: Snowflake,
+        readonly honoraryRole: Snowflake,
+        readonly channel: Snowflake
     },
     testingChannelId: string,
     testing?: true
@@ -217,7 +223,7 @@ export interface AbstractGameState<T> {
     turn: number
 }
 
-export interface MazeGameState extends AbstractGameState<'MAZE_GAME_STATE'> {
+export interface MazeGameState extends AbstractGameState<'MAZE'> {
     action: number,
     rows: number,
     columns: number
@@ -246,12 +252,12 @@ export interface IslandPlayerState {
     immunityGrantedBy?: Snowflake
 }
 
-export interface IslandGameState extends AbstractGameState<'ISLAND_GAME_STATE'> {
+export interface IslandGameState extends AbstractGameState<'ISLAND'> {
     numToBeEliminated: number,
     players: Record<Snowflake, IslandPlayerState>
 }
 
-export interface ArenaGameState extends AbstractGameState<'ARENA_GAME_STATE'> {
+export interface ArenaGameState extends AbstractGameState<'ARENA'> {
     // TODO: Fill this in
 }
 
@@ -279,7 +285,7 @@ export interface MasterpieceAuctionState {
     active?: true
 }
 
-export interface MasterpieceGameState extends AbstractGameState<'MASTERPIECE_GAME_STATE'> {
+export interface MasterpieceGameState extends AbstractGameState<'MASTERPIECE'> {
     readonly players: Record<Snowflake, MasterpiecePlayerState>,
     readonly pieces: Record<string, MasterpiecePieceState>,
     readonly auctions: {
@@ -337,7 +343,7 @@ export interface RiskPlannedAttack {
     actualQuantity: number
 }
 
-export interface RiskGameState extends AbstractGameState<'RISK_GAME_STATE'> {
+export interface RiskGameState extends AbstractGameState<'RISK'> {
     readonly players: Record<Snowflake, RiskPlayerState>,
     readonly territories: Record<string, RiskTerritoryState>,
     draft?: Record<Snowflake, { available?: true, timestamp: number}>,
@@ -351,7 +357,7 @@ export interface RiskGameState extends AbstractGameState<'RISK_GAME_STATE'> {
     currentConflict?: RiskConflictState
 }
 
-export interface ClassicGameState extends AbstractGameState<'CLASSIC_GAME_STATE'> {
+export interface ClassicGameState extends AbstractGameState<'CLASSIC'> {
     halloween?: true,
     // Goal as determined by a point threshold
     goal: number,
@@ -422,6 +428,7 @@ export interface RawGoodMorningState {
 
 export interface Season {
     season: number,
+    gameType?: string,
     startedOn: FullDate
     finishedOn: FullDate,
     winners: Snowflake[]
@@ -438,7 +445,13 @@ export interface GoodMorningHistory {
     seasons: Season[],
     medals: Record<Snowflake, Medals>,
     // Keyed by UserId of sungazer councilmembers, value is the number of seasons they have remaining in their term
-    sungazers: Record<Snowflake, number>
+    sungazers: Record<Snowflake, number>,
+    robertism?: {
+        // UserId of the current "Honorary Robert"
+        currentUser?: Snowflake,
+        // UserId of the next HR after the current one's time has passed
+        nextUser?: Snowflake
+    }
 }
 
 export interface Wordle {

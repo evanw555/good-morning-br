@@ -36,7 +36,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
             endDate.setDate(endDate.getDate() + 365);
         }
         return new ClassicGame({
-            type: 'CLASSIC_GAME_STATE',
+            type: 'CLASSIC',
             season,
             winners: [],
             decisions: {},

@@ -6,7 +6,7 @@ export default class ArenaGame extends AbstractGame<ArenaGameState> {
 
     static create(members: GuildMember[], season: number): ArenaGame {
         return new ArenaGame({
-            type: 'ARENA_GAME_STATE',
+            type: 'ARENA',
             season,
             winners: [],
             decisions: {},

@@ -1398,7 +1398,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         }
 
         const game = new MazeGame({
-            type: 'MAZE_GAME_STATE',
+            type: 'MAZE',
             season,
             decisions: {},
             winners: [],
@@ -1488,7 +1488,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         }
 
         const game = new MazeGame({
-            type: 'MAZE_GAME_STATE',
+            type: 'MAZE',
             season,
             winners: [],
             decisions: {},

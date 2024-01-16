@@ -61,7 +61,7 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
             };
         }
         return new MasterpieceGame({
-            type: 'MASTERPIECE_GAME_STATE',
+            type: 'MASTERPIECE',
             season,
             winners: [],
             decisions: {},

@@ -28,7 +28,7 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
             };
         }
         return new IslandGame({
-            type: 'ISLAND_GAME_STATE',
+            type: 'ISLAND',
             season,
             winners: [],
             decisions: {},

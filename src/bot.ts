@@ -363,6 +363,93 @@ const updateSungazers = async (winners: { gold?: Snowflake, silver?: Snowflake, 
     await dumpHistory();
 }
 
+const updateRobertism = async (userId: Snowflake) => {
+    // If no Robertism config is defined, abort...
+    if (!config.robertism) {
+        await logger.log('No Robertism config is defined, aborting Robertism update...');
+        return;
+    }
+    // If no Robertism info exists in the history, initialize it now
+    if (!history.robertism) {
+        history.robertism = {};
+    }
+    // If the existing HR has won again, just skip the whole process this time
+    if (history.robertism.currentUser === userId) {
+        await logger.log(`Tried to set existing HR <@${userId}> as new HR, skipping Robertism update...`);
+        return;
+    }
+    let logStatement = `**Robertism Update:**\nPrior Robertism state: \`${JSON.stringify(history.robertism)}\``;
+    // If the winner already has the standard Robert role, don't award them HR status
+    const member = await fetchMember(userId);
+    if (member && member.roles.cache.has(config.robertism.role)) {
+        await logger.log(`Winner <@${userId}> already has <@&${config.robertism.role}> role, won't queue them as next HR...`);
+    } else {
+        // Otherwise, queue them as next HR
+        history.robertism.nextUser = userId;
+    }
+    await dumpHistory();
+    // If there's an existing HR, warn them and schedule a fallback for their status to be removed
+    if (history.robertism.currentUser) {
+        await messenger.dm(history.robertism.currentUser, `Your time as an _Honorary Robert_ has come to an end, I\'ll give you **24** hours to make your final statement in <#${config.robertism.channel}>...`);
+        const in24Hours = new Date();
+        in24Hours.setHours(in24Hours.getHours() + 24);
+        await registerTimeout(TimeoutType.RobertismShiftFallback, in24Hours, { pastStrategy: PastTimeoutStrategy.Invoke });
+    }
+    // Else, just shift the HR right away
+    else {
+        await shiftHonoraryRoberts();
+    }
+    // TODO: Temp logging to see how this works out...
+    logStatement += `\nUpdated Robertism state: \`${JSON.stringify(history.robertism)}\``;
+    await logger.log(logStatement);
+}
+
+const shiftHonoraryRoberts = async () => {
+    // If no Robertism config is defined, abort...
+    if (!config.robertism) {
+        await logger.log('No Robertism config is defined, aborting HR shift...');
+        return;
+    }
+    let logStatement = `**HR Shift:**\nPrior Robertism state: \`${JSON.stringify(history.robertism)}\``;
+    // First thing's first, cancel existing timeouts to prevent a double shift
+    await cancelTimeoutsWithType(TimeoutType.RobertismShiftFallback);
+    // If no Robertism info exists in the history, initialize it now
+    if (!history.robertism) {
+        history.robertism = {};
+    }
+    // If there's an existing HR, remove his role
+    if (history.robertism.currentUser) {
+        const member = await fetchMember(history.robertism.currentUser);
+        if (member) {
+            await member.roles.remove(config.robertism.honoraryRole);
+        } else {
+            await logger.log(`Failed to fetch existing HR member <@${history.robertism.currentUser}>, cannot revoke HR role! **Manual action needed!**`);
+        }
+        // Delete info from the history state
+        delete history.robertism.currentUser;
+    }
+    // If there's a new HR, grant the role
+    if (history.robertism.nextUser) {
+        const member = await fetchMember(history.robertism.nextUser);
+        if (member) {
+            await member.roles.add(config.robertism.honoraryRole);
+        } else {
+            await logger.log(`Failed to fetch next HR member <@${history.robertism.nextUser}>, cannot grant HR role! **Manual action needed!**`);
+        }
+        // Shift the info in the history state
+        history.robertism.currentUser = history.robertism.nextUser;
+        delete history.robertism.nextUser;
+    }
+    await dumpHistory();
+    // If there is now a current HR, DM them letting them know
+    if (history.robertism.currentUser) {
+        await messenger.dm(history.robertism.currentUser, `You have been granted _Honorary Robert_ status, you may now post in <#${config.robertism.channel}>!`);
+    }
+    // TODO: Temp logging to see how this works out...
+    logStatement += `\nUpdated Robertism state: \`${JSON.stringify(history.robertism)}\``;
+    await logger.log(logStatement);
+}
+
 const advanceSeason = async (): Promise<{ gold?: Snowflake, silver?: Snowflake, bronze?: Snowflake }> => {
     // Send the final state/history to the guild owner one last time before wiping it
     if (guildOwnerDmChannel) {
@@ -1870,6 +1957,9 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             const winners = await advanceSeason();
             await sendSeasonEndMessages(goodMorningChannel, previousState);
             await updateSungazers(winners);
+            if (winners.gold) {
+                await updateRobertism(winners.gold);
+            }
             // Register the next GM timeout for next Monday
             const nextSeasonStart: Date = new Date();
             nextSeasonStart.setHours(8, 0, 0, 0);
@@ -2481,6 +2571,9 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         } else {
             await logger.log('Cannot reply to message, no message reply data provided');
         }
+    },
+    [TimeoutType.RobertismShiftFallback]: async () => {
+        await shiftHonoraryRoberts();
     }
 };
 
@@ -3582,10 +3675,14 @@ const extractMagicWord = (message: Message): string | undefined => {
 
 client.on('messageCreate', async (msg: Message): Promise<void> => {
     const userId: Snowflake = msg.author.id;
-    if (testingChannel && msg.channelId === testingChannel.id && !msg.author.bot) {
+    // First and foremost, ignore all bot messages
+    if (msg.author.bot) {
+        return;
+    }
+    if (testingChannel && msg.channelId === testingChannel.id) {
         // If message was posted in the testing channel, process as command
         await safeProcessCommands(msg);
-    } else if (goodMorningChannel && msg.channel.id === goodMorningChannel.id && !msg.author.bot) {
+    } else if (goodMorningChannel && msg.channel.id === goodMorningChannel.id) {
         const isAm: boolean = new Date().getHours() < 12;
         const isPlayerNew: boolean = !state.hasPlayer(userId);
         const isQuestion: boolean = msg.content.trim().endsWith('?');
@@ -4162,7 +4259,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 await messenger.reply(msg, 'You have brought great dishonor to this server...');
             }
         }
-    } else if (msg.channel instanceof DMChannel && !msg.author.bot) {
+    } else if (msg.channel instanceof DMChannel) {
         // Always process admin commands if using a certain prefix (only needed to override DM-based events)
         if (guildOwnerDmChannel
             && msg.channel.id === guildOwnerDmChannel.id
@@ -4266,6 +4363,12 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
         else if (guildOwnerDmChannel && msg.channel.id === guildOwnerDmChannel.id && msg.author.id === guildOwner.id) {
             await safeProcessCommands(msg);
         }
+    }
+    // Handle the HR shift if one is queued up and this is the Robertism channel
+    if (msg.channelId === config.robertism?.channel && history.robertism?.nextUser && userId === history.robertism.currentUser) {
+        await shiftHonoraryRoberts();
+        // React to the message to say goodbye
+        await reactToMessage(msg, '👋');
     }
 });
 

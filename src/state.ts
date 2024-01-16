@@ -21,22 +21,22 @@ export default class GoodMorningState {
         // TODO: Is there a better way to construct the game instance?
         if (rawState.game) {
             switch(rawState.game.type) {
-                case 'CLASSIC_GAME_STATE':
+                case 'CLASSIC':
                     this.game = new ClassicGame(rawState.game);
                     break;
-                case 'MAZE_GAME_STATE':
+                case 'MAZE':
                     this.game = new MazeGame(rawState.game);
                     break;
-                case 'ISLAND_GAME_STATE':
+                case 'ISLAND':
                     this.game = new IslandGame(rawState.game);
                     break;
-                case 'ARENA_GAME_STATE':
+                case 'ARENA':
                     this.game = new ArenaGame(rawState.game);
                     break;
-                case 'MASTERPIECE_GAME_STATE':
+                case 'MASTERPIECE':
                     this.game = new MasterpieceGame(rawState.game);
                     break;
-                case 'RISK_GAME_STATE':
+                case 'RISK':
                     this.game = new RiskGame(rawState.game);
                     break;
             }
@@ -738,6 +738,7 @@ export default class GoodMorningState {
     toHistorySeasonEntry(): Season {
         return {
             season: this.data.season,
+            gameType: this.data.game?.type,
             startedOn: this.data.startedOn,
             finishedOn: getTodayDateString(),
             winners: this.hasGame() ? this.getGame().getWinners() : []

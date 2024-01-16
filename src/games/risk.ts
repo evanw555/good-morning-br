@@ -511,7 +511,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         }
         // Return the constructed state
         return new RiskGame({
-            type: 'RISK_GAME_STATE',
+            type: 'RISK',
             season,
             winners: [],
             decisions: {},
