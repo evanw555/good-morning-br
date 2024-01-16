@@ -33,7 +33,9 @@ interface RiskConfig {
         connections: string[],
         termini: Record<string, Coordinates>
     }>,
-    colors: Record<string, string>
+    colors: Record<string, string>,
+    defaultTroopIcon: string,
+    customTroopIcons: string[]
 }
 
 export default class RiskGame extends AbstractGame<RiskGameState> {
@@ -479,7 +481,18 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             'rgb(139, 69, 19)': 'Saddle Brown',
             'rgb(210, 180, 140)': 'Tan',
             'rgb(248, 248, 255)': 'Ghost White'
-        }
+        },
+        defaultTroopIcon: 'default',
+        customTroopIcons: [
+            'cat',
+            'davidbeers',
+            'king',
+            'knight',
+            'queen',
+            'rook',
+            'sickf',
+            'soldier'
+        ]
     };
 
     private pendingColorSelections: Record<Snowflake, string>;
@@ -735,6 +748,10 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
     }
 
     private addPlayerKills(userId: Snowflake, kills: number) {
+        // Since conflicts may exist at "ownerless" territories
+        if (!this.hasPlayer(userId)) {
+            return;
+        }
         this.state.players[userId].kills = this.getPlayerKills(userId) + kills;
     }
 
@@ -743,11 +760,38 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
     }
 
     private addPlayerDeaths(userId: Snowflake, deaths: number) {
+        // Since conflicts may exist at "ownerless" territories
+        if (!this.hasPlayer(userId)) {
+            return;
+        }
         this.state.players[userId].deaths = this.getPlayerDeaths(userId) + deaths;
+    }
+
+    private hasCustomTroopIcon(userId: Snowflake): boolean {
+        return this.getPlayerTroopIcon(userId) !== RiskGame.config.defaultTroopIcon;
+    }
+
+    private getPlayerTroopIcon(userId: Snowflake | undefined): string {
+        if (!userId) {
+            return RiskGame.config.defaultTroopIcon;
+        }
+        return this.state.players[userId]?.troopIcon ?? RiskGame.config.defaultTroopIcon;
+    }
+
+    private setPlayerTroopIcon(userId: Snowflake, troopIcon: string) {
+        this.state.players[userId].troopIcon = troopIcon;
     }
 
     private getJoinedDisplayNames(userIds: Snowflake[]): string {
         return naturalJoin(userIds.map(userId => this.getPlayerDisplayName(userId)), { bold: true });
+    }
+
+    private isTroopIconClaimed(troopIcon: string): boolean {
+        return Object.values(this.state.players).some(p => p.troopIcon === troopIcon);
+    }
+
+    private getAvailableTroopIcons(): string[] {
+        return RiskGame.config.customTroopIcons.filter(troopIcon => !this.isTroopIconClaimed(troopIcon));
     }
 
     /**
@@ -957,6 +1001,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         return new AttachmentBuilder('assets/risk/map-with-background.png');
     }
 
+    // TODO: Can this grid display logic be refactored into a common util?
     private async renderAvailableColors(userId: Snowflake): Promise<AttachmentBuilder> {
         const colors = this.getAvailableColors();
 
@@ -974,6 +1019,39 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             const avatarImage = await this.getAvatar(userId, { colorOverride: color });
             context.drawImage(avatarImage, MARGIN, MARGIN, ROW_HEIGHT, ROW_HEIGHT);
             const textLabel = getTextLabel(RiskGame.config.colors[color], ROW_HEIGHT * 3, ROW_HEIGHT, { style: color });
+            context.drawImage(textLabel, ROW_HEIGHT + 2 * MARGIN, MARGIN);
+            panels[panels.length - 1].push(canvas);
+        }
+
+        // Merge all canvases in a grid
+        const composite = withDropShadow(joinCanvasesHorizontal(panels.map(p => joinCanvasesVertically(p))));
+        // Fill the background underneath everything
+        const compositeContext = composite.getContext('2d');
+        compositeContext.fillStyle = 'rgb(10,10,10)';
+        compositeContext.globalCompositeOperation = 'destination-over';
+        compositeContext.fillRect(0, 0, composite.width, composite.height);
+
+        return new AttachmentBuilder(composite.toBuffer()).setName('risk-colors.png');
+    }
+
+    // TODO: Can this grid display logic be refactored into a common util?
+    private async renderAvailableTroopIcons(): Promise<AttachmentBuilder> {
+        const troopIcons = this.getAvailableTroopIcons();
+
+        const ROW_HEIGHT = 32;
+        const MARGIN = 8;
+
+        const panels: Canvas[][] = [[]];
+        for (const troopIcon of troopIcons) {
+            // If the first panel list is full, append a new one
+            if (panels[panels.length - 1].length >= 5) {
+                panels.push([]);
+            }
+            const canvas = createCanvas(ROW_HEIGHT * 3 + MARGIN * 3, ROW_HEIGHT + 2 * MARGIN);
+            const context = canvas.getContext('2d');
+            const troopIconImage = await this.getSpecificTroopImage(troopIcon);
+            context.drawImage(troopIconImage, MARGIN, MARGIN, ROW_HEIGHT, ROW_HEIGHT);
+            const textLabel = getTextLabel(troopIcon, ROW_HEIGHT * 2, ROW_HEIGHT);
             context.drawImage(textLabel, ROW_HEIGHT + 2 * MARGIN, MARGIN);
             panels[panels.length - 1].push(canvas);
         }
@@ -1683,13 +1761,10 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         return toCircle(canvas);
     }
 
-    private async getTroopImage(userId: Snowflake | undefined, modifier?: 'added' | 'moved' | 'attacking' | 'eliminated'): Promise<Canvas | Image> {
-        // TODO: Refactor this to another method or something
-        const troopIconName = userId ? (this.state.players[userId]?.troopIcon ?? 'default') : 'default';
-
+    private async getSpecificTroopImage(troopIcon: string, modifier?: 'added' | 'moved' | 'attacking' | 'eliminated'): Promise<Image | Canvas> {
         // Load up the 2 component images
-        const baseImage = await imageLoader.loadImage(`assets/risk/troops/${troopIconName}.png`);
-        const fillImage = await imageLoader.loadImage(`assets/risk/troops/${troopIconName}_fill.png`);
+        const baseImage = await imageLoader.loadImage(`assets/risk/troops/${troopIcon}.png`);
+        const fillImage = await imageLoader.loadImage(`assets/risk/troops/${troopIcon}_fill.png`);
 
         // Initialize the canvas for the resulting troop image
         const canvas = createCanvas(baseImage.width, baseImage.height);
@@ -1728,6 +1803,10 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         context.restore();
 
         return canvas;
+    }
+
+    private async getTroopImage(userId: Snowflake | undefined, modifier?: 'added' | 'moved' | 'attacking' | 'eliminated'): Promise<Canvas | Image> {
+        return this.getSpecificTroopImage(this.getPlayerTroopIcon(userId), modifier);
     }
 
     override async beginTurn(): Promise<MessengerPayload[]> {
@@ -1885,7 +1964,34 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
     }
 
     awardPrize(userId: string, type: PrizeType, intro: string): MessengerPayload[] {
-        // TODO: Handle this
+        // If player isn't in the game yet, do nothing
+        if (!this.hasPlayer(userId)) {
+            return [];
+        }
+        switch (type) {
+            case 'submissions1':
+            case 'submissions1-tied':
+                // Don't allow players to re-select custom troop icons
+                if (this.hasCustomTroopIcon(userId)) {
+                    return [];
+                }
+                // Set the flag allowing them to pick a custom troop icon
+                this.state.players[userId].maySelectCustomTroopIcon = true;
+                // Reply with a message prompting them to select a custom troop icon
+                return [{
+                    content: `${intro}! If you'd like, you can select a custom icon for your troops to replace the standard pawn pieces`
+                        + (type === 'submissions1-tied' ? ' (but make haste, for you tied with someone this week and each icon can only be claimed once)' : ''),
+                    components: [{
+                        type: ComponentType.ActionRow,
+                        components: [{
+                            type: ComponentType.Button,
+                            style: ButtonStyle.Success,
+                            label: 'Choose Custom Icon',
+                            custom_id: 'game:chooseTroopIcon'
+                        }]
+                    }]
+                }];
+        }
         return [];
     }
 
@@ -2618,6 +2724,32 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     }
                     break;
                 }
+                case 'game:chooseTroopIcon': {
+                    // Validate that the user is allowed to pick a custom icon
+                    if (this.hasCustomTroopIcon(userId)) {
+                        throw new Error(`You already have a custom troop icon! You picked the **${this.getPlayerTroopIcon(userId)}**`);
+                    }
+                    if (!this.state.players[userId]?.maySelectCustomTroopIcon) {
+                        throw new Error('You don\'t have the privilege of picking a custom troop icon... how did you click this button?');
+                    }
+                    // Reply with a menu of all available troop icons
+                    await interaction.reply({
+                        ephemeral: true,
+                        content: 'Please select from the following options (the selection is confirmed once you click the option in the drop-down, so be careful)',
+                        files: [await this.renderAvailableTroopIcons()],
+                        components: [{
+                            type: ComponentType.ActionRow,
+                            components: [{
+                                type: ComponentType.StringSelect,
+                                custom_id: 'game:selectTroopIcon',
+                                min_values: 1,
+                                max_values: 1,
+                                options: this.getAvailableTroopIconSelectOptions()
+                            }]
+                        }]
+                    });
+                    break;
+                }
             }
         } else if (interaction.isStringSelectMenu()) {
             const customId = interaction.customId;
@@ -2873,6 +3005,31 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     // Respond with a prompt to do more
                     await interaction.reply(this.getAttackDecisionReply(userId));
                     break;
+                }
+                case 'game:selectTroopIcon': {
+                    // Validate that the user is allowed to select a custom icon
+                    if (this.hasCustomTroopIcon(userId)) {
+                        throw new Error(`You already have a custom troop icon! You picked the **${this.getPlayerTroopIcon(userId)}**`);
+                    }
+                    if (!this.state.players[userId]?.maySelectCustomTroopIcon) {
+                        throw new Error('You don\'t have the privilege of selecting a custom troop icon... how did you find this menu?');
+                    }
+                    // Validate the value
+                    const value = interaction.values[0];
+                    if (!RiskGame.config.customTroopIcons.includes(value)) {
+                        throw new Error(`**${value}** is not a valid option! (please see admin)`);
+                    }
+                    if (this.isTroopIconClaimed(value)) {
+                        throw new Error(`**${value}** has already been claimed. Pick a different one!`);
+                    }
+                    // Update the state and wipe the flag
+                    this.setPlayerTroopIcon(userId, value);
+                    delete this.state.players[userId].maySelectCustomTroopIcon;
+                    // Confirm the selection
+                    await interaction.reply({
+                        ephemeral: true,
+                        content: `Confirmed! You have selected the **${this.getPlayerTroopIcon(userId)}** as your custom troop icon`
+                    });
                     break;
                 }
             }
@@ -3280,6 +3437,13 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         return this.getAvailableColors().map(color => ({
             label: RiskGame.config.colors[color] ?? color,
             value: color
+        }));
+    }
+
+    private getAvailableTroopIconSelectOptions(): APISelectMenuOption[] {
+        return this.getAvailableTroopIcons().map(troopIcon => ({
+            label: troopIcon,
+            value: troopIcon
         }));
     }
 }

@@ -304,6 +304,7 @@ export interface RiskPlayerState {
     newTroops?: number,
     color?: string,
     troopIcon?: string,
+    maySelectCustomTroopIcon?: true,
     finalRank?: number,
     eliminator?: Snowflake,
     kills?: number,
