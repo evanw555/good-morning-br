@@ -4,8 +4,8 @@ import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Seas
 import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, canonicalizeText, getScaledPoints, generateSynopsisWithAi, getSimpleScaledPoints, text } from './util';
 import GoodMorningState from './state';
 import { addReactsSync, chance, DiscordTimestampFormat, FileStorage, generateKMeansClusters, getClockTime, getJoinedMentions, getPollChoiceKeys, getRandomDateBetween,
-    getRankString, getRelativeDateTimeString, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger,
-    naturalJoin, PastTimeoutStrategy, R9KTextBank, randChoice, randInt, shuffle, sleep, splitTextNaturally, TimeoutManager, TimeoutOptions, toCalendarDate, toDiscordTimestamp, toFixed, toLetterId } from 'evanw555.js';
+    getRankString, getRelativeDateTimeString, getSelectedNode, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger,
+    naturalJoin, PastTimeoutStrategy, prettyPrint, R9KTextBank, randChoice, randInt, shuffle, sleep, splitTextNaturally, TimeoutManager, TimeoutOptions, toCalendarDate, toDiscordTimestamp, toFixed, toLetterId } from 'evanw555.js';
 import { getProgressOfGuess, renderWordleState } from './wordle';
 import { AnonymousSubmissionsState } from './submissions';
 import ActivityTracker from './activity-tracker';
@@ -3391,8 +3391,15 @@ const processCommands = async (msg: Message): Promise<void> => {
         }
         // Return the state
         else if (sanitizedText.includes('state')) {
-            // Collapse all primitive lists into one line
-            await messenger.sendLargeMonospaced(msg.channel, state.toSpecialJson());
+            // e.g. "+state? users.123123.balance"
+            const selector: string = msg.content.replace(/\s*\+?\s*state\s*\??\s*/i, '').trim() || '';
+            if (selector) {
+                const selectedState: any = getSelectedNode(state, selector);
+                await messenger.sendLargeMonospaced(msg.channel, prettyPrint(selectedState));
+            } else {
+                // Collapse all primitive lists into one line
+                await messenger.sendLargeMonospaced(msg.channel, state.toSpecialJson());
+            }
         }
         // Log the state backup
         else if (sanitizedText.includes('backup')) {
