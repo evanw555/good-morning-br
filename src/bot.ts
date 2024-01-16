@@ -1896,7 +1896,8 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                     const arg: ReplyToMessageData = {
                         channelId: fyiMessage.channelId,
                         messageId: fyiMessage.id,
-                        content: await chooseRandomUnusedSubmissionPrompt()
+                        // If it's the first week of the season (game not initialized), stick with classic prompt
+                        content: state.hasGame() ? (await chooseRandomUnusedSubmissionPrompt()) : 'pic that goes hard'
                     };
                     await registerTimeout(TimeoutType.ReplyToMessage, getRandomDateBetween(new Date(), pollStartDate, { maxAlong: 0.8, bates: 2 }), { arg, pastStrategy: PastTimeoutStrategy.Delete });
                     // Use the delete strategy because it's not required and we want to ensure it's before the morning date
