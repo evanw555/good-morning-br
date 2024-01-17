@@ -629,6 +629,17 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
     }
 
     /**
+     * Gets a list of territory IDs representing territories adjacent to a given territory that have a different owner.
+     */
+    private getHostileTerritoryConnections(territoryId: string): string[] {
+        return this.getTerritoryConnections(territoryId).filter(otherId => this.getTerritoryOwner(otherId) !== this.getTerritoryOwner(territoryId));
+    }
+
+    private getNumHostileTerritoryConnections(territoryId: string): number {
+        return this.getHostileTerritoryConnections(territoryId).length;
+    }
+
+    /**
      * Gets a list of territory IDs with no owner.
      */
     private getOwnerlessTerritories(): string[] {
@@ -834,12 +845,20 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         return this.getNumPlayers() - this.getNumEliminatedPlayers();
     }
 
+    private getPlayerFinalRank(userId: Snowflake): number {
+        return this.state.players[userId]?.finalRank ?? Number.POSITIVE_INFINITY;
+    }
+
     private setPlayerFinalRank(userId: Snowflake, finalRank: number) {
         this.state.players[userId].finalRank = finalRank;
     }
 
+    private getPlayerFinalRankString(userId: Snowflake): string {
+        return getRankString(this.getPlayerFinalRank(userId));
+    }
+
     private getPlayerWithFinalRank(finalRank: number): Snowflake {
-        return this.getPlayers().filter(userId => this.state.players[userId].finalRank === finalRank)[0];
+        return this.getPlayers().filter(userId => this.getPlayerFinalRank(userId) === finalRank)[0];
     }
 
     /**
@@ -900,6 +919,10 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
     getOrderedPlayers(): string[] {
         // Order is determined by (1) number of territories owned, then (2) number of troops owned.
         const getSortValue = (userId) => {
+            // If the player is eliminated, sort by final rank ascending (negative to ensure this is ordered below remaining players)
+            if (this.isPlayerEliminated(userId)) {
+                return -this.getPlayerFinalRank(userId);
+            }
             return 100 * this.getNumTerritoriesForPlayer(userId) + this.getTroopsForPlayer(userId);
         };
         return this.getPlayers().sort((x, y) => getSortValue(y) - getSortValue(x));
@@ -1085,7 +1108,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
 
         // Draw the text labels in the third quarter
         context.fillStyle = 'white';
-        const finalRankString = getRankString(this.state.players[eliminatedUserId].finalRank ?? 0);
+        const finalRankString = this.getPlayerFinalRankString(eliminatedUserId);
         const rankLabel = await getTextLabel(finalRankString, WIDTH / 2, HEIGHT / 8);
         context.drawImage(rankLabel, WIDTH / 4, HEIGHT / 2);
         const nameLabel = await getTextLabel(this.getPlayerDisplayName(eliminatedUserId), WIDTH, HEIGHT / 8);
@@ -1555,6 +1578,118 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         return new AttachmentBuilder(joinCanvasesVertically(renders).toBuffer()).setName('risk-weekly.png');
     }
 
+    private async renderRosterNameCard(userId: Snowflake): Promise<Canvas> {
+        const MARGIN_WIDTH = 16;
+        const BASE_HEIGHT = 64;
+        const WIDTH = 256;
+
+        const canvas = createCanvas(WIDTH, BASE_HEIGHT + MARGIN_WIDTH);
+        const context = canvas.getContext('2d');
+
+        // Draw the separator at the top
+        context.strokeStyle = 'gray';
+        context.lineWidth = MARGIN_WIDTH / 4;
+        context.moveTo(MARGIN_WIDTH / 2 , MARGIN_WIDTH / 4);
+        context.lineTo(WIDTH - MARGIN_WIDTH / 2, MARGIN_WIDTH / 4);
+        context.stroke();
+
+        const avatarImage = await this.getAvatar(userId);
+        context.drawImage(avatarImage, 0, MARGIN_WIDTH, BASE_HEIGHT, BASE_HEIGHT);
+
+        const nameLabel = getTextLabel(this.getPlayerDisplayName(userId), 0.75 * WIDTH, BASE_HEIGHT);
+        context.drawImage(nameLabel, 0.25 * WIDTH, MARGIN_WIDTH, 0.75 * WIDTH, BASE_HEIGHT);
+
+        return canvas;
+    }
+
+    private async renderRosterStatsCard(userId: Snowflake): Promise<Canvas> {
+        const HEIGHT = 48;
+        const WIDTH = 256;
+
+        const canvas = createCanvas(WIDTH, HEIGHT);
+        const context = canvas.getContext('2d');
+
+        const ICON_WIDTH = WIDTH / 4;
+        if (this.isPlayerEliminated(userId)) {
+            // Avatar instead of num territories
+            const avatarImage = await this.getAvatar(userId);
+            context.drawImage(avatarImage, (WIDTH / 8) - (HEIGHT / 2), 0, HEIGHT, HEIGHT);
+        } else {
+            // Num territories
+            context.drawImage(getTextLabel(this.getNumTerritoriesForPlayer(userId).toString(), ICON_WIDTH, HEIGHT), 0, 0, ICON_WIDTH, HEIGHT);
+            // Num troops
+            context.drawImage(getTextLabel(this.getTroopsForPlayer(userId).toString(), ICON_WIDTH, HEIGHT), ICON_WIDTH, 0, ICON_WIDTH, HEIGHT);
+        }
+
+        // Num new troops (show as faded if zero)
+        const newTroops = this.getPlayerNewTroops(userId);
+        context.save();
+        context.globalAlpha = newTroops === 0 ? 0.25 : 1;
+        context.drawImage(getTextLabel(newTroops.toString(), ICON_WIDTH, HEIGHT), 2 * ICON_WIDTH, 0, ICON_WIDTH, HEIGHT);
+        context.restore();
+
+        if (this.isPlayerEliminated(userId)) {
+            // Final rank instead of K/D
+            context.drawImage(getTextLabel(this.getPlayerFinalRankString(userId), ICON_WIDTH, HEIGHT), 3 * ICON_WIDTH, 0, ICON_WIDTH, HEIGHT);
+        } else {
+            // K/D
+            context.drawImage(getTextLabel(`${this.getPlayerKills(userId)}/${this.getPlayerDeaths(userId)}`, ICON_WIDTH, HEIGHT), 3 * ICON_WIDTH, 0, ICON_WIDTH, HEIGHT);
+        }
+
+        return canvas;
+    }
+
+    private async renderRosterLegendCard(): Promise<Canvas> {
+        const ROW_HEIGHT = 64;
+        const HEIGHT = 0.5 * ROW_HEIGHT;
+        const WIDTH = 4 * ROW_HEIGHT;
+        const canvas = createCanvas(WIDTH, HEIGHT);
+        const context = canvas.getContext('2d');
+
+        // First, fill the background with black
+        context.fillStyle = 'black';
+        context.fillRect(0, 0, WIDTH, HEIGHT);
+
+        // Render the legend
+        const ICON_WIDTH = WIDTH / 4;
+        const ICON_HEIGHT = ROW_HEIGHT / 2;
+        // Num territories
+        const flagIcon = await imageLoader.loadImage('assets/common/icons/flag.png');
+        context.drawImage(flagIcon, 0, 0, ICON_WIDTH, ICON_HEIGHT);
+        // Num troops
+        context.drawImage(await this.getSpecificTroopImage(RiskGame.config.defaultTroopIcon), ICON_WIDTH, 0, ICON_WIDTH, ICON_HEIGHT);
+        // Num new troops
+        context.drawImage(await this.getSpecificTroopImage(RiskGame.config.defaultTroopIcon, 'added'), 2 * ICON_WIDTH, 0, ICON_WIDTH, ICON_HEIGHT);
+        // Num kills
+        context.drawImage(getTextLabel('K/D', ICON_WIDTH, ICON_HEIGHT), 3 * ICON_WIDTH, 0, ICON_WIDTH, ICON_HEIGHT);
+
+        return canvas;
+    }
+
+    private async renderRosterCard(userId: Snowflake): Promise<Canvas> {
+        const canvases: Canvas[] = [
+            await this.renderRosterNameCard(userId),
+            await this.renderRosterStatsCard(userId)
+        ];
+
+        for (const vassal of this.getPlayerVassals(userId)) {
+            canvases.push(await this.renderRosterStatsCard(vassal));
+        }
+
+        // There are any vassals, add a bit of padding at the bottom
+
+        const joinedCanvas = joinCanvasesVertically(canvases);
+        const context = joinedCanvas.getContext('2d');
+
+        context.save();
+        context.globalCompositeOperation = 'destination-over';
+        context.fillStyle = 'black';
+        context.fillRect(0, 0, joinedCanvas.width, joinedCanvas.height);
+        context.restore();
+
+        return joinedCanvas;
+    }
+
     private async renderRoster(height: number): Promise<Canvas> {
         const width = height / 4;
         const canvas = createCanvas(width, height);
@@ -1565,21 +1700,25 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
 
         const n = this.getNumPlayers();
         const orderedPlayers = this.getOrderedPlayers();
-        const ROW_HEIGHT = height / n;
-        for (let i = 0; i < n; i++) {
-            const userId = orderedPlayers[i];
-            const y = i * ROW_HEIGHT;
-            const avatarImage = await this.getAvatar(userId);
-            context.drawImage(avatarImage, 0, y, width / 4, width / 4);
-            context.font = '18px sans-serif';
-            context.fillStyle = 'white';
-            const text = this.isPlayerEliminated(userId)
-                ? `${getRankString(this.state.players[userId].finalRank ?? 0)} +${this.getPlayerNewTroops(userId)}`
-                : `${this.getNumTerritoriesForPlayer(userId)}/${this.getTroopsForPlayer(userId)} +${this.getPlayerNewTroops(userId)}`;
-            context.fillText(text, width * 0.25, y + ROW_HEIGHT / 2);
+
+        const canvases: Canvas[] = [await this.renderRosterLegendCard()];
+        for (const userId of orderedPlayers) {
+            if (!this.isPlayerEliminated(userId)) {
+                canvases.push(await this.renderRosterCard(userId));
+            }
         }
 
-        return canvas;
+        const compositeRosterCanvas = joinCanvasesVertically(canvases);
+
+        // Resize it to match the target height
+        const resizeFactor = height / compositeRosterCanvas.height;
+        const newWidth = compositeRosterCanvas.width * resizeFactor;
+        const finalCanvas = createCanvas(newWidth, height);
+        const finalContext = finalCanvas.getContext('2d');
+
+        finalContext.drawImage(compositeRosterCanvas, 0, 0, newWidth, height);
+
+        return finalCanvas;
     }
 
     private async renderMap(options?: { showRoster?: boolean, invasion?: RiskConflictState, additions?: Record<string, number>, movements?: RiskMovementData[] }): Promise<Canvas> {
@@ -1884,15 +2023,15 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 const possibleAttackTerritories = this.getValidAttackSourceTerritoriesForPlayer(userId);
                 if (this.state.attackDecisions && possibleAttackTerritories.length > 0) {
                     const attacks: RiskMovementData[] = [];
-                    for (const territoryId of possibleAttackTerritories) {
-                        const targets = this.getTerritoryConnections(territoryId).filter(otherId => this.getTerritoryOwner(otherId) !== userId);
-                        const target = randChoice(...targets); // getMinKey(shuffle(targets), (territoryId) => this.getTerritoryTroops(territoryId));
-                        const p = 1; // this.getTerritoryTroops(territoryId) > 5 ? 1 : (this.getTerritoryTroops(territoryId) >= this.getTerritoryTroops(target) ? 0.5 : 0.25);
+                    for (const from of possibleAttackTerritories) {
+                        const targets = this.getTerritoryConnections(from).filter(otherId => this.getTerritoryOwner(otherId) !== userId);
+                        const to = getMinKey(shuffle(targets), (territoryId) => this.getTerritoryTroops(territoryId));
+                        const p = 0.5 * this.getTerritoryTroops(from) / this.getTerritoryTroops(to);
                         if (chance(p)) {
                             attacks.push({
-                                from: territoryId,
-                                to: target,
-                                quantity: randInt(1, this.getPromisedTerritoryTroops(territoryId))
+                                from,
+                                to,
+                                quantity: randInt(1, this.getPromisedTerritoryTroops(from))
                             });
                         }
                     }
@@ -1901,12 +2040,13 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 // Choose movements
                 const possibleMovementTerritories = this.getValidMovementSourceTerritoriesForPlayer(userId);
                 if (this.state.moveDecisions && possibleMovementTerritories.length > 0) {
-                    const source = randChoice(...possibleMovementTerritories);
-                    const destination = randChoice(...this.getTerritoryConnections(source).filter(otherId => this.getTerritoryOwner(otherId) === userId));
+                    const from = getMinKey(shuffle(possibleMovementTerritories), (territoryId) => this.getNumHostileTerritoryConnections(territoryId));
+                    const possibleDestinations = this.getTerritoryConnections(from).filter(otherId => this.getTerritoryOwner(otherId) === userId);
+                    const to = getMaxKey(shuffle(possibleDestinations), (territoryId) => this.getNumHostileTerritoryConnections(territoryId));
                     this.state.moveDecisions[userId] = {
-                        from: source,
-                        to: destination,
-                        quantity: randInt(1, this.getTerritoryTroops(source))
+                        from,
+                        to,
+                        quantity: randInt(1, this.getTerritoryTroops(from))
                     };
                 }
             }
@@ -2140,7 +2280,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                             summary: {
                                 content: `${summary}**${this.getPlayerDisplayName(defender.userId)}** has fended off the attacking army from _${this.getTerritoryName(attacker.territoryId)}_! `
                                     + `**${attackers.length}** army(s) to go...`,
-                                files: [conflictRender]
+                                files: [conflictRender],
+                                flags: MessageFlags.SuppressNotifications
                             }
                         };
                     }
@@ -2153,7 +2294,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                         continueProcessing: true,
                         summary: {
                             content: `${summary}**${this.getPlayerDisplayName(defender.userId)}** has successfully fended off **${this.getPlayerDisplayName(attacker.userId)}** at _${this.getTerritoryName(defender.territoryId)}_!`,
-                            files: [conflictRender]
+                            files: [conflictRender],
+                            flags: MessageFlags.SuppressNotifications
                         }
                     };
                 }
@@ -2213,7 +2355,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                         // Add an extra summary showing the updated invasion
                         extraSummaries.push({
                             content: `Now, **${this.getPlayerDisplayName(attacker.userId)}** must fend off the other **${attackers.length}** attacking army(s)...`,
-                            files: [await this.renderInvasion(conflict)]
+                            files: [await this.renderInvasion(conflict)],
+                            flags: MessageFlags.SuppressNotifications
                         });
                     }
                     // Otherwise, delete the conflict
@@ -2225,7 +2368,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                         continueProcessing: true,
                         summary: {
                             content: `${summary}**${this.getPlayerDisplayName(attacker.userId)}** has defeated **${this.getPlayerDisplayName(defender.userId)}** at _${this.getTerritoryName(defender.territoryId)}_!`,
-                            files: [conflictRender]
+                            files: [conflictRender],
+                            flags: MessageFlags.SuppressNotifications
                         },
                         extraSummaries
                     };
@@ -2237,7 +2381,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     continueProcessing: true,
                     summary: {
                         content: `${summary}**${attacker.troops}** attacker troops remaining vs **${defender.troops}** defending...`,
-                        files: [conflictRender]
+                        files: [conflictRender],
+                        flags: MessageFlags.SuppressNotifications
                     }
                 };
             }
@@ -2292,7 +2437,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                         continueProcessing: true,
                         summary: {
                             content: 'One army has been reduced to zero troops! The conflict is now over',
-                            files: [conflictRender]
+                            files: [conflictRender],
+                            flags: MessageFlags.SuppressNotifications
                         }
                     };
                 }
@@ -2301,7 +2447,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     continueProcessing: true,
                     summary: {
                         content: 'The circular conflict rages on!',
-                        files: [conflictRender]
+                        files: [conflictRender],
+                        flags: MessageFlags.SuppressNotifications
                     }
                 };
             }
@@ -2333,7 +2480,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 continueProcessing: true,
                 summary: {
                     content: `Processed attack decisions into **${i}** attacks...`,
-                    files: [await this.renderMovements(Object.values(this.state.plannedAttacks ?? {}).map(a => a.attack))]
+                    files: [await this.renderMovements(Object.values(this.state.plannedAttacks ?? {}).map(a => a.attack))],
+                    flags: MessageFlags.SuppressNotifications
                 }
             };
         }
@@ -2515,7 +2663,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 continueProcessing: true,
                 summary: {
                     content: summaryContent,
-                    files: [await this.renderInvasion(this.state.currentConflict)]
+                    files: [await this.renderInvasion(this.state.currentConflict)],
+                    flags: MessageFlags.SuppressNotifications
                 }
             };
         }
@@ -2554,7 +2703,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     continueProcessing: false,
                     summary: {
                         content: 'Troops were moved!',
-                        files: [await this.renderMovements(actualMovements)]
+                        files: [await this.renderMovements(actualMovements)],
+                        flags: MessageFlags.SuppressNotifications
                     }
                 };
             }
