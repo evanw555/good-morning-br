@@ -329,6 +329,23 @@ export function drawBackground(context: NodeCanvasRenderingContext2D, image: Can
     context.restore();
 }
 
+// TODO: Can we move this to a common library?
+// TODO: This isn't perfect, can it be improved?
+export function quantify(quantity: number, noun: string, options?: { adjective?: string }): string {
+    let result = `**${quantity}**`;
+    if (options?.adjective) {
+        result += ` ${options.adjective}`;
+    }
+    if (quantity === 1) {
+        result += ` ${noun}`;
+    } else if (noun.endsWith('y')) {
+        result += ` ${noun.replace(/y$/, 'ies')}`;
+    } else {
+        result += ` ${noun}s`;
+    }
+    return result;
+}
+
 /**
  * Generates text with a config-less language generator object.
  */

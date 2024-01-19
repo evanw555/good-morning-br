@@ -3,7 +3,7 @@ import { DecisionProcessingResult, GamePlayerAddition, MessengerPayload, PrizeTy
 import AbstractGame from "./abstract-game";
 import { Canvas, Image, createCanvas } from "canvas";
 import { DiscordTimestampFormat, chance, findCycle, getDateBetween, getJoinedMentions, getRankString, joinCanvasesHorizontal, joinCanvasesVertically, naturalJoin, randChoice, randInt, shuffle, shuffleWithDependencies, toCircle, toDiscordTimestamp, toFixed } from "evanw555.js";
-import { getMinKey, getMaxKey, drawTextCentered, getTextLabel, withDropShadow, drawBackground } from "../util";
+import { getMinKey, getMaxKey, drawTextCentered, getTextLabel, withDropShadow, drawBackground, quantify } from "../util";
 
 import logger from "../logger";
 import imageLoader from "../image-loader";
@@ -507,20 +507,26 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
     }
 
     static create(members: GuildMember[], season: number): RiskGame {
-        // Construct the players map
-        const players: Record<Snowflake, RiskPlayerState> = {};
-        for (const member of members) {
-            players[member.id] = {
-                displayName: member.displayName,
-                points: 0
-            };
-        }
         // Construct the territories map
         const territories: Record<string, RiskTerritoryState> = {};
         for (const territoryId of Object.keys(RiskGame.config.territories)) {
             territories[territoryId] = {
                 troops: 0
             };
+        }
+        // Construct the players map (capped at 1 for each territory)
+        const maxPlayers = Object.keys(territories).length;
+        const players: Record<Snowflake, RiskPlayerState> = {};
+        for (let i = 0; i < members.length; i++) {
+            const member = members[i];
+            if (i < maxPlayers) {
+                players[member.id] = {
+                    displayName: member.displayName,
+                    points: 0
+                };
+            } else {
+                void logger.log(`Refusing to add player **${member.displayName}** to initial game state (index **${i}**, max **${maxPlayers}** players)`);
+            }
         }
         // Return the constructed state
         return new RiskGame({
@@ -548,9 +554,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
     override getInstructionsText(): string {
         // If draft data is present, let players know who's drafting when
         if (this.state.draft) {
-            // TODO: Determine draft order
             return 'Later this morning, you will all be vying for a starting location on the map! Your draft order is determined by your weekly points:\n'
-                + this.getSortedDraftEntries().map(entry => `- **${this.getPlayerDisplayName(entry.userId)}** ${toDiscordTimestamp(entry.date, DiscordTimestampFormat.ShortTime)}`).join('\n');
+                + this.getSortedDraftEntries().map(entry => `- ${toDiscordTimestamp(entry.date, DiscordTimestampFormat.ShortTime)} **${this.getPlayerDisplayName(entry.userId)}**`).join('\n');
         }
         return 'Place your troops, attack your opponents, and fortify your defenses!';
     }
@@ -644,6 +649,10 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
      */
     private getOwnerlessTerritories(): string[] {
         return this.getTerritories().filter(territoryId => !this.getTerritoryOwner(territoryId));
+    }
+
+    private getNumOwnerlessTerritories(): number {
+        return this.getOwnerlessTerritories().length;
     }
 
     /**
@@ -902,6 +911,9 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                         }]
                     }]
                 }];
+            } else {
+                // Everyone has completed the draft, so no reminder message
+                return [];
             }
         }
         return super.onDecisionPreNoon();
@@ -941,6 +953,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
 
     override addLatePlayers(players: GamePlayerAddition[]): MessengerPayload[] {
         const lateAdditions: string[] = [];
+        // The players passed in are ordered by points, so the best late players get priority
         for (const { userId, displayName, points } of players) {
             // If adding right before the beginning of week 2 (during week 1), assign this player to a random free territory (if any exist)
             if (this.getTurn() === 1) {
@@ -1980,10 +1993,20 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             this.state.moveDecisions = {};
         }
 
+        const messengerPayloads: MessengerPayload[] = [];
+
         // If starting the second turn, add troops to each remaining unclaimed territory so players can fight for it
         if (this.getTurn() === 2) {
-            for (const territoryId of this.getOwnerlessTerritories()) {
-                this.addTerritoryTroops(territoryId, 3);
+            const DEFAULT_OWNERLESS_TROOPS = 3;
+            const ownerlessTerritoryIds = this.getOwnerlessTerritories();
+            // Add troops to the remaining ownerless ones
+            for (const territoryId of ownerlessTerritoryIds) {
+                this.addTerritoryTroops(territoryId, DEFAULT_OWNERLESS_TROOPS);
+            }
+            // If there were any ownerless ones, add a special message indicating this
+            if (ownerlessTerritoryIds.length > 0) {
+                messengerPayloads.push(`As for the remaining ${quantify(ownerlessTerritoryIds.length, 'territory', { adjective: 'unclaimed' })}, `
+                    + `I've designated these as _NPC territories_ and given ${quantify(DEFAULT_OWNERLESS_TROOPS, 'troop')} to each!`);
             }
         }
 
@@ -2070,9 +2093,11 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         }
 
         // Show a chart indicating how many troops were awarded this week
-        return [{
+        messengerPayloads.push({
             files: [await this.renderWeeklyPoints(weeklyPointOrderedPlayers.map(userId => ({ userId, points: weeklyPoints[userId], troops: weeklyTroops[userId], extraTroops: weeklyExtraTroops[userId] })))]
-        }];
+        });
+
+        return messengerPayloads;
     }
 
     override async endTurn(): Promise<MessengerPayload[]> {
@@ -2080,6 +2105,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         delete this.state.addDecisions;
         delete this.state.attackDecisions;
         delete this.state.moveDecisions;
+        delete this.state.plannedAttacks;
 
         // TODO: Return something meaningful
         return super.endTurn();
@@ -2185,10 +2211,20 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             }
             // Else, wipe the draft data and end processing
             delete this.state.draft;
-            return {
-                continueProcessing: false,
-                summary: 'Alright, everyone\'s settled in! Any remaining unclaimed territories will be doled out randomly to new players who participate before next weekend, when the bloodshed begins...'
-            };
+            // If there are any remaining territories, let the players know they can still be claimed
+            if (this.getNumOwnerlessTerritories() === 0) {
+                return {
+                    continueProcessing: false,
+                    summary: 'Looks like everyone is settled in! Next week, the bloodshed will begin...'
+                };
+            } else {
+                return {
+                    continueProcessing: false,
+                    // TODO: Pluralize this dynamically
+                    summary: `Alright, everyone\'s settled in! There however are still **${this.getNumOwnerlessTerritories()}** unclaimed territories. `
+                        + 'These will be doled out randomly to new players who participate before next weekend, when the bloodshed begins...'
+                };
+            }
         }
         // If there are pending add decisions, process them
         if (this.state.addDecisions) {
@@ -2296,7 +2332,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                             continueProcessing: true,
                             summary: {
                                 content: `${summary}**${this.getPlayerDisplayName(defender.userId)}** has fended off the attacking army from _${this.getTerritoryName(attacker.territoryId)}_! `
-                                    + `**${attackers.length}** army(s) to go...`,
+                                    + quantify(attackers.length, 'army')
+                                    + ` to go...`,
                                 files: [conflictRender],
                                 flags: MessageFlags.SuppressNotifications
                             }
@@ -2342,7 +2379,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                         extraSummaries.push({
                             content: `**${this.getPlayerDisplayName(defender.userId)}** has been eliminated, finishing the season in **${getRankString(finalRank)}** place! `
                                 + `This player is now a vassal of **${this.getPlayerDisplayName(attacker.userId)}**`
-                                + (inheritedVassals.length === 0 ? '' : `, who hereby inherits their **${inheritedVassals.length}** vassal(s)`),
+                                + (inheritedVassals.length === 0 ? '' : `, who hereby inherits their ${quantify(inheritedVassals.length, 'vassal')}`),
                             files: [await this.renderElimination(defender.userId, attacker.userId, inheritedVassals)]
                         });
                         // Delete their color and assign them to the attacker's team
@@ -2371,7 +2408,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                         };
                         // Add an extra summary showing the updated invasion
                         extraSummaries.push({
-                            content: `Now, **${this.getPlayerDisplayName(attacker.userId)}** must fend off the other **${attackers.length}** attacking army(s)...`,
+                            content: `Now, **${this.getPlayerDisplayName(attacker.userId)}** must fend off the other ${quantify(attackers.length, 'army', { adjective: 'attacking' })}...`,
                             files: [await this.renderInvasion(conflict)],
                             flags: MessageFlags.SuppressNotifications
                         });
@@ -2397,7 +2434,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 return {
                     continueProcessing: true,
                     summary: {
-                        content: `${summary}**${attacker.troops}** attacker troops remaining vs **${defender.troops}** defending...`,
+                        content: `${summary}${quantify(attacker.troops, 'troop', { adjective: 'attacker' })}** remaining vs **${defender.troops}** defending...`,
                         files: [conflictRender],
                         flags: MessageFlags.SuppressNotifications
                     }
@@ -2547,8 +2584,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                         // Construct summary
                         summaryContent = `**${this.getPlayerDisplayName(reciprocalAttack.userId)}** tried to launch an attack `
                             + `from _${this.getTerritoryName(reciprocalAttack.attack.from)}_ to _${this.getTerritoryName(reciprocalAttack.attack.to)}_ `
-                            + `with **${reciprocalAttack.actualQuantity}** troop(s), but **${this.getPlayerDisplayName(largestAttack.userId)}** `
-                            + `launched an even larger counter-attack with **${largestAttack.actualQuantity}** troops!`;
+                            + `with ${quantify(reciprocalAttack.actualQuantity, 'troop')}, but **${this.getPlayerDisplayName(largestAttack.userId)}** `
+                            + `launched an even larger counter-attack with ${quantify(largestAttack.actualQuantity, 'troop')}!`;
                     }
                 } else if (cyclicalAttacks.length > 2) {
                     // If there's a cycle of 3+ planned attacks, initiate a circular attack (the order of attacks must be maintained, but the largest will be at the front)
@@ -2600,7 +2637,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 if (parallelAttacks.length === 1) {
                     // One single attack by one player
                     summaryContent = `**${this.getPlayerDisplayName(largestAttack.userId)}** has staged an attack from `
-                        + `_${this.getTerritoryName(largestAttack.attack.from)}_ to _${this.getTerritoryName(largestAttack.attack.to)}_ with **${largestAttack.actualQuantity}** troop(s)!`;
+                        + `_${this.getTerritoryName(largestAttack.attack.from)}_ to _${this.getTerritoryName(largestAttack.attack.to)}_ with ${quantify(largestAttack.actualQuantity, 'troop')}!`;
                 } else if (parallelAttacks.every(a => a.userId === largestAttack.userId)) {
                     // Special case where one user launches all the attacks
                     summaryContent += `**${this.getPlayerDisplayName(largestAttack.userId)}** has begun a **${parallelAttacks.length}**-pronged invasion of _${this.getTerritoryName(selectedDefender.territoryId)}_!`;
@@ -2611,7 +2648,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 } else {
                     // Three or more parallel attacks by two or more players
                     summaryContent = `**${parallelAttacks.length}** territories have launched attacks against **${this.getPlayerDisplayName(selectedDefender.userId)}** at _${this.getTerritoryName(selectedDefender.territoryId)}_! `
-                        + ` **${this.getPlayerDisplayName(largestAttack.userId)}** will go first, having the largest army of **${largestAttack.actualQuantity}** troop(s) from _${this.getTerritoryName(largestAttack.attack.from)}_`;
+                        + ` **${this.getPlayerDisplayName(largestAttack.userId)}** will go first, having the largest army of ${quantify(largestAttack.actualQuantity, 'troop')} from _${this.getTerritoryName(largestAttack.attack.from)}_`;
                 }
             }
             // Validate that the chosen planned attacks actually exist
@@ -2628,7 +2665,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 const { from, to, quantity } = attack.attack;
                 // Log in the case of adjusted quantity
                 if (quantity !== actualQuantity) {
-                    void logger.log(`<@${userId}> tried to attack _${this.getTerritoryName(to)}_ with **${quantity}** troop(s) `
+                    void logger.log(`<@${userId}> tried to attack _${this.getTerritoryName(to)}_ with ${quantify(quantity, 'troop')} `
                         + `but _${this.getTerritoryName(from)}_ only has **${this.getTerritoryTroops(from)}**, so only attacking with **${actualQuantity}**`);
                 }
                 // Ensure there are enough troops to launch a valid attack
@@ -2694,7 +2731,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     // Since the territory may have lost troops during the attack phase, only move as many as is possible
                     const actualQuantity = Math.min(data.quantity, this.getTerritoryTroops(data.from) - 1);
                     if (actualQuantity !== data.quantity) {
-                        void logger.log(`<@${userId}> tried to move **${data.quantity}** troop(s) from _${this.getTerritoryName(data.from)}_ to _${this.getTerritoryName(data.to)}_ `
+                        void logger.log(`<@${userId}> tried to move ${quantify(data.quantity, 'troop')} from _${this.getTerritoryName(data.from)}_ to _${this.getTerritoryName(data.to)}_ `
                             + `but _${this.getTerritoryName(data.from)}_ only has **${this.getTerritoryTroops(data.from)}**, so only moving with **${actualQuantity}**`);
                     }
                     this.addTerritoryTroops(data.from, -actualQuantity);
@@ -3211,7 +3248,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         const newTroops = this.getPlayerNewTroops(userId);
         const additionsRemaining = newTroops - pendingAdditions.length;
         // Construct the message
-        let content = `You have **${newTroops}** new troop(s) to deploy.`;
+        let content = `You have ${quantify(newTroops, 'troop', { adjective: 'new' })} to deploy.`;
         if (pendingAdditions.length > 0) {
             content += ' You\'ve made the following placements:\n' + this.getAddDecisionStrings(userId).join('\n');
         }
@@ -3545,7 +3582,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
     private getAttackDecisionStrings(userId: Snowflake): string[] {
         if (this.state.attackDecisions) {
             const attacks = (this.state.attackDecisions[userId] ?? []);
-            return attacks.map(a => `- Attack _${this.getTerritoryName(a.to)}_ with **${a.quantity}** troop(s) from _${this.getTerritoryName(a.from)}_`);
+            return attacks.map(a => `- Attack _${this.getTerritoryName(a.to)}_ with ${quantify(a.quantity, 'troop')} from _${this.getTerritoryName(a.from)}_`);
         }
         return [];
     }
@@ -3554,7 +3591,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         if (this.state.moveDecisions) {
             const moveData = this.state.moveDecisions[userId];
             if (moveData) {
-                return [`- Move **${moveData.quantity}** troop(s) from _${this.getTerritoryName(moveData.from)}_ to _${this.getTerritoryName(moveData.to)}_`];
+                return [`- Move ${quantify(moveData.quantity, 'troop')} from _${this.getTerritoryName(moveData.from)}_ to _${this.getTerritoryName(moveData.to)}_`];
             }
         }
         return [];
@@ -3572,9 +3609,9 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 }
                 const troops = this.getTerritoryTroops(territoryId);
                 if (troops) {
-                    result.push(`${troops} troop(s)`);
+                    result.push(quantify(troops, 'troop'));
                 }
-                result.push(`${this.getNumTerritoryConnections(territoryId)} neighbor(s)`);
+                result.push(quantify(this.getNumTerritoryConnections(territoryId), 'neighbor'));
                 return result.join(', ');
             })()
         }));
@@ -3588,13 +3625,13 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 const result: string[] = [];
                 const troops = this.getTerritoryTroops(territoryId);
                 if (troops) {
-                    result.push(`${troops} troop(s)`);
+                    result.push(quantify(troops, 'troop'));
                 }
                 const troopsToBeAdded = this.getTerritoryTroopsToBeAdded(territoryId);
                 if (troopsToBeAdded) {
                     result.push(`${troopsToBeAdded} to be added`)
                 }
-                result.push(`${this.getNumTerritoryConnections(territoryId)} neighbor(s)`);
+                result.push(quantify(this.getNumTerritoryConnections(territoryId), 'neighbor'));
                 return result.join(', ');
             })()
         }));

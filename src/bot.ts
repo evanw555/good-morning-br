@@ -1104,6 +1104,8 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
                 });
             }
         }
+        // Make sure the late additions are added in order of descending points (some games have a player cap)
+        gamePlayerAdditions.sort((x, y) => y.points - x.points);
         // Process the late additions and keep track of the response payload
         const addPlayersMessengerPayloads = state.getGame().addLatePlayers(gamePlayerAdditions);
         extraGameMessages.push(...addPlayersMessengerPayloads);

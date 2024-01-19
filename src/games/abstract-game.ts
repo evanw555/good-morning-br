@@ -143,7 +143,14 @@ export default abstract class AbstractGame<T extends GameState> {
     }
 
     abstract hasPlayer(userId: Snowflake): boolean
+
+    /**
+     * Hook for adding players after the game has already started.
+     * Note that this is called weekly before the "begin turn" hook, so note that the turn counter will show the previous week's number.
+     * @param players List of players to add, ordered by points descending
+     */
     abstract addLatePlayers(players: GamePlayerAddition[]): MessengerPayload[]
+
     abstract updatePlayer(member: GuildMember): void
     abstract removePlayer(userId: Snowflake): void
 
