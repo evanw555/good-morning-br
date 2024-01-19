@@ -112,7 +112,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 ],
                 connections: ['A', 'E', 'I'],
                 termini: {
-                    A: { x: 231, y: 106 },
+                    A: { x: 231, y: 126 },
                     E: { x: 306, y: 191 },
                     I: { x: 226, y: 336 }
                 }
@@ -423,7 +423,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 termini: {
                     R: { x: 432, y: 558 },
                     V: { x: 387, y: 550 },
-                    Y: { x: 433, y: 570 },
+                    Y: { x: 389, y: 595 },
                     X: { x: 451, y: 574 }
                 }
             },
@@ -451,7 +451,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 ],
                 connections: ['W'],
                 termini: {
-                    W: { x: 164, y: 686 }
+                    W: { x: 180, y: 657 }
                 }
             }
         },
@@ -1804,7 +1804,20 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     this.renderArrow(context, fromCoordinates, toCoordinates);
                 }
             }
-            // Else, render the arrows between attackers
+            // Else if the cycle consists of 2 attackers, draw a two-headed arrow
+            else if (attackers.length === 2) {
+                const from = attackers[0].territoryId;
+                const to = attackers[1].territoryId;
+                const fromCoordinates = RiskGame.config.territories[from].termini[to];
+                const toCoordinates = RiskGame.config.territories[to].termini[from];
+                const midCoordinates = {
+                    x: Math.round((fromCoordinates.x + toCoordinates.x) / 2),
+                    y: Math.round((fromCoordinates.y + toCoordinates.y) / 2)
+                };
+                this.renderArrow(context, midCoordinates, fromCoordinates);
+                this.renderArrow(context, midCoordinates, toCoordinates);
+            }
+            // Else, render the arrows between the 3+ attackers
             else {
                 for (let i = 0; i < attackers.length; i++) {
                     // TODO: Validate that this is going in the correct order
