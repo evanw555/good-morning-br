@@ -1653,28 +1653,12 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
     }
 
     private async renderRosterLegendCard(): Promise<Canvas> {
-        const ROW_HEIGHT = 64;
-        const HEIGHT = 0.5 * ROW_HEIGHT;
-        const WIDTH = 4 * ROW_HEIGHT;
-        const canvas = createCanvas(WIDTH, HEIGHT);
+        const legendImage = await imageLoader.loadImage('assets/risk/rosterlegend.png');
+
+        const canvas = createCanvas(legendImage.width, legendImage.height);
         const context = canvas.getContext('2d');
 
-        // First, fill the background with black
-        context.fillStyle = 'black';
-        context.fillRect(0, 0, WIDTH, HEIGHT);
-
-        // Render the legend
-        const ICON_WIDTH = WIDTH / 4;
-        const ICON_HEIGHT = ROW_HEIGHT / 2;
-        // Num territories
-        const flagIcon = await imageLoader.loadImage('assets/common/icons/flag.png');
-        context.drawImage(flagIcon, 0, 0, ICON_WIDTH, ICON_HEIGHT);
-        // Num troops
-        context.drawImage(await this.getSpecificTroopImage(RiskGame.config.defaultTroopIcon), ICON_WIDTH, 0, ICON_WIDTH, ICON_HEIGHT);
-        // Num new troops
-        context.drawImage(await this.getSpecificTroopImage(RiskGame.config.defaultTroopIcon, 'added'), 2 * ICON_WIDTH, 0, ICON_WIDTH, ICON_HEIGHT);
-        // Num kills
-        context.drawImage(getTextLabel('K/D', ICON_WIDTH, ICON_HEIGHT), 3 * ICON_WIDTH, 0, ICON_WIDTH, ICON_HEIGHT);
+        context.drawImage(legendImage, 0, 0);
 
         return canvas;
     }
@@ -1688,8 +1672,6 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         for (const vassal of this.getPlayerVassals(userId)) {
             canvases.push(await this.renderRosterStatsCard(vassal));
         }
-
-        // There are any vassals, add a bit of padding at the bottom
 
         const joinedCanvas = joinCanvasesVertically(canvases);
         const context = joinedCanvas.getContext('2d');
