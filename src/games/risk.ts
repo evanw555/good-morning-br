@@ -1858,6 +1858,10 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         return new AttachmentBuilder((await this.renderMap({ movements })).toBuffer()).setName('risk-movements.png');
     }
 
+    private async renderBasicMap(): Promise<AttachmentBuilder> {
+        return new AttachmentBuilder((await this.renderMap()).toBuffer()).setName('risk-map.png');
+    }
+
     async renderState(options?: { showPlayerDecision?: string | undefined; seasonOver?: boolean | undefined; admin?: boolean | undefined; } | undefined): Promise<Buffer> {
         return (await this.renderMap({ showRoster: true })).toBuffer();
     }
@@ -2999,9 +3003,10 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                         content: `You have selected _${this.getTerritoryName(territoryId)}_!`
                     });
                     // Reply for the entire channel to see
+                    const selectionPhrase = randChoice('has set up camp at', 'has selected', 'has posted up at', 'has set up shop at', 'chose', 'has chosen', 'is starting at');
                     return [{
-                        content: `<@${userId}> has set up camp at _${this.getTerritoryName(territoryId)}_!`,
-                        files: [await this.renderState()]
+                        content: `<@${userId}> ${selectionPhrase} _${this.getTerritoryName(territoryId)}_!`,
+                        files: [await this.renderBasicMap()]
                     }];
                 }
                 case 'game:selectAdd': {
