@@ -2906,6 +2906,14 @@ client.on('interactionCreate', async (interaction): Promise<void> => {
         const rootCustomId = customIdSegments[0];
         // TODO: Temp logic to simulate jumping forward to timeouts
         if (rootCustomId === 'invokeTimeout') {
+            // Validate that this user is the guild owner
+            if (interaction.user.id !== guild.ownerId) {
+                await interaction.reply({
+                    ephemeral: true,
+                    content: 'Only the guild owner can use this button. Begone!'
+                });
+                return;
+            }
             await interaction.reply({
                 ephemeral: true,
                 content: 'Invoking...'
