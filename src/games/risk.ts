@@ -2495,7 +2495,6 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             // Find any possible cyclical attacks
             const selectedAttacks: RiskPlannedAttack[] = [];
             let selectedDefender: RiskConflictAgentData | undefined;
-            // let symmetricAttack: RiskPlannedAttack | undefined = undefined;
             let summaryContent = '';
             const dependencies = this.getPlannedAttackDependencyMap();
             const cyclicalAttacks = findCycle(dependencies, { randomize: true })?.map(id => plannedAttacks[id]);
