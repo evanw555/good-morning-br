@@ -2419,7 +2419,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 return {
                     continueProcessing: true,
                     summary: {
-                        content: `${summary}${quantify(attacker.troops, 'troop', { adjective: 'attacker' })}** remaining vs **${defender.troops}** defending...`,
+                        content: `${summary}${quantify(attacker.troops, 'troop', { adjective: 'attacker' })} remaining vs **${defender.troops}** defending...`,
                         files: [conflictRender],
                         flags: MessageFlags.SuppressNotifications
                     }
@@ -3366,11 +3366,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         if (!pendingMove.quantity) {
             // Consider how many troops are promised to be in a particular territory
             const numTroops = this.getPromisedTerritoryTroops(pendingMove.from);
-            const quantityValues: string[] = [];
-            for (let i = 1; i < numTroops; i++) {
-                quantityValues.push(`${i}`);
-            }
-            if (quantityValues.length > 0) {
+            const options = this.getQuantitySelectOptions(numTroops);
+            if (options.length > 0) {
                 return {
                     ephemeral: true,
                     content: `How many troops would you like to move from _${this.getTerritoryName(pendingMove.from)}_ to _${this.getTerritoryName(pendingMove.to)}_?`,
@@ -3382,10 +3379,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                             placeholder: 'Select quantity...',
                             min_values: 1,
                             max_values: 1,
-                            options: quantityValues.map(x => ({
-                                value: x,
-                                label: x
-                            }))
+                            options
                         }]
                     }]
                 };
@@ -3503,11 +3497,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         if (!pendingAttack.quantity) {
             // Consider how many troops are promised to be in a particular territory
             const numTroops = this.getPromisedTerritoryTroops(pendingAttack.from);
-            const quantityValues: string[] = [];
-            for (let i = 1; i < numTroops; i++) {
-                quantityValues.push(`${i}`);
-            }
-            if (quantityValues.length > 0) {
+            const options = this.getQuantitySelectOptions(numTroops);
+            if (options.length > 0) {
                 return {
                     ephemeral: true,
                     content: `How many troops from _${this.getTerritoryName(pendingAttack.from)}_ will be attacking _${this.getTerritoryName(pendingAttack.to)}_? (one must be left behind)`,
@@ -3519,10 +3510,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                             placeholder: 'Select quantity...',
                             min_values: 1,
                             max_values: 1,
-                            options: quantityValues.map(x => ({
-                                value: x,
-                                label: x
-                            }))
+                            options
                         }]
                     }]
                 };
@@ -3617,6 +3605,25 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             }
         }
         return false;
+    }
+
+    /**
+     * For a given number N, returns select menu options ranging from 1 to N-1,
+     * removing options from the middle if there are more than 25 options.
+     */
+    private getQuantitySelectOptions(maxValueExclusive: number): APISelectMenuOption[] {
+        let quantityValues: string[] = [];
+        for (let i = 1; i < maxValueExclusive; i++) {
+            quantityValues.push(`${i}`);
+        }
+        // If there are more than 25 options, delete from the middle
+        if (quantityValues.length > 25) {
+            quantityValues = [...quantityValues.slice(0,12), ...quantityValues.slice(-13)];
+        }
+        return quantityValues.map(x => ({
+            value: x,
+            label: x
+        }));
     }
 
     private getTerritorySelectOptions(territoryIds: string[]): APISelectMenuOption[] {
