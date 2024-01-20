@@ -14,6 +14,10 @@ interface Coordinates {
 }
 
 interface RiskConfig {
+    help: Record<string, {
+        question: string,
+        answer: string
+    }>,
     map: {
         dimensions: {
             width: number,
@@ -40,6 +44,62 @@ interface RiskConfig {
 
 export default class RiskGame extends AbstractGame<RiskGameState> {
     private static config: RiskConfig = {
+        help: {
+            duration: {
+                question: 'How long will the game last?',
+                answer: 'Still TBD, but the game will have a hard limit of 16 weeks, after which point the top 3 players will be the winners.'
+            },
+            actions: {
+                question: 'What actions can I make?',
+                answer: 'Each week, you can choose multiple **additions** (reinforcements), multiple **attacks**, and one **movement**. '
+                    + 'The actions are processed Sunday morning in that order, with all players\' **additions** happening first, '
+                    + 'then all players\' **attacks**, then all players\' **movements**.'
+            },
+            ordering: {
+                question: 'In what order do attacks happen?',
+                answer: 'Attacks are generally shuffled, but there are some ordering guarantees. First, all circular/symmetric attacks (e.g. two territories attacking each other) '
+                    + 'will happen first, then all other attacks with the end of the chain being processed first (e.g. if **A** attacks **B** and **B** attacks **C**, **B** will '
+                    + 'attack **C** before **A** attacks **B**). This means that generally, a territory will never launch an attack after being attacked.'
+            },
+            cycles: {
+                question: 'What if two territories attack each other?',
+                answer: 'If two territories plan attacks against each other, the largest attack will be used and the smaller will be discarded. '
+                    + 'If both attacks use the same number of troops, a "symmetric" attack will occur with two attackers and no opportunity for territory capture '
+                    + '(with two attackers, dice roll ties result in no casualties). This can also happen if 3+ territories attack each other in a circle, in which '
+                    + 'case a "circular" attack will break out with 3+ attackers and no opportunity for territory capture.'
+            },
+            multipronged: {
+                question: 'What if two people attack the same territory?',
+                answer: 'This will result in a "multipronged" attack of the defending territory, with the attackers taking turns round-robin. '
+                    + 'Whichever army happens to land the kill will take control of the territory and have to fend off the other attackers.'
+            },
+            dice: {
+                question: 'How do the dice rolls work?',
+                answer: 'As in actual Risk, attackers will roll one die for each troop in their attacking army (up to **3**) and defenders will roll one die for each '
+                    + 'troop in their defending territory (up to **2**). The highest roll from each person is compared, and whoever rolls lower loses one troop. If both '
+                    + 'players rolled at least two dice, then the second highest roll from each person is compared and used to determine who loses a troop. In the case of '
+                    + 'a tie, the attacker will lose a troop (defender\'s advantage). Whoever loses all their troops in the conflict first loses the conflict. If the attacker '
+                    + 'wins, they claim the defending territory, possibly eliminating the defending player.'
+            },
+            eliminated: {
+                question: 'Do I still get to play once I\'m eliminated?',
+                answer: 'You will no longer be in the running to win the game and you can no longer plan attacks or movements, but you will still earn reinforcements and be able to place '
+                    + 'them in the territories of the player who currently owns you as a vassal. You can help them by placing your troops, or you can choose to withold them... it\'s up to you.'
+            },
+            reinforcements: {
+                question: 'How many reinforcements do I get?',
+                answer: 'Each week, players will be given troops a few different ways:'
+                + '\n- **1** troop for every **3** territories owned.'
+                + '\n- **1** if you earn any GMBR points that week, **2** if you\'re in the top 50% of weekly point earners, and **3** if you\'re in the top 25% of weekly point earners.'
+                + '\n- **1** troop if you place in the top 3 contest winners.'
+                + '\n- (**1** bonus troop is placed immediately when a territory is captured)'
+            },
+            prize: {
+                question: 'What\'s the prize for winning the PTGH contest?',
+                answer: 'If you place 1st, you will be able to select a custom icon for your troops to replace the standard pawn piece icon. '
+                    + 'Additionally, everyone who places in the top 3 will be given one bonus reinforcement troop that week.'
+            }
+        },
         map: {
             dimensions: {
                 width: 762,
@@ -544,14 +604,22 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         return [
             'Gather the troops and get ready to claim some territory! For a grand war is about to break out...',
             {
-                content: 'I hope you all are prepared for a bloody game of _Morningtime Risk_ right here in our very own stomping ground!',
-                files: [await this.renderRules()]
+                content: 'I hope you all are prepared for a bloody game of _Morningtime Risk_ that will last this entire season!',
+                files: [await this.renderRules()],
+                components: [{
+                    type: ComponentType.ActionRow,
+                    components: [{
+                        type: ComponentType.Button,
+                        style: ButtonStyle.Primary,
+                        label: 'Advanced Help',
+                        custom_id: 'game:help'
+                    }]
+                }]
             },
             {
-                content: 'Please look over the map...',
+                content: 'Rather than playing over a generic world map, we will be playing right here in our very own stomping grounds',
                 files: [await this.renderGenericMap()]
             }
-            // TODO: Show a button for more advanced rules...
         ];
     }
 
@@ -2952,6 +3020,14 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     });
                     break;
                 }
+                case 'game:help': {
+                    await interaction.reply({
+                        ephemeral: true,
+                        content: 'What would you like help with?',
+                        components: this.getHelpOptionsActionRow()
+                    });
+                    break;
+                }
             }
         } else if (interaction.isStringSelectMenu()) {
             const customId = interaction.customId;
@@ -3238,6 +3314,26 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                         ephemeral: true,
                         content: `Confirmed! You have selected the **${this.getPlayerTroopIcon(userId)}** as your custom troop icon`
                     });
+                    break;
+                }
+                case 'game:selectHelpOption': {
+                    const value = interaction.values[0];
+                    const helpOption = RiskGame.config.help[value];
+                    if (helpOption) {
+                        const { question, answer } = helpOption;
+                        await interaction.reply({
+                            ephemeral: true,
+                            content: `**Q:** _${question}_`
+                                + `\n**A:** ${answer}`
+                                + '\nWhat else would you like help with?',
+                            components: this.getHelpOptionsActionRow()
+                        });
+                    } else {
+                        await interaction.reply({
+                            ephemeral: true,
+                            content: 'I don\'t recognize that help option...'
+                        });
+                    }
                     break;
                 }
             }
@@ -3678,5 +3774,21 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             label: troopIcon,
             value: troopIcon
         }));
+    }
+
+    private getHelpOptionsActionRow(): APIActionRowComponent<APIMessageActionRowComponent>[] {
+        return [{
+            type: ComponentType.ActionRow,
+            components: [{
+                type: ComponentType.StringSelect,
+                custom_id: 'game:selectHelpOption',
+                min_values: 1,
+                max_values: 1,
+                options: Object.entries(RiskGame.config.help).map(([key, { question, answer }]) => ({
+                    label: question,
+                    value: key
+                }))
+            }]
+        }];
     }
 }
