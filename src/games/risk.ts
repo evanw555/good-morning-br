@@ -542,12 +542,16 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
 
     override async getIntroductionMessages(): Promise<MessengerPayload[]> {
         return [
-            // 'Gather the troops and get ready to claim some territory! For a grand war is about to break out...',
-            // {
-            //     content: 'I hope you all are prepared for a bloody game of _Morningtime Risk_ right here in our very own stomping ground!',
-            //     files: [await this.renderRules()]
-            // }
-            // TODO: Show rules are type more
+            'Gather the troops and get ready to claim some territory! For a grand war is about to break out...',
+            {
+                content: 'I hope you all are prepared for a bloody game of _Morningtime Risk_ right here in our very own stomping ground!',
+                files: [await this.renderRules()]
+            },
+            {
+                content: 'Please look over the map...',
+                files: [await this.renderGenericMap()]
+            }
+            // TODO: Show a button for more advanced rules...
         ];
     }
 
@@ -1033,8 +1037,11 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
     }
 
     private async renderRules(): Promise<AttachmentBuilder> {
-        // TODO: Create real rules sheet
-        return new AttachmentBuilder('assets/risk/map-with-background.png');
+        return new AttachmentBuilder('assets/risk/rules.png').setName('risk-rules.png');
+    }
+
+    private async renderGenericMap(): Promise<AttachmentBuilder> {
+        return new AttachmentBuilder('assets/risk/map-with-background.png').setName('risk-generic-map.png');
     }
 
     // TODO: Can this grid display logic be refactored into a common util?
@@ -1674,28 +1681,12 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         }
 
         const joinedCanvas = joinCanvasesVertically(canvases);
-        const context = joinedCanvas.getContext('2d');
-
-        context.save();
-        context.globalCompositeOperation = 'destination-over';
-        context.fillStyle = 'black';
-        context.fillRect(0, 0, joinedCanvas.width, joinedCanvas.height);
-        context.restore();
 
         return joinedCanvas;
     }
 
     private async renderRoster(height: number): Promise<Canvas> {
-        const width = height / 4;
-        const canvas = createCanvas(width, height);
-        const context = canvas.getContext('2d');
-
-        context.fillStyle = 'black';
-        context.fillRect(0, 0, canvas.width, canvas.height);
-
-        const n = this.getNumPlayers();
         const orderedPlayers = this.getOrderedPlayers();
-
         const canvases: Canvas[] = [await this.renderRosterLegendCard()];
         for (const userId of orderedPlayers) {
             if (!this.isPlayerEliminated(userId)) {
@@ -1711,7 +1702,15 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         const finalCanvas = createCanvas(newWidth, height);
         const finalContext = finalCanvas.getContext('2d');
 
+        // Draw the resized roster
         finalContext.drawImage(compositeRosterCanvas, 0, 0, newWidth, height);
+
+        // Draw the black background underneath
+        finalContext.save();
+        finalContext.globalCompositeOperation = 'destination-over';
+        finalContext.fillStyle = 'black';
+        finalContext.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
+        finalContext.restore();
 
         return finalCanvas;
     }
@@ -2140,6 +2139,10 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 if (this.hasCustomTroopIcon(userId)) {
                     return [];
                 }
+                // Only allows remaining players to select a custom icon
+                if (this.isPlayerEliminated(userId)) {
+                    return [];
+                }
                 // Set the flag allowing them to pick a custom troop icon
                 this.state.players[userId].maySelectCustomTroopIcon = true;
                 // Reply with a message prompting them to select a custom troop icon
@@ -2493,16 +2496,26 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         if (this.state.attackDecisions) {
             // First, construct the processed attack data map
             this.state.plannedAttacks = {};
+            const fingerprints: Set<string> = new Set();
             let i = 0;
             for (const [ userId, attacks ] of Object.entries(this.state.attackDecisions)) {
                 for (const attack of attacks) {
-                    const id = `${i++}`;
-                    this.state.plannedAttacks[id] = {
-                        id,
-                        userId,
-                        attack,
-                        actualQuantity: attack.quantity
-                    };
+                    // If another attack with this "from-to" combination has been processed, skip it
+                    const fingerprint = `${attack.from}:${attack.to}`;
+                    if (fingerprints.has(fingerprint)) {
+                        void logger.log(`Discarding duplicate planned attack by <@${userId}> from _${this.getTerritoryName(attack.from)}_ to _${this.getTerritoryName(attack.to)}_`);
+                    }
+                    // Else, add it to the processed map
+                    else {
+                        fingerprints.add(fingerprint);
+                        const id = `${i++}`;
+                        this.state.plannedAttacks[id] = {
+                            id,
+                            userId,
+                            attack,
+                            actualQuantity: attack.quantity
+                        };
+                    }
                 }
             }
             // Then, delete the unprocessed attack decisions from the state
@@ -2520,6 +2533,10 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     flags: MessageFlags.SuppressNotifications
                 }
             };
+        }
+        // If the planned attack map exists but is empty, delete it
+        if (this.state.plannedAttacks && Object.keys(this.state.plannedAttacks).length === 0) {
+            delete this.state.plannedAttacks;
         }
         // If there are any attack decisions, process them
         if (this.state.plannedAttacks) {
@@ -3161,8 +3178,13 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     if (this.getTerritoryOwner(territoryId) === userId) {
                         throw new Error(`You can't attack _${this.getTerritoryName(territoryId)}_, that's your own territory!`);
                     }
-                    // Add to the pending decision
                     const pendingAttack = this.pendingAttackDecisions[userId];
+                    if (pendingAttack.from && this.hasAttackDecision(pendingAttack.from, territoryId)) {
+                        // Delete the pending decision to avoid softlocking
+                        delete this.pendingAttackDecisions[userId];
+                        throw new Error(`You can't attack _${this.getTerritoryName(territoryId)}_ from _${this.getTerritoryName(pendingAttack.from)}_, such an attack has already been planned!`);
+                    }
+                    // Add to the pending decision
                     pendingAttack.to = territoryId;
                     // Delete the subsequent property to ensure it's not filled in backward
                     delete pendingAttack.quantity;
@@ -3246,7 +3268,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     placeholder: 'Select territory...',
                     min_values: 1,
                     max_values: 1,
-                    options: this.getOwnedTerritorySelectOptions(this.getTerritoriesForPlayer(userId))
+                    options: this.getOwnedTerritorySelectOptions(this.getTerritoriesForPlayerTeam(userId))
                 }]
             });
         }
@@ -3447,9 +3469,11 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         }
         // If the target is missing, prompt them to fill it in
         if (!pendingAttack.to) {
+            const pendingAttackFrom = pendingAttack.from;
             // Construct the reply payload
-            const validTargets = this.getTerritoryConnections(pendingAttack.from)
-                .filter(territoryId => this.getTerritoryOwner(territoryId) !== userId);
+            const validTargets = this.getHostileTerritoryConnections(pendingAttack.from)
+                // Filter out targets that match any existing attack decisions
+                .filter(target => !this.hasAttackDecision(pendingAttackFrom, target));
             if (validTargets.length > 0) {
                 return {
                     ephemeral: true,
@@ -3579,6 +3603,22 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         return [];
     }
 
+    /**
+     * Determine if an attack decision with a particular "from-to" combination has been added by any user.
+     */
+    private hasAttackDecision(from: string, to: string): boolean {
+        if (this.state.attackDecisions) {
+            for (const attacks of Object.values(this.state.attackDecisions)) {
+                for (const attack of attacks) {
+                    if (from === attack.from && to === attack.to) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
     private getTerritorySelectOptions(territoryIds: string[]): APISelectMenuOption[] {
         return territoryIds.map(territoryId => ({
             label: this.getTerritoryName(territoryId),
@@ -3591,9 +3631,9 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 }
                 const troops = this.getTerritoryTroops(territoryId);
                 if (troops) {
-                    result.push(quantify(troops, 'troop'));
+                    result.push(quantify(troops, 'troop', { bold: false }));
                 }
-                result.push(quantify(this.getNumTerritoryConnections(territoryId), 'neighbor'));
+                result.push(quantify(this.getNumTerritoryConnections(territoryId), 'neighbor', { bold: false }));
                 return result.join(', ');
             })()
         }));
@@ -3607,13 +3647,13 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 const result: string[] = [];
                 const troops = this.getTerritoryTroops(territoryId);
                 if (troops) {
-                    result.push(quantify(troops, 'troop'));
+                    result.push(quantify(troops, 'troop', { bold: false }));
                 }
                 const troopsToBeAdded = this.getTerritoryTroopsToBeAdded(territoryId);
                 if (troopsToBeAdded) {
                     result.push(`${troopsToBeAdded} to be added`)
                 }
-                result.push(quantify(this.getNumTerritoryConnections(territoryId), 'neighbor'));
+                result.push(quantify(this.getNumTerritoryConnections(territoryId), 'neighbor', { bold: false }));
                 return result.join(', ');
             })()
         }));

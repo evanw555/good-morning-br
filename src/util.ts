@@ -331,8 +331,14 @@ export function drawBackground(context: NodeCanvasRenderingContext2D, image: Can
 
 // TODO: Can we move this to a common library?
 // TODO: This isn't perfect, can it be improved?
-export function quantify(quantity: number, noun: string, options?: { adjective?: string }): string {
-    let result = `**${quantity}**`;
+export function quantify(quantity: number, noun: string, options?: { adjective?: string, bold?: boolean }): string {
+    const bold = options?.bold ?? true;
+    let result = '';
+    if (bold) {
+        result += `**${quantity}**`;
+    } else {
+        result += `${quantity}`;
+    }
     if (options?.adjective) {
         result += ` ${options.adjective}`;
     }
