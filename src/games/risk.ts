@@ -835,6 +835,10 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         this.state.players[userId].newTroops = this.getPlayerNewTroops(userId) + quantity;
     }
 
+    private hasWeeklyPrize(userId: Snowflake): boolean {
+        return this.state.players[userId]?.weeklyPrize ?? false;
+    }
+
     private getPlayerKills(userId: Snowflake): number {
         return this.state.players[userId]?.kills ?? 0;
     }
@@ -1608,7 +1612,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         context.stroke();
     }
 
-    private async renderWeeklyPoints(entries: { userId: Snowflake, points: number, troops: number, extraTroops: number }[]): Promise<AttachmentBuilder> {
+    private async renderWeeklyPoints(entries: { userId: Snowflake, points: number, troops: number, territoryBonus: number, prizeBonus: number }[]): Promise<AttachmentBuilder> {
         const ROW_HEIGHT = 32;
         const MARGIN = 8;
         const MAX_BAR_WIDTH = 128;
@@ -1633,7 +1637,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
 
         // Then, render each row
         for (const entry of entries) {
-            const { userId, points, troops, extraTroops } = entry;
+            const { userId, points, troops, territoryBonus, prizeBonus } = entry;
             const canvas = createCanvas(WIDTH, HEIGHT);
             const context = canvas.getContext('2d');
             context.fillStyle = 'black';
@@ -1654,15 +1658,16 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 context.drawImage(troopImage, baseX, 0, ROW_HEIGHT, ROW_HEIGHT);
                 baseX += ROW_HEIGHT / 2;
             }
-            // Now, draw the extra troop formula
+            // Now, draw the territory bonus formula
             baseX = WIDTH - ROW_HEIGHT * 3;
             context.fillStyle = 'white';
             context.fillText(`${this.getNumTerritoriesForPlayer(userId)}/3 = `, baseX, ROW_HEIGHT / 2);
             baseX += ROW_HEIGHT;
-            for (let i = 0; i < extraTroops; i++) {
+            for (let i = 0; i < territoryBonus; i++) {
                 context.drawImage(troopImage, baseX, 0, ROW_HEIGHT, ROW_HEIGHT);
                 baseX += ROW_HEIGHT / 2;
             }
+            // TODO: Draw the prize bonus
             renders.push(canvas);
         }
         return new AttachmentBuilder(joinCanvasesVertically(renders).toBuffer()).setName('risk-weekly.png');
@@ -2065,7 +2070,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         const weeklyPointOrderedPlayers = this.getPointOrderedPlayers();
         const weeklyPoints: Record<Snowflake, number> = {};
         const weeklyTroops: Record<Snowflake, number> = {};
-        const weeklyExtraTroops: Record<Snowflake, number> = {};
+        const weeklyTerritoryBonus: Record<Snowflake, number> = {};
+        const weeklyPrizeBonus: Record<Snowflake, number> = {};
         for (const userId of weeklyPointOrderedPlayers) {
             weeklyPoints[userId] = this.getPoints(userId);
             // Reset their weekly points
@@ -2077,6 +2083,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             return [];
         }
 
+        // Award new troops to each player based on points and bonuses
         const n = weeklyPointOrderedPlayers.length;
         for (let i = 0; i < n; i++) {
             const userId = weeklyPointOrderedPlayers[i];
@@ -2093,9 +2100,15 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             weeklyTroops[userId] = troops;
             this.addPlayerNewTroops(userId, troops);
             // Determine territory-based troop bonus
-            const extraTroops = Math.floor(this.getNumTerritoriesForPlayer(userId) / 3);
-            weeklyExtraTroops[userId] = extraTroops;
-            this.addPlayerNewTroops(userId, extraTroops);
+            const territoryBonus = Math.floor(this.getNumTerritoriesForPlayer(userId) / 3);
+            weeklyTerritoryBonus[userId] = territoryBonus;
+            this.addPlayerNewTroops(userId, territoryBonus);
+            // Determine weekly prize troop bonus
+            const prizeBonus = this.hasWeeklyPrize(userId) ? 1 : 0;
+            weeklyPrizeBonus[userId] = prizeBonus;
+            this.addPlayerNewTroops(userId, prizeBonus);
+            // Clear the weekly prize flag
+            delete this.state.players[userId].weeklyPrize;
         }
 
         // If there are NPCs, choose actions for them
@@ -2145,7 +2158,12 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
 
         // Show a chart indicating how many troops were awarded this week
         messengerPayloads.push({
-            files: [await this.renderWeeklyPoints(weeklyPointOrderedPlayers.map(userId => ({ userId, points: weeklyPoints[userId], troops: weeklyTroops[userId], extraTroops: weeklyExtraTroops[userId] })))]
+            files: [await this.renderWeeklyPoints(weeklyPointOrderedPlayers.map(userId => ({
+                userId, points: weeklyPoints[userId],
+                troops: weeklyTroops[userId],
+                territoryBonus: weeklyTerritoryBonus[userId],
+                prizeBonus: weeklyPrizeBonus[userId]
+            })))]
         });
 
         return messengerPayloads;
@@ -2202,35 +2220,49 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         if (!this.hasPlayer(userId)) {
             return [];
         }
+        const responses: MessengerPayload[] = [];
+        // First, award extra troop reinforcements to anyone who placed
         switch (type) {
             case 'submissions1':
             case 'submissions1-tied':
-                // Don't allow players to re-select custom troop icons
-                if (this.hasCustomTroopIcon(userId)) {
-                    return [];
-                }
-                // Only allows remaining players to select a custom icon
-                if (this.isPlayerEliminated(userId)) {
-                    return [];
-                }
-                // Set the flag allowing them to pick a custom troop icon
-                this.state.players[userId].maySelectCustomTroopIcon = true;
-                // Reply with a message prompting them to select a custom troop icon
-                return [{
-                    content: `${intro}! If you'd like, you can select a custom icon for your troops to replace the standard pawn pieces`
-                        + (type === 'submissions1-tied' ? ' (but make haste, for you tied with someone this week and each icon can only be claimed once)' : ''),
-                    components: [{
-                        type: ComponentType.ActionRow,
-                        components: [{
-                            type: ComponentType.Button,
-                            style: ButtonStyle.Success,
-                            label: 'Choose Custom Icon',
-                            custom_id: 'game:chooseTroopIcon'
-                        }]
-                    }]
-                }];
+            case 'submissions2':
+            case 'submissions2-tied':
+            case 'submissions3':
+            case 'submissions3-tied':
+                // Flag this player as having earned a weekly troop reinforcement prize
+                this.state.players[userId].weeklyPrize = true;
+                // Reply with message notifying them of this
+                responses.push(`${intro}! You've earned **1** extra troop reinforcement this week`);
+                break;
         }
-        return [];
+        // Next, award a custom prize icon to the first place winner
+        switch (type) {
+            case 'submissions1':
+            case 'submissions1-tied':
+                // Only award the custom icon prize under certain conditions:
+                // (1) Don't allow players to re-select custom troop icons
+                // (2) Only allow remaining players to select a custom icon
+                if (!this.hasCustomTroopIcon(userId) && !this.isPlayerEliminated(userId)) {
+                    // Set the flag allowing them to pick a custom troop icon
+                    this.state.players[userId].maySelectCustomTroopIcon = true;
+                    // Reply with a message prompting them to select a custom troop icon
+                    responses.push({
+                        content: 'In addition, you can select a custom icon for your troops to replace the standard pawn pieces'
+                            + (type === 'submissions1-tied' ? ' (but make haste, for you tied with someone this week and each icon can only be claimed once)' : ''),
+                        components: [{
+                            type: ComponentType.ActionRow,
+                            components: [{
+                                type: ComponentType.Button,
+                                style: ButtonStyle.Success,
+                                label: 'Choose Custom Icon',
+                                custom_id: 'game:chooseTroopIcon'
+                            }]
+                        }]
+                    });
+                }
+                break;
+        }
+        return responses;
     }
 
     async addPlayerDecision(userId: string, text: string): Promise<MessengerPayload> {

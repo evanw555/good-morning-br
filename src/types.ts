@@ -305,6 +305,8 @@ export interface RiskPlayerState {
     color?: string,
     troopIcon?: string,
     maySelectCustomTroopIcon?: true,
+    // If true, this player won the weekly contest prize (processed and deleted at each turn start)
+    weeklyPrize?: true,
     finalRank?: number,
     eliminator?: Snowflake,
     kills?: number,
