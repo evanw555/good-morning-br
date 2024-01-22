@@ -334,7 +334,9 @@ export interface RiskConflictState {
     // The attacker at the front of the list is the next one to be processed
     readonly attackers: RiskConflictAgentData[],
     // If omitted, then this conflict is a "circular" or "symmetric" conflict with no defenders
-    defender?: RiskConflictAgentData
+    defender?: RiskConflictAgentData,
+    // The number of attackers at the time of conflict creation (this shouldn't change even if attackers are removed)
+    readonly initialProngs: number
 }
 
 export interface RiskPlannedAttack {

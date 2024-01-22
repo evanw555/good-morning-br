@@ -1355,14 +1355,16 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
 
         // Determine the priority of background images to load
         const backgroundImagePaths: string[] = [];
-        if (conflict.attackers.length > 1) {
-            // If there are multiple attackers, prioritize an image of just the defending territory
+        if (conflict.initialProngs > 1) {
+            // If this was initially a multi-pronged attack, prioritize an image of just the defending territory
             backgroundImagePaths.push(`assets/risk/territories/${defender.territoryId}.png`);
         }
         backgroundImagePaths.push(
             // Then, prioritize an image in the proper direction, but fallback to the opposite if not possible
             `assets/risk/connections/${from}${to}.png`,
             `assets/risk/connections/${to}${from}.png`,
+            // Use an image of the defending territory in case nothing else exists
+            `assets/risk/territories/${defender.territoryId}.png`,
             // Ultimate generic fallback...
             'assets/risk/usa.png'
         );
@@ -2777,7 +2779,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     initialTroops: a.actualQuantity,
                     troops: a.actualQuantity
                 })),
-                defender: selectedDefender
+                defender: selectedDefender,
+                initialProngs: selectedAttacks.length
             };
             return {
                 continueProcessing: true,
