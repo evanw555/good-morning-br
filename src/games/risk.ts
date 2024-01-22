@@ -39,7 +39,8 @@ interface RiskConfig {
     }>,
     colors: Record<string, string>,
     defaultTroopIcon: string,
-    customTroopIcons: string[]
+    customTroopIcons: string[],
+    captureBonus: number
 }
 
 export default class RiskGame extends AbstractGame<RiskGameState> {
@@ -552,7 +553,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             'rook',
             'sickf',
             'soldier'
-        ]
+        ],
+        captureBonus: 1
     };
 
     private pendingColorSelections: Record<Snowflake, string>;
@@ -2061,7 +2063,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             }
             // If there were any ownerless ones, add a special message indicating this
             if (ownerlessTerritoryIds.length > 0) {
-                messengerPayloads.push(`As for the remaining ${quantify(ownerlessTerritoryIds.length, 'territory', { adjective: 'unclaimed' })}, `
+                messengerPayloads.push(`As for the remaining ${quantify(ownerlessTerritoryIds.length, 'unclaimed territory')}, `
                     + `I've designated these as _NPC territories_ and given ${quantify(DEFAULT_OWNERLESS_TROOPS, 'troop')} to each!`);
             }
         }
@@ -2442,8 +2444,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 }
                 // If it's an attacker victory...
                 if (defender.troops === 0) {
-                    // Update the troop counts of both territories
-                    this.setTerritoryTroops(defender.territoryId, attacker.troops);
+                    // Update the troop counts of both territories (add territory capture bonus)
+                    this.setTerritoryTroops(defender.territoryId, attacker.troops + RiskGame.config.captureBonus);
                     this.addTerritoryTroops(attacker.territoryId, -attacker.initialTroops);
                     // Update the ownership of the target territory
                     this.state.territories[defender.territoryId].owner = attacker.userId;
@@ -2490,12 +2492,12 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                         conflict.defender = {
                             userId: attacker.userId,
                             territoryId: defender.territoryId,
-                            initialTroops: attacker.troops,
-                            troops: attacker.troops
+                            initialTroops: this.getTerritoryTroops(defender.territoryId),
+                            troops: this.getTerritoryTroops(defender.territoryId)
                         };
                         // Add an extra summary showing the updated invasion
                         extraSummaries.push({
-                            content: `Now, **${this.getPlayerDisplayName(attacker.userId)}** must fend off the other ${quantify(attackers.length, 'army', { adjective: 'attacking' })}...`,
+                            content: `Now, **${this.getPlayerDisplayName(attacker.userId)}** must fend off the other ${quantify(attackers.length, 'attacking army')}...`,
                             files: [await this.renderInvasion(conflict)],
                             flags: MessageFlags.SuppressNotifications
                         });
@@ -2508,7 +2510,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     return {
                         continueProcessing: true,
                         summary: {
-                            content: `${summary}**${this.getPlayerDisplayName(attacker.userId)}** has defeated **${this.getPlayerDisplayName(defender.userId)}** at _${this.getTerritoryName(defender.territoryId)}_!`,
+                            content: `${summary}**${this.getPlayerDisplayName(attacker.userId)}** has defeated **${this.getPlayerDisplayName(defender.userId)}**, `
+                                + ` capturing _${this.getTerritoryName(defender.territoryId)}_ and earning ${quantify(RiskGame.config.captureBonus, 'instant bonus reinforcement')}!`,
                             files: [conflictRender],
                             flags: MessageFlags.SuppressNotifications
                         },
@@ -2521,7 +2524,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 return {
                     continueProcessing: true,
                     summary: {
-                        content: `${summary}${quantify(attacker.troops, 'troop', { adjective: 'attacker' })} remaining vs **${defender.troops}** defending...`,
+                        content: `${summary}${quantify(attacker.troops, 'attacker troop')} remaining vs **${defender.troops}** defending...`,
                         files: [conflictRender],
                         flags: MessageFlags.SuppressNotifications
                     }
@@ -3383,7 +3386,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         const newTroops = this.getPlayerNewTroops(userId);
         const additionsRemaining = newTroops - pendingAdditions.length;
         // Construct the message
-        let content = `You have ${quantify(newTroops, 'troop', { adjective: 'new' })} to deploy.`;
+        let content = `You have ${quantify(newTroops, 'new troop')} to deploy.`;
         if (pendingAdditions.length > 0) {
             content += ' You\'ve made the following placements:\n' + this.getAddDecisionStrings(userId).join('\n');
         }
