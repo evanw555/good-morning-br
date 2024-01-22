@@ -1114,6 +1114,9 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         return new AttachmentBuilder('assets/risk/rules.png').setName('risk-rules.png');
     }
 
+    /**
+     * Renders the stock map that doesn't include troops, owners, rosters, etc.
+     */
     private async renderGenericMap(): Promise<AttachmentBuilder> {
         return new AttachmentBuilder('assets/risk/map-with-background.png').setName('risk-generic-map.png');
     }
@@ -1929,6 +1932,9 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         return new AttachmentBuilder((await this.renderMap({ movements })).toBuffer()).setName('risk-movements.png');
     }
 
+    /**
+     * Renders a map with no rosters or arrows/highlights.
+     */
     private async renderBasicMap(): Promise<AttachmentBuilder> {
         return new AttachmentBuilder((await this.renderMap()).toBuffer()).setName('risk-map.png');
     }
@@ -2293,7 +2299,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     summary: {
                         // TODO: add varying text
                         content: `**${this.getPlayerDisplayName(randomUserId)}** has been placed at _${this.getTerritoryName(randomTerritoryId)}_`,
-                        files: [await this.renderState()],
+                        files: [await this.renderBasicMap()],
                         flags: MessageFlags.SuppressNotifications
                     }
                 };
