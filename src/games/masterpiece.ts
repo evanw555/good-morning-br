@@ -2,8 +2,8 @@ import canvas, { Canvas, CanvasRenderingContext2D } from 'canvas';
 import { ActionRowData, AttachmentBuilder, ButtonInteraction, ButtonStyle, ComponentType, GuildMember, Interaction, MessageActionRowComponentData, MessageFlags, Snowflake } from "discord.js";
 import { DecisionProcessingResult, GamePlayerAddition, MasterpieceGameState, MasterpiecePieceState, MasterpiecePlayerState, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
-import { capitalize, joinCanvasesHorizontal, naturalJoin, randChoice, shuffle, toCircle, toFixed, toLetterId } from "evanw555.js";
-import { getTextLabel, text, withDropShadow } from '../util';
+import { capitalize, joinCanvasesHorizontal, naturalJoin, randChoice, shuffle, toCircle, toFixed, toLetterId, withDropShadow } from "evanw555.js";
+import { getTextLabel, text } from '../util';
 
 import logger from "../logger";
 import imageLoader from '../image-loader';

@@ -247,70 +247,21 @@ export async function drawTextCentered(context: NodeCanvasRenderingContext2D, te
     }
 }
 
-// TODO: Move this to common library
-export function applyMask(image: Canvas | Image, mask: Canvas | Image): Canvas {
-    // Create a canvas in the size of the image
-    const canvas = createCanvas(image.width, image.height);
-    const context = canvas.getContext('2d');
-
-    // First, draw the image
-    context.drawImage(image, 0, 0);
-
-    // Then, apply the mask stretched to the image dimensions
-    context.save();
-    context.globalCompositeOperation = 'destination-in';
-    context.drawImage(mask, 0, 0, image.width, image.height);
-    context.restore();
-
-    return canvas;
-}
-
-export function withDropShadow(image: Canvas | Image, options?: { expandCanvas?: boolean, alpha?: number, angle?: number, distance?: number }): Canvas {
-    const expandCanvas = options?.expandCanvas ?? false;
-    const alpha = options?.alpha ?? 0.5;
-    const angle = options?.angle ?? Math.PI * 1.75;
-    const distance = options?.distance ?? 3;
-
-    const dx = distance * Math.cos(angle);
-    const dy = distance * -Math.sin(angle);
-
-    const expansion = expandCanvas ? distance : 0;
-
-    const width = image.width + 2 * expansion;
-    const height = image.height + 2 * expansion;
-
-    const canvas = createCanvas(width, height);
-    const context = canvas.getContext('2d');
-    context.save();
-
-    // First, draw the shadow
-    const shadowX = dx + expansion;
-    const shadowY = dy + expansion;
-    context.drawImage(image, shadowX, shadowY);
-    context.globalCompositeOperation = 'source-in';
-    context.globalAlpha = alpha;
-    context.fillStyle = 'black';
-    context.fillRect(0, 0, canvas.width, canvas.height);
-
-    // Then, draw the original image
-    context.restore();
-    context.drawImage(image, expansion, expansion);
-
-    return canvas;
-}
-
 // TODO: Move to common library
-export function getTextLabel(text: string, width: number, height: number, options?: { font?: string, style?: string }): Canvas {
+export function getTextLabel(text: string, width: number, height: number, options?: { font?: string, style?: string, alpha?: number }): Canvas {
     const canvas = createCanvas(width, height);
     const context = canvas.getContext('2d');
 
     context.font = options?.font ?? `${height * 0.6}px sans-serif`;
     context.fillStyle = options?.style ?? 'white';
+    context.globalAlpha = options?.alpha ?? 1;
 
     const ascent = context.measureText(text).actualBoundingBoxAscent;
     const verticalMargin = (height - ascent) / 2;
 
     drawTextCentered(context, text, 0, width, verticalMargin + ascent);
+
+    context.restore();
 
     return canvas;
 }

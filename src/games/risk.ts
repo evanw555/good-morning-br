@@ -2,8 +2,8 @@ import { APIActionRowComponent, APIMessageActionRowComponent, APISelectMenuOptio
 import { DecisionProcessingResult, GamePlayerAddition, MessengerPayload, PrizeType, RiskConflictAgentData, RiskConflictState, RiskGameState, RiskMovementData, RiskPlannedAttack, RiskPlayerState, RiskTerritoryState } from "../types";
 import AbstractGame from "./abstract-game";
 import { Canvas, Image, createCanvas } from "canvas";
-import { DiscordTimestampFormat, chance, findCycle, getDateBetween, getJoinedMentions, getRankString, joinCanvasesHorizontal, joinCanvasesVertically, naturalJoin, randChoice, randInt, shuffle, shuffleWithDependencies, toCircle, toDiscordTimestamp, toFixed } from "evanw555.js";
-import { getMinKey, getMaxKey, drawTextCentered, getTextLabel, withDropShadow, drawBackground, quantify } from "../util";
+import { DiscordTimestampFormat, chance, fillBackground, findCycle, getDateBetween, getJoinedMentions, getRankString, joinCanvasesHorizontal, joinCanvasesVertical, naturalJoin, randChoice, randInt, resize, shuffle, shuffleWithDependencies, toCircle, toDiscordTimestamp, toFixed, withDropShadow } from "evanw555.js";
+import { getMinKey, getMaxKey, getTextLabel, drawBackground, quantify } from "../util";
 
 import logger from "../logger";
 import imageLoader from "../image-loader";
@@ -1144,7 +1144,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         }
 
         // Merge all canvases in a grid
-        const composite = withDropShadow(joinCanvasesHorizontal(panels.map(p => joinCanvasesVertically(p))));
+        const composite = withDropShadow(joinCanvasesHorizontal(panels.map(p => joinCanvasesVertical(p))));
         // Fill the background underneath everything
         const compositeContext = composite.getContext('2d');
         compositeContext.fillStyle = 'rgb(10,10,10)';
@@ -1177,7 +1177,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         }
 
         // Merge all canvases in a grid
-        const composite = withDropShadow(joinCanvasesHorizontal(panels.map(p => joinCanvasesVertically(p))));
+        const composite = withDropShadow(joinCanvasesHorizontal(panels.map(p => joinCanvasesVertical(p))));
         // Fill the background underneath everything
         const compositeContext = composite.getContext('2d');
         compositeContext.fillStyle = 'rgb(10,10,10)';
@@ -1617,65 +1617,66 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         context.stroke();
     }
 
+    // TODO: Add to common library
+    private renderBar(width: number, height: number, progress: number, color: string): Canvas {
+        const canvas = createCanvas(width, height);
+        const context = canvas.getContext('2d');
+
+        // Draw the bar
+        context.fillStyle = color;
+        context.fillRect(0, 0, Math.round(width * progress), height);
+
+        return canvas;
+    }
+
+    // TODO: add to common library
+    private renderSpacer(size: number): Canvas {
+        return createCanvas(size, size);
+    }
+
     private async renderWeeklyPoints(entries: { userId: Snowflake, points: number, troops: number, territoryBonus: number, prizeBonus: number }[]): Promise<AttachmentBuilder> {
-        const ROW_HEIGHT = 32;
-        const MARGIN = 8;
-        const MAX_BAR_WIDTH = 128;
+        const ROW_HEIGHT = 24;
+        const MAX_BAR_WIDTH = 160;
 
         const maxPoints = Math.max(...entries.map(e => e.points));
 
         const renders: Canvas[] = [];
 
         // First, render the headline
-        const WIDTH = 7 * ROW_HEIGHT + MAX_BAR_WIDTH + 5 * MARGIN;
-        const HEIGHT = ROW_HEIGHT + MARGIN;
-        const headerCanvas = createCanvas(WIDTH, 2 * HEIGHT);
+        const WIDTH = (3 + (5 / 8)) * ROW_HEIGHT + MAX_BAR_WIDTH
+        const HEIGHT = ROW_HEIGHT;
+        const headerCanvas = createCanvas(WIDTH, 2.5 * HEIGHT);
         const headerContext = headerCanvas.getContext('2d');
-        headerContext.fillStyle = 'black';
-        headerContext.fillRect(0, 0, WIDTH, 2 * HEIGHT);
-        headerContext.fillStyle = 'white';
-        headerContext.font = '18px sans-serif';
-        drawTextCentered(headerContext, `Week ${this.getTurn()} Reinforcements`, 0, WIDTH, ROW_HEIGHT * 0.75);
-        headerContext.fillText('From Points', 0, ROW_HEIGHT * 1.75);
-        headerContext.fillText('From Territories', WIDTH * 0.6, ROW_HEIGHT * 1.75);
+        headerContext.drawImage(getTextLabel(`Week ${this.getTurn()} Reinforcements`, WIDTH, 1.5 * ROW_HEIGHT), 0, 0);
+        // TODO: Add icons for the second row of the header
+        headerContext.drawImage(getTextLabel('GMBR Weekly Points + Territories + Contest Bonus', WIDTH, ROW_HEIGHT), 0, 1.5 * ROW_HEIGHT);
         renders.push(headerCanvas);
 
         // Then, render each row
         for (const entry of entries) {
             const { userId, points, troops, territoryBonus, prizeBonus } = entry;
-            const canvas = createCanvas(WIDTH, HEIGHT);
-            const context = canvas.getContext('2d');
-            context.fillStyle = 'black';
-            context.fillRect(0, 0, WIDTH, HEIGHT);
 
-            let baseX = MARGIN;
-            // Draw the avatar
-            context.drawImage(await this.getAvatar(userId), baseX, 0, ROW_HEIGHT, ROW_HEIGHT);
-            baseX += ROW_HEIGHT + MARGIN;
-            // Draw the bar
-            const barWidth = MAX_BAR_WIDTH * points / maxPoints;
-            context.fillStyle = this.getPlayerTeamColor(userId);
-            context.fillRect(baseX, 0, barWidth, ROW_HEIGHT);
-            baseX += barWidth + MARGIN;
-            // Draw the troop icons
-            const troopImage = await this.getTroopImage(userId);
-            for (let i = 0; i < troops; i++) {
-                context.drawImage(troopImage, baseX, 0, ROW_HEIGHT, ROW_HEIGHT);
-                baseX += ROW_HEIGHT / 2;
-            }
-            // Now, draw the territory bonus formula
-            baseX = WIDTH - ROW_HEIGHT * 3;
-            context.fillStyle = 'white';
-            context.fillText(`${this.getNumTerritoriesForPlayer(userId)}/3 = `, baseX, ROW_HEIGHT / 2);
-            baseX += ROW_HEIGHT;
-            for (let i = 0; i < territoryBonus; i++) {
-                context.drawImage(troopImage, baseX, 0, ROW_HEIGHT, ROW_HEIGHT);
-                baseX += ROW_HEIGHT / 2;
-            }
-            // TODO: Draw the prize bonus
-            renders.push(canvas);
+            const row: Canvas[] = [];
+            // Add the avatar
+            row.push(resize(await this.getAvatar(userId), { width: ROW_HEIGHT }) as Canvas);
+            // Add the bar
+            row.push(this.renderSpacer(ROW_HEIGHT / 8));
+            row.push(this.renderBar(MAX_BAR_WIDTH, ROW_HEIGHT, points / maxPoints, this.getPlayerTeamColor(userId)));
+            // Add the troop number label
+            row.push(this.renderSpacer(ROW_HEIGHT / 8));
+            row.push(getTextLabel(troops.toString(), ROW_HEIGHT, ROW_HEIGHT, { alpha: (troops === 0) ? 0.15 : 1 }));
+            // Add the territory bonus number label
+            row.push(this.renderSpacer(ROW_HEIGHT / 8));
+            row.push(getTextLabel(territoryBonus.toString(), ROW_HEIGHT, ROW_HEIGHT, { alpha: (territoryBonus === 0) ? 0.15 : 1 }));
+            // Add the prize bonus number label
+            row.push(this.renderSpacer(ROW_HEIGHT / 8));
+            row.push(getTextLabel(prizeBonus.toString(), ROW_HEIGHT, ROW_HEIGHT, { alpha: (prizeBonus === 0) ? 0.15 : 1 }));
+            // Join and push the row
+            renders.push(this.renderSpacer(ROW_HEIGHT / 8));
+            renders.push(joinCanvasesHorizontal(row, { align: 'center' }));
         }
-        return new AttachmentBuilder(joinCanvasesVertically(renders).toBuffer()).setName('risk-weekly.png');
+
+        return new AttachmentBuilder(fillBackground(joinCanvasesVertical(renders, { align: 'center' }), { background: 'black' }).toBuffer()).setName('risk-weekly.png');
     }
 
     private async renderRosterNameCard(userId: Snowflake): Promise<Canvas> {
@@ -1760,7 +1761,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             canvases.push(await this.renderRosterStatsCard(vassal));
         }
 
-        const joinedCanvas = joinCanvasesVertically(canvases);
+        const joinedCanvas = joinCanvasesVertical(canvases);
 
         return joinedCanvas;
     }
@@ -1774,7 +1775,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             }
         }
 
-        const compositeRosterCanvas = joinCanvasesVertically(canvases);
+        const compositeRosterCanvas = joinCanvasesVertical(canvases);
 
         // Resize it to match the target height
         const resizeFactor = height / compositeRosterCanvas.height;
