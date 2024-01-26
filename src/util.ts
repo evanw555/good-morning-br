@@ -316,7 +316,7 @@ export async function generateWithAi(prompt: string): Promise<string> {
         apiKey: auth.openAiKey
     });
     const response = await openai.completions.create({
-        model: 'text-davinci-003',
+        model: "gpt-3.5-turbo-instruct",
         prompt,
         temperature: 0.9,
         max_tokens: 256,
