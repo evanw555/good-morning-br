@@ -1110,6 +1110,16 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         // }
     }
 
+    override doesPlayerNeedHandicap(userId: string): boolean {
+        // Player only gets handicap if the following conditions are met:
+        // (1) Player is not yet eliminated
+        // (2) Player has only one territory
+        // (3) Player has less than half the max weekly points
+        return !this.isPlayerEliminated(userId)
+            && this.getNumTerritoriesForPlayer(userId) === 1
+            && this.getPoints(userId) < 0.5 * this.getMaxPoints();
+    }
+
     private async renderRules(): Promise<AttachmentBuilder> {
         return new AttachmentBuilder('assets/risk/rules.png').setName('risk-rules.png');
     }

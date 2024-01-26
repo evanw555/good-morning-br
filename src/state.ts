@@ -375,9 +375,9 @@ export default class GoodMorningState {
      * @returns List of user IDs for players who are suitable to receive the magic word hint
      */
     getPotentialMagicWordRecipients(): Snowflake[] {
-        // Only give the hint to the bottom 50% of players but only if their score is also less than 50% of the top score,
-        // ALSO only to those who have said GM for 3+ days in a row (so as not to bug less active players)
-        return this.queryOrderedPlayers({ belowPercentile: 0.5, maxRelativePoints: 0.5, minActivityStreak: 3 });
+        // Only give the hint to players who need a game-specific handicap, and ALSO have said GM for 3+ days in a row (so as not to bug less active players)
+        return this.queryOrderedPlayers({ minActivityStreak: 3 })
+            .filter(userId => this.doesPlayerNeedHandicap(userId));
     }
 
     /**
