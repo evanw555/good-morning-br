@@ -39,8 +39,7 @@ interface RiskConfig {
     }>,
     colors: Record<string, string>,
     defaultTroopIcon: string,
-    customTroopIcons: string[],
-    captureBonus: number
+    customTroopIcons: string[]
 }
 
 export default class RiskGame extends AbstractGame<RiskGameState> {
@@ -91,9 +90,9 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 question: 'How many reinforcements do I get?',
                 answer: 'Each week, players will be given troops a few different ways:'
                 + '\n- **1** troop for every **3** territories owned.'
-                + '\n- **1** if you earn any GMBR points that week, **2** if you\'re in the top 50% of weekly point earners, and **3** if you\'re in the top 25% of weekly point earners.'
+                + '\n- **1** troop if you earn any GMBR points that week, **2** if you\'re in the top 50% of weekly point earners, and **3** if you\'re in the top 25% of weekly point earners.'
+                + '\n- **1** troop if you captured at least one territory the previous week.'
                 + '\n- **1** troop if you place in the top 3 contest winners.'
-                + '\n- (**1** bonus troop is placed immediately when a territory is captured)'
             },
             prize: {
                 question: 'What\'s the prize for winning the PTGH contest?',
@@ -553,8 +552,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             'rook',
             'sickf',
             'soldier'
-        ],
-        captureBonus: 1
+        ]
     };
 
     private pendingColorSelections: Record<Snowflake, string>;
@@ -839,6 +837,10 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
 
     private hasWeeklyPrize(userId: Snowflake): boolean {
         return this.state.players[userId]?.weeklyPrize ?? false;
+    }
+
+    private hasCaptureBonus(userId: Snowflake): boolean {
+        return this.state.players[userId]?.captureBonus ?? false;
     }
 
     private getPlayerKills(userId: Snowflake): number {
@@ -1640,53 +1642,76 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
     }
 
     // TODO: add to common library
-    private renderSpacer(size: number): Canvas {
-        return createCanvas(size, size);
+    private renderSpacer(width: number, height: number): Canvas {
+        return createCanvas(width, height);
     }
 
-    private async renderWeeklyPoints(entries: { userId: Snowflake, points: number, troops: number, territoryBonus: number, prizeBonus: number }[]): Promise<AttachmentBuilder> {
+    private async renderWeeklyPoints(entries: { userId: Snowflake, points: number, troops: number, territoryBonus: number, captureBonus: number, prizeBonus: number }[]): Promise<AttachmentBuilder> {
         const ROW_HEIGHT = 24;
         const MAX_BAR_WIDTH = 160;
+        const SPACER_WIDTH = ROW_HEIGHT / 8;
 
         const maxPoints = Math.max(...entries.map(e => e.points));
 
         const renders: Canvas[] = [];
 
         // First, render the headline
-        const WIDTH = (3 + (5 / 8)) * ROW_HEIGHT + MAX_BAR_WIDTH
+        const WIDTH = 4 * ROW_HEIGHT + MAX_BAR_WIDTH + 6 * SPACER_WIDTH;
         const HEIGHT = ROW_HEIGHT;
-        const headerCanvas = createCanvas(WIDTH, 2.5 * HEIGHT);
+        const headerCanvas = createCanvas(WIDTH, 1.5 * HEIGHT);
         const headerContext = headerCanvas.getContext('2d');
         headerContext.drawImage(getTextLabel(`Week ${this.getTurn()} Reinforcements`, WIDTH, 1.5 * ROW_HEIGHT), 0, 0);
-        // TODO: Add icons for the second row of the header
-        headerContext.drawImage(getTextLabel('GMBR Weekly Points + Territories + Contest Bonus', WIDTH, ROW_HEIGHT), 0, 1.5 * ROW_HEIGHT);
         renders.push(headerCanvas);
+
+        // Render the column headers
+        renders.push(joinCanvasesHorizontal([
+            this.renderSpacer(ROW_HEIGHT, ROW_HEIGHT),
+            getTextLabel('Weekly Points', MAX_BAR_WIDTH, ROW_HEIGHT),
+            await imageLoader.loadImage('assets/risk/icons/sun.png'),
+            await imageLoader.loadImage('assets/risk/icons/flag.png'),
+            await imageLoader.loadImage('assets/risk/icons/redtroop.png'),
+            await imageLoader.loadImage('assets/risk/icons/medal.png')
+        ], { align: 'resize-to-first', spacing: SPACER_WIDTH }))
 
         // Then, render each row
         for (const entry of entries) {
-            const { userId, points, troops, territoryBonus, prizeBonus } = entry;
-
+            const { userId, points, troops, territoryBonus, captureBonus, prizeBonus } = entry;
             const row: Canvas[] = [];
             // Add the avatar
             row.push(resize(await this.getAvatar(userId), { width: ROW_HEIGHT }) as Canvas);
             // Add the bar
-            row.push(this.renderSpacer(ROW_HEIGHT / 8));
             row.push(this.renderBar(MAX_BAR_WIDTH, ROW_HEIGHT, points / maxPoints, this.getPlayerTeamColor(userId)));
             // Add the troop number label
-            row.push(this.renderSpacer(ROW_HEIGHT / 8));
             row.push(getTextLabel(troops.toString(), ROW_HEIGHT, ROW_HEIGHT, { alpha: (troops === 0) ? 0.15 : 1 }));
             // Add the territory bonus number label
-            row.push(this.renderSpacer(ROW_HEIGHT / 8));
             row.push(getTextLabel(territoryBonus.toString(), ROW_HEIGHT, ROW_HEIGHT, { alpha: (territoryBonus === 0) ? 0.15 : 1 }));
+            // Add the capture bonus number label
+            row.push(getTextLabel(captureBonus.toString(), ROW_HEIGHT, ROW_HEIGHT, { alpha: (captureBonus === 0) ? 0.15 : 1 }));
             // Add the prize bonus number label
-            row.push(this.renderSpacer(ROW_HEIGHT / 8));
             row.push(getTextLabel(prizeBonus.toString(), ROW_HEIGHT, ROW_HEIGHT, { alpha: (prizeBonus === 0) ? 0.15 : 1 }));
             // Join and push the row
-            renders.push(this.renderSpacer(ROW_HEIGHT / 8));
-            renders.push(joinCanvasesHorizontal(row, { align: 'center' }));
+            renders.push(joinCanvasesHorizontal(row, { align: 'center', spacing: SPACER_WIDTH }));
         }
 
-        return new AttachmentBuilder(fillBackground(joinCanvasesVertical(renders, { align: 'center' }), { background: 'black' }).toBuffer()).setName('risk-weekly.png');
+        // Finally, render the legend rows at the bottom
+        renders.push(joinCanvasesHorizontal([
+            await imageLoader.loadImage('assets/risk/icons/sun.png'),
+            getTextLabel('Points (3 if top ¼, 2 if top ½, 1 if any)', Math.floor(0.75 * WIDTH), 0.66 * ROW_HEIGHT, { align: 'left' })
+        ], { align: 'resize-to-shortest', spacing: SPACER_WIDTH }));
+        renders.push(joinCanvasesHorizontal([
+            await imageLoader.loadImage('assets/risk/icons/flag.png'),
+            getTextLabel('Territory bonus (1 per 3)', Math.floor(0.75 * WIDTH), 0.66 * ROW_HEIGHT, { align: 'left' })
+        ], { align: 'resize-to-shortest', spacing: SPACER_WIDTH }));
+        renders.push(joinCanvasesHorizontal([
+            await imageLoader.loadImage('assets/risk/icons/redtroop.png'),
+            getTextLabel('Successful attack bonus (max 1)', Math.floor(0.75 * WIDTH), 0.66 * ROW_HEIGHT, { align: 'left' })
+        ], { align: 'resize-to-shortest', spacing: SPACER_WIDTH }));
+        renders.push(joinCanvasesHorizontal([
+            await imageLoader.loadImage('assets/risk/icons/medal.png'),
+            getTextLabel('Tuesday contest bonus (1 if podiumed)', Math.floor(0.75 * WIDTH), 0.66 * ROW_HEIGHT, { align: 'left' })
+        ], { align: 'resize-to-shortest', spacing: SPACER_WIDTH }));
+
+        return new AttachmentBuilder(fillBackground(joinCanvasesVertical(renders, { align: 'center', spacing: SPACER_WIDTH }), { background: 'black' }).toBuffer()).setName('risk-weekly.png');
     }
 
     private async renderRosterNameCard(userId: Snowflake): Promise<Canvas> {
@@ -2090,6 +2115,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         const weeklyPoints: Record<Snowflake, number> = {};
         const weeklyTroops: Record<Snowflake, number> = {};
         const weeklyTerritoryBonus: Record<Snowflake, number> = {};
+        const weeklyCaptureBonus: Record<Snowflake, number> = {};
         const weeklyPrizeBonus: Record<Snowflake, number> = {};
         for (const userId of weeklyPointOrderedPlayers) {
             weeklyPoints[userId] = this.getPoints(userId);
@@ -2122,11 +2148,16 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             const territoryBonus = Math.floor(this.getNumTerritoriesForPlayer(userId) / 3);
             weeklyTerritoryBonus[userId] = territoryBonus;
             this.addPlayerNewTroops(userId, territoryBonus);
+            // Determine weekly capture troop bonus
+            const captureBonus = this.hasCaptureBonus(userId) ? 1 : 0;
+            weeklyCaptureBonus[userId] = captureBonus;
+            this.addPlayerNewTroops(userId, captureBonus);
             // Determine weekly prize troop bonus
             const prizeBonus = this.hasWeeklyPrize(userId) ? 1 : 0;
             weeklyPrizeBonus[userId] = prizeBonus;
             this.addPlayerNewTroops(userId, prizeBonus);
-            // Clear the weekly prize flag
+            // Clear the weekly bonus flags
+            delete this.state.players[userId].captureBonus;
             delete this.state.players[userId].weeklyPrize;
         }
 
@@ -2181,6 +2212,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 userId, points: weeklyPoints[userId],
                 troops: weeklyTroops[userId],
                 territoryBonus: weeklyTerritoryBonus[userId],
+                captureBonus: weeklyCaptureBonus[userId],
                 prizeBonus: weeklyPrizeBonus[userId]
             })))]
         });
@@ -2461,8 +2493,10 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 }
                 // If it's an attacker victory...
                 if (defender.troops === 0) {
-                    // Update the troop counts of both territories (add territory capture bonus)
-                    this.setTerritoryTroops(defender.territoryId, attacker.troops + RiskGame.config.captureBonus);
+                    // Award capture bonus to the attacker
+                    this.state.players[attacker.userId].captureBonus = true;
+                    // Update the troop counts of both territories
+                    this.setTerritoryTroops(defender.territoryId, attacker.troops);
                     this.addTerritoryTroops(attacker.territoryId, -attacker.initialTroops);
                     // Update the ownership of the target territory
                     this.state.territories[defender.territoryId].owner = attacker.userId;
@@ -2509,8 +2543,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                         conflict.defender = {
                             userId: attacker.userId,
                             territoryId: defender.territoryId,
-                            initialTroops: this.getTerritoryTroops(defender.territoryId),
-                            troops: this.getTerritoryTroops(defender.territoryId)
+                            initialTroops: attacker.troops,
+                            troops: attacker.troops
                         };
                         // Add an extra summary showing the updated invasion
                         extraSummaries.push({
@@ -2527,8 +2561,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     return {
                         continueProcessing: true,
                         summary: {
-                            content: `${summary}**${this.getPlayerDisplayName(attacker.userId)}** has defeated **${this.getPlayerDisplayName(defender.userId)}**, `
-                                + ` capturing _${this.getTerritoryName(defender.territoryId)}_ and earning ${quantify(RiskGame.config.captureBonus, 'instant bonus reinforcement')}!`,
+                            content: `${summary}**${this.getPlayerDisplayName(attacker.userId)}** has defeated **${this.getPlayerDisplayName(defender.userId)}**, capturing _${this.getTerritoryName(defender.territoryId)}_!`,
                             files: [conflictRender],
                             flags: MessageFlags.SuppressNotifications
                         },

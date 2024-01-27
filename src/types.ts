@@ -307,6 +307,8 @@ export interface RiskPlayerState {
     maySelectCustomTroopIcon?: true,
     // If true, this player won the weekly contest prize (processed and deleted at each turn start)
     weeklyPrize?: true,
+    // If true, this player has successfully captured at least one territory since the beginning of the last turn
+    captureBonus?: true,
     finalRank?: number,
     eliminator?: Snowflake,
     kills?: number,

@@ -241,14 +241,15 @@ export async function drawTextCentered(context: NodeCanvasRenderingContext2D, te
     const padding = options?.padding ?? 0;
     const areaWidth = right - left - (2 * padding);
     if (titleWidth > areaWidth) {
-        context.fillText(text, left + padding, y, areaWidth);
+        context.fillText(text, Math.floor(left + padding), y, areaWidth);
     } else {
-        context.fillText(text, left + padding + (areaWidth - titleWidth) / 2, y);
+        context.fillText(text, Math.floor(left + padding + (areaWidth - titleWidth) / 2), y);
     }
 }
 
 // TODO: Move to common library
-export function getTextLabel(text: string, width: number, height: number, options?: { font?: string, style?: string, alpha?: number }): Canvas {
+export function getTextLabel(text: string, width: number, height: number, options?: { align?: 'center' | 'left', font?: string, style?: string, alpha?: number }): Canvas {
+    const ALIGN = options?.align ?? 'center';
     const canvas = createCanvas(width, height);
     const context = canvas.getContext('2d');
 
@@ -259,7 +260,11 @@ export function getTextLabel(text: string, width: number, height: number, option
     const ascent = context.measureText(text).actualBoundingBoxAscent;
     const verticalMargin = (height - ascent) / 2;
 
-    drawTextCentered(context, text, 0, width, verticalMargin + ascent);
+    if (ALIGN === 'center') {
+        drawTextCentered(context, text, 0, width, verticalMargin + ascent);
+    } else {
+        context.fillText(text, 0, verticalMargin + ascent, width);
+    }
 
     context.restore();
 
