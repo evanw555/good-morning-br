@@ -22,6 +22,12 @@ interface RiskConfig {
         dimensions: {
             width: number,
             height: number
+        },
+        title: {
+            x: number,
+            y: number,
+            width: number,
+            height: number
         }
     },
     conflict: {
@@ -104,6 +110,12 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             dimensions: {
                 width: 762,
                 height: 718
+            },
+            title: {
+                x: 247,
+                y: 672,
+                width: 397,
+                height: 39
             }
         },
         conflict: {
@@ -1812,23 +1824,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
 
         const compositeRosterCanvas = joinCanvasesVertical(canvases);
 
-        // Resize it to match the target height
-        const resizeFactor = height / compositeRosterCanvas.height;
-        const newWidth = compositeRosterCanvas.width * resizeFactor;
-        const finalCanvas = createCanvas(newWidth, height);
-        const finalContext = finalCanvas.getContext('2d');
-
-        // Draw the resized roster
-        finalContext.drawImage(compositeRosterCanvas, 0, 0, newWidth, height);
-
-        // Draw the black background underneath
-        finalContext.save();
-        finalContext.globalCompositeOperation = 'destination-over';
-        finalContext.fillStyle = 'black';
-        finalContext.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
-        finalContext.restore();
-
-        return finalCanvas;
+        return fillBackground(resize(compositeRosterCanvas, { height }) as Canvas, { background: 'black' });
     }
 
     private async renderMap(options?: { showRoster?: boolean, invasion?: RiskConflictState, additions?: Record<string, number>, movements?: RiskMovementData[] }): Promise<Canvas> {
@@ -1950,6 +1946,16 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         }
 
         if (options?.showRoster) {
+            // Draw the title on the map
+            const titleLabel = getTextLabel(`Season ${this.getSeasonNumber()} - Week ${this.getTurn()}`,
+                RiskGame.config.map.title.width,
+                RiskGame.config.map.title.height, {
+                    font: `bold ${RiskGame.config.map.title.height * 0.75}px serif`
+                });
+            context.drawImage(withDropShadow(titleLabel, { expandCanvas: true }),
+                RiskGame.config.map.title.x,
+                RiskGame.config.map.title.y);
+            // Join the roster to the map and return
             return joinCanvasesHorizontal([canvas, await this.renderRoster(canvas.height)]);
         }
 
