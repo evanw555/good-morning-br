@@ -248,7 +248,7 @@ export async function drawTextCentered(context: NodeCanvasRenderingContext2D, te
 }
 
 // TODO: Move to common library
-export function getTextLabel(text: string, width: number, height: number, options?: { align?: 'center' | 'left', font?: string, style?: string, alpha?: number }): Canvas {
+export function getTextLabel(text: string, width: number, height: number, options?: { align?: 'center' | 'left' | 'right', font?: string, style?: string, alpha?: number }): Canvas {
     const ALIGN = options?.align ?? 'center';
     const canvas = createCanvas(width, height);
     const context = canvas.getContext('2d');
@@ -262,6 +262,8 @@ export function getTextLabel(text: string, width: number, height: number, option
 
     if (ALIGN === 'center') {
         drawTextCentered(context, text, 0, width, verticalMargin + ascent);
+    } else if (ALIGN === 'right') {
+        context.fillText(text, Math.floor(width - context.measureText(text).width), verticalMargin + ascent, width);
     } else {
         context.fillText(text, 0, verticalMargin + ascent, width);
     }
@@ -283,6 +285,21 @@ export function drawBackground(context: NodeCanvasRenderingContext2D, image: Can
     context.globalCompositeOperation = 'destination-over';
     context.drawImage(image, x, y, resizedWidth, resizedHeight);
     context.restore();
+}
+
+// TODO: Move this to the common library
+export function superimpose(canvases: (Canvas | Image)[]): Canvas {
+    const WIDTH = Math.max(...canvases.map(c => c.width));
+    const HEIGHT = Math.max(...canvases.map(c => c.height));
+    const canvas = createCanvas(WIDTH, HEIGHT);
+    const context = canvas.getContext('2d');
+
+    // Draw each canvas in order centered on the canvas
+    for (const c of canvases) {
+        context.drawImage(c, Math.round((WIDTH - c.width) / 2), Math.round((HEIGHT - c.height) / 2));
+    }
+
+    return canvas;
 }
 
 // TODO: Can we move this to a common library?

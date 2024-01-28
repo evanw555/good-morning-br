@@ -3,7 +3,7 @@ import { DecisionProcessingResult, GamePlayerAddition, MessengerPayload, PrizeTy
 import AbstractGame from "./abstract-game";
 import { Canvas, Image, createCanvas } from "canvas";
 import { DiscordTimestampFormat, chance, fillBackground, findCycle, getDateBetween, getJoinedMentions, getRankString, joinCanvasesHorizontal, joinCanvasesVertical, naturalJoin, randChoice, randInt, resize, shuffle, shuffleWithDependencies, toCircle, toDiscordTimestamp, toFixed, withDropShadow } from "evanw555.js";
-import { getMinKey, getMaxKey, getTextLabel, drawBackground, quantify } from "../util";
+import { getMinKey, getMaxKey, getTextLabel, drawBackground, quantify, superimpose } from "../util";
 
 import logger from "../logger";
 import imageLoader from "../image-loader";
@@ -1008,7 +1008,16 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 return [];
             }
         }
-        return super.onDecisionPreNoon();
+        // Show the state render in the reminder message, plus show an additional action row
+        return [{
+            content: this.getReminderText(),
+            components: this.getDecisionActionRow(),
+            files: [await this.renderStateAttachment()]
+        }, {
+            content: 'If you need to, review your decisions...',
+            components: this.getAdditionalDecisionActionRow(),
+            flags: MessageFlags.SuppressNotifications
+        }];
     }
 
     getSeasonCompletion(): number {
@@ -1212,41 +1221,45 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
     }
 
     private async renderElimination(eliminatedUserId: Snowflake, eliminatorUserId: Snowflake, inheritedVassals: Snowflake[]): Promise<AttachmentBuilder> {
-        const WIDTH = 400;
-        const HEIGHT = 400;
-        const canvas = createCanvas(WIDTH, HEIGHT);
-        const context = canvas.getContext('2d');
+        const AVATAR_WIDTH = 200;
+        const SPACING = AVATAR_WIDTH / 16;
+        const rows: (Canvas | Image)[] = [];
 
-        // Fill black background
-        context.fillStyle = 'black';
-        context.fillRect(0, 0, WIDTH, HEIGHT);
-
-        // Draw the eliminated player's avatar taking up half the height
+        // Add the eliminated player's avatar large and crossed out
         const eliminatedAvatar = await this.getAvatar(eliminatedUserId);
         const crossOutImage = await imageLoader.loadImage('assets/common/crossout.png');
-        context.drawImage(eliminatedAvatar, HEIGHT / 4, 0, HEIGHT / 2, HEIGHT / 2);
-        context.drawImage(crossOutImage, HEIGHT / 4, 0, HEIGHT / 2, HEIGHT / 2);
+        const crossedOutAvatar = superimpose([
+            eliminatedAvatar,
+            crossOutImage
+        ]);
+        rows.push(resize(crossedOutAvatar, { height: AVATAR_WIDTH }));
 
-        // Draw the text labels in the third quarter
-        context.fillStyle = 'white';
+        // Add the text labels
+        const LABEL_HEIGHT = Math.round(AVATAR_WIDTH / 4);
+        const font = `bold ${Math.round(0.75 * LABEL_HEIGHT)}px serif`;
         const finalRankString = this.getPlayerFinalRankString(eliminatedUserId);
-        const rankLabel = await getTextLabel(finalRankString, WIDTH / 2, HEIGHT / 8);
-        context.drawImage(rankLabel, WIDTH / 4, HEIGHT / 2);
-        const nameLabel = await getTextLabel(this.getPlayerDisplayName(eliminatedUserId), WIDTH, HEIGHT / 8);
-        context.drawImage(nameLabel, 0, HEIGHT * (5 / 8));
+        rows.push(getTextLabel(finalRankString, AVATAR_WIDTH, LABEL_HEIGHT, { font }));
+        rows.push(getTextLabel(this.getPlayerDisplayName(eliminatedUserId), 2 * AVATAR_WIDTH, LABEL_HEIGHT, { font }));
 
-        // Draw the inherited vassals in the bottom quarter
-        // TODO: Render the vassals better here
-        const vassalsToRender = [eliminatedUserId, ...inheritedVassals];
-        const v = vassalsToRender.length;
-        for (let i = v - 1; i >= 0; i--) {
-            const vassalAvatar = await this.getAvatar(vassalsToRender[i]);
-            const x = 0.2 * WIDTH - (i / v) * 0.2 * WIDTH;
-            context.drawImage(vassalAvatar, x, HEIGHT * 0.75, WIDTH / 5, WIDTH / 5);
+        // Create a row for inherited vassals
+        const elements: (Canvas | Image)[] = [];
+        elements.push(resize(eliminatedAvatar, { height: AVATAR_WIDTH / 4 }));
+        for (const vassal of inheritedVassals) {
+            const vassalAvatar = await this.getAvatar(vassal);
+            elements.push(resize(vassalAvatar, { height: AVATAR_WIDTH / 4 }));
         }
-        this.renderArrow(context, { x: WIDTH * 0.4, y: HEIGHT * (7 / 8) }, { x: WIDTH * 0.6, y: HEIGHT * (7 / 8)}, { thickness: HEIGHT / 12 });
+        elements.push(resize(this.getRightArrow(1.5 * AVATAR_WIDTH, AVATAR_WIDTH), { height: AVATAR_WIDTH / 4 }));
         const eliminatorAvatar = await this.getAvatar(eliminatorUserId);
-        context.drawImage(eliminatorAvatar, WIDTH * 0.6, HEIGHT * 0.75, WIDTH / 5, WIDTH / 5);
+        elements.push(resize(eliminatorAvatar, { height: AVATAR_WIDTH / 4 }));
+
+        // Add vassals row
+        rows.push(joinCanvasesHorizontal(elements, { align: 'center', spacing: SPACING }));
+
+        // Add the background image
+        const canvas = withDropShadow(joinCanvasesVertical(rows, { align: 'center', spacing: SPACING }), { expandCanvas: true });
+        const context = canvas.getContext('2d');
+        const backgroundImage = await imageLoader.loadImage('assets/risk/map-blurred.png');
+        drawBackground(context, backgroundImage);
 
         return new AttachmentBuilder(canvas.toBuffer()).setName(`risk-elimination-${finalRankString}.png`);
     }
@@ -1516,6 +1529,14 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         });
         context.drawImage(titleImage, WIDTH * (3 / 16), (HEIGHT / 6) - (HEIGHT / 16));
 
+        // Draw the names of both participants
+        const NAME_HEIGHT = HEIGHT / 16;
+        const NAME_WIDTH = WIDTH / 3;
+        const attackerNameLabel = getTextLabel(this.getPlayerDisplayName(attacker.userId), NAME_WIDTH, NAME_HEIGHT, { align: 'left' });
+        context.drawImage(attackerNameLabel, Math.round(AVATAR_MARGIN), Math.round(HEIGHT - NAME_HEIGHT - AVATAR_MARGIN));
+        const defenderNameLabel = getTextLabel(this.getPlayerDisplayName(defender.userId), NAME_WIDTH, NAME_HEIGHT, { align: 'right' });
+        context.drawImage(defenderNameLabel, Math.round(WIDTH - NAME_WIDTH - AVATAR_MARGIN), Math.round(HEIGHT - NAME_HEIGHT - AVATAR_MARGIN));
+
         // Repost the entire canvas with a drop shadow on everything
         context.drawImage(withDropShadow(canvas), 0, 0);
 
@@ -1639,6 +1660,14 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         context.strokeStyle = 'black';
         context.lineWidth = 2;
         context.stroke();
+    }
+
+    // TODO: Move to common library
+    private getRightArrow(width: number, height: number): Canvas {
+        const canvas = createCanvas(width, height);
+        const context = canvas.getContext('2d');
+        this.renderArrow(context, { x: 0, y: Math.floor(height / 2)}, { x: width - 1, y: Math.floor(height / 2)}, { thickness: height / 2, fillStyle: 'white' });
+        return canvas;
     }
 
     // TODO: Add to common library
@@ -2447,8 +2476,13 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     summary += 'The defender makes a valiant last stand!\n';
                 } else if (attacker.troops === 1 && rollWinners.every(w => w === 'attacker')) {
                     summary += 'The last attacker standing continues the fight!\n';
+                } else if (defendersLost === 2) {
+                    summary += 'The attacker waffle stomps the defending army!\n';
+                } else if (attackersLost === 2) {
+                    summary += 'The defenders swing back with a little sick yiik action!\n';
                 } else {
-                    summary += 'Stuff happened!\n';
+                    // TODO: Improve this...
+                    // summary += 'Stuff happened!\n';
                 }
                 // If the counter-attack is over...
                 // if (conflict.symmetrical && (conflict.attackerTroops === 0 || conflict.defenderTroops === 0)) {
@@ -2685,15 +2719,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             if (i === 0) {
                 delete this.state.plannedAttacks;
             }
-            // TODO: Temp message to show that this worked
-            return {
-                continueProcessing: true,
-                summary: {
-                    content: `Processed attack decisions into **${i}** attacks...`,
-                    files: [await this.renderMovements(Object.values(this.state.plannedAttacks ?? {}).map(a => a.attack))],
-                    flags: MessageFlags.SuppressNotifications
-                }
-            };
+            // TODO: Temp logging to see how this goes
+            void logger.log(`Processed attack decisions into **${i}** attacks...`);
         }
         // If the planned attack map exists but is empty, delete it
         if (this.state.plannedAttacks && Object.keys(this.state.plannedAttacks).length === 0) {
@@ -2975,6 +3002,23 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         }]
     }
 
+    private getAdditionalDecisionActionRow(): ActionRowData<MessageActionRowComponentData>[] {
+        return [{
+            type: ComponentType.ActionRow,
+            components: [{
+                type: ComponentType.Button,
+                label: 'Review Decisions',
+                style: ButtonStyle.Primary,
+                customId: 'game:reviewDecisions'
+            }, {
+                type: ComponentType.Button,
+                label: 'Help',
+                style: ButtonStyle.Primary,
+                customId: 'game:help'
+            }]
+        }]
+    }
+
     override async handleGameInteraction(interaction: Interaction): Promise<MessengerPayload[] | undefined> {
         const userId = interaction.user.id;
         if (interaction.isButton()) {
@@ -3025,6 +3069,10 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     if (!this.state.attackDecisions) {
                         throw new Error('I\'m not accepting any decisions related to _attacking_ right now...');
                     }
+                    // Validate that the user is not eliminated
+                    if (this.isPlayerEliminated(userId)) {
+                        throw new Error(`You can\'t attack, you\'ve been eliminated! You can only _add_ troops to **${this.getPlayerDisplayName(this.getPlayerTeam(userId))}'s** territories...`);
+                    }
                     // Reply with a prompt for them to make decisions
                     await interaction.reply(this.getAttackDecisionReply(userId));
                     break;
@@ -3033,6 +3081,10 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     // First, validate that move decisions are being accepted
                     if (!this.state.moveDecisions) {
                         throw new Error('I\'m not accepting any decisions related to _moving troops_ right now...');
+                    }
+                    // Validate that the user is not eliminated
+                    if (this.isPlayerEliminated(userId)) {
+                        throw new Error(`You can\'t move troops, you\'ve been eliminated! You can only _add_ troops to **${this.getPlayerDisplayName(this.getPlayerTeam(userId))}'s** territories...`);
                     }
                     // Reply with a prompt for them to make decisions
                     await interaction.reply(this.getMoveDecisionReply(userId));
@@ -3073,12 +3125,41 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     await interaction.reply(this.getAttackDecisionReply(userId));
                     break;
                 }
+                case 'game:clearAll': {
+                    // First, validate that any decisions are being accepted
+                    if (!this.state.addDecisions || !this.state.attackDecisions || !this.state.moveDecisions) {
+                        throw new Error('I\'m not accepting any decisions right now...');
+                    }
+                    // Clear this player's decisions
+                    delete this.pendingAttackDecisions[userId];
+                    delete this.pendingMoveDecisions[userId];
+                    delete this.state.addDecisions[userId];
+                    delete this.state.attackDecisions[userId];
+                    delete this.state.moveDecisions[userId];
+                    // Reply with a confirmation
+                    await interaction.reply({
+                        ephemeral: true,
+                        content: 'All your decisions have been erased! Use the buttons in the channel to arrange some new ones...'
+                    });
+                    break;
+                }
                 case 'game:reviewDecisions': {
                     const allDecisionStrings = [...this.getAddDecisionStrings(userId), ...this.getAttackDecisionStrings(userId), ...this.getMoveDecisionStrings(userId)];
                     if (allDecisionStrings.length > 0) {
                         await interaction.reply({
                             ephemeral: true,
-                            content: 'You\'ve made the following decisions:\n' + allDecisionStrings.join('\n')
+                            content: 'You\'ve made the following decisions:\n'
+                                + allDecisionStrings.join('\n')
+                                + '\nYou can use the "Start Over" button to delete all of these and start over.',
+                            components: [{
+                                type: ComponentType.ActionRow,
+                                components: [{
+                                    type: ComponentType.Button,
+                                    label: 'Start Over',
+                                    style: ButtonStyle.Danger,
+                                    custom_id: 'game:clearAll'
+                                }]
+                            }]
                         });
                     } else {
                         await interaction.reply({
