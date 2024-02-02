@@ -317,7 +317,9 @@ export interface RiskPlayerState {
 
 export interface RiskTerritoryState {
     owner?: Snowflake,
-    troops: number
+    troops: number,
+    // How many deaths have occurred at this territory regardless of owner
+    deaths?: number
 }
 
 export interface RiskMovementData {

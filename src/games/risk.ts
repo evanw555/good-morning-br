@@ -644,6 +644,10 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         return 'Place your troops, attack your opponents, and fortify your defenses!';
     }
 
+    override getDebugText(): string {
+        return `Risk Game (${this.getNumRemainingPlayers()} remaining, ${this.getTotalTroops()} troops, ${this.getAverageTerritoryTroops().toFixed(2)} average)`
+    }
+
     override getDecisionPhases(): { key: string; millis: number; }[] {
         // If draft data is present, create decision phases using them
         if (this.getTurn() === 1) {
@@ -845,6 +849,14 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
 
     private getJoinedTerritoryNames(territoryIds: string[]): string {
         return naturalJoin(territoryIds.map(territoryId => `_${this.getTerritoryName(territoryId)}_`));
+    }
+
+    private getTerritoryDeaths(territoryId: string): number {
+        return this.state.territories[territoryId]?.deaths ?? 0;
+    }
+
+    private addTerritoryDeaths(territoryId: string, deaths: number) {
+        this.state.territories[territoryId].deaths = this.getTerritoryDeaths(territoryId) + deaths;
     }
 
     /**
@@ -2484,6 +2496,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                         this.addPlayerDeaths(attacker.userId, 1);
                         rollWinners.push('defender');
                     }
+                    // Add one territory death regardless of which team suffered a casualty
+                    this.addTerritoryDeaths(defender.territoryId, 1);
                 }
                 // Render the conflict state before altering the attacker queue
                 const conflictRender = await this.renderConflict(conflict, { attackerRolls, defenderRolls, attackersLost, defendersLost, rollWinners });
@@ -2680,6 +2694,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                             troopsLost[targetIndex]++;
                             this.addPlayerKills(attacker.userId, 1);
                             this.addPlayerDeaths(target.userId, 1);
+                            this.addTerritoryDeaths(target.territoryId, 1);
                             rollWinners[i][j] = 'attacker';
                         } else {
                             rollWinners[i][j] = 'neither';
