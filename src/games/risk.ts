@@ -709,6 +709,10 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         return Object.keys(this.state.territories);
     }
 
+    private getNumTerritories(): number {
+        return this.getTerritories().length;
+    }
+
     private getTerritoryConnections(territoryId: string): string[] {
         return RiskGame.config.territories[territoryId]?.connections ?? [];
     }
@@ -787,6 +791,22 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
      */
     private getTerritoryTroops(territoryId: string): number {
         return this.state.territories[territoryId]?.troops ?? 0;
+    }
+
+    /**
+     * Gets the total number of troops in all territories.
+     */
+    private getTotalTroops(): number {
+        return this.getTerritories()
+            .map(territoryId => this.getTerritoryTroops(territoryId))
+            .reduce((x, y) => x + y, 0);
+    }
+
+    /**
+     * Gets the average number of troops in all territories.
+     */
+    private getAverageTerritoryTroops(): number {
+        return this.getTotalTroops() / this.getNumTerritories();
     }
 
     /**
@@ -1145,10 +1165,12 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         // Player only gets handicap if the following conditions are met:
         // (1) Player is not yet eliminated
         // (2) Player has only one territory
-        // (3) Player has less than half the max weekly points
+        // (3) Player has fewer troops than the average troop count of all territories
+        // (4) Player has less than 3/4 the max weekly points
         return !this.isPlayerEliminated(userId)
             && this.getNumTerritoriesForPlayer(userId) === 1
-            && this.getPoints(userId) < 0.5 * this.getMaxPoints();
+            && this.getTroopsForPlayer(userId) < this.getAverageTerritoryTroops()
+            && this.getPoints(userId) < 0.75 * this.getMaxPoints();
     }
 
     private async renderRules(): Promise<AttachmentBuilder> {
