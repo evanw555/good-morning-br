@@ -823,6 +823,10 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         return RiskGame.config.territories[territoryId]?.name ?? '???';
     }
 
+    private getJoinedTerritoryNames(territoryIds: string[]): string {
+        return naturalJoin(territoryIds.map(territoryId => `_${this.getTerritoryName(territoryId)}_`));
+    }
+
     /**
      * For a given player, gets the total number of troops on the board in territories they own.
      */
@@ -1093,9 +1097,13 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         delete this.state.decisions[userId];
 
         // Remove ownership from all owned territories
-        // TODO: Should we somehow give ownership to an NPC player?
-        for (const territoryId of this.getTerritoriesForPlayer(userId)) {
+        const territoryIds = this.getTerritoriesForPlayer(userId);
+        for (const territoryId of territoryIds) {
             delete this.state.territories[territoryId].owner;
+        }
+        // Log if removed from at least one
+        if (territoryIds.length > 0) {
+            void logger.log(`Removed ownership from territories ${this.getJoinedTerritoryNames(territoryIds)}`);
         }
     }
 
