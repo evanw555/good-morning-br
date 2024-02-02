@@ -970,8 +970,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
     }
 
     private isPlayerEliminated(userId: Snowflake): boolean {
-        // Player is considered "eliminated" if they have a final rank assigned to them
-        return this.state.players[userId]?.finalRank !== undefined;
+        // Player is considered "eliminated" if they have an elimination index assigned to them
+        return this.state.players[userId]?.eliminationIndex !== undefined;
     }
 
     private getNumEliminatedPlayers(): number {
@@ -983,19 +983,25 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
     }
 
     private getPlayerFinalRank(userId: Snowflake): number {
-        return this.state.players[userId]?.finalRank ?? Number.POSITIVE_INFINITY;
+        if (this.isPlayerEliminated(userId)) {
+            return this.getNumPlayers() - this.getPlayerEliminationIndex(userId);
+        }
+        throw new Error(`Player ${this.getPlayerDisplayName(userId)} is not yet eliminated, cannot get final rank`);
     }
 
-    private setPlayerFinalRank(userId: Snowflake, finalRank: number) {
-        this.state.players[userId].finalRank = finalRank;
+    private getPlayerEliminationIndex(userId: Snowflake): number {
+        return this.state.players[userId].eliminationIndex ?? this.getNumPlayers();
+    }
+
+    private setPlayerEliminationIndex(userId: Snowflake, eliminationIndex: number) {
+        this.state.players[userId].eliminationIndex = eliminationIndex;
     }
 
     private getPlayerFinalRankString(userId: Snowflake): string {
-        return getRankString(this.getPlayerFinalRank(userId));
-    }
-
-    private getPlayerWithFinalRank(finalRank: number): Snowflake {
-        return this.getPlayers().filter(userId => this.getPlayerFinalRank(userId) === finalRank)[0];
+        if (this.isPlayerEliminated(userId)) {
+            return getRankString(this.getPlayerFinalRank(userId));
+        }
+        return 'N/A';
     }
 
     /**
@@ -2588,20 +2594,20 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     const extraSummaries: MessengerPayload[] = [];
                     // TODO: Can we somehow handle the NPC defender case more properly?
                     if (defender.userId && this.getNumTerritoriesForPlayer(defender.userId) === 0) {
-                        // Mark them as eliminated and assign their final rank
-                        const finalRank = this.getNumRemainingPlayers();
-                        this.setPlayerFinalRank(defender.userId, finalRank);
+                        // Mark them as eliminated and assign their elimination index
+                        this.setPlayerEliminationIndex(defender.userId, this.getNumEliminatedPlayers());
                         // If they're eliminated for 2nd, assign the final winners
-                        if (finalRank === 2) {
-                            this.addWinner(attacker.userId);
-                            this.addWinner(defender.userId);
-                            // TODO: This is pretty hacky and seems flimsy. Can we add winners differently?
-                            this.addWinner(this.getPlayerWithFinalRank(3));
-                        }
+                        // TODO: Handle the end-of-game condition properly
+                        // if (finalRank === 2) {
+                        //     this.addWinner(attacker.userId);
+                        //     this.addWinner(defender.userId);
+                        //     // TODO: This is pretty hacky and seems flimsy. Can we add winners differently?
+                        //     this.addWinner(this.getPlayerWithFinalRank(3));
+                        // }
                         // Before adjusting this player's eliminator/color, render the elimination image
                         const inheritedVassals = this.getPlayerVassals(defender.userId);
                         extraSummaries.push({
-                            content: `**${this.getPlayerDisplayName(defender.userId)}** has been eliminated, finishing the season in **${getRankString(finalRank)}** place! `
+                            content: `**${this.getPlayerDisplayName(defender.userId)}** has been eliminated, finishing the season in **${this.getPlayerFinalRankString(defender.userId)}** place! `
                                 + `This player is now a vassal of **${this.getPlayerDisplayName(attacker.userId)}**`
                                 + (inheritedVassals.length === 0 ? '' : `, who hereby inherits their ${quantify(inheritedVassals.length, 'vassal')}`),
                             files: [await this.renderElimination(defender.userId, attacker.userId, inheritedVassals)]

@@ -309,7 +309,8 @@ export interface RiskPlayerState {
     weeklyPrize?: true,
     // If true, this player has successfully captured at least one territory since the beginning of the last turn
     captureBonus?: true,
-    finalRank?: number,
+    // Represents the order in which this player was eliminated (e.g. 0 = eliminated first)
+    eliminationIndex?: number,
     eliminator?: Snowflake,
     kills?: number,
     deaths?: number
