@@ -3257,7 +3257,7 @@ const processCommands = async (msg: Message): Promise<void> => {
         }
         const guess = msg.content.trim().toUpperCase();
         if (guess.length === 1) {
-            if (!guess.match(/[A_Z]/)) {
+            if (!guess.match(/[A-Z]/)) {
                 await msg.reply(`**${guess}** is not a letter!`);
                 return;
             }
