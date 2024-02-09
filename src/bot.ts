@@ -3261,7 +3261,7 @@ const processCommands = async (msg: Message): Promise<void> => {
                 await msg.reply(`**${guess}** has already been used!`);
                 return;
             }
-            const numOccurrences = tempWOF.solution.split('').filter(x => x === guess).length;
+            const numOccurrences = tempWOF.solution.toUpperCase().split('').filter(x => x === guess).length;
             tempWOF.letters += guess;
             if (numOccurrences === 0) {
                 await msg.reply(`No **${guess}**!`);

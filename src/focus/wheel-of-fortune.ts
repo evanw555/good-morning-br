@@ -16,10 +16,16 @@ export async function renderWheelOfFortuneState(wofState: WheelOfFortune): Promi
     for (const word of words) {
         const index = grid.length - 1;
         const currentRowLength = grid[index].length;
-        // If the new word plus one space can fit on this row, add it (otherwise push to new row)
-        if (currentRowLength + 1 + word.length <= COLUMNS) {
+        // If row is empty and it can fit, add without a space
+        if (currentRowLength === 0 && word.length <= COLUMNS) {
+            grid[index] += word;
+        }
+        // If the new word plus one space can fit on this row, add it
+        else if (currentRowLength + 1 + word.length <= COLUMNS) {
             grid[index] += ' ' + word;
-        } else {
+        }
+        // Otherwise, push to a new row
+        else {
             grid[index] += ' '.repeat(COLUMNS - currentRowLength);
             grid.push(word);
         }
