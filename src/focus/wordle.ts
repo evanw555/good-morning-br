@@ -1,7 +1,7 @@
 import canvas from 'canvas';
-import { Wordle } from "./types";
-import { Snowflake, User } from 'discord.js';
-import imageLoader from './image-loader';
+import { Wordle } from "../types";
+import { Snowflake } from 'discord.js';
+import imageLoader from '../image-loader';
 
 export function getProgressOfGuess(wordle: Wordle, guess: string): number {
     const NUM_LETTERS = wordle.solution.length;

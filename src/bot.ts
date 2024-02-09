@@ -1,12 +1,12 @@
 import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, BaseMessageOptions, ButtonStyle, Client, ComponentType, DMChannel, GatewayIntentBits, MessageFlags, PartialMessage, Partials, TextChannel, TextInputStyle, User } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discord.js';
-import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, GameState, Wordle, SubmissionPromptHistory, ReplyToMessageData, GoodMorningAuth, MessengerPayload, WordleRestartData, AnonymousSubmission, GamePlayerAddition } from './types';
+import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, GameState, Wordle, SubmissionPromptHistory, ReplyToMessageData, GoodMorningAuth, MessengerPayload, WordleRestartData, AnonymousSubmission, GamePlayerAddition, WheelOfFortune } from './types';
 import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, canonicalizeText, getScaledPoints, generateSynopsisWithAi, getSimpleScaledPoints, text } from './util';
 import GoodMorningState from './state';
 import { addReactsSync, chance, DiscordTimestampFormat, FileStorage, generateKMeansClusters, getClockTime, getJoinedMentions, getPollChoiceKeys, getRandomDateBetween,
     getRankString, getRelativeDateTimeString, getSelectedNode, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger,
     naturalJoin, PastTimeoutStrategy, prettyPrint, R9KTextBank, randChoice, randInt, shuffle, sleep, splitTextNaturally, TimeoutManager, TimeoutOptions, toCalendarDate, toDiscordTimestamp, toFixed, toLetterId } from 'evanw555.js';
-import { getProgressOfGuess, renderWordleState } from './wordle';
+import { getProgressOfGuess, renderWordleState } from './focus/wordle';
 import { AnonymousSubmissionsState } from './submissions';
 import ActivityTracker from './activity-tracker';
 import AbstractGame from './games/abstract-game';
@@ -18,6 +18,7 @@ import RiskGame from './games/risk';
 
 import logger from './logger';
 import imageLoader from './image-loader';
+import { renderWheelOfFortuneState } from './focus/wheel-of-fortune';
 
 const auth: GoodMorningAuth = loadJson('config/auth.json');
 const config: GoodMorningConfig = loadJson('config/config.json');
@@ -3156,6 +3157,7 @@ client.on('typingStart', async (typing) => {
 
 // TODO: Temp wordle game data
 let tempWordle: Wordle | null = null;
+let tempWOF: WheelOfFortune | null = null;
 
 let tempDungeon: AbstractGame<GameState> | null = null;
 let awaitingGameCommands = false;
@@ -3244,6 +3246,32 @@ const processCommands = async (msg: Message): Promise<void> => {
                 })).setName('wordle-avatars.png')
             ]
         });
+        return;
+    }
+    if (tempWOF) {
+        // Emergency abort
+        if (msg.content.replace(/^\+/, '').toLowerCase() === 'exit') {
+            tempWOF = null;
+            await msg.reply('Exiting temp WOF mode...');
+            return;
+        }
+        const guess = msg.content.trim().toUpperCase();
+        if (guess.length === 1) {
+            if (tempWOF.letters.includes(guess)) {
+                await msg.reply(`**${guess}** has already been used!`);
+                return;
+            }
+            const numOccurrences = tempWOF.solution.split('').filter(x => x === guess).length;
+            tempWOF.letters += guess;
+            if (numOccurrences === 0) {
+                await msg.reply(`No **${guess}**!`);
+                return;
+            }
+            await msg.reply({
+                content: `There is/are ${numOccurrences} **${guess}**!`,
+                files: [new AttachmentBuilder(await renderWheelOfFortuneState(tempWOF)).setName('wof.png')]
+            });
+        }
         return;
     }
     if (awaitingGameCommands) {
@@ -3614,6 +3642,17 @@ const processCommands = async (msg: Message): Promise<void> => {
                 };
                 await msg.reply('Game begin!');
             }
+        } else if (sanitizedText.includes('wheel of fortune')) {
+            const solutions = await sharedStorage.readJson('bad-language.json');
+            const solution = randChoice(...solutions);
+            tempWOF = {
+                solution,
+                letters: ''
+            };
+            await msg.reply({
+                content: 'Game begin!',
+                files: [new AttachmentBuilder(await renderWheelOfFortuneState(tempWOF)).setName('wof.png')]
+            });
         } else if (sanitizedText.includes('scaled')) {
             const [ n, baseline, maxPoints, order ] = sanitizedText.replace('scaled', '').replace('?', '').replace(/\s+/g, ' ').trim().split(' ').map(s => parseInt(s));
             const userIds = state.queryOrderedPlayers({ n });

@@ -471,6 +471,11 @@ export interface Wordle {
     blacklistedUserId?: Snowflake
 }
 
+export interface WheelOfFortune {
+    solution: string,
+    letters: string
+}
+
 export interface WordleRestartData {
     nextPuzzleLength: number,
     blacklistedUserId: Snowflake
