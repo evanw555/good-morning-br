@@ -3257,6 +3257,10 @@ const processCommands = async (msg: Message): Promise<void> => {
         }
         const guess = msg.content.trim().toUpperCase();
         if (guess.length === 1) {
+            if (!guess.match(/[A_Z]/)) {
+                await msg.reply(`**${guess}** is not a letter!`);
+                return;
+            }
             if (tempWOF.letters.includes(guess)) {
                 await msg.reply(`**${guess}** has already been used!`);
                 return;

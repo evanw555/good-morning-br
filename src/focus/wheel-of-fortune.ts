@@ -30,8 +30,12 @@ export async function renderWheelOfFortuneState(wofState: WheelOfFortune): Promi
             grid.push(word);
         }
     }
-    const ROWS = grid.length;
+    // Fill in trailing spaces on the last row
+    const lastIndex = grid.length - 1;
+    const lastRowLength = grid[lastIndex].length;
+    grid[lastIndex] += ' '.repeat(COLUMNS - lastRowLength);
 
+    const ROWS = grid.length;
     const TILE_SIZE = 48;
     const MARGIN = 4;
 
@@ -51,14 +55,14 @@ export async function renderWheelOfFortuneState(wofState: WheelOfFortune): Promi
         let baseX = MARGIN;
         for (const letter of row) {
             if (letter === ' ') {
-                context.fillStyle = 'gray';
+                context.fillStyle = '#003333';
                 context.fillRect(baseX, baseY, TILE_SIZE, TILE_SIZE);
             } else {
                 context.fillStyle = 'white';
                 context.fillRect(baseX, baseY, TILE_SIZE, TILE_SIZE);
-                // Draw the letter if it's already been guessed
-                if (wofState.letters.includes(letter)) {
-                    const letterImage = getTextLabel(letter, TILE_SIZE, TILE_SIZE, { align: 'center', style: 'black' });
+                // Draw the letter if it's not a letter or has already been guessed
+                if (!letter.match(/[A-Z]/) || wofState.letters.includes(letter)) {
+                    const letterImage = getTextLabel(letter, TILE_SIZE, TILE_SIZE, { align: 'center', style: 'black', font: `bold ${TILE_SIZE * 0.75}px sans-serif` });
                     context.drawImage(letterImage, baseX, baseY);
                 }
             }
