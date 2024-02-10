@@ -694,6 +694,27 @@ const chooseMagicWords = async (n: number, options?: { characters?: number, bonu
     return words.filter(w => !options?.characters || w.length === options.characters).slice(0, n);
 };
 
+const getRandomBadLanguageString = async (): Promise<string> => {
+    const choices = await sharedStorage.readJson('bad-language.json');
+    for (let i = 0; i < 100; i++) {
+        const choice = randChoice(...choices);
+        // If it's too short, skip
+        if (choice.length < 6) {
+            continue;
+        }
+        // If it contains mentions/emojis/timestamps, skip
+        if (choice.includes('<') && choice.includes('>')) {
+            continue;
+        }
+        // If it contains unicode emojis, skip
+        if (choice.match(/\p{Emoji}/u)) {
+            continue;
+        }
+        return choice;
+    }
+    return 'ERROR'
+};
+
 const loadSubmissionPromptHistory = async (): Promise<SubmissionPromptHistory> => {
     try {
         return await storage.readJson('prompts.json') as SubmissionPromptHistory;
@@ -3647,10 +3668,8 @@ const processCommands = async (msg: Message): Promise<void> => {
                 await msg.reply('Game begin!');
             }
         } else if (sanitizedText.includes('wheel of fortune')) {
-            const solutions = await sharedStorage.readJson('bad-language.json');
-            const solution = randChoice(...solutions);
             tempWOF = {
-                solution,
+                solution: await getRandomBadLanguageString(),
                 letters: ''
             };
             await msg.reply({

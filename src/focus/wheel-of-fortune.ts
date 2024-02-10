@@ -36,11 +36,12 @@ export async function renderWheelOfFortuneState(wofState: WheelOfFortune): Promi
     grid[lastIndex] += ' '.repeat(COLUMNS - lastRowLength);
 
     const ROWS = grid.length;
-    const TILE_SIZE = 48;
+    const TILE_WIDTH = 36;
+    const TILE_HEIGHT = 48;
     const MARGIN = 4;
 
-    const WIDTH = COLUMNS * TILE_SIZE + (COLUMNS + 1) * MARGIN;
-    const HEIGHT = ROWS * TILE_SIZE + (ROWS + 1) * MARGIN;
+    const WIDTH = COLUMNS * TILE_WIDTH + (COLUMNS + 1) * MARGIN;
+    const HEIGHT = ROWS * TILE_HEIGHT + (ROWS + 1) * MARGIN;
 
     const canvas = createCanvas(WIDTH, HEIGHT);
     const context = canvas.getContext('2d');
@@ -56,19 +57,19 @@ export async function renderWheelOfFortuneState(wofState: WheelOfFortune): Promi
         for (const letter of row) {
             if (letter === ' ') {
                 context.fillStyle = '#003333';
-                context.fillRect(baseX, baseY, TILE_SIZE, TILE_SIZE);
+                context.fillRect(baseX, baseY, TILE_WIDTH, TILE_HEIGHT);
             } else {
                 context.fillStyle = 'white';
-                context.fillRect(baseX, baseY, TILE_SIZE, TILE_SIZE);
+                context.fillRect(baseX, baseY, TILE_WIDTH, TILE_HEIGHT);
                 // Draw the letter if it's not a letter or has already been guessed
                 if (!letter.match(/[A-Z]/) || wofState.letters.includes(letter)) {
-                    const letterImage = getTextLabel(letter, TILE_SIZE, TILE_SIZE, { align: 'center', style: 'black', font: `bold ${TILE_SIZE * 0.75}px sans-serif` });
+                    const letterImage = getTextLabel(letter, TILE_WIDTH, TILE_HEIGHT, { align: 'center', style: 'black', font: `bold ${TILE_HEIGHT * 0.75}px sans-serif` });
                     context.drawImage(letterImage, baseX, baseY);
                 }
             }
-            baseX += TILE_SIZE + MARGIN;
+            baseX += TILE_WIDTH + MARGIN;
         }
-        baseY += TILE_SIZE + MARGIN;
+        baseY += TILE_HEIGHT + MARGIN;
     }
 
     return canvas.toBuffer();
