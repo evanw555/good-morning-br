@@ -3670,6 +3670,7 @@ const processCommands = async (msg: Message): Promise<void> => {
         } else if (sanitizedText.includes('wheel of fortune')) {
             tempWOF = {
                 solution: await getRandomBadLanguageString(),
+                category: 'Bad Language',
                 letters: ''
             };
             await msg.reply({

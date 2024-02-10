@@ -473,6 +473,7 @@ export interface Wordle {
 
 export interface WheelOfFortune {
     solution: string,
+    category: string,
     letters: string
 }
 

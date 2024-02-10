@@ -1,6 +1,9 @@
 import { createCanvas } from "canvas";
 import { WheelOfFortune } from "../types";
-import { getTextLabel } from "../util";
+import { drawBackground, getTextLabel } from "../util";
+import { fillBackground, joinCanvasesVertical, withDropShadow } from "evanw555.js";
+
+import imageLoader from "../image-loader";
 
 export async function renderWheelOfFortuneState(wofState: WheelOfFortune): Promise<Buffer> {
     const words = wofState.solution
@@ -35,6 +38,15 @@ export async function renderWheelOfFortuneState(wofState: WheelOfFortune): Promi
     const lastRowLength = grid[lastIndex].length;
     grid[lastIndex] += ' '.repeat(COLUMNS - lastRowLength);
 
+    // If there aren't enough rows, add one to the bottom
+    if (grid.length < 3) {
+        grid.push(' '.repeat(COLUMNS));
+    }
+    // If there still aren't enough, add one to the top
+    if (grid.length < 3) {
+        grid.unshift(' '.repeat(COLUMNS));
+    }
+
     const ROWS = grid.length;
 
     // Count the number of trailing columns comprised of only spaces
@@ -63,10 +75,6 @@ export async function renderWheelOfFortuneState(wofState: WheelOfFortune): Promi
     const canvas = createCanvas(WIDTH, HEIGHT);
     const context = canvas.getContext('2d');
 
-    // Fill the background
-    context.fillStyle = 'black';
-    context.fillRect(0, 0, WIDTH, HEIGHT);
-
     // Draw each row
     let baseY = MARGIN;
     for (const row of grid) {
@@ -89,5 +97,15 @@ export async function renderWheelOfFortuneState(wofState: WheelOfFortune): Promi
         baseY += TILE_HEIGHT + MARGIN;
     }
 
-    return canvas.toBuffer();
+    // Add the category at the bottom
+    const compositeCanvas = joinCanvasesVertical([
+        canvas,
+        withDropShadow(getTextLabel(wofState.category, WIDTH, TILE_HEIGHT, { style: 'white' }))
+    ], { align: 'center', spacing: MARGIN });
+
+    // Draw the image background
+    const wavesImage = await imageLoader.loadImage('assets/common/waves.webp');
+    drawBackground(compositeCanvas.getContext('2d'), wavesImage);
+
+    return compositeCanvas.toBuffer();
 }
