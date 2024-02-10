@@ -36,6 +36,23 @@ export async function renderWheelOfFortuneState(wofState: WheelOfFortune): Promi
     grid[lastIndex] += ' '.repeat(COLUMNS - lastRowLength);
 
     const ROWS = grid.length;
+
+    // Count the number of trailing columns comprised of only spaces
+    let numTrailingSpaceColumns = 0;
+    for (let i = COLUMNS - 1; i >= 0; i--) {
+        if (grid.some(row => row[i] !== ' ')) {
+            break;
+        }
+        numTrailingSpaceColumns++;
+    }
+    // Rotate half of them to the left of each row
+    const numRotations = Math.floor(numTrailingSpaceColumns / 2);
+    for (let i = 0; i < numRotations; i++) {
+        for (let j = 0; j < ROWS; j++) {
+            grid[j] = grid[j].slice(-1) + grid[j].slice(0, -1);
+        }
+    }
+
     const TILE_WIDTH = 36;
     const TILE_HEIGHT = 48;
     const MARGIN = 4;
