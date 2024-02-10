@@ -75,6 +75,10 @@ export async function renderWheelOfFortuneState(wofState: WheelOfFortune): Promi
     const canvas = createCanvas(WIDTH, HEIGHT);
     const context = canvas.getContext('2d');
 
+    // Fill the background
+    context.fillStyle = 'black';
+    context.fillRect(0, 0, WIDTH, HEIGHT);
+
     // Draw each row
     let baseY = MARGIN;
     for (const row of grid) {
@@ -100,12 +104,12 @@ export async function renderWheelOfFortuneState(wofState: WheelOfFortune): Promi
     // Add the category at the bottom
     const compositeCanvas = joinCanvasesVertical([
         canvas,
-        withDropShadow(getTextLabel(wofState.category, WIDTH, TILE_HEIGHT, { style: 'white' }))
+        withDropShadow(getTextLabel(wofState.category, WIDTH, TILE_HEIGHT * 0.75, { style: 'white' }))
     ], { align: 'center', spacing: MARGIN });
 
     // Draw the image background
-    const wavesImage = await imageLoader.loadImage('assets/common/waves.webp');
-    drawBackground(compositeCanvas.getContext('2d'), wavesImage);
+    const backgroundImage = await imageLoader.loadImage('assets/common/bubbles.jpg');
+    drawBackground(compositeCanvas.getContext('2d'), backgroundImage);
 
     return compositeCanvas.toBuffer();
 }
