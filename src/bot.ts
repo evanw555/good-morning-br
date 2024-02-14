@@ -694,8 +694,21 @@ const chooseMagicWords = async (n: number, options?: { characters?: number, bonu
     return words.filter(w => !options?.characters || w.length === options.characters).slice(0, n);
 };
 
-const getRandomBadLanguageString = async (): Promise<string> => {
-    const choices = await sharedStorage.readJson('bad-language.json');
+const getNewWheelOfFortuneState = async (): Promise<WheelOfFortune> => {
+    // First, randomly select a data set
+    let choices: string[] = ['ERROR'];
+    let category: string = 'Unknown';
+    if (chance(0.33)) {
+        choices = await sharedStorage.readJson('bad-language.json');
+        category = 'Bad Language';
+    } else if (chance(0.5)) {
+        choices = await loadJson('config/wof/vidya.json');
+        category = 'Vidya';
+    } else {
+        choices = await loadJson('config/wof/kino.json');
+        category = 'Kino';
+    }
+    // Now, select one random element from the set that meets a few criteria
     for (let i = 0; i < 100; i++) {
         const choice = randChoice(...choices);
         // If it's too short, skip
@@ -710,9 +723,17 @@ const getRandomBadLanguageString = async (): Promise<string> => {
         if (choice.match(/\p{Emoji}/u)) {
             continue;
         }
-        return choice;
+        return {
+            solution: choice,
+            category,
+            letters: ''
+        };
     }
-    return 'ERROR'
+    return {
+        solution: 'ERROR',
+        category,
+        letters: ''
+    };
 };
 
 const loadSubmissionPromptHistory = async (): Promise<SubmissionPromptHistory> => {
@@ -3668,11 +3689,7 @@ const processCommands = async (msg: Message): Promise<void> => {
                 await msg.reply('Game begin!');
             }
         } else if (sanitizedText.includes('wheel of fortune')) {
-            tempWOF = {
-                solution: await getRandomBadLanguageString(),
-                category: 'Bad Language',
-                letters: ''
-            };
+            tempWOF = await getNewWheelOfFortuneState();
             await msg.reply({
                 content: 'Game begin!',
                 files: [new AttachmentBuilder(await renderWheelOfFortuneState(tempWOF)).setName('wof.png')]

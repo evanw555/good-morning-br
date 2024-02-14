@@ -6,3 +6,4 @@ build/
 config/auth.json
 config/config-override.json
 config/words/
+config/wof/
