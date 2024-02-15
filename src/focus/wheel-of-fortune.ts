@@ -1,7 +1,7 @@
 import { createCanvas } from "canvas";
 import { WheelOfFortune } from "../types";
 import { drawBackground, getTextLabel } from "../util";
-import { fillBackground, joinCanvasesVertical, withDropShadow } from "evanw555.js";
+import { fillBackground, joinCanvasesVertical, withDropShadow, withMargin } from "evanw555.js";
 
 import imageLoader from "../image-loader";
 
@@ -102,13 +102,16 @@ export async function renderWheelOfFortuneState(wofState: WheelOfFortune): Promi
     }
 
     // Add the category at the bottom
-    const compositeCanvas = joinCanvasesVertical([
-        canvas,
-        withDropShadow(getTextLabel(wofState.category, WIDTH, TILE_HEIGHT * 0.75, { style: 'white' }))
-    ], { align: 'center', spacing: MARGIN });
+    const compositeCanvas = withMargin(
+        joinCanvasesVertical([
+            canvas,
+            withDropShadow(getTextLabel(wofState.category, WIDTH, TILE_HEIGHT * 0.75, { style: 'white' }))
+        ], { align: 'center', spacing: MARGIN }),
+        Math.round(TILE_WIDTH / 2)
+    );
 
     // Draw the image background
-    const backgroundImage = await imageLoader.loadImage('assets/common/bubbles.jpg');
+    const backgroundImage = await imageLoader.loadImage('assets/common/blueblur.jpg');
     drawBackground(compositeCanvas.getContext('2d'), backgroundImage);
 
     return compositeCanvas.toBuffer();
