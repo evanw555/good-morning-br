@@ -1850,6 +1850,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             const isWOF = state.getEventType() === DailyEventType.WheelOfFortune;
             // Cancel any timeouts for subsequent rounds
             await cancelTimeoutsWithType(TimeoutType.WordleRestart);
+            await cancelTimeoutsWithType(TimeoutType.WheelOfFortuneRestart);
             // Award points
             const event = state.getEvent();
             if (event && event.focusScores) {
@@ -4116,7 +4117,8 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                                 // Reply with a message
                                 await messenger.reply(msg, {
                                     content: (spinValue < 0) ? '**BANKRUPT!** Oh no, you\'ve lost all your cash for this round!' : '**LOSE A TURN!** Oh dear, looks like your turn is over...',
-                                    files: [render],
+                                    // TODO: Add an actual render
+                                    // files: [render],
                                     flags: MessageFlags.SuppressNotifications
                                 });
                                 // Add them to the blacklist and end their turn
@@ -4232,9 +4234,15 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                                     flags: MessageFlags.SuppressNotifications
                                 });
                                 // Schedule the next round
-                                const in15Minutes = new Date();
-                                in15Minutes.setMinutes(in15Minutes.getMinutes() + 15);
-                                await registerTimeout(TimeoutType.WheelOfFortuneRestart, in15Minutes, { pastStrategy: PastTimeoutStrategy.Invoke });
+                                const restartDate = new Date();
+                                if (new Date().getHours() >= 11) {
+                                    restartDate.setMinutes(restartDate.getMinutes() + randInt(1, 5));
+                                } else if (new Date().getHours() >= 10) {
+                                    restartDate.setMinutes(restartDate.getMinutes() + randInt(5, 10));
+                                } else {
+                                    restartDate.setMinutes(restartDate.getMinutes() + randInt(10, 15));
+                                }
+                                await registerTimeout(TimeoutType.WheelOfFortuneRestart, restartDate, { pastStrategy: PastTimeoutStrategy.Invoke });
                             }
                             // Else, end their turn
                             else {
