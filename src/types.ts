@@ -9,6 +9,7 @@ export enum TimeoutType {
     GuestReveilleFallback = 'GUEST_REVEILLE_FALLBACK',
     PopcornFallback = 'POPCORN_FALLBACK',
     WordleRestart = 'WORDLE_RESTART',
+    WheelOfFortuneRestart = 'WHEEL_OF_FORTUNE_RESTART',
     AnonymousSubmissionReveal = 'ANONYMOUS_SUBMISSION_REVEAL',
     AnonymousSubmissionVotingReminder = 'ANONYMOUS_SUBMISSION_VOTING_REMINDER',
     AnonymousSubmissionTypePollStart = 'ANONYMOUS_SUBMISSION_TYPE_POLL_START',
@@ -130,6 +131,7 @@ export enum DailyEventType {
     GuestReveille = 'GUEST_REVEILLE',
     ReverseGoodMorning = 'REVERSE_GOOD_MORNING',
     Wordle = 'WORDLE',
+    WheelOfFortune = 'WHEEL_OF_FORTUNE',
     AnonymousSubmissions = 'ANONYMOUS_SUBMISSIONS',
     // 2.0 events
     GameDecision = 'GAME_DECISION',
@@ -157,9 +159,10 @@ export interface DailyEvent {
     minutesEarly?: number,
     // Used specifically for the "wishful wednesday" event
     wishesReceived?: Record<Snowflake, number>,
-    // Used specifically for the "wordle" event
+    // Used specifically for the "wordle" and "wheel of fortune" events
     wordle?: Wordle,
-    wordleHiScores?: Record<Snowflake, number>,
+    wheelOfFortune?: WheelOfFortune,
+    focusScores?: Record<Snowflake, number>,
     // Used specifically for the "popcorn" event
     messageId?: Snowflake,
     storySegments?: string[]
@@ -474,7 +477,16 @@ export interface Wordle {
 export interface WheelOfFortune {
     solution: string,
     category: string,
-    letters: string
+    usedLetters: string,
+    userId?: Snowflake,
+    // The value of the user's spin (negative is bankrupt, 0 is lose turn, positive is a cash value)
+    // If present, the user is expected to provide a consonant
+    spinValue?: number,
+    // If true, the user has indicated that they are going to solve the puzzle
+    solving?: true,
+    soloRound?: true,
+    blacklistedUserIds: Snowflake[],
+    roundScores: Record<Snowflake, number>
 }
 
 export interface WordleRestartData {

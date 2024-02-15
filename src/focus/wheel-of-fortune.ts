@@ -1,11 +1,12 @@
 import { Canvas, createCanvas } from "canvas";
 import { WheelOfFortune } from "../types";
 import { drawBackground, getTextLabel } from "../util";
-import { fillBackground, joinCanvasesHorizontal, joinCanvasesVertical, withDropShadow, withMargin } from "evanw555.js";
+import { joinCanvasesHorizontal, joinCanvasesVertical, randChoice, withDropShadow, withMargin } from "evanw555.js";
 
 import imageLoader from "../image-loader";
+import { AttachmentBuilder } from "discord.js";
 
-export async function renderWheelOfFortuneState(wofState: WheelOfFortune): Promise<Buffer> {
+export async function renderWheelOfFortuneState(wofState: WheelOfFortune): Promise<AttachmentBuilder> {
     const words = wofState.solution
         .toUpperCase()
         .replace(/\s+/g, ' ')
@@ -91,7 +92,7 @@ export async function renderWheelOfFortuneState(wofState: WheelOfFortune): Promi
                 context.fillStyle = 'white';
                 context.fillRect(baseX, baseY, TILE_WIDTH, TILE_HEIGHT);
                 // Draw the letter if it's not a letter or has already been guessed
-                if (!letter.match(/[A-Z]/) || wofState.letters.includes(letter)) {
+                if (!letter.match(/[A-Z]/) || wofState.usedLetters.includes(letter)) {
                     const letterImage = getTextLabel(letter, TILE_WIDTH, TILE_HEIGHT, { align: 'center', style: 'black', font: `bold ${TILE_HEIGHT * 0.75}px sans-serif` });
                     context.drawImage(letterImage, baseX, baseY);
                 }
@@ -105,7 +106,7 @@ export async function renderWheelOfFortuneState(wofState: WheelOfFortune): Promi
     const letterLabels: Canvas[] = [];
     for (let i = 65; i <= 90; i++) {
         const letter = String.fromCharCode(i);
-        const label = getTextLabel(letter, TILE_WIDTH / 2, TILE_WIDTH / 2, { alpha: wofState.letters.includes(letter) ? 0.25 : 1});
+        const label = getTextLabel(letter, TILE_WIDTH / 2, TILE_HEIGHT / 2, { alpha: wofState.usedLetters.includes(letter) ? 0.15 : 1});
         letterLabels.push(label);
     }
 
@@ -114,7 +115,7 @@ export async function renderWheelOfFortuneState(wofState: WheelOfFortune): Promi
         joinCanvasesVertical([
             getTextLabel(wofState.category, WIDTH, TILE_HEIGHT * 0.75, { style: 'white' }),
             canvas,
-            joinCanvasesHorizontal(letterLabels, { spacing: MARGIN })
+            joinCanvasesHorizontal(letterLabels)
         ], { align: 'center', spacing: MARGIN }),
         Math.round(TILE_WIDTH / 2)
     );
@@ -126,5 +127,41 @@ export async function renderWheelOfFortuneState(wofState: WheelOfFortune): Promi
     const backgroundImage = await imageLoader.loadImage('assets/common/blueblur.jpg');
     drawBackground(finalCanvas.getContext('2d'), backgroundImage);
 
-    return finalCanvas.toBuffer();
+    return new AttachmentBuilder(finalCanvas.toBuffer()).setName('wheel-of-fortune.png');
+}
+
+export async function spinWheelOfFortune(): Promise<{ render: AttachmentBuilder, spinValue: number }> {
+    // TODO: Have a better system for spinning
+    const spinValue = randChoice(
+        250,
+        10,
+        60,
+        70,
+        60,
+        65,
+        50,
+        70,
+        500,
+        60,
+        55,
+        50,
+        60,
+        -1,
+        65,
+        20,
+        70,
+        0,
+        80,
+        50,
+        65,
+        50,
+        90,
+        -1
+    );
+    // TODO: Actually render a real wheel
+    const canvas = getTextLabel(spinValue.toString(), 32, 32);
+    return {
+        spinValue,
+        render: new AttachmentBuilder(canvas.toBuffer()).setName('temp-spin.png')
+    };
 }

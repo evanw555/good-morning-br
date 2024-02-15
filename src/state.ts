@@ -781,6 +781,7 @@ export default class GoodMorningState {
         return this.getEventType() === DailyEventType.GuestReveille
             || this.getEventType() === DailyEventType.ReverseGoodMorning
             || this.getEventType() === DailyEventType.Wordle
+            || this.getEventType() === DailyEventType.WheelOfFortune
             || this.getEventType() === DailyEventType.AnonymousSubmissions;
     }
 

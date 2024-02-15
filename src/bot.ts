@@ -7,6 +7,7 @@ import { addReactsSync, chance, DiscordTimestampFormat, FileStorage, generateKMe
     getRankString, getRelativeDateTimeString, getSelectedNode, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger,
     naturalJoin, PastTimeoutStrategy, prettyPrint, R9KTextBank, randChoice, randInt, shuffle, sleep, splitTextNaturally, TimeoutManager, TimeoutOptions, toCalendarDate, toDiscordTimestamp, toFixed, toLetterId } from 'evanw555.js';
 import { getProgressOfGuess, renderWordleState } from './focus/wordle';
+import { renderWheelOfFortuneState, spinWheelOfFortune } from './focus/wheel-of-fortune';
 import { AnonymousSubmissionsState } from './submissions';
 import ActivityTracker from './activity-tracker';
 import AbstractGame from './games/abstract-game';
@@ -18,7 +19,6 @@ import RiskGame from './games/risk';
 
 import logger from './logger';
 import imageLoader from './image-loader';
-import { renderWheelOfFortuneState } from './focus/wheel-of-fortune';
 
 const auth: GoodMorningAuth = loadJson('config/auth.json');
 const config: GoodMorningConfig = loadJson('config/config.json');
@@ -189,7 +189,7 @@ const fetchUsers = async (userIds: Snowflake[]): Promise<Record<Snowflake, User>
 }
 
 const getBoldNames = (userIds: Snowflake[]): string => {
-    return naturalJoin(userIds.map(userId => `**${state.getPlayerDisplayName(userId)}**`));
+    return naturalJoin(userIds.map(userId => state.getPlayerDisplayName(userId)), { bold: true });
 }
 
 const replaceUserIdsInText = (input: string): string => {
@@ -542,7 +542,16 @@ const chooseEvent = async (date: Date): Promise<DailyEvent | undefined> => {
                     guesses: [],
                     guessOwners: []
                 },
-                wordleHiScores: {}
+                focusScores: {}
+            });
+        }
+        // Add the wheel of fortune event if a solution can be found
+        const wheelOfFortune = await getNewWheelOfFortuneState();
+        if (wheelOfFortune) {
+            focusEvents.push({
+                type: DailyEventType.WheelOfFortune,
+                wheelOfFortune,
+                focusScores: {}
             });
         }
         // Return a random one of these high-focus events
@@ -694,46 +703,47 @@ const chooseMagicWords = async (n: number, options?: { characters?: number, bonu
     return words.filter(w => !options?.characters || w.length === options.characters).slice(0, n);
 };
 
-const getNewWheelOfFortuneState = async (): Promise<WheelOfFortune> => {
-    // First, randomly select a data set
-    let choices: string[] = ['ERROR'];
-    let category: string = 'Unknown';
-    if (chance(0.33)) {
-        choices = await sharedStorage.readJson('bad-language.json');
-        category = 'Bad Language';
-    } else if (chance(0.5)) {
-        choices = await loadJson('config/wof/vidya.json');
-        category = 'Vidya';
-    } else {
-        choices = await loadJson('config/wof/kino.json');
-        category = 'Kino';
+const getNewWheelOfFortuneState = async (): Promise<WheelOfFortune | undefined> => {
+    try {
+        // First, randomly select a data set
+        let choices: string[] = ['ERROR'];
+        let category: string = 'Unknown';
+        if (chance(0.33)) {
+            choices = await sharedStorage.readJson('bad-language.json');
+            category = 'Bad Language';
+        } else if (chance(0.5)) {
+            choices = await loadJson('config/wof/vidya.json');
+            category = 'Vidya';
+        } else {
+            choices = await loadJson('config/wof/kino.json');
+            category = 'Kino';
+        }
+        // Now, select one random element from the set that meets a few criteria
+        for (let i = 0; i < 100; i++) {
+            const choice = randChoice(...choices);
+            // If it's too short, skip
+            if (choice.length < 6) {
+                continue;
+            }
+            // If it contains mentions/emojis/timestamps, skip
+            if (choice.includes('<') && choice.includes('>')) {
+                continue;
+            }
+            // If it contains unicode emojis, skip
+            if (choice.match(/\p{Emoji}/u)) {
+                continue;
+            }
+            return {
+                solution: choice,
+                category,
+                usedLetters: '',
+                blacklistedUserIds: [],
+                roundScores: {}
+            };
+        }
+    } catch (err) {
+        return undefined;
     }
-    // Now, select one random element from the set that meets a few criteria
-    for (let i = 0; i < 100; i++) {
-        const choice = randChoice(...choices);
-        // If it's too short, skip
-        if (choice.length < 6) {
-            continue;
-        }
-        // If it contains mentions/emojis/timestamps, skip
-        if (choice.includes('<') && choice.includes('>')) {
-            continue;
-        }
-        // If it contains unicode emojis, skip
-        if (choice.match(/\p{Emoji}/u)) {
-            continue;
-        }
-        return {
-            solution: choice,
-            category,
-            letters: ''
-        };
-    }
-    return {
-        solution: 'ERROR',
-        category,
-        letters: ''
-    };
 };
 
 const loadSubmissionPromptHistory = async (): Promise<SubmissionPromptHistory> => {
@@ -896,6 +906,21 @@ const sendGoodMorningMessage = async (): Promise<void> => {
             const text = `${intro} Today I have a special puzzle for you... we'll be playing my own proprietary morningtime game called _Wordle_! `
              + `I'm thinking of a **${state.getEvent().wordle?.solution.length ?? '???'}**-letter word, and you each get only one guess! You'll earn points for each new _green_ letter you reveal. Good luck!`;
             await messenger.send(goodMorningChannel, text, { immediate: overriddenMessage !== undefined });
+            break;
+        }
+        case DailyEventType.WheelOfFortune: {
+            // If there's an overridden message, just send it naively upfront
+            if (overriddenMessage) {
+                await messenger.send(goodMorningChannel, languageGenerator.generate(overriddenMessage));
+            }
+            // Send the wordle intro
+            const intro: string = overriddenMessage ? 'There\'s more!' : 'Good morning! ';
+            const payload = {
+                content: `${intro} Today we're going to play a special game... It's my very own morningtime rendition of _Wheel of Fortune_! `
+                    + 'Say _"spin"_ to spin the wheel, then guess a consonant, buy a vowel, or solve the puzzle!',
+                files: [await renderWheelOfFortuneState(state.getEvent().wheelOfFortune as WheelOfFortune)]
+            };
+            await messenger.send(goodMorningChannel, payload, { immediate: overriddenMessage !== undefined });
             break;
         }
         case DailyEventType.AnonymousSubmissions: {
@@ -1820,14 +1845,15 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             await logger.log(`Penalized **${state.getPlayerDisplayName(previousBait.userId)}** for being out-baited.`);
         }
 
-        // If today was a Wordle day, award points using the hi-scores map
-        if (state.getEventType() === DailyEventType.Wordle) {
+        // If today was a Wordle/WOF day, award points using the focus scores map
+        if (state.getEventType() === DailyEventType.Wordle || state.getEventType() === DailyEventType.WheelOfFortune) {
+            const isWOF = state.getEventType() === DailyEventType.WheelOfFortune;
             // Cancel any timeouts for subsequent rounds
             await cancelTimeoutsWithType(TimeoutType.WordleRestart);
             // Award points
             const event = state.getEvent();
-            if (event && event.wordleHiScores) {
-                const scores = event.wordleHiScores;
+            if (event && event.focusScores) {
+                const scores = event.focusScores;
                 const sortedUserIds: Snowflake[] = Object.keys(scores).sort((x, y) => (scores[y] ?? 0) - (scores[x] ?? 0));
                 const scaledPoints = getSimpleScaledPoints(sortedUserIds, { maxPoints: config.focusGameAward, order: 2 });
                 const rows: string[] = [];
@@ -1836,11 +1862,13 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                     const { userId, points, rank } = scaledPointsEntry;
                     const score = scores[userId] ?? 0;
                     state.awardPoints(userId, points);
-                    rows.push(`_${getRankString(rank)}:_ **${score}** <@${userId}>`);
+                    rows.push(`_${getRankString(rank)}:_ **${isWOF ? '$' : ''}${score}** <@${userId}>`);
                 }
-                await messenger.send(goodMorningChannel, '__Wordle Results:__\n' + rows.join('\n') + '\n(_Disclaimer:_ these are not your literal points earned)');
+                const title = isWOF ? 'Wheel of Fortune' : 'Wordle';
+                await messenger.send(goodMorningChannel, `__${title} Results:__\n` + rows.join('\n') + '\n(_Disclaimer:_ these are not your literal points earned)');
             }
         }
+
 
         // Update player activity counters (this can only be done after all things which can possibly award points)
         const newStreakUsers: Snowflake[] = state.incrementPlayerActivities();
@@ -2097,6 +2125,38 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                 + `Someone other than **${state.getPlayerDisplayName(blacklistedUserId)}** give me a **${nextPuzzleLength}**-letter word`);
         } else {
             await logger.log(`Unable to find a **${nextPuzzleLength}**-letter word, ending Wordle for today...`);
+        }
+    },
+    [TimeoutType.WheelOfFortuneRestart]: async () => {
+        if (state.getEventType() !== DailyEventType.WheelOfFortune) {
+            await logger.log(`WARNING! Attempted to trigger WOF restart with the event as \`${state.getEventType()}\``);
+            return;
+        }
+        const event = state.getEvent();
+
+        // Abort if it's no longer morning
+        if (!state.isMorning()) {
+            await logger.log('WARNING! Attempted to trigger WOF restart when it\'s not morning. Aborting...');
+            return;
+        }
+
+        // Abort if there's already a round in progress
+        if (event.wheelOfFortune) {
+            await logger.log('WARNING! Attempted to trigger WOF restart with WOF round already in progress. Aborting...');
+            return;
+        }
+
+        // Try to create a new WOF state
+        const wheelOfFortune = await getNewWheelOfFortuneState();
+        if (wheelOfFortune) {
+            event.wheelOfFortune = wheelOfFortune;
+            await dumpState();
+            await messenger.send(goodMorningChannel, {
+                content: 'Here\'s our next puzzle, someone step up and spin!',
+                files: [await renderWheelOfFortuneState(wheelOfFortune)]
+            });
+        } else {
+            await logger.log('Unable to create a new Wheel of Fortune, ending WOF for today...');
         }
     },
     [TimeoutType.AnonymousSubmissionReveal]: async (): Promise<void> => {
@@ -3303,19 +3363,19 @@ const processCommands = async (msg: Message): Promise<void> => {
                 await msg.reply(`**${guess}** is not a letter!`);
                 return;
             }
-            if (tempWOF.letters.includes(guess)) {
+            if (tempWOF.usedLetters.includes(guess)) {
                 await msg.reply(`**${guess}** has already been used!`);
                 return;
             }
             const numOccurrences = tempWOF.solution.toUpperCase().split('').filter(x => x === guess).length;
-            tempWOF.letters += guess;
+            tempWOF.usedLetters += guess;
             if (numOccurrences === 0) {
                 await msg.reply(`No **${guess}**!`);
                 return;
             }
             await msg.reply({
                 content: `There is/are ${numOccurrences} **${guess}**!`,
-                files: [new AttachmentBuilder(await renderWheelOfFortuneState(tempWOF)).setName('wof.png')]
+                files: [await renderWheelOfFortuneState(tempWOF)]
             });
         }
         return;
@@ -3689,11 +3749,15 @@ const processCommands = async (msg: Message): Promise<void> => {
                 await msg.reply('Game begin!');
             }
         } else if (sanitizedText.includes('wheel of fortune')) {
-            tempWOF = await getNewWheelOfFortuneState();
-            await msg.reply({
-                content: 'Game begin!',
-                files: [new AttachmentBuilder(await renderWheelOfFortuneState(tempWOF)).setName('wof.png')]
-            });
+            tempWOF = await getNewWheelOfFortuneState() ?? null;
+            if (tempWOF) {
+                await msg.reply({
+                    content: 'Game begin!',
+                    files: [await renderWheelOfFortuneState(tempWOF)]
+                });
+            } else {
+                await msg.reply('Couldn\'t create new WOF state');
+            }
         } else if (sanitizedText.includes('scaled')) {
             const [ n, baseline, maxPoints, order ] = sanitizedText.replace('scaled', '').replace('?', '').replace(/\s+/g, ' ').trim().split(' ').map(s => parseInt(s));
             const userIds = state.queryOrderedPlayers({ n });
@@ -3937,13 +4001,14 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 }
             }
 
-            // If today is wordle and the game is still active, process the message here (don't process it as a normal message)
-            if (state.getEventType() === DailyEventType.Wordle) {
+            // If today is wordle/WOF and the game is still active, process the message here (don't process it as a normal message)
+            if (state.getEventType() === DailyEventType.Wordle || state.getEventType() === DailyEventType.WheelOfFortune) {
                 const event = state.getEvent();
-                // Initialize the hi-score map if it somehow doesn't exist
-                if (!event.wordleHiScores) {
-                    event.wordleHiScores = {};
+                // Initialize the focus score map if it somehow doesn't exist
+                if (!event.focusScores) {
+                    event.focusScores = {};
                 }
+                // Handle wordle...
                 if (event.wordle) {
                     // If this user hasn't guessed yet for this puzzle, process their guess
                     if (!event.wordle.guessOwners.includes(userId)) {
@@ -3975,12 +4040,12 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                             // Determine this user's score (1 default + 1 for each new tile + 1 for winning)
                             // We must do this before we show the solved puzzle so their hi-score is reflected accurately.
                             const score = config.defaultAward * (2 + progress);
-                            event.wordleHiScores[userId] = Math.max(event.wordleHiScores[userId] ?? 0, score);
+                            event.focusScores[userId] = Math.max(event.focusScores[userId] ?? 0, score);
                             // Notify the channel
                             await messenger.reply(msg, {
                                 content: 'Congrats, you\'ve solved the puzzle!',
                                 files: [new AttachmentBuilder(await renderWordleState(previousWordle, {
-                                    hiScores: event.wordleHiScores
+                                    hiScores: event.focusScores
                                 })).setName('wordle.png')]
                             });
                             await messenger.send(msg.channel, `Count how many times your avatar appears, that's your score ${config.defaultGoodMorningEmoji}`);
@@ -3995,7 +4060,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                         } else {
                             // Determine this user's score (1 default + 1 for each new tile)
                             const score = config.defaultAward * (1 + progress);
-                            event.wordleHiScores[userId] = Math.max(event.wordleHiScores[userId] ?? 0, score);
+                            event.focusScores[userId] = Math.max(event.focusScores[userId] ?? 0, score);
                             // Reply letting them know how many letter they've revealed (suppress notifications to reduce spam)
                             await messenger.reply(msg, {
                                 content: progress ? `You've revealed ${progress} new letter${progress === 1 ? '' : 's'}!` : 'Hmmmmm...',
@@ -4005,6 +4070,233 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                         }
                         await dumpState();
                     }
+                }
+                // Handle wheel of fortune...
+                if (event.wheelOfFortune) {
+                    // If this user is blacklisted, ignore their message
+                    if (event.wheelOfFortune.blacklistedUserIds.includes(userId)) {
+                        return;
+                    }
+                    // If it's someone other than this user's turn, ignore their message
+                    if (event.wheelOfFortune.userId && userId !== event.wheelOfFortune.userId) {
+                        return;
+                    }
+                    const guess = msg.content.toUpperCase().trim();
+                    const isVowel = guess.length === 1 && 'AEIOU'.includes(guess);
+                    const isConsonant = guess.length === 1 && guess.match(/[A-Z]/) && !isVowel;
+                    const numOccurrences = event.wheelOfFortune.solution.toUpperCase().split('').filter(x => x === guess).length;
+                    const priorScore = event.wheelOfFortune.roundScores[userId] ?? 0;
+                    const VOWEL_COST = 25;
+                    // If awaiting action (there may or may not be a user turn)
+                    if (event.wheelOfFortune.spinValue === undefined && !event.wheelOfFortune.solving) {
+                        // Handle a spin command
+                        if (canonicalizeText(msg.content) === 'spin') {
+                            // First, give them the turn to avoid race conditions
+                            event.wheelOfFortune.userId = userId;
+                            // Spin the wheel and set the spin value
+                            const { spinValue, render } = await spinWheelOfFortune();
+                            // If the value is positive, prompt them to proceed
+                            if (spinValue > 0) {
+                                // Set the spin value
+                                event.wheelOfFortune.spinValue = spinValue;
+                                // Reply prompting them to do more
+                                await messenger.reply(msg, {
+                                    content: `You've spun a **$${spinValue}**, give us a consonant!`,
+                                    // TODO: Add an actual render
+                                    // files: [render],
+                                    flags: MessageFlags.SuppressNotifications
+                                });
+                            }
+                            // The value is positive, so end their turn...
+                            else {
+                                // If it was a bankruptcy, set their round score to zero
+                                if (spinValue < 0) {
+                                    event.wheelOfFortune.roundScores[userId] = 0;
+                                }
+                                // Reply with a message
+                                await messenger.reply(msg, {
+                                    content: (spinValue < 0) ? '**BANKRUPT!** Oh no, you\'ve lost all your cash for this round!' : '**LOSE A TURN!** Oh dear, looks like your turn is over...',
+                                    files: [render],
+                                    flags: MessageFlags.SuppressNotifications
+                                });
+                                // Add them to the blacklist and end their turn
+                                event.wheelOfFortune.blacklistedUserIds = [userId, ...event.wheelOfFortune.blacklistedUserIds].slice(0, 3);
+                                delete event.wheelOfFortune.userId;
+                                delete event.wheelOfFortune.spinValue;
+                                delete event.wheelOfFortune.solving;
+                            }
+                        }
+                        // Handle an intent to solve
+                        else if (canonicalizeText(msg.content).startsWith('idliketosolve')) {
+                            // First, give them the turn to avoid race conditions
+                            event.wheelOfFortune.userId = userId;
+                            // Mark them as intending to solve and reply
+                            event.wheelOfFortune.solving = true;
+                            await messenger.reply(msg, randChoice('The floor is yours!', 'Go for it!', 'Let\'s hear it!'));
+                        }
+                        // Handle passing
+                        else if (canonicalizeText(msg.content) === 'pass') {
+                            // End their turn but do NOT add them to the blacklist
+                            delete event.wheelOfFortune.userId;
+                            delete event.wheelOfFortune.spinValue;
+                            delete event.wheelOfFortune.solving;
+                            // Prompt other users to go
+                            await messenger.reply(msg, `Alright then... Someone other than ${getBoldNames(event.wheelOfFortune.blacklistedUserIds)} take a spin, buy a vowel, or solve!`);
+                        }
+                        // Handle buying a vowel
+                        else if (isVowel) {
+                            // First, give them the turn to avoid race conditions
+                            event.wheelOfFortune.userId = userId;
+                            // End their turn if they provide a used guess
+                            if (event.wheelOfFortune.usedLetters.includes(guess)) {
+                                // Add them to the blacklist and end their turn
+                                event.wheelOfFortune.blacklistedUserIds = [userId, ...event.wheelOfFortune.blacklistedUserIds].slice(0, 3);
+                                delete event.wheelOfFortune.userId;
+                                delete event.wheelOfFortune.spinValue;
+                                delete event.wheelOfFortune.solving;
+                                // Reply indicating that their turn is up
+                                await messenger.reply(msg, `**${guess}** has already been used, you done goofed... Someone other than ${getBoldNames(event.wheelOfFortune.blacklistedUserIds)} take a spin, buy a vowel, or solve!`);
+                            }
+                            // End their turn if they can't afford a vowel
+                            else if (priorScore < VOWEL_COST) {
+                                // Add them to the blacklist and end their turn
+                                event.wheelOfFortune.blacklistedUserIds = [userId, ...event.wheelOfFortune.blacklistedUserIds].slice(0, 3);
+                                delete event.wheelOfFortune.userId;
+                                delete event.wheelOfFortune.spinValue;
+                                delete event.wheelOfFortune.solving;
+                                // Reply indicating that their turn is up
+                                await messenger.reply(msg, `Vowels cost **$${VOWEL_COST}** yet you have **$${priorScore}**... Someone other than ${getBoldNames(event.wheelOfFortune.blacklistedUserIds)} take a spin, buy a vowel, or solve!`);
+                            }
+                            // Else, purchase the vowel
+                            else {
+                                // Add this letter to the list of used letters
+                                event.wheelOfFortune.usedLetters += guess;
+                                // Deduct points
+                                event.wheelOfFortune.roundScores[userId] = priorScore - VOWEL_COST;
+                                // If there are none, end their turn
+                                if (numOccurrences === 0) {
+                                    // Add them to the blacklist and end their turn
+                                    event.wheelOfFortune.blacklistedUserIds = [userId, ...event.wheelOfFortune.blacklistedUserIds].slice(0, 3);
+                                    delete event.wheelOfFortune.userId;
+                                    delete event.wheelOfFortune.spinValue;
+                                    delete event.wheelOfFortune.solving;
+                                    // Reply indicating that their turn is up
+                                    await messenger.reply(msg, `No **${guess}**s! Someone other than ${getBoldNames(event.wheelOfFortune.blacklistedUserIds)} take a spin`);
+                                }
+                                // Successful vowel guess, so let them continue
+                                else {
+                                    await messenger.reply(msg, {
+                                        content: `${numOccurrences} **${guess}**${numOccurrences > 1 ? 's' : ''}! You spent **$${VOWEL_COST}** and now have **$${event.wheelOfFortune.roundScores[userId]}**. `
+                                            + 'Spin, buy a vowel, solve the puzzle, or pass!',
+                                        files: [await renderWheelOfFortuneState(event.wheelOfFortune)],
+                                        flags: MessageFlags.SuppressNotifications
+                                    });
+                                }
+                            }
+                        }
+                    }
+                    // Else if it's their turn, process their message...
+                    else if (event.wheelOfFortune.userId && userId === event.wheelOfFortune.userId) {
+                        // If solving the puzzle, process the message text as a solution
+                        if (event.wheelOfFortune.solving) {
+                            const sanitizedAttempt = canonicalizeText(msg.content).toUpperCase();
+                            const sanitizedSolution = canonicalizeText(event.wheelOfFortune.solution).toUpperCase();
+                            // Determine if the guess is correct
+                            if (sanitizedAttempt === sanitizedSolution) {
+                                // Clear the puzzle to prevent race conditions
+                                const wof = event.wheelOfFortune;
+                                delete event.wheelOfFortune;
+                                // Add the solution itself to the "used letters" so the solution can be rendered
+                                wof.usedLetters += sanitizedSolution;
+                                // Add each person's score to the total scoreboard
+                                if (!event.focusScores) {
+                                    event.focusScores = {};
+                                }
+                                for (const [ someUserId, someScore ] of Object.entries(wof.roundScores)) {
+                                    // Allow the winner to keep all points, only let others keep a quarter
+                                    const multipliedScore = Math.round((userId === someUserId ? 1 : 0.25) * someScore);
+                                    event.focusScores[someUserId] = (event.focusScores[someUserId] ?? 0) + multipliedScore;
+                                }
+                                // Reply with some messages
+                                await messenger.reply(msg, {
+                                    content: `Yes, that\'s it! You can keep your **$${event.focusScores[userId]}** earnings, while everyone else will only keep a quarter`,
+                                    files: [await renderWheelOfFortuneState(wof)]
+                                });
+                                const focusScores = event.focusScores;
+                                const sortedUserIds = Object.keys(focusScores)
+                                    .filter(x => focusScores[x] && focusScores[x] > 0)
+                                    .sort((x, y) => focusScores[y] - focusScores[x]);
+                                await messenger.send(goodMorningChannel, {
+                                    content: '__Total scores so far:__:\n'
+                                        + sortedUserIds.map(x => `- **$${focusScores[x]}** _${state.getPlayerDisplayName(x)}_`).join('\n'),
+                                    flags: MessageFlags.SuppressNotifications
+                                });
+                                // Schedule the next round
+                                const in15Minutes = new Date();
+                                in15Minutes.setMinutes(in15Minutes.getMinutes() + 15);
+                                await registerTimeout(TimeoutType.WheelOfFortuneRestart, in15Minutes, { pastStrategy: PastTimeoutStrategy.Invoke });
+                            }
+                            // Else, end their turn
+                            else {
+                                // Add them to the blacklist and end their turn
+                                event.wheelOfFortune.blacklistedUserIds = [userId, ...event.wheelOfFortune.blacklistedUserIds].slice(0, 3);
+                                delete event.wheelOfFortune.userId;
+                                delete event.wheelOfFortune.spinValue;
+                                delete event.wheelOfFortune.solving;
+                                // Reply indicating that their turn is up
+                                await messenger.reply(msg, `Nope, that's not it! Someone other than ${getBoldNames(event.wheelOfFortune.blacklistedUserIds)} take a spin, buy a vowel, or solve!`);
+                            }
+                        }
+                        // If the user just spun and we are awaiting a consonant
+                        else if (event.wheelOfFortune.spinValue !== undefined) {
+                            // This validates that the guess is a consonant of length one
+                            if (!isConsonant) {
+                                return;
+                            }
+                            // End their turn if they provide a used guess
+                            else if (event.wheelOfFortune.usedLetters.includes(guess)) {
+                                // Add them to the blacklist and end their turn
+                                event.wheelOfFortune.blacklistedUserIds = [userId, ...event.wheelOfFortune.blacklistedUserIds].slice(0, 3);
+                                delete event.wheelOfFortune.userId;
+                                delete event.wheelOfFortune.spinValue;
+                                delete event.wheelOfFortune.solving;
+                                // Reply indicating that their turn is up
+                                await messenger.reply(msg, `**${guess}** has already been used, you done goofed... Someone other than ${getBoldNames(event.wheelOfFortune.blacklistedUserIds)} take a spin, buy a vowel, or solve!`);
+                            }
+                            // Otherwise, accept their guess...
+                            else {
+                                // Add this letter to the list of used letters
+                                event.wheelOfFortune.usedLetters += guess;
+                                // If there are no occurrences, end this user's turn
+                                if (numOccurrences === 0) {
+                                    // Add them to the blacklist and end their turn
+                                    event.wheelOfFortune.blacklistedUserIds = [userId, ...event.wheelOfFortune.blacklistedUserIds].slice(0, 3);
+                                    delete event.wheelOfFortune.userId;
+                                    delete event.wheelOfFortune.spinValue;
+                                    delete event.wheelOfFortune.solving;
+                                    // Reply indicating that their turn is up
+                                    await messenger.reply(msg, `Sorry, but there are no **${guess}**s... Someone other than ${getBoldNames(event.wheelOfFortune.blacklistedUserIds)} take a spin, buy a vowel, or solve!`)
+                                }
+                                // Otherwise, treat this as a good guess
+                                else {
+                                    // Update the user's score
+                                    const guessAward = numOccurrences * event.wheelOfFortune.spinValue;
+                                    const newScore = priorScore + guessAward;
+                                    event.wheelOfFortune.roundScores[userId] = newScore;
+                                    // Delete the "spin value" property to start accepting other actions
+                                    delete event.wheelOfFortune.spinValue;
+                                    // Reply with a message and the updated render
+                                    await messenger.reply(msg, {
+                                        content: `We've got ${numOccurrences} **${guess}**${numOccurrences === 1 ? '' : 's'}! You've earned **$${guessAward}** for a total of **$${newScore}**. `
+                                            + 'Go ahead - spin, buy a vowel, solve the puzzle, or pass!',
+                                        files: [await renderWheelOfFortuneState(event.wheelOfFortune)],
+                                        flags: MessageFlags.SuppressNotifications
+                                    });
+                                }
+                            }
+                        }
+                    }
+                    await dumpState();
                 }
                 return;
             }
