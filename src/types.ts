@@ -10,6 +10,8 @@ export enum TimeoutType {
     PopcornFallback = 'POPCORN_FALLBACK',
     WordleRestart = 'WORDLE_RESTART',
     WheelOfFortuneRestart = 'WHEEL_OF_FORTUNE_RESTART',
+    WheelOfFortuneShotClock = 'WHEEL_OF_FORTUNE_SHOT_CLOCK',
+    WheelOfFortuneShotClockWarning = 'WHEEL_OF_FORTUNE_SHOT_CLOCK_WARNING',
     AnonymousSubmissionReveal = 'ANONYMOUS_SUBMISSION_REVEAL',
     AnonymousSubmissionVotingReminder = 'ANONYMOUS_SUBMISSION_VOTING_REMINDER',
     AnonymousSubmissionTypePollStart = 'ANONYMOUS_SUBMISSION_TYPE_POLL_START',
