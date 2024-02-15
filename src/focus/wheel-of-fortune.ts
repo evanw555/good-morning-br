@@ -1,7 +1,7 @@
-import { createCanvas } from "canvas";
+import { Canvas, createCanvas } from "canvas";
 import { WheelOfFortune } from "../types";
 import { drawBackground, getTextLabel } from "../util";
-import { fillBackground, joinCanvasesVertical, withDropShadow, withMargin } from "evanw555.js";
+import { fillBackground, joinCanvasesHorizontal, joinCanvasesVertical, withDropShadow, withMargin } from "evanw555.js";
 
 import imageLoader from "../image-loader";
 
@@ -101,18 +101,30 @@ export async function renderWheelOfFortuneState(wofState: WheelOfFortune): Promi
         baseY += TILE_HEIGHT + MARGIN;
     }
 
-    // Add the category at the bottom
+    // Construct the "used letters" label
+    const letterLabels: Canvas[] = [];
+    for (let i = 65; i <= 90; i++) {
+        const letter = String.fromCharCode(i);
+        const label = getTextLabel(letter, TILE_WIDTH / 2, TILE_WIDTH / 2, { alpha: wofState.letters.includes(letter) ? 0.25 : 1});
+        letterLabels.push(label);
+    }
+
+    // Add category at the top, letters at the bottom
     const compositeCanvas = withMargin(
         joinCanvasesVertical([
+            getTextLabel(wofState.category, WIDTH, TILE_HEIGHT * 0.75, { style: 'white' }),
             canvas,
-            withDropShadow(getTextLabel(wofState.category, WIDTH, TILE_HEIGHT * 0.75, { style: 'white' }))
+            joinCanvasesHorizontal(letterLabels, { spacing: MARGIN })
         ], { align: 'center', spacing: MARGIN }),
         Math.round(TILE_WIDTH / 2)
     );
 
+    // Add drop shadow to everything
+    const finalCanvas = withDropShadow(compositeCanvas, { distance: 2 });
+
     // Draw the image background
     const backgroundImage = await imageLoader.loadImage('assets/common/blueblur.jpg');
-    drawBackground(compositeCanvas.getContext('2d'), backgroundImage);
+    drawBackground(finalCanvas.getContext('2d'), backgroundImage);
 
-    return compositeCanvas.toBuffer();
+    return finalCanvas.toBuffer();
 }
