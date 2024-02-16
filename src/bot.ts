@@ -748,7 +748,10 @@ const getNewWheelOfFortuneState = async (): Promise<WheelOfFortune | undefined> 
         // First, randomly select a data set
         let choices: string[] = ['ERROR'];
         let category: string = 'Unknown';
-        if (chance(0.33)) {
+        if (chance(0.1)) {
+            choices = await sharedStorage.readJson('mcmpisms.json');
+            category = 'MCMPisms';
+        } else if (chance(0.4)) {
             choices = await sharedStorage.readJson('bad-language.json');
             category = 'Bad Language';
         } else if (chance(0.5)) {
