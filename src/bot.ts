@@ -7,7 +7,7 @@ import { addReactsSync, chance, DiscordTimestampFormat, FileStorage, generateKMe
     getRankString, getRelativeDateTimeString, getSelectedNode, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger,
     naturalJoin, PastTimeoutStrategy, prettyPrint, R9KTextBank, randChoice, randInt, shuffle, sleep, splitTextNaturally, TimeoutManager, TimeoutOptions, toCalendarDate, toDiscordTimestamp, toFixed, toLetterId } from 'evanw555.js';
 import { getProgressOfGuess, renderWordleState } from './focus/wordle';
-import { renderWheelOfFortuneState, spinWheelOfFortune } from './focus/wheel-of-fortune';
+import { renderWheelOfFortuneState, revealWheelOfFortuneSolution, spinWheelOfFortune } from './focus/wheel-of-fortune';
 import { AnonymousSubmissionsState } from './submissions';
 import ActivityTracker from './activity-tracker';
 import AbstractGame from './games/abstract-game';
@@ -1896,9 +1896,40 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             await cancelTimeoutsWithType(TimeoutType.WheelOfFortuneRestart);
             await cancelTimeoutsWithType(TimeoutType.WheelOfFortuneShotClock);
             await cancelTimeoutsWithType(TimeoutType.WheelOfFortuneShotClockWarning);
-            // Award points
+            // Initialize the focus score map if it somehow doesn't exist
             const event = state.getEvent();
-            if (event && event.focusScores) {
+            if (!event.focusScores) {
+                event.focusScores = {};
+            }
+            // In case the game is still ongoing, cut it short
+            if (state.getEventType() === DailyEventType.Wordle) {
+                const wordle = event.wordle;
+                // Delete the puzzle to avoid race conditions
+                delete event.wordle;
+                // The hi-score is updated at the time of guessing, so just send a message
+                await messenger.send(goodMorningChannel, `Looks like we've run out of time! The answer was _"${wordle?.solution ?? '???'}"_ 😏`);
+            } else if (state.getEventType() === DailyEventType.WheelOfFortune) {
+                const wof = event.wheelOfFortune;
+                // Delete the puzzle to avoid race conditions
+                delete event.wheelOfFortune;
+                if (wof) {
+                    // Add each person's score to the total scoreboard
+                    for (const [ someUserId, someScore ] of Object.entries(wof.roundScores)) {
+                        // Allow the winner to keep all points, only let others keep a quarter
+                        const multipliedScore = Math.round(0.25 * someScore);
+                        event.focusScores[someUserId] = (event.focusScores[someUserId] ?? 0) + multipliedScore;
+                    }
+                    // Add the solution itself to the "used letters" so the solution can be rendered
+                    revealWheelOfFortuneSolution(wof);
+                    // Send a message revealing the message
+                    await messenger.send(goodMorningChannel, {
+                        content: 'Looks like we\'ve run out of time, so here\'s the solution! Everyone will keep a quarter of their earnings',
+                        files: [await renderWheelOfFortuneState(wof)]
+                    });
+                }
+            }
+            // Award points
+            if (event) {
                 const scores = event.focusScores;
                 const sortedUserIds: Snowflake[] = Object.keys(scores).sort((x, y) => (scores[y] ?? 0) - (scores[x] ?? 0));
                 const scaledPoints = getSimpleScaledPoints(sortedUserIds, { maxPoints: config.focusGameAward, order: 2 });
@@ -4081,6 +4112,8 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 if (!event.focusScores) {
                     event.focusScores = {};
                 }
+                // Even if the message is invalid, give them zero points to mark them as "active" for the day
+                event.focusScores[userId] = (event.focusScores[userId] ?? 0);
                 // Handle wordle...
                 if (event.wordle) {
                     // If this user hasn't guessed yet for this puzzle, process their guess
@@ -4288,11 +4321,8 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                                 // Cancel the shot clock
                                 await cancelTimeoutsWithType(TimeoutType.WheelOfFortuneShotClock);
                                 // Add the solution itself to the "used letters" so the solution can be rendered
-                                wof.usedLetters += sanitizedSolution;
+                                revealWheelOfFortuneSolution(wof);
                                 // Add each person's score to the total scoreboard
-                                if (!event.focusScores) {
-                                    event.focusScores = {};
-                                }
                                 for (const [ someUserId, someScore ] of Object.entries(wof.roundScores)) {
                                     // Allow the winner to keep all points, only let others keep a quarter
                                     const multipliedScore = Math.round((userId === someUserId ? 1 : 0.25) * someScore);

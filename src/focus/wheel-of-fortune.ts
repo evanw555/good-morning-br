@@ -1,6 +1,6 @@
 import { Canvas, createCanvas } from "canvas";
 import { WheelOfFortune } from "../types";
-import { drawBackground, getTextLabel } from "../util";
+import { canonicalizeText, drawBackground, getTextLabel } from "../util";
 import { joinCanvasesHorizontal, joinCanvasesVertical, randChoice, withDropShadow, withMargin } from "evanw555.js";
 
 import imageLoader from "../image-loader";
@@ -164,4 +164,8 @@ export async function spinWheelOfFortune(): Promise<{ render: AttachmentBuilder,
         spinValue,
         render: new AttachmentBuilder(canvas.toBuffer()).setName('temp-spin.png')
     };
+}
+
+export function revealWheelOfFortuneSolution(wheelOfFortuneState: WheelOfFortune) {
+    wheelOfFortuneState.usedLetters += canonicalizeText(wheelOfFortuneState.solution).toUpperCase();
 }
