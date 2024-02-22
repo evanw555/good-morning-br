@@ -192,7 +192,11 @@ export class WheelOfFortuneFocusGame extends AbstractFocusHandler {
                 // Add them to the blacklist and end their turn
                 await this.endWOFTurn(round);
                 // Prompt other users to go
-                await messenger.reply(message, `Alright then... ${this.getOpenActionPrompt(round)}`);
+                await messenger.reply(message, {
+                    content: `Alright then... ${this.getOpenActionPrompt(round)}`,
+                    files: [await WheelOfFortuneFocusGame.renderWheelOfFortuneState(round)],
+                    flags: MessageFlags.SuppressNotifications
+                });
             }
             // If they're talking about buying a vowel, point them in the right direction...
             else if (canonicalizeText(message.content).includes('vowel')) {
@@ -212,14 +216,22 @@ export class WheelOfFortuneFocusGame extends AbstractFocusHandler {
                     // Add them to the blacklist and end their turn
                     await this.endWOFTurn(round);
                     // Reply indicating that their turn is up
-                    await messenger.reply(message, `**${guess}** has already been used, you done goofed... ${this.getOpenActionPrompt(round)}`);
+                    await messenger.reply(message, {
+                        content: `**${guess}** has already been used, you done goofed... ${this.getOpenActionPrompt(round)}`,
+                        files: [await WheelOfFortuneFocusGame.renderWheelOfFortuneState(round)],
+                        flags: MessageFlags.SuppressNotifications
+                    });
                 }
                 // End their turn if they can't afford a vowel
                 else if (priorScore < VOWEL_COST) {
                     // Add them to the blacklist and end their turn
                     await this.endWOFTurn(round);
                     // Reply indicating that their turn is up
-                    await messenger.reply(message, `Vowels cost **$${VOWEL_COST}** yet you have **$${priorScore}**... ${this.getOpenActionPrompt(round)}`);
+                    await messenger.reply(message, {
+                        content: `Vowels cost **$${VOWEL_COST}** yet you have **$${priorScore}**... ${this.getOpenActionPrompt(round)}`,
+                        files: [await WheelOfFortuneFocusGame.renderWheelOfFortuneState(round)],
+                        flags: MessageFlags.SuppressNotifications
+                    });
                 }
                 // Else, purchase the vowel
                 else {
@@ -232,7 +244,11 @@ export class WheelOfFortuneFocusGame extends AbstractFocusHandler {
                         // Add them to the blacklist and end their turn
                         await this.endWOFTurn(round);
                         // Reply indicating that their turn is up
-                        await messenger.reply(message, `No **${guess}**s! ${this.getOpenActionPrompt(round)}`);
+                        await messenger.reply(message, {
+                            content: `No **${guess}**s! ${this.getOpenActionPrompt(round)}`,
+                            files: [await WheelOfFortuneFocusGame.renderWheelOfFortuneState(round)],
+                            flags: MessageFlags.SuppressNotifications
+                        });
                     }
                     // Successful vowel guess, so let them continue
                     else {
@@ -306,7 +322,11 @@ export class WheelOfFortuneFocusGame extends AbstractFocusHandler {
                     // Add them to the blacklist and end their turn
                     await this.endWOFTurn(round);
                     // Reply indicating that their turn is up
-                    await messenger.reply(message, `Nope, that's not it! ${this.getOpenActionPrompt(round)}`);
+                    await messenger.reply(message, {
+                        content: `Nope, that's not it! ${this.getOpenActionPrompt(round)}`,
+                        files: [await WheelOfFortuneFocusGame.renderWheelOfFortuneState(round)],
+                        flags: MessageFlags.SuppressNotifications
+                    });
                 }
             }
             // If the user just spun and we are awaiting a consonant
@@ -320,7 +340,11 @@ export class WheelOfFortuneFocusGame extends AbstractFocusHandler {
                     // Add them to the blacklist and end their turn
                     await this.endWOFTurn(round);
                     // Reply indicating that their turn is up
-                    await messenger.reply(message, `**${guess}** has already been used, you done goofed... ${this.getOpenActionPrompt(round)}`);
+                    await messenger.reply(message, {
+                        content: `**${guess}** has already been used, you done goofed... ${this.getOpenActionPrompt(round)}`,
+                        files: [await WheelOfFortuneFocusGame.renderWheelOfFortuneState(round)],
+                        flags: MessageFlags.SuppressNotifications
+                    });
                 }
                 // Otherwise, accept their guess...
                 else {
@@ -331,7 +355,11 @@ export class WheelOfFortuneFocusGame extends AbstractFocusHandler {
                         // Add them to the blacklist and end their turn
                         await this.endWOFTurn(round);
                         // Reply indicating that their turn is up
-                        await messenger.reply(message, `Sorry, but there are no **${guess}**s... ${this.getOpenActionPrompt(round)}`)
+                        await messenger.reply(message, {
+                            content: `Sorry, but there are no **${guess}**s... ${this.getOpenActionPrompt(round)}`,
+                            files: [await WheelOfFortuneFocusGame.renderWheelOfFortuneState(round)],
+                            flags: MessageFlags.SuppressNotifications
+                        });
                     }
                     // Otherwise, treat this as a good guess
                     else {
@@ -727,7 +755,11 @@ export class WheelOfFortuneFocusGame extends AbstractFocusHandler {
                 // Else, clear the current turn and notify
                 else {
                     await this.endWOFTurn(round);
-                    await messenger.send(goodMorningChannel, `Your time is up! ${this.getOpenActionPrompt(round)}`, { immediate: true });
+                    await messenger.send(goodMorningChannel, {
+                        content: `Your time is up! ${this.getOpenActionPrompt(round)}`,
+                        files: [await WheelOfFortuneFocusGame.renderWheelOfFortuneState(round)],
+                        flags: MessageFlags.SuppressNotifications
+                    }, { immediate: true });
                 }
                 break;
             }
