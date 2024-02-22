@@ -2669,8 +2669,10 @@ client.on('ready', async (): Promise<void> => {
     });
 
     // Load all timeouts now that everything else has loaded and references have been set
-    await timeoutManager.loadTimeouts();
-    await logTimeouts();
+    if (!config.testing) {
+        await timeoutManager.loadTimeouts();
+        await logTimeouts();
+    }
 
     // Update the bot's status
     await setStatus(state.isMorning());

@@ -1,8 +1,8 @@
 import { Canvas, createCanvas } from "canvas";
 import { canonicalizeText, drawBackground, getSimpleScaledPoints, getTextLabel, setHue } from "../util";
-import { PastTimeoutStrategy, getRankString, joinCanvasesHorizontal, joinCanvasesVertical, randChoice, randInt, withDropShadow, withMargin } from "evanw555.js";
+import { PastTimeoutStrategy, getRankString, joinCanvasesHorizontal, joinCanvasesVertical, randChoice, randInt, shuffle, sleep, withDropShadow, withMargin } from "evanw555.js";
 import { AttachmentBuilder, Message, MessageFlags, Snowflake } from "discord.js";
-import { WheelOfFortuneRound } from "./types";
+import { WheelOfFortune, WheelOfFortuneRound } from "./types";
 import AbstractFocusHandler from "./abstract-focus";
 import { MessengerPayload, TimeoutType } from "../types";
 import { getNewWheelOfFortuneRound } from "./util";
@@ -20,23 +20,29 @@ export class WheelOfFortuneFocusGame extends AbstractFocusHandler {
         const wof = state.getFocusGame();
         if (wof.type !== 'WHEEL_OF_FORTUNE') {
             // TODO: How do we handle this?
-            return '';
+            return 'Type isn\'t `WHEEL_OF_FORTUNE`';
         }
 
         const round = wof.round;
         if (!round) {
             // TODO: How do we handle this?
-            return '';
+            return 'Wheel of Fortune round is missing';
         }
 
         return {
             content: `${intro} Today we're going to play a special game... It's my very own morningtime rendition of _Wheel of Fortune_! `
-                + 'Say _"spin"_ to spin the wheel, but bewarned - for once it\'s your turn there is a **60**-second shot clock for all actions!',
+                + `Say _"spin"_ to spin the wheel, but bewarned - for once it's your turn there is a **${this.getShotClockSeconds()}**-second shot clock for all actions!`,
             files: [await WheelOfFortuneFocusGame.renderWheelOfFortuneState(round)]
         };
     }
+
+    private getShotClockSeconds(): number {
+        // TODO: Should this be dynamic?
+        return 60;
+    }
+
     override async onMorningMessage(message: Message<boolean>): Promise<void> {
-        const { state, timeoutManager, messenger, goodMorningChannel } = controller.getAllReferences();
+        const { state, messenger, goodMorningChannel } = controller.getAllReferences();
 
         const wof = state.getFocusGame();
         if (wof.type !== 'WHEEL_OF_FORTUNE') {
@@ -54,24 +60,85 @@ export class WheelOfFortuneFocusGame extends AbstractFocusHandler {
 
         // If this user is blacklisted, ignore their message
         if (round.blacklistedUserIds.includes(userId)) {
-            console.log(`Ignoring blacklisted user ${userId}`);
             return;
         }
         // If it's someone other than this user's turn, ignore their message
         if (round.userId && userId !== round.userId) {
-            console.log(`Ignoring out-of-turn user ${userId} (current turn is ${round.userId})`);
             return;
         }
         const guess = message.content.toUpperCase().trim();
-        const isVowel = guess.length === 1 && 'AEIOU'.includes(guess);
-        const isConsonant = guess.length === 1 && guess.match(/[A-Z]/) && !isVowel;
+        const isVowel = WheelOfFortuneFocusGame.isVowel(guess);
+        const isConsonant = WheelOfFortuneFocusGame.isConsonant(guess);
         const numOccurrences = round.solution.toUpperCase().split('').filter(x => x === guess).length;
         const priorScore = round.roundScores[userId] ?? 0;
         const VOWEL_COST = 25;
+        const tryingToSolve = canonicalizeText(message.content).startsWith('idliketosolve') || canonicalizeText(message.content) === 'solvethepuzzle';
+        const sanitizedAttempt = canonicalizeText(message.content).toUpperCase();
+        const sanitizedSolution = canonicalizeText(round.solution).toUpperCase();
         // Add zero points to ensure an entry is added and thus participation is recorded
         round.roundScores[userId] = priorScore;
+        // Handle solo round actions
+        if (round.solo) {
+            // Handle solving
+            if (round.solving) {
+                // Just in case they say they're solving...
+                if (tryingToSolve) {
+                    await messenger.reply(message, 'Just say it!', { immediate: true });
+                }
+                // Handle the actual solve attempt
+                else {
+                    // Clear the round to prevent race conditions
+                    delete wof.round;
+                    // Cancel the shot clock
+                    await controller.cancelTimeoutsWithType(TimeoutType.FocusCustom);
+                    // Add the solution itself to the "used letters" so the solution can be rendered
+                    this.revealWheelOfFortuneSolution(round);
+                    // Check if the solution is correct...
+                    let content = '';
+                    if (sanitizedAttempt === sanitizedSolution) {
+                        const soloPrize = round.spinValue ?? 0;
+                        content = `That's it! You've doubled your **$${soloPrize}** to **$${2 * soloPrize}**`;
+                        // Award points
+                        wof.scores[userId] = (wof.scores[userId] ?? 0) + soloPrize;
+                    } else {
+                        content = 'Ahhhhhh, not quite... Better luck next time!';
+                    }
+                    // Reply to them, revealing the answer
+                    await messenger.send(goodMorningChannel, {
+                        content,
+                        files: [await WheelOfFortuneFocusGame.renderWheelOfFortuneState(round)]
+                    });
+                    // Schedule the next round
+                    await this.showScoresAndRestart(wof);
+                }
+            }
+            // Handle selecting the letters
+            else {
+                // Extract the letters from the message
+                const letters = message.content.toUpperCase().trim().split('').filter(x => x);
+                const consonants = letters.filter(l => WheelOfFortuneFocusGame.isConsonant(l));
+                const vowels = letters.filter(l => WheelOfFortuneFocusGame.isVowel(l));
+                if (consonants.length === 3 && vowels.length === 1) {
+                    // Set as "solving" to avoid race conditions
+                    round.solving = true;
+                    // Start/postpone the shot clock
+                    await this.resetWOFShotClock();
+                    // Add the used letters
+                    const providedLetters = consonants.join('') + vowels.join('');
+                    round.usedLetters += providedLetters;
+                    // Prompt the user to solve
+                    await messenger.send(goodMorningChannel, {
+                        content: `You gave us **${providedLetters}**... you have **${this.getShotClockSeconds()}** seconds to solve!`,
+                        files: [await WheelOfFortuneFocusGame.renderWheelOfFortuneState(round)]
+                    });
+                } else {
+                    // Prompt them to try again
+                    await messenger.reply(message, '**3** consonants and **1** vowel! e.g. `ABCD`', { immediate: true });
+                }
+            }
+        }
         // If awaiting action (there may or may not be a user turn)
-        if (round.spinValue === undefined && !round.solving) {
+        else if (round.spinValue === undefined && !round.solving) {
             // Handle a spin command
             if (canonicalizeText(message.content) === 'spin') {
                 // First, give them the turn to avoid race conditions
@@ -111,7 +178,7 @@ export class WheelOfFortuneFocusGame extends AbstractFocusHandler {
                 }
             }
             // Handle an intent to solve
-            else if (canonicalizeText(message.content).startsWith('idliketosolve')) {
+            else if (tryingToSolve) {
                 // First, give them the turn to avoid race conditions
                 round.userId = userId;
                 // Start/postpone the shot clock
@@ -186,8 +253,6 @@ export class WheelOfFortuneFocusGame extends AbstractFocusHandler {
         else if (round.userId && userId === round.userId) {
             // If solving the puzzle, process the message text as a solution
             if (round.solving) {
-                const sanitizedAttempt = canonicalizeText(message.content).toUpperCase();
-                const sanitizedSolution = canonicalizeText(round.solution).toUpperCase();
                 // Determine if the guess is correct
                 if (sanitizedAttempt === sanitizedSolution) {
                     // Clear the round to prevent race conditions
@@ -202,29 +267,39 @@ export class WheelOfFortuneFocusGame extends AbstractFocusHandler {
                         const multipliedScore = Math.round((userId === someUserId ? 1 : 0.25) * someScore);
                         wof.scores[someUserId] = (wof.scores[someUserId] ?? 0) + multipliedScore;
                     }
-                    // Reply with some messages
+                    // Reply with some message
                     await messenger.reply(message, {
                         content: `Yes, that\'s it! You can keep your **$${priorScore}** earnings, while everyone else will only keep a quarter`,
                         files: [await WheelOfFortuneFocusGame.renderWheelOfFortuneState(round)]
                     });
-                    const sortedUserIds = Object.keys(wof.scores)
-                        .filter(x => wof.scores[x] && wof.scores[x] > 0)
-                        .sort((x, y) => wof.scores[y] - wof.scores[x]);
-                    await messenger.send(goodMorningChannel, {
-                        content: '__Total scores so far:__:\n'
-                            + sortedUserIds.map(x => `- **$${wof.scores[x]}** _${state.getPlayerDisplayName(x)}_`).join('\n'),
-                        flags: MessageFlags.SuppressNotifications
-                    });
-                    // Schedule the next round
-                    const restartDate = new Date();
-                    if (new Date().getHours() >= 11) {
-                        restartDate.setMinutes(restartDate.getMinutes() + randInt(1, 5));
-                    } else if (new Date().getHours() >= 10) {
-                        restartDate.setMinutes(restartDate.getMinutes() + randInt(5, 10));
+                    // Start the solo round
+                    const soloRound = await getNewWheelOfFortuneRound();
+                    if (soloRound) {
+                        // Pause for a little bit
+                        await sleep(10000);
+                        // Set the new round in the state
+                        const winningScore = round.roundScores[userId] ?? 0;
+                        wof.round = {
+                            ...soloRound,
+                            // Set some solo-specific properties
+                            usedLetters: 'RSTLNE',
+                            spinValue: winningScore,
+                            solo: true,
+                            userId
+                        };
+                        // Send a message
+                        await messenger.send(goodMorningChannel, `Now <@${userId}>, I'll give you a shot at the bonus round! One chance to double your **$${winningScore}** into **$${2 * winningScore}**`);
+                        await messenger.send(goodMorningChannel, {
+                            content: `I've given you **RSTLNE**, but I need you to give me **3** more consonants and **1** more vowel`,
+                            files: [await WheelOfFortuneFocusGame.renderWheelOfFortuneState(wof.round)]
+                        });
+                        // Start the shot clock again
+                        await this.resetWOFShotClock();
                     } else {
-                        restartDate.setMinutes(restartDate.getMinutes() + randInt(10, 15));
+                        await logger.log('Couldn\'t create new solo round for some reason, skipping directly to next standard round...');
+                        // Couldn't find new round for some reason, so show scores and schedule next round
+                        await this.showScoresAndRestart(wof);
                     }
-                    await timeoutManager.registerTimeout(TimeoutType.FocusCustom, restartDate, { arg: 'restart', pastStrategy: PastTimeoutStrategy.Invoke });
                 }
                 // Else, end their turn
                 else {
@@ -280,6 +355,37 @@ export class WheelOfFortuneFocusGame extends AbstractFocusHandler {
             }
         }
         await controller.dumpState();
+    }
+
+    private static isConsonant(letter: string) {
+        return letter.length === 1 && letter.match(/[A-Z]/i) && !this.isVowel(letter);
+    }
+
+    private static isVowel(letter: string) {
+        return letter.length === 1 && 'AEIOU'.includes(letter.toUpperCase());
+    }
+
+    private async showScoresAndRestart(wof: WheelOfFortune) {
+        const { state, timeoutManager, messenger, goodMorningChannel } = controller.getAllReferences();
+
+        const sortedUserIds = Object.keys(wof.scores)
+            .filter(x => wof.scores[x] && wof.scores[x] > 0)
+            .sort((x, y) => wof.scores[y] - wof.scores[x]);
+        await messenger.send(goodMorningChannel, {
+            content: '__Total scores so far__:\n'
+                + sortedUserIds.map(x => `- **$${wof.scores[x]}** _${state.getPlayerDisplayName(x)}_`).join('\n'),
+            flags: MessageFlags.SuppressNotifications
+        });
+        // Schedule the next round
+        const restartDate = new Date();
+        if (new Date().getHours() >= 11) {
+            restartDate.setMinutes(restartDate.getMinutes() + randInt(1, 5));
+        } else if (new Date().getHours() >= 10) {
+            restartDate.setMinutes(restartDate.getMinutes() + randInt(5, 10));
+        } else {
+            restartDate.setMinutes(restartDate.getMinutes() + randInt(10, 15));
+        }
+        await timeoutManager.registerTimeout(TimeoutType.FocusCustom, restartDate, { arg: 'restart', pastStrategy: PastTimeoutStrategy.Invoke });
     }
 
     static async renderWheelOfFortuneState(round: WheelOfFortuneRound): Promise<AttachmentBuilder> {
@@ -351,6 +457,7 @@ export class WheelOfFortuneFocusGame extends AbstractFocusHandler {
 
         const canvas = createCanvas(WIDTH, HEIGHT);
         const context = canvas.getContext('2d');
+        const roundHue = this.getRoundHue(round);
 
         // Fill the background
         context.fillStyle = 'black';
@@ -362,7 +469,7 @@ export class WheelOfFortuneFocusGame extends AbstractFocusHandler {
             let baseX = MARGIN;
             for (const letter of row) {
                 if (letter === ' ') {
-                    context.fillStyle = '#003333';
+                    context.fillStyle = `hsl(${roundHue}, 40%, 10%)`;
                     context.fillRect(baseX, baseY, TILE_WIDTH, TILE_HEIGHT);
                 } else {
                     context.fillStyle = 'white';
@@ -400,12 +507,24 @@ export class WheelOfFortuneFocusGame extends AbstractFocusHandler {
         const finalCanvas = withDropShadow(compositeCanvas, { distance: 2 });
     
         // Draw the image background
-        // TODO: Temp logic to get a hue based on the first three letters
-        const hueCode = Math.round(round.solution.charCodeAt(0) * 777 + round.solution.charCodeAt(1) * 31 + round.solution.charCodeAt(2) * 7) % 360;
-        const backgroundImage = setHue(await imageLoader.loadImage('assets/common/blueblur.jpg'), `hsl(${hueCode}, 100%, 50%)`);
+        const backgroundImage = setHue(await imageLoader.loadImage('assets/common/blueblur.jpg'), `hsl(${roundHue}, 100%, 50%)`);
         drawBackground(finalCanvas.getContext('2d'), backgroundImage);
 
         return new AttachmentBuilder(finalCanvas.toBuffer()).setName('wheel-of-fortune.png');
+    }
+
+    private static getRoundHue(round: WheelOfFortuneRound): number {
+        if (round.solo) {
+            // Golden
+            return 50;
+        } else if (round.lightning) {
+            // Reddish-magenta
+            return 350;
+        }
+        // Blue
+        return 230;
+        // TODO: Temp logic to get a hue based on the first three letters
+        // return Math.round(round.solution.charCodeAt(0) * 777 + round.solution.charCodeAt(1) * 31 + round.solution.charCodeAt(2) * 7) % 360;
     }
     
     private async spinWheelOfFortune(): Promise<{ render: AttachmentBuilder, spinValue: number }> {
@@ -456,7 +575,7 @@ export class WheelOfFortuneFocusGame extends AbstractFocusHandler {
         await controller.cancelTimeoutsWithType(TimeoutType.FocusCustom);
         // Schedule a new timeout for a minute from now
         const shotClockDate = new Date();
-        const SHOT_CLOCK_SECONDS = CONFIG.testing ? 20 : 60;
+        const SHOT_CLOCK_SECONDS = CONFIG.testing ? 20 : this.getShotClockSeconds();
         shotClockDate.setSeconds(shotClockDate.getSeconds() + SHOT_CLOCK_SECONDS);
         await timeoutManager.registerTimeout(TimeoutType.FocusCustom, shotClockDate, { arg: 'fallback', pastStrategy: PastTimeoutStrategy.Invoke });
         // Schedule the warning for 10 seconds before that
@@ -470,11 +589,9 @@ export class WheelOfFortuneFocusGame extends AbstractFocusHandler {
         // If the current turn is claimed by a user, rotate add them to the blacklist
         if (round.userId) {
             round.blacklistedUserIds.unshift(round.userId);
-            console.log(`Add ${round.userId} to blacklist`);
             const BLACKLIST_LIMIT = CONFIG.testing ? 0 : 3;
             if (round.blacklistedUserIds.length > BLACKLIST_LIMIT) {
                 round.blacklistedUserIds.pop();
-                console.log(`Pop 1 from blacklist`);
             }
         }
         // Delete all turn-related data
@@ -568,15 +685,63 @@ export class WheelOfFortuneFocusGame extends AbstractFocusHandler {
             }
             case 'fallback': {
                 // Abort if it's no longer morning or if there's no current WOF user
-                if (!wof.round || !wof.round.userId) {
+                const round = wof.round;
+                if (!round || !round.userId) {
                     return;
                 }
-        
-                // Clear the current turn and notify
-                await this.endWOFTurn(wof.round);
-                await messenger.send(goodMorningChannel, `Your time is up! ${this.getOpenActionPrompt(wof.round)}`, { immediate: true });
+
+                // Handle solo rounds specially
+                // TODO: Can both of these be refactored with the message-trigggered logic?
+                if (round.solo) {
+                    if (round.solving) {
+                        // Clear the round to prevent race conditions
+                        delete wof.round;
+                        // Cancel the shot clock
+                        await controller.cancelTimeoutsWithType(TimeoutType.FocusCustom);
+                        // Add the solution itself to the "used letters" so the solution can be rendered
+                        this.revealWheelOfFortuneSolution(round);
+                        await controller.dumpState();
+                        // Reply to them, revealing the answer
+                        await messenger.send(goodMorningChannel, {
+                            content: 'You\'re out of time, my dear friend... Here\'s the answer',
+                            files: [await WheelOfFortuneFocusGame.renderWheelOfFortuneState(round)]
+                        });
+                        // Schedule the next round
+                        await this.showScoresAndRestart(wof);
+                    } else {
+                        // Set as "solving" to avoid race conditions
+                        round.solving = true;
+                        // Start/postpone the shot clock
+                        await this.resetWOFShotClock();
+                        // Add the used letters
+                        const randomLetters = this.getRandomSoloLetters();
+                        round.usedLetters += randomLetters;
+                        await controller.dumpState();
+                        // Prompt the user to solve
+                        await messenger.send(goodMorningChannel, {
+                            content: `Alright, let me just pick for you: **${randomLetters}**. You have **${this.getShotClockSeconds()}** seconds to solve!`,
+                            files: [await WheelOfFortuneFocusGame.renderWheelOfFortuneState(round)]
+                        }, { immediate: true });
+                    }
+                }
+                // Else, clear the current turn and notify
+                else {
+                    await this.endWOFTurn(round);
+                    await messenger.send(goodMorningChannel, `Your time is up! ${this.getOpenActionPrompt(round)}`, { immediate: true });
+                }
                 break;
             }
         }
+    }
+
+    private getRandomSoloLetters(): string {
+        // TODO: Is there a better way to do this? This is too hardcoded...
+        const vowels = 'AIOU';
+        const consonants = 'BCDFGHJKMPQVWXYZ';
+        const vowelLetters = vowels.split('');
+        const consonantLetters = consonants.split('');
+        shuffle(vowelLetters);
+        shuffle(consonantLetters);
+        return consonantLetters[0] + consonantLetters[1] + consonantLetters[2] + vowelLetters[0];
     }
 }

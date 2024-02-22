@@ -34,7 +34,8 @@ export interface WheelOfFortuneRound {
     spinValue?: number,
     // If true, the user has indicated that they are going to solve the puzzle
     solving?: true,
-    soloRound?: true
+    solo?: true,
+    lightning?: true
 }
 
 export interface WheelOfFortune {

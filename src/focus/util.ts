@@ -4,6 +4,8 @@ import { FocusGameState, WheelOfFortune, WheelOfFortuneRound } from "./types";
 import { WheelOfFortuneFocusGame } from "./wheel-of-fortune";
 import { WordleFocusGame } from "./wordle";
 
+import { CONFIG } from "../constants";
+
 import controller from "../controller";
 
 export function getFocusHandler(focusGame: FocusGameState) {
@@ -25,10 +27,10 @@ export async function getNewWheelOfFortuneRound(): Promise<WheelOfFortuneRound |
         // First, randomly select a data set
         let choices: string[] = ['ERROR'];
         let category: string = 'Unknown';
-        if (chance(0.1)) {
+        if (!CONFIG.testing && chance(0.1)) {
             choices = await sharedStorage.readJson('mcmpisms.json');
             category = 'MCMPisms';
-        } else if (chance(0.4)) {
+        } else if (!CONFIG.testing && chance(0.4)) {
             choices = await sharedStorage.readJson('bad-language.json');
             category = 'Bad Language';
         } else if (chance(0.5)) {
