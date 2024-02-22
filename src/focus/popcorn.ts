@@ -4,8 +4,6 @@ import { canonicalizeText, generateSynopsisWithAi, getMessageMentions, getSimple
 import { MessengerPayload, TimeoutType } from "../types";
 import { PastTimeoutStrategy, getRankString, getRelativeDateTimeString, naturalJoin, randChoice, randInt, splitTextNaturally } from "evanw555.js";
 
-import { CONFIG } from '../constants';
-
 import controller from "../controller";
 import logger from "../logger";
 
@@ -112,6 +110,7 @@ export default class PopcornFocusGame extends AbstractFocusHandler {
 
         // Award the user a point for participating correctly
         popcorn.scores[userId] = (popcorn.scores[userId] ?? 0) + 1;
+        await controller.dumpState();
     }
 
     private getPopcornFallbackUserId(): Snowflake | undefined {

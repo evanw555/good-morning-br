@@ -30,6 +30,11 @@ class Controller {
      */
     readonly typingUsers: Set<string> = new Set();
 
+    /**
+     * This lock is used to ensure that no high-focus messages are processed while a previous one is still being processed.
+     */
+    focusLock: boolean = false;
+
     constructor() {
         
     }

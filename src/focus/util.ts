@@ -30,7 +30,7 @@ export async function getNewWheelOfFortuneRound(): Promise<WheelOfFortuneRound |
         if (!CONFIG.testing && chance(0.1)) {
             choices = await sharedStorage.readJson('mcmpisms.json');
             category = 'MCMPisms';
-        } else if (!CONFIG.testing && chance(0.4)) {
+        } else if (!CONFIG.testing && chance(0.5)) {
             choices = await sharedStorage.readJson('bad-language.json');
             category = 'Bad Language';
         } else if (chance(0.5)) {

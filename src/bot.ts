@@ -3644,9 +3644,16 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             // If today is a high-focus game day, process the message only in the context of the game
             if (state.getEventType() === DailyEventType.HighFocus) {
                 if (state.hasFocusGame()) {
-                    const focusGame = state.getFocusGame();
-                    const focusHandler = getFocusHandler(focusGame);
-                    await focusHandler.onMorningMessage(msg);
+                    // Use the lock to avoid race conditions
+                    if (controller.focusLock) {
+                        await reactToMessage(msg, '🔒');
+                    } else {
+                        controller.focusLock = true;
+                        const focusGame = state.getFocusGame();
+                        const focusHandler = getFocusHandler(focusGame);
+                        await focusHandler.onMorningMessage(msg);
+                        controller.focusLock = false;
+                    }
                 } else {
                     await logger.log('Couldn\'t invoke high-focus message logic, as there\'s no focus game in the state!');
                 }

@@ -165,6 +165,8 @@ export class WheelOfFortuneFocusGame extends AbstractFocusHandler {
                     if (spinValue < 0) {
                         round.roundScores[userId] = 0;
                     }
+                    // Add them to the blacklist and end their turn
+                    await this.endWOFTurn(round);
                     // Reply with a message
                     await messenger.reply(message, {
                         content: (spinValue < 0) ? '**BANKRUPT!** Oh no, you\'ve lost all your cash for this round! ' : '**LOSE A TURN!** Oh dear, looks like your turn is over... '
@@ -173,8 +175,6 @@ export class WheelOfFortuneFocusGame extends AbstractFocusHandler {
                         // files: [render],
                         flags: MessageFlags.SuppressNotifications
                     });
-                    // Add them to the blacklist and end their turn
-                    await this.endWOFTurn(round);
                 }
             }
             // Handle an intent to solve
@@ -333,7 +333,7 @@ export class WheelOfFortuneFocusGame extends AbstractFocusHandler {
             else if (round.spinValue !== undefined) {
                 // This validates that the guess is a consonant of length one
                 if (!isConsonant) {
-                    return;
+                    // Ignore the message
                 }
                 // End their turn if they provide a used guess
                 else if (round.usedLetters.includes(guess)) {
