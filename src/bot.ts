@@ -1,15 +1,17 @@
 import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, BaseMessageOptions, ButtonStyle, Client, ComponentType, DMChannel, GatewayIntentBits, MessageFlags, PartialMessage, Partials, TextChannel, TextInputStyle, User } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discord.js';
-import { DailyEvent, DailyEventType, GoodMorningConfig, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, GameState, Wordle, SubmissionPromptHistory, ReplyToMessageData, GoodMorningAuth, MessengerPayload, WordleRestartData, AnonymousSubmission, GamePlayerAddition, WheelOfFortune } from './types';
-import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, canonicalizeText, getScaledPoints, generateSynopsisWithAi, getSimpleScaledPoints, text } from './util';
+import { DailyEvent, DailyEventType, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, GameState, SubmissionPromptHistory, ReplyToMessageData, MessengerPayload, AnonymousSubmission, GamePlayerAddition } from './types';
+import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, getScaledPoints, getSimpleScaledPoints, text } from './util';
 import GoodMorningState from './state';
-import { addReactsSync, chance, DiscordTimestampFormat, FileStorage, generateKMeansClusters, getClockTime, getJoinedMentions, getPollChoiceKeys, getRandomDateBetween,
+import { addReactsSync, chance, DiscordTimestampFormat, FileStorage, forEachMessage, generateKMeansClusters, getClockTime, getJoinedMentions, getPollChoiceKeys, getRandomDateBetween,
     getRankString, getRelativeDateTimeString, getSelectedNode, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger,
-    naturalJoin, PastTimeoutStrategy, prettyPrint, R9KTextBank, randChoice, randInt, shuffle, sleep, splitTextNaturally, TimeoutManager, TimeoutOptions, toCalendarDate, toDiscordTimestamp, toFixed, toLetterId } from 'evanw555.js';
-import { getProgressOfGuess, renderWordleState } from './focus/wordle';
-import { renderWheelOfFortuneState, revealWheelOfFortuneSolution, spinWheelOfFortune } from './focus/wheel-of-fortune';
+    naturalJoin, PastTimeoutStrategy, prettyPrint, R9KTextBank, randChoice, randInt, shuffle, sleep, TimeoutManager, TimeoutOptions, toCalendarDate, toDiscordTimestamp, toFixed, toLetterId } from 'evanw555.js';
 import { AnonymousSubmissionsState } from './submissions';
 import ActivityTracker from './activity-tracker';
+import { getFocusHandler, getNewWheelOfFortuneRound, getRandomFocusGame } from './focus/util';
+import { WordleFocusGame } from './focus/wordle';
+import { WheelOfFortuneFocusGame } from './focus/wheel-of-fortune';
+import { WheelOfFortuneRound, WordlePuzzle } from './focus/types';
 import AbstractGame from './games/abstract-game';
 import ClassicGame from './games/classic';
 import MazeGame from './games/maze';
@@ -19,17 +21,10 @@ import RiskGame from './games/risk';
 
 import logger from './logger';
 import imageLoader from './image-loader';
+import controller from './controller';
 
-const auth: GoodMorningAuth = loadJson('config/auth.json');
-const config: GoodMorningConfig = loadJson('config/config.json');
-// For local testing, load a config override file to override specific properties
-try {
-    const configOverride: Record<string, any> = loadJson('config/config-override.json');
-    for (const key of Object.keys(configOverride)) {
-        config[key] = configOverride[key];
-        console.log(`Loaded overridden ${key} config property: ${JSON.stringify(configOverride[key])}`);
-    }
-} catch (err) {}
+// TODO: Remove the renaming in a later commit
+import { CONFIG as config, AUTH as auth } from './constants';
 
 const storage = new FileStorage('./data/');
 const sharedStorage = new FileStorage('/home/pi/.mcmp/');
@@ -77,81 +72,6 @@ let history: GoodMorningHistory;
 
 let dailyVolatileLog: [Date, String][] = [];
 
-/**
- * Set of users who have typed in the good morning channel since some event-related point in time.
- * Currently this is only used for the Popcorn event to track users who've typed since the last turn.
- */
-const typingUsers: Set<string> = new Set();
-
-const getPopcornFallbackUserId = (): Snowflake | undefined => {
-    if (state.getEventType() === DailyEventType.Popcorn) {
-        const event = state.getEvent();
-        // First, give priority to typing users who haven't had a turn yet
-        const turnlessTypingUsers = Array.from(typingUsers).filter(id => !state.hasDailyRank(id) && id !== event.user);
-        if (turnlessTypingUsers.length > 0) {
-            return randChoice(...turnlessTypingUsers);
-        }
-        // Next, give priority to typing users who may have had a turn already
-        const otherTypingUsers = Array.from(typingUsers).filter(id => id !== event.user);
-        if (otherTypingUsers.length > 0) {
-            return randChoice(...otherTypingUsers);
-        }
-        // Last priority goes to the most active user who hasn't had a turn yet
-        return state.getActivityOrderedPlayers().filter(id => !state.hasDailyRank(id) && id !== event.user)[0];
-    }
-};
-
-const registerPopcornFallbackTimeout = async (userId: Snowflake) => {
-    // If the player is more active, give them more time (5-9 default, +1-4 when in-game, +1m for each day of streak)
-    let fallbackDate = new Date();
-    fallbackDate.setMinutes(fallbackDate.getMinutes() + randInt(5, 10));
-    if (state.hasPlayer(userId)) {
-        fallbackDate.setMinutes(fallbackDate.getMinutes() + randInt(1, 5) + state.getPlayerActivity(userId).getStreak());
-    }
-    await registerTimeout(TimeoutType.PopcornFallback, fallbackDate, { pastStrategy: PastTimeoutStrategy.Invoke});
-    // TODO: Temp logging to see how this goes
-    await logger.log(`Scheduled popcorn fallback for **${state.getPlayerDisplayName(userId)}** at **${getRelativeDateTimeString(fallbackDate)}**`);
-};
-
-const resetWOFShotClock = async () => {
-    // Cancel existing shot clock to avoid duplicate timeouts
-    await cancelTimeoutsWithType(TimeoutType.WheelOfFortuneShotClock);
-    await cancelTimeoutsWithType(TimeoutType.WheelOfFortuneShotClockWarning);
-    // Schedule a new timeout for a minute from now
-    const shotClockDate = new Date();
-    shotClockDate.setSeconds(shotClockDate.getSeconds() + 60);
-    await registerTimeout(TimeoutType.WheelOfFortuneShotClock, shotClockDate, { pastStrategy: PastTimeoutStrategy.Invoke });
-    // Schedule the warning for 10 seconds before that
-    const warningDate = new Date(shotClockDate);
-    warningDate.setSeconds(warningDate.getSeconds() - 10);
-    await registerTimeout(TimeoutType.WheelOfFortuneShotClockWarning, warningDate, { pastStrategy: PastTimeoutStrategy.Invoke });
-
-};
-
-const endWOFTurn = async () => {
-    if (state.getEventType() !== DailyEventType.WheelOfFortune) {
-        await logger.log(`WARNING! Attempted to end WOF turn with the event as \`${state.getEventType()}\``);
-        return;
-    }
-    const event = state.getEvent();
-    const wheelOfFortune = event.wheelOfFortune;
-    if (!wheelOfFortune) {
-        await logger.log('WARNING! Attempted to end WOF turn with no WOF state');
-        return;
-    }
-    // If the current turn is claimed by a user, rotate add them to the blacklist
-    if (wheelOfFortune.userId) {
-        wheelOfFortune.blacklistedUserIds = [wheelOfFortune.userId, ...wheelOfFortune.blacklistedUserIds].slice(0, 3);
-    }
-    // Delete all turn-related data
-    delete wheelOfFortune.userId;
-    delete wheelOfFortune.spinValue;
-    delete wheelOfFortune.solving;
-    await dumpState();
-    // Wipe the existing shot clock if it exists
-    await cancelTimeoutsWithType(TimeoutType.WheelOfFortuneShotClock);
-    await cancelTimeoutsWithType(TimeoutType.WheelOfFortuneShotClockWarning);
-};
 
 // TODO(testing): Use this during testing to directly trigger subsequent timeouts
 const showTimeoutTriggerButton = async (type: TimeoutType, arg?: any) => {
@@ -228,6 +148,7 @@ const fetchUsers = async (userIds: Snowflake[]): Promise<Record<Snowflake, User>
     return result;
 }
 
+// TODO: Move to controller
 const getBoldNames = (userIds: Snowflake[]): string => {
     return naturalJoin(userIds.map(userId => state.getPlayerDisplayName(userId)), { bold: true });
 }
@@ -453,7 +374,7 @@ const shiftHonoraryRoberts = async () => {
     }
     let logStatement = `**HR Shift:**\nPrior Robertism state: \`${JSON.stringify(history.robertism)}\``;
     // First thing's first, cancel existing timeouts to prevent a double shift
-    await cancelTimeoutsWithType(TimeoutType.RobertismShiftFallback);
+    await controller.cancelTimeoutsWithType(TimeoutType.RobertismShiftFallback);
     // If no Robertism info exists in the history, initialize it now
     if (!history.robertism) {
         history.robertism = {};
@@ -569,33 +490,10 @@ const chooseEvent = async (date: Date): Promise<DailyEvent | undefined> => {
     }
     // Thursday: High-focus event
     if (date.getDay() === 4) {
-        const focusEvents: DailyEvent[] = [{
-            type: DailyEventType.Popcorn
-        }];
-        // Add the wordle event if words can be found
-        const wordleWords = await chooseMagicWords(1, { characters: 6, bonusMultiplier: 8 });
-        if (wordleWords.length > 0) {
-            focusEvents.push({
-                type: DailyEventType.Wordle,
-                wordle: {
-                    solution: wordleWords[0].toUpperCase(),
-                    guesses: [],
-                    guessOwners: []
-                },
-                focusScores: {}
-            });
-        }
-        // Add the wheel of fortune event if a solution can be found
-        const wheelOfFortune = await getNewWheelOfFortuneState();
-        if (wheelOfFortune) {
-            focusEvents.push({
-                type: DailyEventType.WheelOfFortune,
-                wheelOfFortune,
-                focusScores: {}
-            });
-        }
-        // Return a random one of these high-focus events
-        return randChoice(...focusEvents);
+        return {
+            type: DailyEventType.HighFocus,
+            focusGame: await getRandomFocusGame()
+        };
     }
     // Friday: Monkey Friday
     if (date.getDay() === 5) {
@@ -716,76 +614,6 @@ const awardPrize = async (userId: Snowflake, type: PrizeType, intro: string): Pr
         }
     } catch (err) {
         await logger.log(`Unable to award _${type}_ prize to **${state.getPlayerDisplayName(userId)}**: \`${err.toString()}\``);
-    }
-};
-
-const chooseMagicWords = async (n: number, options?: { characters?: number, bonusMultiplier?: number }): Promise<string[]> => {
-    const words: string[] = [];
-    // First, load the main list
-    try {
-        const main: string[] = await loadJson('config/words/main.json');
-        words.push(...main);
-    } catch (err) {
-        await logger.log(`Failed to load the **main** magic words list: \`${err.toString()}\``);
-    }
-    // Then, load the bonus list and apply any bonus repetitions
-    try {
-        const bonusMultiplier = Math.floor(options?.bonusMultiplier ?? 1);
-        const bonus: string[] = await loadJson('config/words/bonus.json');
-        for (let i = 0; i < bonusMultiplier; i++) {
-            words.push(...bonus);
-        }
-    } catch (err) {
-        await logger.log(`Failed to load the **bonus** magic words list: \`${err.toString()}\``);
-    }
-    // Finally, shuffle and filter the list to get the final magic words
-    shuffle(words);
-    return words.filter(w => !options?.characters || w.length === options.characters).slice(0, n);
-};
-
-const getNewWheelOfFortuneState = async (): Promise<WheelOfFortune | undefined> => {
-    try {
-        // First, randomly select a data set
-        let choices: string[] = ['ERROR'];
-        let category: string = 'Unknown';
-        if (chance(0.1)) {
-            choices = await sharedStorage.readJson('mcmpisms.json');
-            category = 'MCMPisms';
-        } else if (chance(0.4)) {
-            choices = await sharedStorage.readJson('bad-language.json');
-            category = 'Bad Language';
-        } else if (chance(0.5)) {
-            choices = await loadJson('config/wof/vidya.json');
-            category = 'Vidya';
-        } else {
-            choices = await loadJson('config/wof/kino.json');
-            category = 'Kino';
-        }
-        // Now, select one random element from the set that meets a few criteria
-        for (let i = 0; i < 100; i++) {
-            const choice = randChoice(...choices);
-            // If it's too short, skip
-            if (choice.length < 6) {
-                continue;
-            }
-            // If it contains mentions/emojis/timestamps, skip
-            if (choice.includes('<') && choice.includes('>')) {
-                continue;
-            }
-            // If it contains unicode emojis, skip
-            if (choice.match(/\p{Emoji}/u)) {
-                continue;
-            }
-            return {
-                solution: choice,
-                category,
-                usedLetters: '',
-                blacklistedUserIds: [],
-                roundScores: {}
-            };
-        }
-    } catch (err) {
-        return undefined;
     }
 };
 
@@ -927,43 +755,22 @@ const sendGoodMorningMessage = async (): Promise<void> => {
             const when: string = minutesText[minutesEarly] ?? `${minutesEarly} minutes early`;
             await messenger.send(goodMorningChannel, languageGenerator.generate('{earlyEndMorning}', { when }));
             break;
-        case DailyEventType.Popcorn: {
+        case DailyEventType.HighFocus: {
             // If there's an overridden message, just send it naively upfront
             if (overriddenMessage) {
                 await messenger.send(goodMorningChannel, languageGenerator.generate(overriddenMessage));
             }
-            // Send the popcorn intro
-            const intro: string = overriddenMessage ? 'There\'s more!' : 'Good morning! It will surely be a fun one.';
-            const text = `${intro} Today we'll be playing _Popcorn_! You may only send a message once you've been called on. `
-             + 'To call on a friend, simply tag them in your message. I\'ll let the first spot be up for grabs... Who wants to start today\'s Good Morning story?';
-            await messenger.send(goodMorningChannel, text, { immediate: overriddenMessage !== undefined });
-            break;
-        }
-        case DailyEventType.Wordle: {
-            // If there's an overridden message, just send it naively upfront
-            if (overriddenMessage) {
-                await messenger.send(goodMorningChannel, languageGenerator.generate(overriddenMessage));
+            // Send the focus game intro
+            if (state.hasFocusGame()) {
+                const focusGame = state.getFocusGame();
+                const focusHandler = getFocusHandler(focusGame);
+                const intro: string = overriddenMessage ? 'There\'s more!' : 'Good morning!';
+                const payload = await focusHandler.getGoodMorningMessage(intro);
+                await messenger.send(goodMorningChannel, payload, { immediate: overriddenMessage !== undefined });
+            } else {
+                await logger.log('Couldn\'t send high-focus GM message, as there\'s no focus game in the state!');
+                await messenger.send(goodMorningChannel, languageGenerator.generate('{goodMorning}'));
             }
-            // Send the wordle intro
-            const intro: string = overriddenMessage ? 'There\'s more!' : 'Good morning! ';
-            const text = `${intro} Today I have a special puzzle for you... we'll be playing my own proprietary morningtime game called _Wordle_! `
-             + `I'm thinking of a **${state.getEvent().wordle?.solution.length ?? '???'}**-letter word, and you each get only one guess! You'll earn points for each new _green_ letter you reveal. Good luck!`;
-            await messenger.send(goodMorningChannel, text, { immediate: overriddenMessage !== undefined });
-            break;
-        }
-        case DailyEventType.WheelOfFortune: {
-            // If there's an overridden message, just send it naively upfront
-            if (overriddenMessage) {
-                await messenger.send(goodMorningChannel, languageGenerator.generate(overriddenMessage));
-            }
-            // Send the wordle intro
-            const intro: string = overriddenMessage ? 'There\'s more!' : 'Good morning! ';
-            const payload = {
-                content: `${intro} Today we're going to play a special game... It's my very own morningtime rendition of _Wheel of Fortune_! `
-                    + 'Say _"spin"_ to spin the wheel, then guess a consonant, buy a vowel, or solve the puzzle!',
-                files: [await renderWheelOfFortuneState(state.getEvent().wheelOfFortune as WheelOfFortune)]
-            };
-            await messenger.send(goodMorningChannel, payload, { immediate: overriddenMessage !== undefined });
             break;
         }
         case DailyEventType.AnonymousSubmissions: {
@@ -1103,7 +910,7 @@ const chooseGoodMorningTime = (eventType: DailyEventType | undefined): Date => {
         [DailyEventType.SleepyMorning]: [11, 30],
         [DailyEventType.ReverseGoodMorning]: [11, 15],
         [DailyEventType.AnonymousSubmissions]: [8, 0],
-        [DailyEventType.Popcorn]: [9, 15],
+        [DailyEventType.HighFocus]: [9, 15],
         [DailyEventType.GameDecision]: [9, 30],
         [DailyEventType.GameUpdate]: [9, 0]
     };
@@ -1153,7 +960,14 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
 
     // If testing locally, delete recent messages upon waking up
     if (config.testing) {
-        await goodMorningChannel.bulkDelete(await goodMorningChannel.messages.fetch({ limit: 50 }));
+        try {
+            await goodMorningChannel.bulkDelete(await goodMorningChannel.messages.fetch({ limit: 50 }));
+        } catch (err) {
+            await logger.log(`Failed to bulk delete messages, deleting individually: \`${err}\``);
+            await forEachMessage(goodMorningChannel, async (message) => {
+                await message.delete();
+            });
+        }
     }
 
     // If today is the first decision of the season, instantiate the game...
@@ -1298,8 +1112,8 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
 
     if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
         // First, cancel all pending submission prompt polls (if any have been delayed for long enough)
-        await cancelTimeoutsWithType(TimeoutType.AnonymousSubmissionTypePollStart);
-        await cancelTimeoutsWithType(TimeoutType.AnonymousSubmissionTypePollEnd);
+        await controller.cancelTimeoutsWithType(TimeoutType.AnonymousSubmissionTypePollStart);
+        await controller.cancelTimeoutsWithType(TimeoutType.AnonymousSubmissionTypePollEnd);
         // Set timeout for anonymous submission reveal
         const submissionRevealTime = new Date();
         submissionRevealTime.setHours(10, 50, 0, 0);
@@ -1511,7 +1325,7 @@ const finalizeAnonymousSubmissions = async () => {
     await logger.log(`Participant votes: ${getJoinedMentions(Object.keys(anonymousSubmissions.getSubmitterVotes()))}\nAudience votes: ${getJoinedMentions(Object.keys(anonymousSubmissions.getAudienceVotes()))}`);
 
     // Cancel any scheduled voting reminders
-    await cancelTimeoutsWithType(TimeoutType.AnonymousSubmissionVotingReminder);
+    await controller.cancelTimeoutsWithType(TimeoutType.AnonymousSubmissionVotingReminder);
 
     // Disable voting and forfeiting by deleting commands
     const guildCommands = await guild.commands.fetch();
@@ -1780,18 +1594,14 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             }
         }
 
-        // If it's a popcorn day, prompt the end of the story
-        if (state.getEventType() === DailyEventType.Popcorn) {
-            const event = state.getEvent();
-            // Cancel the fallback timeout to prevent weird race conditions at the end of the game
-            await cancelTimeoutsWithType(TimeoutType.PopcornFallback);
-            // "Disabling" the event allows the current user to end the story, and if there's no user then it prevents further action
-            event.disabled = true;
-            // Prompt the user to end the story or cut it off there
-            if (event.user) {
-                await messenger.send(goodMorningChannel, `<@${event.user}> my friend, pass the torch to someone else or complete this story by ending your message with _"The End"_!`);
+        // If it's a high-focus day, trigger the pre-noon logic
+        if (state.getEventType() === DailyEventType.HighFocus) {
+            if (state.hasFocusGame()) {
+                const focusGame = state.getFocusGame();
+                const focusHandler = getFocusHandler(focusGame);
+                await focusHandler.onPreNoon();
             } else {
-                await messenger.send(goodMorningChannel, languageGenerator.generate('My, what a truly {adjectives.positive?} story! Thank you all for weaving the threads of imagination this morning...'));
+                await logger.log('Couldn\'t invoke high-focus pre-noon logic, as there\'s no focus game in the state!');
             }
         }
 
@@ -1850,12 +1660,14 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         // Start accepting bait
         state.setAcceptingBait(true);
         await dumpState();
-        // If it's the end of the popcorn event...
-        if (state.getEventType() === DailyEventType.Popcorn) {
-            const event = state.getEvent();
-            // If there's still a user on the hook, tell them to hurry up!
-            if (event.user) {
-                await messenger.send(goodMorningChannel, languageGenerator.generate('{popcorn.hurry?}'));
+        // If it's a high-focus day, trigger the specific baiting start logic
+        if (state.getEventType() === DailyEventType.HighFocus) {
+            if (state.hasFocusGame()) {
+                const focusGame = state.getFocusGame();
+                const focusHandler = getFocusHandler(focusGame);
+                await focusHandler.onBaitingStart();
+            } else {
+                await logger.log('Couldn\'t invoke high-focus baiting start logic, as there\'s no focus game in the state!');
             }
         }
     },
@@ -1888,91 +1700,25 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             await logger.log(`Penalized **${state.getPlayerDisplayName(previousBait.userId)}** for being out-baited.`);
         }
 
-        // If today was a Wordle/WOF day, award points using the focus scores map
-        if (state.getEventType() === DailyEventType.Wordle || state.getEventType() === DailyEventType.WheelOfFortune) {
-            const isWOF = state.getEventType() === DailyEventType.WheelOfFortune;
-            // Cancel any timeouts for subsequent rounds
-            await cancelTimeoutsWithType(TimeoutType.WordleRestart);
-            await cancelTimeoutsWithType(TimeoutType.WheelOfFortuneRestart);
-            await cancelTimeoutsWithType(TimeoutType.WheelOfFortuneShotClock);
-            await cancelTimeoutsWithType(TimeoutType.WheelOfFortuneShotClockWarning);
-            // Initialize the focus score map if it somehow doesn't exist
-            const event = state.getEvent();
-            if (!event.focusScores) {
-                event.focusScores = {};
-            }
-            // In case the game is still ongoing, cut it short
-            if (state.getEventType() === DailyEventType.Wordle) {
-                const wordle = event.wordle;
-                // Delete the puzzle to avoid race conditions
-                delete event.wordle;
-                // The hi-score is updated at the time of guessing, so just send a message
-                await messenger.send(goodMorningChannel, `Looks like we've run out of time! The answer was _"${wordle?.solution ?? '???'}"_ 😏`);
-            } else if (state.getEventType() === DailyEventType.WheelOfFortune) {
-                const wof = event.wheelOfFortune;
-                // Delete the puzzle to avoid race conditions
-                delete event.wheelOfFortune;
-                if (wof) {
-                    // Add each person's score to the total scoreboard
-                    for (const [ someUserId, someScore ] of Object.entries(wof.roundScores)) {
-                        // Allow the winner to keep all points, only let others keep a quarter
-                        const multipliedScore = Math.round(0.25 * someScore);
-                        event.focusScores[someUserId] = (event.focusScores[someUserId] ?? 0) + multipliedScore;
-                    }
-                    // Add the solution itself to the "used letters" so the solution can be rendered
-                    revealWheelOfFortuneSolution(wof);
-                    // Send a message revealing the message
-                    await messenger.send(goodMorningChannel, {
-                        content: 'Looks like we\'ve run out of time, so here\'s the solution! Everyone will keep a quarter of their earnings',
-                        files: [await renderWheelOfFortuneState(wof)]
-                    });
-                }
-            }
-            // Award points
-            if (event) {
-                const scores = event.focusScores;
-                const sortedUserIds: Snowflake[] = Object.keys(scores).sort((x, y) => (scores[y] ?? 0) - (scores[x] ?? 0));
-                const scaledPoints = getSimpleScaledPoints(sortedUserIds, { maxPoints: config.focusGameAward, order: 2 });
-                const rows: string[] = [];
-                // Award players points based on their score ranking
-                for (const scaledPointsEntry of scaledPoints) {
-                    const { userId, points, rank } = scaledPointsEntry;
-                    const score = scores[userId] ?? 0;
-                    state.awardPoints(userId, points);
-                    rows.push(`_${getRankString(rank)}:_ **${isWOF ? '$' : ''}${score}** <@${userId}>`);
-                }
-                const title = isWOF ? 'Wheel of Fortune' : 'Wordle';
-                await messenger.send(goodMorningChannel, `__${title} Results:__\n` + rows.join('\n') + '\n(_Disclaimer:_ these are not your literal points earned)');
+        // If today was a high-focus day, wrap up the game and award points by triggering the logic
+        if (state.getEventType() === DailyEventType.HighFocus) {
+            // First, cancel any focus-related timeouts
+            await controller.cancelTimeoutsWithType(TimeoutType.FocusCustom);
+            // Invoke the noon logic
+            if (state.hasFocusGame()) {
+                const focusGame = state.getFocusGame();
+                const focusHandler = getFocusHandler(focusGame);
+                await focusHandler.onNoon();
+            } else {
+                await logger.log('Couldn\'t invoke high-focus noon logic, as there\'s no focus game in the state!');
             }
         }
-
 
         // Update player activity counters (this can only be done after all things which can possibly award points)
         const newStreakUsers: Snowflake[] = state.incrementPlayerActivities();
         // Award prizes to all players who just achieved full streaks
         for (const userId of newStreakUsers) {
             await awardPrize(userId, 'streak', `Thank you for bringing us Good Morning cheer for **${ActivityTracker.CAPACITY}** consecutive days`);
-        }
-
-        // If today was a popcorn day, penalize and notify if a user failed to take the call
-        if (state.getEventType() === DailyEventType.Popcorn) {
-            const event = state.getEvent();
-            if (event.user) {
-                state.deductPoints(event.user, config.defaultAward);
-                await messenger.send(goodMorningChannel, `Looks like our dear friend <@${event.user}> wasn't able to complete today's Good Morning story... 😔`);
-            }
-            // Summarize the story
-            if (event.storySegments && event.storySegments.length > 0) {
-                // TODO: Remove this try-catch once we're sure it's working
-                try {
-                    const summary = splitTextNaturally(await generateSynopsisWithAi(event.storySegments.join('\n')), 1500);
-                    for (const summarySegment of summary) {
-                        await messenger.send(goodMorningChannel, summarySegment);
-                    }
-                } catch (err) {
-                    await logger.log(`Failed to summarize popcorn story: \`${err}\``);
-                }
-            }
         }
 
         // Activate the queued up event (this can only be done after all thing which process the morning's event)
@@ -1987,7 +1733,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
 
         // Set tomorrow's magic words (if it's not an abnormal event tomorrow)
         state.clearMagicWords();
-        const magicWords = await chooseMagicWords(randInt(2, 8));
+        const magicWords = await controller.chooseMagicWords(randInt(2, 8));
         if (magicWords.length > 0 && !state.isEventAbnormal()) {
             state.setMagicWords(magicWords);
         }
@@ -2144,124 +1890,25 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             }
         }
     },
-    [TimeoutType.PopcornFallback]: async (): Promise<void> => {
-        if (state.getEventType() !== DailyEventType.Popcorn) {
-            await logger.log(`WARNING! Attempted to trigger popcorn fallback with the event as \`${state.getEventType()}\``);
+    [TimeoutType.FocusCustom]: async (arg) => {
+        if (state.getEventType() !== DailyEventType.HighFocus) {
+            await logger.log(`WARNING! Attempted to trigger focus custom \`${arg}\` with the event as \`${state.getEventType()}\``);
             return;
         }
-        const event = state.getEvent();
-
-        // Abort if it's no longer morning or if there's no current popcorn user
-        if (!state.isMorning() || !event.user) {
-            return;
-        }
-
-        // Clear the current turn and notify
-        delete event.user;
-        await dumpState();
-        await messenger.send(goodMorningChannel, 'I don\'t think we\'re gonna hear back... next turn is up for grabs!');
-    },
-    [TimeoutType.WordleRestart]: async (arg: any): Promise<void> => {
-        if (state.getEventType() !== DailyEventType.Wordle) {
-            await logger.log(`WARNING! Attempted to trigger wordle restart with the event as \`${state.getEventType()}\``);
-            return;
-        }
-        const event = state.getEvent();
 
         // Abort if it's no longer morning
         if (!state.isMorning()) {
-            await logger.log('WARNING! Attempted to trigger wordle restart when it\'s not morning. Aborting...');
             return;
         }
 
-        // Abort if there's already a round in progress
-        if (event.wordle) {
-            await logger.log('WARNING! Attempted to trigger wordle restart with Wordle round already in progress. Aborting...');
-            return;
-        }
-
-        // Abort if there's no length argument to the timeout
-        if (!arg) {
-            await logger.log('WARNING! Attempted to trigger wordle restart with no arg. Aborting...');
-            return;
-        }
-        const { nextPuzzleLength, blacklistedUserId } = arg as WordleRestartData;
-
-        // Try to find some words of the correct length
-        const nextPuzzleWords = await chooseMagicWords(1, { characters: nextPuzzleLength, bonusMultiplier: 8 });
-        if (nextPuzzleWords.length > 0) {
-            // If a word was found, restart the puzzle and notify the channel
-            event.wordle = {
-                solution: nextPuzzleWords[0].toUpperCase(),
-                guesses: [],
-                guessOwners: [],
-                blacklistedUserId
-            };
-            await dumpState();
-            await messenger.send(goodMorningChannel, `Let's solve another puzzle! If you get a better score, it will overwrite your previous score. `
-                + `Someone other than **${state.getPlayerDisplayName(blacklistedUserId)}** give me a **${nextPuzzleLength}**-letter word`);
+        // Invoke the custom focus logic
+        if (state.hasFocusGame()) {
+            const focusGame = state.getFocusGame();
+            const focusHandler = getFocusHandler(focusGame);
+            await focusHandler.onTimeout(arg);
         } else {
-            await logger.log(`Unable to find a **${nextPuzzleLength}**-letter word, ending Wordle for today...`);
+            await logger.log(`Couldn't invoke high-focus timeout logic (with arg \`${arg}\`), as there's no focus game in the state!`);
         }
-    },
-    [TimeoutType.WheelOfFortuneRestart]: async () => {
-        if (state.getEventType() !== DailyEventType.WheelOfFortune) {
-            await logger.log(`WARNING! Attempted to trigger WOF restart with the event as \`${state.getEventType()}\``);
-            return;
-        }
-        const event = state.getEvent();
-
-        // Abort if it's no longer morning
-        if (!state.isMorning()) {
-            await logger.log('WARNING! Attempted to trigger WOF restart when it\'s not morning. Aborting...');
-            return;
-        }
-
-        // Abort if there's already a round in progress
-        if (event.wheelOfFortune) {
-            await logger.log('WARNING! Attempted to trigger WOF restart with WOF round already in progress. Aborting...');
-            return;
-        }
-
-        // Try to create a new WOF state
-        const wheelOfFortune = await getNewWheelOfFortuneState();
-        if (wheelOfFortune) {
-            event.wheelOfFortune = wheelOfFortune;
-            await dumpState();
-            await messenger.send(goodMorningChannel, {
-                content: 'Here\'s our next puzzle, someone step up and spin!',
-                files: [await renderWheelOfFortuneState(wheelOfFortune)]
-            });
-        } else {
-            await logger.log('Unable to create a new Wheel of Fortune, ending WOF for today...');
-        }
-    },
-    [TimeoutType.WheelOfFortuneShotClock]: async () => {
-        if (state.getEventType() !== DailyEventType.WheelOfFortune) {
-            await logger.log(`WARNING! Attempted to trigger WOF shot clock with the event as \`${state.getEventType()}\``);
-            return;
-        }
-        const event = state.getEvent();
-
-        // Abort if it's no longer morning or if there's no current WOF user
-        if (!state.isMorning() || !event.wheelOfFortune || !event.wheelOfFortune.userId) {
-            return;
-        }
-
-        // Clear the current turn and notify
-        event.wheelOfFortune.blacklistedUserIds = [event.wheelOfFortune.userId, ...event.wheelOfFortune.blacklistedUserIds].slice(0, 3);
-        delete event.wheelOfFortune.userId;
-        delete event.wheelOfFortune.spinValue;
-        delete event.wheelOfFortune.solving;
-        await dumpState();
-        await messenger.send(goodMorningChannel, `Your time is up! Someone other than ${getBoldNames(event.wheelOfFortune.blacklistedUserIds)} take a spin, buy a vowel, or solve!`, { immediate: true });
-    },
-    [TimeoutType.WheelOfFortuneShotClockWarning]: async () => {
-        if (state.getEventType() !== DailyEventType.WheelOfFortune) {
-            await logger.log(`WARNING! Attempted to trigger WOF shot clock warning with the event as \`${state.getEventType()}\``);
-            return;
-        }
-        await messenger.send(goodMorningChannel, '10 second warning ⏳', { immediate: true });
     },
     [TimeoutType.AnonymousSubmissionReveal]: async (): Promise<void> => {
         // Validate that the current event is correct
@@ -2793,17 +2440,6 @@ const timeoutManager = new TimeoutManager(storage, TIMEOUT_CALLBACKS, {
     }
 });
 
-const cancelTimeoutsWithType = async (type: TimeoutType): Promise<void> => {
-    try {
-        const canceledIds = await timeoutManager.cancelTimeoutsWithType(type);
-        if (canceledIds.length > 0) {
-            await logger.log(`Canceled \`${type}\` timeouts \`${JSON.stringify(canceledIds)}\``);
-        }
-    } catch (err) {
-        await logger.log(`Failed to cancel \`${type}\` timeouts: \`${err}\``);
-    }
-}
-
 const processGameDecision = async (userId: Snowflake, decision: string, source: string, callback: (text: MessengerPayload) => Promise<void>) => {
     if (!state.isAcceptingGameDecisions()) {
         await callback({ content: 'You can\'t do that now, the game isn\'t accepting decisions right now!' });
@@ -2863,6 +2499,7 @@ const loadState = async (): Promise<void> => {
     }
 };
 
+// TODO: Move to controller
 const dumpState = async (): Promise<void> => {
     await storage.write('state', state.toJson());
 };
@@ -3007,19 +2644,32 @@ client.on('ready', async (): Promise<void> => {
     await loadR9KHashes();
     await loadBaitR9KHashes();
     await loadYouTubeIds();
-    await timeoutManager.loadTimeouts();
 
     if (guildOwner && goodMorningChannel) {
         await logger.log(`Bot rebooting at **${getClockTime()}** with guild owner **${guildOwner.displayName}** and GM channel ${goodMorningChannel.toString()}`);
         dailyVolatileLog.push([new Date(), 'Bot rebooting...']);
     }
-    await logTimeouts();
 
     // Attempt to refresh state member info
     await refreshStateMemberInfo();
 
     // Set the user manager for the image loader
     imageLoader.setUserManager(client.users);
+
+    // Set properties of the controller
+    controller.setAllReferences({
+        state,
+        storage,
+        sharedStorage,
+        timeoutManager,
+        languageGenerator,
+        messenger,
+        goodMorningChannel
+    });
+
+    // Load all timeouts now that everything else has loaded and references have been set
+    await timeoutManager.loadTimeouts();
+    await logTimeouts();
 
     // Update the bot's status
     await setStatus(state.isMorning());
@@ -3322,39 +2972,14 @@ client.on('typingStart', async (typing) => {
     if (goodMorningChannel && typing.channel.id === goodMorningChannel.id && !typing.user.bot) {
         // If it's the morning...
         if (state.isMorning()) {
-            // Handle typing for the popcorn event
-            if (state.getEventType() === DailyEventType.Popcorn) {
-                const event = state.getEvent();
-                const userId = typing.user.id;
-                if (event.user && event.user === userId) {
-                    // It's currently this user's turn, so postpone the fallback.
-                    // Determine the postponed fallback time
-                    const inFiveMinutes = new Date();
-                    inFiveMinutes.setMinutes(inFiveMinutes.getMinutes() + 5);
-                    // Determine the existing fallback time
-                    const existingFallbackTime = timeoutManager.getDateForTimeoutWithType(TimeoutType.PopcornFallback);
-                    if (!existingFallbackTime) {
-                        await logger.log('Cannot postpone the popcorn fallback, as no existing fallback date was found!');
-                        return;
-                    }
-                    // Only postpone if the existing fallback is sooner than 1m from now (otherwise, it would be moved up constantly with lots of spam)
-                    if (existingFallbackTime.getTime() - new Date().getTime() < 1000 * 60) {
-                        const ids = await timeoutManager.postponeTimeoutsWithType(TimeoutType.PopcornFallback, inFiveMinutes);
-                        // TODO: Temp logging to see how this is working
-                        await logger.log(`**${state.getPlayerDisplayName(userId)}** started typing, postpone fallback ` + naturalJoin(ids.map(id => `**${id}** to **${timeoutManager.getDateForTimeoutWithId(id)?.toLocaleTimeString()}**`)));
-                    }
-                } else if (!event.disabled && !event.user) {
-                    // It's not this user's turn, but it's up for grabs so let them have it!
-                    event.user = userId;
-                    await dumpState();
-                    await messenger.send(goodMorningChannel, languageGenerator.generate('{popcorn.typing?}', { player: `<@${userId}>` }));
-                    // Wipe the typing users map
-                    typingUsers.clear();
-                    // Register a fallback for this user's turn
-                    await registerPopcornFallbackTimeout(userId);
+            // Handle typing for high-focus events
+            if (state.getEventType() === DailyEventType.HighFocus) {
+                if (state.hasFocusGame()) {
+                    const focusGame = state.getFocusGame();
+                    const focusHandler = getFocusHandler(focusGame);
+                    await focusHandler.onMorningTyping(typing);
                 } else {
-                    // In all other cases, add the user to this turn's set of typing users
-                    typingUsers.add(userId);
+                    await logger.log('Couldn\'t invoke high-focus typing logic, as there\'s no focus game in the state!');
                 }
             }
         }
@@ -3362,8 +2987,8 @@ client.on('typingStart', async (typing) => {
 });
 
 // TODO: Temp wordle game data
-let tempWordle: Wordle | null = null;
-let tempWOF: WheelOfFortune | null = null;
+let tempWordle: WordlePuzzle | null = null;
+let tempWOF: WheelOfFortuneRound | null = null;
 
 let tempDungeon: AbstractGame<GameState> | null = null;
 let awaitingGameCommands = false;
@@ -3409,7 +3034,7 @@ const processCommands = async (msg: Message): Promise<void> => {
             return;
         }
         // Get progress of this guess in relation to the current state of the puzzle
-        const progress = getProgressOfGuess(tempWordle, guess);
+        const progress = WordleFocusGame.getProgressOfGuess(tempWordle, guess);
         // Add this guess
         tempWordle.guesses.push(guess);
         tempWordle.guessOwners.push(msg.author.id);
@@ -3417,13 +3042,13 @@ const processCommands = async (msg: Message): Promise<void> => {
         if (tempWordle.solution === guess) {
             await msg.reply({
                 content: 'Correct!',
-                files: [new AttachmentBuilder(await renderWordleState(tempWordle, {
+                files: [new AttachmentBuilder(await WordleFocusGame.renderWordleState(tempWordle, {
                     hiScores: { [msg.author.id]: 1 }
                 })).setName('wordle.png')]
             });
             // Restart the game
             const newPuzzleLength = tempWordle.solution.length + 1;
-            const words = await chooseMagicWords(1, { characters: newPuzzleLength });
+            const words = await controller.chooseMagicWords(1, { characters: newPuzzleLength });
             if (words.length > 0) {
                 const word = words[0].toUpperCase();
                 tempWordle = {
@@ -3441,13 +3066,13 @@ const processCommands = async (msg: Message): Promise<void> => {
         await msg.reply({
             content: `Guess ${tempWordle.guesses.length}, you revealed ${progress || 'no'} new letter(s)!`,
             files: [
-                new AttachmentBuilder(await renderWordleState(tempWordle)).setName('wordle.png')
+                new AttachmentBuilder(await WordleFocusGame.renderWordleState(tempWordle)).setName('wordle.png')
             ]
         });
         await msg.channel.send({
             content: 'With avatars',
             files: [
-                new AttachmentBuilder(await renderWordleState(tempWordle, {
+                new AttachmentBuilder(await WordleFocusGame.renderWordleState(tempWordle, {
                     hiScores: { [msg.author.id]: 1 }
                 })).setName('wordle-avatars.png')
             ]
@@ -3479,7 +3104,7 @@ const processCommands = async (msg: Message): Promise<void> => {
             }
             await msg.reply({
                 content: `There is/are ${numOccurrences} **${guess}**!`,
-                files: [await renderWheelOfFortuneState(tempWOF)]
+                files: [await WheelOfFortuneFocusGame.renderWheelOfFortuneState(tempWOF)]
             });
         }
         return;
@@ -3717,7 +3342,7 @@ const processCommands = async (msg: Message): Promise<void> => {
         }
         // Choose a magic word and show potential recipients
         else if (sanitizedText.includes('magic word')) {
-            const magicWords = await chooseMagicWords(randInt(2, 5), { bonusMultiplier: 10 });
+            const magicWords = await controller.chooseMagicWords(randInt(2, 5), { bonusMultiplier: 10 });
             const potentialRecipients: Snowflake[] = state.getPotentialMagicWordRecipients();
             const recipient: string = potentialRecipients.length > 0 ? state.getPlayerDisplayName(randChoice(...potentialRecipients)) : 'N/A';
             await msg.reply(`The test magic words are ${naturalJoin(magicWords, { bold: true })}, and send the hint to **${recipient}** (Out of **${potentialRecipients.length}** choices)`);
@@ -3842,7 +3467,7 @@ const processCommands = async (msg: Message): Promise<void> => {
                 await msg.reply(`\`${id}\` is NOT in the state!`);
             }
         } else if (sanitizedText.includes('wordle')) {
-            const words = await chooseMagicWords(1, { characters: 4 });
+            const words = await controller.chooseMagicWords(1, { characters: 4 });
             if (words.length > 0) {
                 const word = words[0].toUpperCase();
                 tempWordle = {
@@ -3853,11 +3478,11 @@ const processCommands = async (msg: Message): Promise<void> => {
                 await msg.reply('Game begin!');
             }
         } else if (sanitizedText.includes('wheel of fortune')) {
-            tempWOF = await getNewWheelOfFortuneState() ?? null;
+            tempWOF = await getNewWheelOfFortuneRound() ?? null;
             if (tempWOF) {
                 await msg.reply({
                     content: 'Game begin!',
-                    files: [await renderWheelOfFortuneState(tempWOF)]
+                    files: [await WheelOfFortuneFocusGame.renderWheelOfFortuneState(tempWOF)]
                 });
             } else {
                 await msg.reply('Couldn\'t create new WOF state');
@@ -3979,7 +3604,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
         if (isReveille) {
             await wakeUp(false);
             // Cancel the scheduled fallback timeout
-            await cancelTimeoutsWithType(TimeoutType.GuestReveilleFallback);
+            await controller.cancelTimeoutsWithType(TimeoutType.GuestReveilleFallback);
         }
 
         if (state.isMorning()) {
@@ -4013,400 +3638,14 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             // Reset user's "days since last good morning" counter
             state.resetDaysSinceLGM(userId);
 
-            // If the event is popcorn, guarantee they are following the rules before proceeding to process their message
-            if (state.getEventType() === DailyEventType.Popcorn) {
-                const event = state.getEvent();
-                if (event.user && userId !== event.user) {
-                    // This turn belongs to someone else, so penalize the user
-                    await reactToMessage(msg, '🤫');
-                    state.deductPoints(userId, config.defaultAward);
-                    await dumpState();
-                    return;
-                }
-                // The user may talk this turn, so proceed...
-                if (event.disabled && !event.user) {
-                    // The story is OVER, so don't process this message specially...
-                    // TODO: Temp logging
-                    await logger.log(`Post-story message by **${state.getPlayerDisplayName(userId)}**`);
-                } else if (event.disabled && event.user && canonicalizeText(msg.content).endsWith('theend')) {
-                    // If the selected user says "the end" near the end of the morning, end the story!
-                    // Delete the user to prevent further action
-                    delete event.user;
-                    // TODO: Do this a better way
-                    // Save the last story segment to the state
-                    if (!event.storySegments) {
-                        event.storySegments = [];
-                    }
-                    event.storySegments.push(msg.cleanContent);
-                    await dumpState();
-                    // Notify the channel
-                    await messenger.reply(msg, languageGenerator.generate('{popcorn.ending?}'));
+            // If today is a high-focus game day, process the message only in the context of the game
+            if (state.getEventType() === DailyEventType.HighFocus) {
+                if (state.hasFocusGame()) {
+                    const focusGame = state.getFocusGame();
+                    const focusHandler = getFocusHandler(focusGame);
+                    await focusHandler.onMorningMessage(msg);
                 } else {
-                    // TODO: Do this a better way
-                    // Save the last story segment to the state
-                    if (!event.storySegments) {
-                        event.storySegments = [];
-                    }
-                    event.storySegments.push(msg.cleanContent);
-                    await dumpState();
-                    // Pick out a potential fallback in case this user didn't tag correctly
-                    const mentionedUserIds = getMessageMentions(msg);
-                    const fallbackUserId = getPopcornFallbackUserId();
-                    // If there's no fallback and the user is breaking the rules, force them to try again and abort
-                    if (!fallbackUserId) {
-                        if (mentionedUserIds.includes(userId)) {
-                            await messenger.reply(msg, 'You can\'t popcorn yourself you big dummy! Call on someone else');
-                            return;
-                        } else if (mentionedUserIds.length === 0) {
-                            await messenger.reply(msg, 'Call on someone else!');
-                            return;
-                        }
-                    }
-                    // React with popcorn to show that the torch has been passed
-                    await reactToMessage(msg, '🍿');
-                    // Cancel any existing popcorn fallback timeouts
-                    await cancelTimeoutsWithType(TimeoutType.PopcornFallback);
-                    // Wipe the set of typing users for the previous turn
-                    typingUsers.clear();
-                    // Save the latest popcorn message ID in the state
-                    event.messageId = msg.id;
-                    // Pass the torch to someone else...
-                    if (mentionedUserIds.includes(userId)) {
-                        // Tried to tag himself, so pass to the fallback user
-                        event.user = fallbackUserId;
-                        await messenger.reply(msg, `You can\'t popcorn yourself you big dummy, let me pick for you: popcorn <@${fallbackUserId}>!`);
-                    } else if (mentionedUserIds.length === 0) {
-                        // Didn't tag anyone, so pass to the fallback user
-                        event.user = fallbackUserId;
-                        await messenger.reply(msg, `Popcorn <@${fallbackUserId}>!`);
-                    } else if (mentionedUserIds.length === 1) {
-                        // Only one other user was mentioned, so pass the torch to them
-                        event.user = mentionedUserIds[0];
-                        // TODO: We should do something special if an unknown player is called on
-                    } else {
-                        // Multiple users were mentioned, so see if there are players who haven't said GM today and are known
-                        const preferredUserIds = mentionedUserIds.filter(id => !state.hasDailyRank(id) && state.hasPlayer(id));
-                        if (preferredUserIds.length === 0) {
-                            // No other preferred players, so let the next turn be up for grabs
-                            delete event.user;
-                            await messenger.reply(msg, 'You called on more than one person... I\'ll let the next turn be up for grabs!');
-                        } else {
-                            // Select a random other preferred player
-                            const randomUserId = randChoice(...preferredUserIds);
-                            event.user = randomUserId;
-                            await messenger.reply(msg, `You called on more than one person, so let me pick for you: popcorn <@${randomUserId}>!`);
-                        }
-                    }
-                    await dumpState();
-                    // If a user was selected, schedule a fallback timeout
-                    if (event.user) {
-                        await registerPopcornFallbackTimeout(event.user);
-                    }
-                }
-            }
-
-            // If today is wordle/WOF and the game is still active, process the message here (don't process it as a normal message)
-            if (state.getEventType() === DailyEventType.Wordle || state.getEventType() === DailyEventType.WheelOfFortune) {
-                const event = state.getEvent();
-                // Initialize the focus score map if it somehow doesn't exist
-                if (!event.focusScores) {
-                    event.focusScores = {};
-                }
-                // Even if the message is invalid, give them zero points to mark them as "active" for the day
-                event.focusScores[userId] = (event.focusScores[userId] ?? 0);
-                // Handle wordle...
-                if (event.wordle) {
-                    // If this user hasn't guessed yet for this puzzle, process their guess
-                    if (!event.wordle.guessOwners.includes(userId)) {
-                        const wordleGuess = msg.content.trim().toUpperCase();
-                        // Ignore this guess if it isn't one single word
-                        if (!wordleGuess.match(/^[A-Z]+$/)) {
-                            return;
-                        }
-                        // Ignore the user if they solved the previous puzzle
-                        if (userId === event.wordle.blacklistedUserId) {
-                            await messenger.reply(msg, 'You solved the previous puzzle, give someone else a chance!');
-                            return;
-                        }
-                        // Cut the user off if their guess isn't the right length
-                        if (wordleGuess.length !== event.wordle.solution.length) {
-                            await messenger.reply(msg, `Try again but with a **${event.wordle.solution.length}**-letter word`);
-                            return;
-                        }
-                        // Get progress of this guess in relation to the current state of the puzzle
-                        const progress = getProgressOfGuess(event.wordle, wordleGuess);
-                        // Add this guess
-                        event.wordle.guesses.push(wordleGuess);
-                        event.wordle.guessOwners.push(userId);
-                        // If this guess is correct, end the game
-                        if (event.wordle.solution === wordleGuess) {
-                            // Wipe the round data to prevent further action until the next round starts (race conditions)
-                            const previousWordle = event.wordle;
-                            delete event.wordle;
-                            // Determine this user's score (1 default + 1 for each new tile + 1 for winning)
-                            // We must do this before we show the solved puzzle so their hi-score is reflected accurately.
-                            const score = config.defaultAward * (2 + progress);
-                            event.focusScores[userId] = Math.max(event.focusScores[userId] ?? 0, score);
-                            // Notify the channel
-                            await messenger.reply(msg, {
-                                content: 'Congrats, you\'ve solved the puzzle!',
-                                files: [new AttachmentBuilder(await renderWordleState(previousWordle, {
-                                    hiScores: event.focusScores
-                                })).setName('wordle.png')]
-                            });
-                            await messenger.send(msg.channel, `Count how many times your avatar appears, that's your score ${config.defaultGoodMorningEmoji}`);
-                            // Schedule the next round with a random word length
-                            const arg: WordleRestartData = {
-                                nextPuzzleLength: randChoice(5, 6, 7, 8),
-                                blacklistedUserId: userId
-                            };
-                            const wordleRestartDate = new Date();
-                            wordleRestartDate.setMinutes(wordleRestartDate.getMinutes() + randInt(5, 25));
-                            await registerTimeout(TimeoutType.WordleRestart, wordleRestartDate, { arg, pastStrategy: PastTimeoutStrategy.Delete});
-                        } else {
-                            // Determine this user's score (1 default + 1 for each new tile)
-                            const score = config.defaultAward * (1 + progress);
-                            event.focusScores[userId] = Math.max(event.focusScores[userId] ?? 0, score);
-                            // Reply letting them know how many letter they've revealed (suppress notifications to reduce spam)
-                            await messenger.reply(msg, {
-                                content: progress ? `You've revealed ${progress} new letter${progress === 1 ? '' : 's'}!` : 'Hmmmmm...',
-                                files: [new AttachmentBuilder(await renderWordleState(event.wordle)).setName('wordle.png')],
-                                flags: MessageFlags.SuppressNotifications
-                            });
-                        }
-                        await dumpState();
-                    }
-                }
-                // Handle wheel of fortune...
-                if (event.wheelOfFortune) {
-                    // If this user is blacklisted, ignore their message
-                    if (event.wheelOfFortune.blacklistedUserIds.includes(userId)) {
-                        return;
-                    }
-                    // If it's someone other than this user's turn, ignore their message
-                    if (event.wheelOfFortune.userId && userId !== event.wheelOfFortune.userId) {
-                        return;
-                    }
-                    const guess = msg.content.toUpperCase().trim();
-                    const isVowel = guess.length === 1 && 'AEIOU'.includes(guess);
-                    const isConsonant = guess.length === 1 && guess.match(/[A-Z]/) && !isVowel;
-                    const numOccurrences = event.wheelOfFortune.solution.toUpperCase().split('').filter(x => x === guess).length;
-                    const priorScore = event.wheelOfFortune.roundScores[userId] ?? 0;
-                    const VOWEL_COST = 25;
-                    // Add zero points to ensure an entry is added and thus participation is recorded
-                    event.wheelOfFortune.roundScores[userId] = priorScore;
-                    // If awaiting action (there may or may not be a user turn)
-                    if (event.wheelOfFortune.spinValue === undefined && !event.wheelOfFortune.solving) {
-                        // Handle a spin command
-                        if (canonicalizeText(msg.content) === 'spin') {
-                            // First, give them the turn to avoid race conditions
-                            event.wheelOfFortune.userId = userId;
-                            // Start/postpone the shot clock
-                            await resetWOFShotClock();
-                            // Spin the wheel and set the spin value
-                            const { spinValue, render } = await spinWheelOfFortune();
-                            // If the value is positive, prompt them to proceed
-                            if (spinValue > 0) {
-                                // Set the spin value
-                                event.wheelOfFortune.spinValue = spinValue;
-                                // Reply prompting them to do more
-                                await messenger.reply(msg, {
-                                    content: `You've spun a **$${spinValue}**, give us a consonant!`,
-                                    // TODO: Add an actual render
-                                    // files: [render],
-                                    flags: MessageFlags.SuppressNotifications
-                                });
-                            }
-                            // The value is positive, so end their turn...
-                            else {
-                                // If it was a bankruptcy, set their round score to zero
-                                if (spinValue < 0) {
-                                    event.wheelOfFortune.roundScores[userId] = 0;
-                                }
-                                // Reply with a message
-                                await messenger.reply(msg, {
-                                    content: (spinValue < 0) ? '**BANKRUPT!** Oh no, you\'ve lost all your cash for this round! ' : '**LOSE A TURN!** Oh dear, looks like your turn is over... '
-                                        + `Someone other than ${getBoldNames(event.wheelOfFortune.blacklistedUserIds)} take a spin, buy a vowel, or solve!`,
-                                    // TODO: Add an actual render
-                                    // files: [render],
-                                    flags: MessageFlags.SuppressNotifications
-                                });
-                                // Add them to the blacklist and end their turn
-                                await endWOFTurn();
-                            }
-                        }
-                        // Handle an intent to solve
-                        else if (canonicalizeText(msg.content).startsWith('idliketosolve')) {
-                            // First, give them the turn to avoid race conditions
-                            event.wheelOfFortune.userId = userId;
-                            // Start/postpone the shot clock
-                            await resetWOFShotClock();
-                            // Mark them as intending to solve and reply
-                            event.wheelOfFortune.solving = true;
-                            await messenger.reply(msg, randChoice('The floor is yours!', 'Go for it!', 'Let\'s hear it!'));
-                        }
-                        // Handle passing
-                        else if (canonicalizeText(msg.content) === 'pass') {
-                            // Add them to the blacklist and end their turn
-                            await endWOFTurn();
-                            // Prompt other users to go
-                            await messenger.reply(msg, `Alright then... Someone other than ${getBoldNames(event.wheelOfFortune.blacklistedUserIds)} take a spin, buy a vowel, or solve!`);
-                        }
-                        // If they're talking about buying a vowel, point them in the right direction...
-                        else if (canonicalizeText(msg.content).includes('vowel')) {
-                            // Start/postpone the shot clock
-                            await resetWOFShotClock();
-                            // Tell them how to buy a vowel
-                            await messenger.reply(msg, 'To buy a vowel, just say the letter you\'d like to buy');
-                        }
-                        // Handle buying a vowel
-                        else if (isVowel) {
-                            // First, give them the turn to avoid race conditions
-                            event.wheelOfFortune.userId = userId;
-                            // Start/postpone the shot clock
-                            await resetWOFShotClock();
-                            // End their turn if they provide a used guess
-                            if (event.wheelOfFortune.usedLetters.includes(guess)) {
-                                // Add them to the blacklist and end their turn
-                                await endWOFTurn();
-                                // Reply indicating that their turn is up
-                                await messenger.reply(msg, `**${guess}** has already been used, you done goofed... Someone other than ${getBoldNames(event.wheelOfFortune.blacklistedUserIds)} take a spin, buy a vowel, or solve!`);
-                            }
-                            // End their turn if they can't afford a vowel
-                            else if (priorScore < VOWEL_COST) {
-                                // Add them to the blacklist and end their turn
-                                await endWOFTurn();
-                                // Reply indicating that their turn is up
-                                await messenger.reply(msg, `Vowels cost **$${VOWEL_COST}** yet you have **$${priorScore}**... Someone other than ${getBoldNames(event.wheelOfFortune.blacklistedUserIds)} take a spin, buy a vowel, or solve!`);
-                            }
-                            // Else, purchase the vowel
-                            else {
-                                // Add this letter to the list of used letters
-                                event.wheelOfFortune.usedLetters += guess;
-                                // Deduct points
-                                event.wheelOfFortune.roundScores[userId] = priorScore - VOWEL_COST;
-                                // If there are none, end their turn
-                                if (numOccurrences === 0) {
-                                    // Add them to the blacklist and end their turn
-                                    await endWOFTurn();
-                                    // Reply indicating that their turn is up
-                                    await messenger.reply(msg, `No **${guess}**s! Someone other than ${getBoldNames(event.wheelOfFortune.blacklistedUserIds)} take a spin`);
-                                }
-                                // Successful vowel guess, so let them continue
-                                else {
-                                    // Reset the shot clock
-                                    await resetWOFShotClock();
-                                    // Prompt them to do more
-                                    await messenger.reply(msg, {
-                                        content: `${numOccurrences} **${guess}**${numOccurrences > 1 ? 's' : ''}! You spent **$${VOWEL_COST}** and now have **$${event.wheelOfFortune.roundScores[userId]}**. `
-                                            + 'Spin, buy a vowel, solve the puzzle, or pass!',
-                                        files: [await renderWheelOfFortuneState(event.wheelOfFortune)],
-                                        flags: MessageFlags.SuppressNotifications
-                                    });
-                                }
-                            }
-                        }
-                    }
-                    // Else if it's their turn, process their message...
-                    else if (event.wheelOfFortune.userId && userId === event.wheelOfFortune.userId) {
-                        // If solving the puzzle, process the message text as a solution
-                        if (event.wheelOfFortune.solving) {
-                            const sanitizedAttempt = canonicalizeText(msg.content).toUpperCase();
-                            const sanitizedSolution = canonicalizeText(event.wheelOfFortune.solution).toUpperCase();
-                            // Determine if the guess is correct
-                            if (sanitizedAttempt === sanitizedSolution) {
-                                // Clear the puzzle to prevent race conditions
-                                const wof = event.wheelOfFortune;
-                                delete event.wheelOfFortune;
-                                // Cancel the shot clock
-                                await cancelTimeoutsWithType(TimeoutType.WheelOfFortuneShotClock);
-                                // Add the solution itself to the "used letters" so the solution can be rendered
-                                revealWheelOfFortuneSolution(wof);
-                                // Add each person's score to the total scoreboard
-                                for (const [ someUserId, someScore ] of Object.entries(wof.roundScores)) {
-                                    // Allow the winner to keep all points, only let others keep a quarter
-                                    const multipliedScore = Math.round((userId === someUserId ? 1 : 0.25) * someScore);
-                                    event.focusScores[someUserId] = (event.focusScores[someUserId] ?? 0) + multipliedScore;
-                                }
-                                // Reply with some messages
-                                await messenger.reply(msg, {
-                                    content: `Yes, that\'s it! You can keep your **$${priorScore}** earnings, while everyone else will only keep a quarter`,
-                                    files: [await renderWheelOfFortuneState(wof)]
-                                });
-                                const focusScores = event.focusScores;
-                                const sortedUserIds = Object.keys(focusScores)
-                                    .filter(x => focusScores[x] && focusScores[x] > 0)
-                                    .sort((x, y) => focusScores[y] - focusScores[x]);
-                                await messenger.send(goodMorningChannel, {
-                                    content: '__Total scores so far:__:\n'
-                                        + sortedUserIds.map(x => `- **$${focusScores[x]}** _${state.getPlayerDisplayName(x)}_`).join('\n'),
-                                    flags: MessageFlags.SuppressNotifications
-                                });
-                                // Schedule the next round
-                                const restartDate = new Date();
-                                if (new Date().getHours() >= 11) {
-                                    restartDate.setMinutes(restartDate.getMinutes() + randInt(1, 5));
-                                } else if (new Date().getHours() >= 10) {
-                                    restartDate.setMinutes(restartDate.getMinutes() + randInt(5, 10));
-                                } else {
-                                    restartDate.setMinutes(restartDate.getMinutes() + randInt(10, 15));
-                                }
-                                await registerTimeout(TimeoutType.WheelOfFortuneRestart, restartDate, { pastStrategy: PastTimeoutStrategy.Invoke });
-                            }
-                            // Else, end their turn
-                            else {
-                                // Add them to the blacklist and end their turn
-                                await endWOFTurn();
-                                // Reply indicating that their turn is up
-                                await messenger.reply(msg, `Nope, that's not it! Someone other than ${getBoldNames(event.wheelOfFortune.blacklistedUserIds)} take a spin, buy a vowel, or solve!`);
-                            }
-                        }
-                        // If the user just spun and we are awaiting a consonant
-                        else if (event.wheelOfFortune.spinValue !== undefined) {
-                            // This validates that the guess is a consonant of length one
-                            if (!isConsonant) {
-                                return;
-                            }
-                            // End their turn if they provide a used guess
-                            else if (event.wheelOfFortune.usedLetters.includes(guess)) {
-                                // Add them to the blacklist and end their turn
-                                await endWOFTurn();
-                                // Reply indicating that their turn is up
-                                await messenger.reply(msg, `**${guess}** has already been used, you done goofed... Someone other than ${getBoldNames(event.wheelOfFortune.blacklistedUserIds)} take a spin, buy a vowel, or solve!`);
-                            }
-                            // Otherwise, accept their guess...
-                            else {
-                                // Add this letter to the list of used letters
-                                event.wheelOfFortune.usedLetters += guess;
-                                // If there are no occurrences, end this user's turn
-                                if (numOccurrences === 0) {
-                                    // Add them to the blacklist and end their turn
-                                    await endWOFTurn();
-                                    // Reply indicating that their turn is up
-                                    await messenger.reply(msg, `Sorry, but there are no **${guess}**s... Someone other than ${getBoldNames(event.wheelOfFortune.blacklistedUserIds)} take a spin, buy a vowel, or solve!`)
-                                }
-                                // Otherwise, treat this as a good guess
-                                else {
-                                    // Update the user's score
-                                    const guessAward = numOccurrences * event.wheelOfFortune.spinValue;
-                                    const newScore = priorScore + guessAward;
-                                    event.wheelOfFortune.roundScores[userId] = newScore;
-                                    // Delete the "spin value" property to start accepting other actions
-                                    delete event.wheelOfFortune.spinValue;
-                                    // Reset the WOF shot clock
-                                    await resetWOFShotClock();
-                                    // Reply with a message and the updated render
-                                    await messenger.reply(msg, {
-                                        content: `We've got ${numOccurrences} **${guess}**${numOccurrences === 1 ? '' : 's'}! You've earned **$${guessAward}** for a total of **$${newScore}**. `
-                                            + 'Go ahead - spin, buy a vowel, solve the puzzle, or pass!',
-                                        files: [await renderWheelOfFortuneState(event.wheelOfFortune)],
-                                        flags: MessageFlags.SuppressNotifications
-                                    });
-                                }
-                            }
-                        }
-                    }
-                    await dumpState();
+                    await logger.log('Couldn\'t invoke high-focus message logic, as there\'s no focus game in the state!');
                 }
                 return;
             }
@@ -4662,7 +3901,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     }
                     // If this player is one of the first to say GM (or was the last submission winner), reply (or react) specially
                     else if (rank <= config.goodMorningReplyCount || state.isLastSubmissionWinner(userId)) {
-                        if (state.getEventType() === DailyEventType.Popcorn || chance(config.replyViaReactionProbability)) {
+                        if (chance(config.replyViaReactionProbability)) {
                             reactToMessage(msg, state.getGoodMorningEmoji());
                         } else if (isQuestion) {
                             // TODO: Can we more intelligently determine what type of question it is?
@@ -4873,28 +4112,13 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
 });
 
 client.on('messageUpdate', async (oldMessage: PartialMessage | Message, newMessage: PartialMessage | Message) => {
-    if (state.getEventType() === DailyEventType.Popcorn) {
-        const event = state.getEvent();
-        // Abort if there's no user ID in the state
-        if (!event.user) {
-            return;
-        }
-        // If the popcorn message has been edited...
-        if (newMessage.id === event.messageId) {
-            // Validate that they're not partials
-            if (oldMessage.partial || newMessage.partial) {
-                await logger.log(`Popcorn message edited, but aborting due to message partiality: old ${oldMessage.partial ? 'partial' : 'full'}, new ${newMessage.partial ? 'partial' : 'full'}`);
-                return;
-            }
-            // Check if the relevant user tag was removed
-            const oldTags = getMessageMentions(oldMessage);
-            const newTags = getMessageMentions(newMessage);
-            // Send a message if the tag was removed
-            if (oldTags.includes(event.user) && !newTags.includes(event.user)) {
-                await messenger.reply(newMessage, languageGenerator.generate('{popcorn.tagRemoved?}', { player: `<@${event.user}>` }));
-            }
-            // TODO: Temp logging to see how this works
-            await logger.log(`Popcorn message edited. Old tags: \`${JSON.stringify(oldTags)}\`, new tags: \`${JSON.stringify(newTags)}\``);
+    if (state.getEventType() === DailyEventType.HighFocus) {
+        if (state.hasFocusGame()) {
+            const focusGame = state.getFocusGame();
+            const focusHandler = getFocusHandler(focusGame);
+            await focusHandler.onMorningMessageUpdate(oldMessage, newMessage);
+        } else {
+            await logger.log('Couldn\'t invoke high-focus message update logic, as there\'s no focus game in the state!');
         }
     }
 });

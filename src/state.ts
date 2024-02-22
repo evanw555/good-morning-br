@@ -11,6 +11,11 @@ import { AnonymousSubmissionsState } from "./submissions";
 import ArenaGame from "./games/arena";
 import MasterpieceGame from "./games/masterpiece";
 import RiskGame from "./games/risk";
+import AbstractFocusGame from "./focus/abstract-focus";
+import { FocusGameState } from "./focus/types";
+import PopcornFocusGame from "./focus/popcorn";
+import { WordleFocusGame } from "./focus/wordle";
+import { WheelOfFortuneFocusGame } from "./focus/wheel-of-fortune";
 
 export default class GoodMorningState {
     private data: RawGoodMorningState;
@@ -780,8 +785,8 @@ export default class GoodMorningState {
     isEventAbnormal(): boolean {
         return this.getEventType() === DailyEventType.GuestReveille
             || this.getEventType() === DailyEventType.ReverseGoodMorning
-            || this.getEventType() === DailyEventType.Wordle
-            || this.getEventType() === DailyEventType.WheelOfFortune
+            // TODO: Allow magic words to be said on focus days once it's reworked
+            || this.getEventType() === DailyEventType.HighFocus
             || this.getEventType() === DailyEventType.AnonymousSubmissions;
     }
 
@@ -846,6 +851,21 @@ export default class GoodMorningState {
 
     clearLastSubmissionWinners() {
         delete this.data.lastSubmissionWinners;
+    }
+
+    getFocusGame(): FocusGameState {
+        if (!this.data.event) {
+            throw new Error('Cannot get focus game, there is no daily event!');
+        }
+        const focusGame = this.data.event.focusGame;
+        if (!focusGame) {
+            throw new Error('Cannot get focus game, it doesn\'t exist in the daily event!');
+        }
+        return focusGame;
+    }
+
+    hasFocusGame(): boolean {
+        return this.data.event?.focusGame !== undefined;
     }
 
     getGame(): AbstractGame<GameState> {

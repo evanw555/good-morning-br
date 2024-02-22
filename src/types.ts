@@ -1,4 +1,5 @@
 import { MessageCreateOptions, Snowflake } from "discord.js"
+import { FocusGameState } from "./focus/types";
 
 export enum TimeoutType {
     NextGoodMorning = 'NEXT_GOOD_MORNING',
@@ -7,11 +8,7 @@ export enum TimeoutType {
     NextNoon = 'NEXT_NOON',
     // Non-standard events
     GuestReveilleFallback = 'GUEST_REVEILLE_FALLBACK',
-    PopcornFallback = 'POPCORN_FALLBACK',
-    WordleRestart = 'WORDLE_RESTART',
-    WheelOfFortuneRestart = 'WHEEL_OF_FORTUNE_RESTART',
-    WheelOfFortuneShotClock = 'WHEEL_OF_FORTUNE_SHOT_CLOCK',
-    WheelOfFortuneShotClockWarning = 'WHEEL_OF_FORTUNE_SHOT_CLOCK_WARNING',
+    FocusCustom = 'FOCUS_CUSTOM',
     AnonymousSubmissionReveal = 'ANONYMOUS_SUBMISSION_REVEAL',
     AnonymousSubmissionVotingReminder = 'ANONYMOUS_SUBMISSION_VOTING_REMINDER',
     AnonymousSubmissionTypePollStart = 'ANONYMOUS_SUBMISSION_TYPE_POLL_START',
@@ -128,12 +125,10 @@ export enum DailyEventType {
     WritersBlock = 'WRITERS_BLOCK',
     Nightmare = 'NIGHTMARE',
     EarlyEnd = 'EARLY_END',
-    Popcorn = 'POPCORN',
     // Abnormal events (i.e. not the typical "wait-for-GM-then-say-GM" event)
+    HighFocus = 'HIGH_FOCUS',
     GuestReveille = 'GUEST_REVEILLE',
     ReverseGoodMorning = 'REVERSE_GOOD_MORNING',
-    Wordle = 'WORDLE',
-    WheelOfFortune = 'WHEEL_OF_FORTUNE',
     AnonymousSubmissions = 'ANONYMOUS_SUBMISSIONS',
     // 2.0 events
     GameDecision = 'GAME_DECISION',
@@ -161,10 +156,8 @@ export interface DailyEvent {
     minutesEarly?: number,
     // Used specifically for the "wishful wednesday" event
     wishesReceived?: Record<Snowflake, number>,
-    // Used specifically for the "wordle" and "wheel of fortune" events
-    wordle?: Wordle,
-    wheelOfFortune?: WheelOfFortune,
-    focusScores?: Record<Snowflake, number>,
+    // Used specifically for high-focus game events
+    focusGame?: FocusGameState,
     // Used specifically for the "popcorn" event
     messageId?: Snowflake,
     storySegments?: string[]
@@ -467,33 +460,6 @@ export interface GoodMorningHistory {
         // UserId of the next HR after the current one's time has passed
         nextUser?: Snowflake
     }
-}
-
-export interface Wordle {
-    solution: string,
-    guesses: string[],
-    guessOwners: Snowflake[],
-    blacklistedUserId?: Snowflake
-}
-
-export interface WheelOfFortune {
-    solution: string,
-    category: string,
-    usedLetters: string,
-    userId?: Snowflake,
-    // The value of the user's spin (negative is bankrupt, 0 is lose turn, positive is a cash value)
-    // If present, the user is expected to provide a consonant
-    spinValue?: number,
-    // If true, the user has indicated that they are going to solve the puzzle
-    solving?: true,
-    soloRound?: true,
-    blacklistedUserIds: Snowflake[],
-    roundScores: Record<Snowflake, number>
-}
-
-export interface WordleRestartData {
-    nextPuzzleLength: number,
-    blacklistedUserId: Snowflake
 }
 
 export interface SubmissionPromptHistory {

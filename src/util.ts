@@ -1,11 +1,10 @@
 import { APIEmbed, Message, Snowflake } from "discord.js";
 import { Canvas, Image, createCanvas, CanvasRenderingContext2D as NodeCanvasRenderingContext2D } from "canvas";
 import OpenAI from 'openai';
-import { randChoice, randInt, loadJson, LanguageGenerator } from "evanw555.js";
-import { AnonymousSubmission, GoodMorningAuth, GoodMorningConfig } from "./types";
+import { randChoice, randInt, LanguageGenerator } from "evanw555.js";
+import { AnonymousSubmission, GoodMorningConfig } from "./types";
 
-const auth: GoodMorningAuth = loadJson('config/auth.json');
-const config: GoodMorningConfig = loadJson('config/config.json');
+import { CONFIG, AUTH } from './constants';
 
 export function validateConfig(config: GoodMorningConfig): void {
     if (config.goodMorningChannelId === undefined) {
@@ -184,8 +183,8 @@ export function getSimpleScaledPoints(userIds: Snowflake[], options?: ScaledPoin
 }
 
 export function getScaledPoints(entries: { userId: Snowflake, rank: number }[], options?: ScaledPointsOptions): ScaledPointsOutputEntry[] {
-    const baseline: number = options?.baseline ?? config.defaultAward;
-    const maxPoints: number = options?.maxPoints ?? config.defaultAward;
+    const baseline: number = options?.baseline ?? CONFIG.defaultAward;
+    const maxPoints: number = options?.maxPoints ?? CONFIG.defaultAward;
     const order: number = options?.order ?? 1;
 
     const n = entries.length;
@@ -335,7 +334,7 @@ export function text(input: string, variables?: Record<string, string>): string 
  */
 export async function generateWithAi(prompt: string): Promise<string> {
     const openai = new OpenAI({
-        apiKey: auth.openAiKey
+        apiKey: AUTH.openAiKey
     });
     const response = await openai.completions.create({
         model: "gpt-3.5-turbo-instruct",
