@@ -3649,9 +3649,13 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                         await reactToMessage(msg, '🔒');
                     } else {
                         controller.focusLock = true;
-                        const focusGame = state.getFocusGame();
-                        const focusHandler = getFocusHandler(focusGame);
-                        await focusHandler.onMorningMessage(msg);
+                        try {
+                            const focusGame = state.getFocusGame();
+                            const focusHandler = getFocusHandler(focusGame);
+                            await focusHandler.onMorningMessage(msg);
+                        } catch (err) {
+                            await logger.log(`Unhandled error while processing <@${userId}>'s focus message: \`${err}\``);
+                        }
                         controller.focusLock = false;
                     }
                 } else {
