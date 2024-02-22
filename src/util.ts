@@ -301,6 +301,22 @@ export function superimpose(canvases: (Canvas | Image)[]): Canvas {
     return canvas;
 }
 
+// TODO: Move to common library
+export function setHue(image: Image | Canvas, style: string): Canvas {
+    const canvas = createCanvas(image.width, image.height);
+    const context = canvas.getContext('2d');
+
+    context.drawImage(image, 0, 0);
+
+    context.save();
+    context.globalCompositeOperation = 'hue';
+    context.fillStyle = style;
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.restore();
+
+    return canvas;
+}
+
 // TODO: Can we move this to a common library?
 // TODO: This isn't perfect, can it be improved?
 export function quantify(quantity: number, noun: string, options?: { bold?: boolean }): string {

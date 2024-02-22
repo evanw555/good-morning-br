@@ -1,5 +1,5 @@
 import { Canvas, createCanvas } from "canvas";
-import { canonicalizeText, drawBackground, getSimpleScaledPoints, getTextLabel } from "../util";
+import { canonicalizeText, drawBackground, getSimpleScaledPoints, getTextLabel, setHue } from "../util";
 import { PastTimeoutStrategy, getRankString, joinCanvasesHorizontal, joinCanvasesVertical, randChoice, randInt, withDropShadow, withMargin } from "evanw555.js";
 import { AttachmentBuilder, Message, MessageFlags, Snowflake } from "discord.js";
 import { WheelOfFortuneRound } from "./types";
@@ -31,7 +31,7 @@ export class WheelOfFortuneFocusGame extends AbstractFocusHandler {
 
         return {
             content: `${intro} Today we're going to play a special game... It's my very own morningtime rendition of _Wheel of Fortune_! `
-                + 'Say _"spin"_ to spin the wheel, then guess a consonant, buy a vowel, or solve the puzzle!',
+                + 'Say _"spin"_ to spin the wheel, but bewarned - for once it\'s your turn there is a **60**-second shot clock for all actions!',
             files: [await WheelOfFortuneFocusGame.renderWheelOfFortuneState(round)]
         };
     }
@@ -400,7 +400,9 @@ export class WheelOfFortuneFocusGame extends AbstractFocusHandler {
         const finalCanvas = withDropShadow(compositeCanvas, { distance: 2 });
     
         // Draw the image background
-        const backgroundImage = await imageLoader.loadImage('assets/common/blueblur.jpg');
+        // TODO: Temp logic to get a hue based on the first three letters
+        const hueCode = Math.round(round.solution.charCodeAt(0) * 777 + round.solution.charCodeAt(1) * 31 + round.solution.charCodeAt(2) * 7) % 360;
+        const backgroundImage = setHue(await imageLoader.loadImage('assets/common/blueblur.jpg'), `hsl(${hueCode}, 100%, 50%)`);
         drawBackground(finalCanvas.getContext('2d'), backgroundImage);
 
         return new AttachmentBuilder(finalCanvas.toBuffer()).setName('wheel-of-fortune.png');
