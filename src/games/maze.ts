@@ -1,8 +1,9 @@
 import canvas, { CanvasRenderingContext2D } from 'canvas';
 import { AttachmentBuilder, GuildMember, MessageFlags, Snowflake } from 'discord.js';
 import { getRankString, getNumberBetween, naturalJoin, randInt, shuffle, toLetterId, fromLetterId, AStarPathFinder, shuffleWithDependencies, toFixed, collapseRedundantStrings, chance, randChoice, toCircle, findCycle } from 'evanw555.js';
-import { DecisionProcessingResult, GamePlayerAddition, MazeGameState, MazeItemName, MazeLine, MazeLocation, MazePlayerState, MessengerPayload, PrizeType } from "../types";
+import { DecisionProcessingResult, GamePlayerAddition, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
+import { MazeItemName, MazeLocation, MazeGameState, MazeLine, MazePlayerState } from './types';
 
 import logger from '../logger';
 import imageLoader from '../image-loader';

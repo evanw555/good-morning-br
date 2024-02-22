@@ -1,6 +1,6 @@
 import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, BaseMessageOptions, ButtonStyle, Client, ComponentType, DMChannel, GatewayIntentBits, MessageFlags, PartialMessage, Partials, TextChannel, TextInputStyle, User } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discord.js';
-import { DailyEvent, DailyEventType, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, GameState, SubmissionPromptHistory, ReplyToMessageData, MessengerPayload, AnonymousSubmission, GamePlayerAddition } from './types';
+import { DailyEvent, DailyEventType, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, SubmissionPromptHistory, ReplyToMessageData, MessengerPayload, AnonymousSubmission, GamePlayerAddition, DecisionProcessingResult } from './types';
 import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, getScaledPoints, getSimpleScaledPoints, text } from './util';
 import GoodMorningState from './state';
 import { addReactsSync, chance, DiscordTimestampFormat, FileStorage, forEachMessage, generateKMeansClusters, getClockTime, getJoinedMentions, getPollChoiceKeys, getRandomDateBetween,
@@ -12,6 +12,7 @@ import { getFocusHandler, getNewWheelOfFortuneRound, getRandomFocusGame } from '
 import { WordleFocusGame } from './focus/wordle';
 import { WheelOfFortuneFocusGame } from './focus/wheel-of-fortune';
 import { WheelOfFortuneRound, WordlePuzzle } from './focus/types';
+import { GameState } from './games/types';
 import AbstractGame from './games/abstract-game';
 import ClassicGame from './games/classic';
 import MazeGame from './games/maze';
@@ -2346,7 +2347,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
 
         // Process player decisions
         const game = state.getGame();
-        const processingResult = await game.processPlayerDecisions();
+        const processingResult: DecisionProcessingResult = await game.processPlayerDecisions();
         await dumpState();
 
         // Send out the message payload for the updated game state (may contain attachments or just be text)

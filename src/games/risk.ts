@@ -1,9 +1,10 @@
 import { APIActionRowComponent, APIMessageActionRowComponent, APISelectMenuOption, ActionRowData, AttachmentBuilder, ButtonStyle, ComponentType, GuildMember, Interaction, InteractionReplyOptions, MessageActionRowComponentData, MessageFlags, Snowflake } from "discord.js";
-import { DecisionProcessingResult, GamePlayerAddition, MessengerPayload, PrizeType, RiskConflictAgentData, RiskConflictState, RiskGameState, RiskMovementData, RiskPlannedAttack, RiskPlayerState, RiskTerritoryState } from "../types";
+import { DecisionProcessingResult, GamePlayerAddition, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 import { Canvas, Image, createCanvas } from "canvas";
 import { DiscordTimestampFormat, chance, fillBackground, findCycle, getDateBetween, getJoinedMentions, getRankString, joinCanvasesHorizontal, joinCanvasesVertical, naturalJoin, randChoice, randInt, resize, shuffle, shuffleWithDependencies, toCircle, toDiscordTimestamp, toFixed, withDropShadow } from "evanw555.js";
 import { getMinKey, getMaxKey, getTextLabel, drawBackground, quantify, superimpose } from "../util";
+import { RiskGameState, RiskMovementData, RiskTerritoryState, RiskPlayerState, RiskConflictState, RiskPlannedAttack, RiskConflictAgentData } from "./types";
 
 import logger from "../logger";
 import imageLoader from "../image-loader";

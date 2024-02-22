@@ -1,7 +1,8 @@
 import { ActionRowData, AttachmentBuilder, GuildMember, Interaction, MessageActionRowComponentData, Snowflake } from "discord.js";
-import { DecisionProcessingResult, GamePlayerAddition, GameState, MessengerPayload, PrizeType } from "../types";
+import { DecisionProcessingResult, GamePlayerAddition, MessengerPayload, PrizeType } from "../types";
 import { text } from "../util";
 import { getJoinedMentions } from "evanw555.js";
+import { GameState } from "./types";
 
 export default abstract class AbstractGame<T extends GameState> {
     protected readonly state: T;

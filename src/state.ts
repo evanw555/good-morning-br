@@ -5,17 +5,14 @@ import AbstractGame from "./games/abstract-game";
 import ClassicGame from "./games/classic";
 import MazeGame from "./games/maze";
 import logger from "./logger";
-import { Bait, Combo, DailyEvent, DailyEventType, DailyPlayerState, FullDate, GameState, PlayerState, RawAnonymousSubmissionsState, RawGoodMorningState, Season } from "./types";
+import { Bait, Combo, DailyEvent, DailyEventType, DailyPlayerState, FullDate, PlayerState, RawAnonymousSubmissionsState, RawGoodMorningState, Season } from "./types";
 import IslandGame from "./games/island";
 import { AnonymousSubmissionsState } from "./submissions";
 import ArenaGame from "./games/arena";
 import MasterpieceGame from "./games/masterpiece";
 import RiskGame from "./games/risk";
-import AbstractFocusGame from "./focus/abstract-focus";
 import { FocusGameState } from "./focus/types";
-import PopcornFocusGame from "./focus/popcorn";
-import { WordleFocusGame } from "./focus/wordle";
-import { WheelOfFortuneFocusGame } from "./focus/wheel-of-fortune";
+import { GameState } from "./games/types";
 
 export default class GoodMorningState {
     private data: RawGoodMorningState;

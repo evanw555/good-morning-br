@@ -1,8 +1,9 @@
 import { GuildMember, MessageFlags, Snowflake } from "discord.js";
 import canvas from 'canvas';
-import { DecisionProcessingResult, GamePlayerAddition, IslandGameState, IslandPlayerState, MessengerPayload, PrizeType } from "../types";
+import { DecisionProcessingResult, GamePlayerAddition, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 import { getMostSimilarByNormalizedEditDistance, naturalJoin, randChoice, shuffle, toFixed } from "evanw555.js";
+import { IslandGameState, IslandPlayerState } from "./types";
 
 import imageLoader from "../image-loader";
 import logger from "../logger";

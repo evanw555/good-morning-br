@@ -1,6 +1,7 @@
 import { GuildMember } from "discord.js";
-import { ArenaGameState, DecisionProcessingResult, GamePlayerAddition, MessengerPayload, PrizeType } from "../types";
+import { DecisionProcessingResult, GamePlayerAddition, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
+import { ArenaGameState } from "./types";
 
 export default class ArenaGame extends AbstractGame<ArenaGameState> {
 

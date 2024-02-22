@@ -1,9 +1,10 @@
 import canvas, {  } from 'canvas';
 import { ActionRowData, ButtonStyle, ComponentType, GuildMember, MessageActionRowComponentData, MessageFlags, Snowflake } from "discord.js";
 import { DiscordTimestampFormat, getMostSimilarByNormalizedEditDistance, getRankString, getTodayDateString, naturalJoin, randChoice, getNumberOfDaysUntil, toDiscordTimestamp, toFixed, toDateString } from 'evanw555.js';
-import { ClassicGameState, DecisionProcessingResult, GamePlayerAddition, Medals, MessengerPayload, PrizeType } from "../types";
+import { DecisionProcessingResult, GamePlayerAddition, Medals, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 import { text } from '../util';
+import { ClassicGameState } from './types';
 
 import imageLoader from '../image-loader';
 
