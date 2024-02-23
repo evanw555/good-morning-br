@@ -20,8 +20,10 @@ export function getFocusHandler(focusGame: FocusGameState) {
     }
 }
 
-export async function getNewWheelOfFortuneRound(): Promise<WheelOfFortuneRound | undefined> {
+export async function getNewWheelOfFortuneRound(options?: { minLength?: number }): Promise<WheelOfFortuneRound | undefined> {
     const { sharedStorage } = controller.getAllReferences();
+
+    const minLength = options?.minLength ?? 6;
 
     try {
         // First, randomly select a data set
@@ -44,7 +46,7 @@ export async function getNewWheelOfFortuneRound(): Promise<WheelOfFortuneRound |
         for (let i = 0; i < 100; i++) {
             const choice = randChoice(...choices);
             // If it's too short, skip
-            if (choice.length < 6) {
+            if (choice.length < minLength) {
                 continue;
             }
             // If it contains mentions/emojis/timestamps, skip

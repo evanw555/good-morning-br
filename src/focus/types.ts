@@ -35,7 +35,10 @@ export interface WheelOfFortuneRound {
     // If true, the user has indicated that they are going to solve the puzzle
     solving?: true,
     solo?: true,
-    lightning?: true
+    tossUp?: {
+        guessCounts: Record<Snowflake, number>,
+        revealedIndices: number[]
+    }
 }
 
 export interface WheelOfFortune {
