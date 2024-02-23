@@ -3,6 +3,7 @@ import PopcornFocusGame from "./popcorn";
 import { FocusGameState, WheelOfFortune, WheelOfFortuneRound } from "./types";
 import { WheelOfFortuneFocusGame } from "./wheel-of-fortune";
 import { WordleFocusGame } from "./wordle";
+import { SubmissionPromptHistory } from "../types";
 
 import { CONFIG } from "../constants";
 
@@ -21,7 +22,7 @@ export function getFocusHandler(focusGame: FocusGameState) {
 }
 
 export async function getNewWheelOfFortuneRound(options?: { minLength?: number }): Promise<WheelOfFortuneRound | undefined> {
-    const { sharedStorage } = controller.getAllReferences();
+    const { storage, sharedStorage } = controller.getAllReferences();
 
     const minLength = options?.minLength ?? 6;
 
@@ -32,6 +33,10 @@ export async function getNewWheelOfFortuneRound(options?: { minLength?: number }
         if (!CONFIG.testing && chance(0.1)) {
             choices = await sharedStorage.readJson('mcmpisms.json');
             category = 'MCMPisms';
+        } else if (!CONFIG.testing && chance(0.1)) {
+            const prompts = await storage.readJson('prompts.json') as SubmissionPromptHistory;
+            choices = [...prompts.unused, ...prompts.used];
+            category = 'GMBR Tuesday Prompts';
         } else if (!CONFIG.testing && chance(0.5)) {
             choices = await sharedStorage.readJson('bad-language.json');
             category = 'Bad Language';
