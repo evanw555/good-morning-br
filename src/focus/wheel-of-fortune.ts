@@ -1,5 +1,5 @@
 import { Canvas, createCanvas } from "canvas";
-import { canonicalizeText, drawBackground, getSimpleScaledPoints, getTextLabel, reactToMessage, setHue } from "../util";
+import { canonicalizeText, crop, drawBackground, getRotated, getSimpleScaledPoints, getTextLabel, reactToMessage, setHue } from "../util";
 import { PastTimeoutStrategy, chance, getRankString, joinCanvasesHorizontal, joinCanvasesVertical, randChoice, randInt, shuffle, sleep, withDropShadow, withMargin } from "evanw555.js";
 import { AttachmentBuilder, Message, MessageFlags, Snowflake } from "discord.js";
 import { WheelOfFortune, WheelOfFortuneRound } from "./types";
@@ -190,27 +190,32 @@ export class WheelOfFortuneFocusGame extends AbstractFocusHandler {
                     // Reply prompting them to do more
                     await messenger.reply(message, {
                         content: `You've spun a **$${spinValue}**, give us a consonant!`,
-                        // TODO: Add an actual render
-                        // files: [render],
+                        files: [render],
                         flags: MessageFlags.SuppressNotifications
                     });
                 }
                 // The value is positive, so end their turn...
                 else {
                     // If it was a bankruptcy, set their round score to zero
-                    if (spinValue < 0) {
+                    let text = 'Oh dear, looks like your turn is over... ';
+                    if (spinValue === -1) {
                         round.roundScores[userId] = 0;
+                        text = 'Oh no, you\'ve lost all your cash for this round! ';
+                    } else if (spinValue === -2) {
+                        text = 'Uh oh, you\'ve been a bad boy! ';
                     }
                     // Add them to the blacklist and end their turn
                     await this.endWOFTurn(round);
                     // Reply with a message
                     await messenger.reply(message, {
-                        content: (spinValue < 0) ? '**BANKRUPT!** Oh no, you\'ve lost all your cash for this round! ' : '**LOSE A TURN!** Oh dear, looks like your turn is over... '
-                            + this.getOpenActionPrompt(round),
-                        // TODO: Add an actual render
-                        // files: [render],
+                        content: text + this.getOpenActionPrompt(round),
+                        files: [render],
                         flags: MessageFlags.SuppressNotifications
                     });
+                    // Send a separate message prompting an admin bot to lock them up
+                    if (spinValue === -2) {
+                        await messenger.send(goodMorningChannel, `Please lock up <@${userId}>`);
+                    }
                 }
             }
             // Handle an intent to solve
@@ -601,37 +606,57 @@ export class WheelOfFortuneFocusGame extends AbstractFocusHandler {
     
     private async spinWheelOfFortune(): Promise<{ render: AttachmentBuilder, spinValue: number }> {
         // TODO: Have a better system for spinning
-        const spinValue = randChoice(
-            250,
-            10,
-            60,
-            70,
-            60,
-            65,
-            50,
-            70,
-            500,
-            60,
-            55,
-            50,
-            60,
-            -1,
-            65,
-            20,
-            70,
-            0,
-            80,
-            50,
-            65,
-            50,
-            90,
-            -1
-        );
-        // TODO: Actually render a real wheel
-        const canvas = getTextLabel(spinValue.toString(), 32, 32);
+        const spinValues = [
+            -1, 500, -1,
+            10, 10, 10,
+            60, 60, 60,
+            70, 70, 70,
+            60, 60, 60,
+            65, 65, 65,
+            0, 0, 0,
+            50, 50, 50,
+            70, 70, 70,
+            250, 250, 250,
+            60, 60, 60,
+            55, 55, 55,
+            -1, -1, -1,
+            50, 50, 50,
+            60, 60, 60,
+            65, 65, 65,
+            20, 20, 20,
+            70, 70, 70,
+            -2, -2, -2,
+            80, 80, 80,
+            50, 50, 50,
+            65, 65, 65,
+            50, 50, 50,
+            90, 90, 90
+        ];
+
+        // Pick a random index
+        const randomIndex = randInt(0, spinValues.length);
+        const spinValue = spinValues[randomIndex];
+        const angle = 2 * Math.PI * -((randomIndex + 0.5) / spinValues.length);
+
+        // Render the actual wheel
+        const wheelImage = await imageLoader.loadImage('assets/wof/wheel.png');
+        const rotatedImage = getRotated(wheelImage, angle);
+        const croppedImage = crop(rotatedImage, {
+            width: Math.floor(wheelImage.width * 0.6),
+            height: Math.floor(wheelImage.height * 0.35),
+            horizontal: 'center',
+            vertical: 'top'
+        });
+        const tickerImage = await imageLoader.loadImage('assets/wof/ticker.png');
+        const finalImage = withMargin(croppedImage, { top: tickerImage.height / 3 });
+        const backgroundImage = await imageLoader.loadImage('assets/common/blueblur.jpg');
+        const context = finalImage.getContext('2d');
+        drawBackground(context, backgroundImage);
+        context.drawImage(tickerImage, Math.round((finalImage.width - tickerImage.width) / 2), 0);
+
         return {
             spinValue,
-            render: new AttachmentBuilder(canvas.toBuffer()).setName('temp-spin.png')
+            render: new AttachmentBuilder(finalImage.toBuffer()).setName('temp-spin.png')
         };
     }
 

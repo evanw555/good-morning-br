@@ -316,6 +316,67 @@ export function setHue(image: Image | Canvas, style: string): Canvas {
 
     return canvas;
 }
+// TODO: Move to common utility
+/**
+ * @param image Source image/canvas
+ * @param angle Angle (in radians) to rotate the image clockwise
+ */
+export function getRotated(image: Image | Canvas, angle: number): Canvas {
+    const canvas = createCanvas(image.width, image.height);
+    const context = canvas.getContext('2d');
+
+    context.save();
+    // Set the origin to the middle of the canvas
+    context.translate(canvas.width / 2,canvas.height / 2);
+    // Adjust the context space to be rotated
+    context.rotate(angle);
+    // Draw the rotated image
+    context.drawImage(image, Math.round(-image.width / 2), Math.round(-image.width / 2));
+    context.restore();
+
+    return canvas;
+}
+
+// TODO: Move to common library
+export function crop(image: Image | Canvas, options?: { width?: number, height?: number, horizontal?: 'left' | 'center' | 'right', vertical?: 'top' | 'center' | 'bottom'}): Canvas {
+    const WIDTH = options?.width ?? image.width;
+    const HEIGHT = options?.height ?? image.height;
+    const HORIZONTAL = options?.horizontal ?? 'center';
+    const VERTICAL = options?.vertical ?? 'center';
+
+    const canvas = createCanvas(WIDTH, HEIGHT);
+    const context = canvas.getContext('2d');
+
+    let x;
+    switch (HORIZONTAL) {
+        case 'left':
+            x = 0;
+            break;
+        case 'center':
+            x = Math.round((WIDTH - image.width) / 2);
+            break;
+        case 'right':
+            x = WIDTH - image.width;
+            break;
+    }
+
+    let y;
+    switch (VERTICAL) {
+        case 'top':
+            y = 0;
+            break;
+        case 'center':
+            y = Math.round((HEIGHT - image.height) / 2);
+            break;
+        case 'bottom':
+            y = HEIGHT - image.height;
+            break;
+    }
+
+    context.drawImage(image, x, y);
+
+    return canvas;
+}
 
 // TODO: Can we move this to a common library?
 // TODO: This isn't perfect, can it be improved?
