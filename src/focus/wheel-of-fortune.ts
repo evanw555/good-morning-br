@@ -447,7 +447,9 @@ export class WheelOfFortuneFocusGame extends AbstractFocusHandler {
         });
         // Schedule the next round
         const restartDate = new Date();
-        if (new Date().getHours() >= 11) {
+        if (CONFIG.testing) {
+            restartDate.setSeconds(restartDate.getSeconds() + 10);
+        } else if (new Date().getHours() >= 11) {
             restartDate.setMinutes(restartDate.getMinutes() + randInt(1, 5));
         } else if (new Date().getHours() >= 10) {
             restartDate.setMinutes(restartDate.getMinutes() + randInt(5, 10));
@@ -517,8 +519,9 @@ export class WheelOfFortuneFocusGame extends AbstractFocusHandler {
             }
         }
 
-        const TILE_WIDTH = 36;
-        const TILE_HEIGHT = 48;
+        // TODO: Should this be increased back to 32x48?
+        const TILE_WIDTH = 27;
+        const TILE_HEIGHT = 36;
         const MARGIN = 4;
 
         const WIDTH = COLUMNS * TILE_WIDTH + (COLUMNS + 1) * MARGIN;
@@ -562,21 +565,28 @@ export class WheelOfFortuneFocusGame extends AbstractFocusHandler {
             baseY += TILE_HEIGHT + MARGIN;
         }
 
-        // Construct the "used letters" label
-        const letterLabels: Canvas[] = [];
-        for (let i = 65; i <= 90; i++) {
-            const letter = String.fromCharCode(i);
-            const label = getTextLabel(letter, TILE_WIDTH / 2, TILE_HEIGHT / 2, { alpha: round.usedLetters.includes(letter) ? 0.15 : 1});
-            letterLabels.push(label);
+        // Add the category and grid to list of rows to join
+        const renderRows: Canvas[] = [
+            getTextLabel(round.category, WIDTH, TILE_HEIGHT * 0.75, { style: 'white' }),
+            canvas
+        ];
+
+        // If this is not a toss-up round, add the used letters
+        if (!round.tossUp) {
+            // Construct the "used letters" label
+            const letterLabels: Canvas[] = [];
+            for (let i = 65; i <= 90; i++) {
+                const letter = String.fromCharCode(i);
+                const label = getTextLabel(letter, TILE_WIDTH / 2, TILE_HEIGHT / 2, { alpha: round.usedLetters.includes(letter) ? 0.15 : 1});
+                letterLabels.push(label);
+            }
+            // Push at the end
+            renderRows.push(joinCanvasesHorizontal(letterLabels));
         }
 
-        // Add category at the top, letters at the bottom
+        // Join all rows and add surrounding margins
         const compositeCanvas = withMargin(
-            joinCanvasesVertical([
-                getTextLabel(round.category, WIDTH, TILE_HEIGHT * 0.75, { style: 'white' }),
-                canvas,
-                joinCanvasesHorizontal(letterLabels)
-            ], { align: 'center', spacing: MARGIN }),
+            joinCanvasesVertical(renderRows, { align: 'center', spacing: MARGIN }),
             Math.round(TILE_WIDTH / 2)
         );
 
@@ -642,14 +652,15 @@ export class WheelOfFortuneFocusGame extends AbstractFocusHandler {
         const wheelImage = await imageLoader.loadImage('assets/wof/wheel.png');
         const rotatedImage = getRotated(wheelImage, angle);
         const croppedImage = crop(rotatedImage, {
-            width: Math.floor(wheelImage.width * 0.6),
+            width: Math.floor(wheelImage.width * 0.75),
             height: Math.floor(wheelImage.height * 0.35),
             horizontal: 'center',
             vertical: 'top'
         });
         const tickerImage = await imageLoader.loadImage('assets/wof/ticker.png');
         const finalImage = withMargin(croppedImage, { top: tickerImage.height / 3 });
-        const backgroundImage = await imageLoader.loadImage('assets/common/blueblur.jpg');
+        // TODO: Refactor blue hue value to somewhere else
+        const backgroundImage = setHue(await imageLoader.loadImage('assets/common/blueblur.jpg'), 'hsl(230, 100%, 50%)');
         const context = finalImage.getContext('2d');
         drawBackground(context, backgroundImage);
         context.drawImage(tickerImage, Math.round((finalImage.width - tickerImage.width) / 2), 0);
