@@ -319,11 +319,7 @@ export class WheelOfFortuneFocusGame extends AbstractFocusHandler {
                     // Add the solution itself to the "used letters" so the solution can be rendered
                     this.revealWheelOfFortuneSolution(round);
                     // Add each person's score to the total scoreboard
-                    for (const [ someUserId, someScore ] of Object.entries(round.roundScores)) {
-                        // Allow the winner to keep all points, only let others keep a quarter
-                        const multipliedScore = Math.round((userId === someUserId ? 1 : 0.25) * someScore);
-                        wof.scores[someUserId] = (wof.scores[someUserId] ?? 0) + multipliedScore;
-                    }
+                    this.transferRoundPoints(wof, round, userId);
                     // Reply with some message
                     await messenger.reply(message, {
                         content: `Yes, that\'s it! You can keep your **$${priorScore}** earnings, while everyone else will only keep a quarter`,
@@ -739,11 +735,7 @@ export class WheelOfFortuneFocusGame extends AbstractFocusHandler {
             // Delete the round to avoid race conditions
             delete wof.round;
             // Add each person's score to the total scoreboard
-            for (const [ someUserId, someScore ] of Object.entries(wof.scores)) {
-                // Allow the winner to keep all points, only let others keep a quarter
-                const multipliedScore = Math.round(0.25 * someScore);
-                wof.scores[someUserId] = (wof.scores[someUserId] ?? 0) + multipliedScore;
-            }
+            this.transferRoundPoints(wof, round);
             // Add the solution itself to the "used letters" so the solution can be rendered
             this.revealWheelOfFortuneSolution(round);
             // Send a message revealing the message
@@ -765,6 +757,14 @@ export class WheelOfFortuneFocusGame extends AbstractFocusHandler {
             rows.push(`_${getRankString(rank)}:_ **$${score}** <@${userId}>`);
         }
         await messenger.send(goodMorningChannel, `__Wheel of Fortune Results:__\n` + rows.join('\n') + '\n(_Disclaimer:_ these are not your literal points earned)');
+    }
+
+    private transferRoundPoints(wof: WheelOfFortune, round: WheelOfFortuneRound, winner?: Snowflake) {
+        for (const [ userId, score ] of Object.entries(round.roundScores)) {
+            // Allow the winner to keep all points, only let others keep a quarter
+            const multipliedScore = Math.round((userId === winner ? 1 : 0.25) * score);
+            wof.scores[userId] = (wof.scores[userId] ?? 0) + multipliedScore;
+        }
     }
 
     private async scheduleNextReveal() {
