@@ -157,8 +157,8 @@ export class WheelOfFortuneFocusGame extends AbstractFocusHandler {
                         content: `That's it! You've earned **$${prizeValue}**`,
                         files: [await WheelOfFortuneFocusGame.renderWheelOfFortuneState(round)]
                     });
-                    // Schedule the next round
-                    await this.showScoresAndRestart(wof);
+                    // Start a solo round for the winner
+                    await this.startSoloRound(userId, prizeValue);
                 } else {
                     // Increment guess count
                     round.tossUp.guessCounts[userId] = numGuesses + 1;
@@ -330,33 +330,7 @@ export class WheelOfFortuneFocusGame extends AbstractFocusHandler {
                         files: [await WheelOfFortuneFocusGame.renderWheelOfFortuneState(round)]
                     });
                     // Start the solo round
-                    const soloRound = await getNewWheelOfFortuneRound({ minLength: 10 });
-                    if (soloRound) {
-                        // Pause for a little bit
-                        await sleep(10000);
-                        // Set the new round in the state
-                        const winningScore = round.roundScores[userId] ?? 0;
-                        wof.round = {
-                            ...soloRound,
-                            // Set some solo-specific properties
-                            usedLetters: 'RSTLNE',
-                            spinValue: winningScore,
-                            solo: true,
-                            userId
-                        };
-                        // Send a message
-                        await messenger.send(goodMorningChannel, `Now <@${userId}>, I'll give you a shot at the bonus round! One chance to double your **$${winningScore}** into **$${2 * winningScore}**`);
-                        await messenger.send(goodMorningChannel, {
-                            content: `I've given you **RSTLNE**, but I need you to give me **3** more consonants and **1** more vowel`,
-                            files: [await WheelOfFortuneFocusGame.renderWheelOfFortuneState(wof.round)]
-                        });
-                        // Start the shot clock again
-                        await this.resetWOFShotClock();
-                    } else {
-                        await logger.log('Couldn\'t create new solo round for some reason, skipping directly to next standard round...');
-                        // Couldn't find new round for some reason, so show scores and schedule next round
-                        await this.showScoresAndRestart(wof);
-                    }
+                    await this.startSoloRound(userId, round.roundScores[userId] ?? 0)
                 }
                 // Else, end their turn
                 else {
@@ -432,6 +406,42 @@ export class WheelOfFortuneFocusGame extends AbstractFocusHandler {
 
     private static isVowel(letter: string) {
         return letter.length === 1 && 'AEIOU'.includes(letter.toUpperCase());
+    }
+
+    private async startSoloRound(userId: Snowflake, winningScore: number) {
+        const { state, messenger, goodMorningChannel } = controller.getAllReferences();
+
+        const wof = state.getFocusGame();
+        if (wof.type !== 'WHEEL_OF_FORTUNE') {
+            return;
+        }
+
+        const soloRound = await getNewWheelOfFortuneRound({ minLength: 10 });
+        if (soloRound) {
+            // Pause for a little bit
+            await sleep(10000);
+            // Set the new round in the state
+            wof.round = {
+                ...soloRound,
+                // Set some solo-specific properties
+                usedLetters: 'RSTLNE',
+                spinValue: winningScore,
+                solo: true,
+                userId
+            };
+            // Send a message
+            await messenger.send(goodMorningChannel, `Now <@${userId}>, I'll give you a shot at the bonus round! One chance to double your **$${winningScore}** into **$${2 * winningScore}**`);
+            await messenger.send(goodMorningChannel, {
+                content: `I've given you **RSTLNE**, but I need you to give me **3** more consonants and **1** more vowel`,
+                files: [await WheelOfFortuneFocusGame.renderWheelOfFortuneState(wof.round)]
+            });
+            // Start the shot clock again
+            await this.resetWOFShotClock();
+        } else {
+            await logger.log('Couldn\'t create new solo round for some reason, skipping directly to next standard round...');
+            // Couldn't find new round for some reason, so show scores and schedule next round
+            await this.showScoresAndRestart(wof);
+        }
     }
 
     private async showScoresAndRestart(wof: WheelOfFortune) {
