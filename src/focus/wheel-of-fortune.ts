@@ -788,8 +788,9 @@ export class WheelOfFortuneFocusGame extends AbstractFocusHandler {
                 const newRound = await getNewWheelOfFortuneRound({ minLength: 7 });
                 if (newRound) {
                     // With a small chance, make this a toss-up round
-                    // TODO: Can this be based on the time of day?
-                    if (chance(0.5)) {
+                    // TODO: Should this be event-based rather than time-based (e.g. mid-morning, pre-noon)
+                    const isLate = new Date().getHours() >= 11;
+                    if (chance(isLate ? 0.75 : 0.25)) {
                         // TODO: Can the value be dynamic?
                         const prizeValue = 500;
                         newRound.spinValue = prizeValue;
