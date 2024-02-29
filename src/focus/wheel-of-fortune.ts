@@ -808,14 +808,14 @@ export class WheelOfFortuneFocusGame extends AbstractFocusHandler {
                             guessCounts: {},
                             revealedIndices: []
                         };
-                        // Schedule next reveal
-                        await this.scheduleNextReveal();
                         // Send the round intro message
                         await messenger.send(goodMorningChannel, {
                             content: `This round will be a _toss-up_! I'll reveal letters one-by-one, and the first person to say the solution wins **$${prizeValue}**. `
                                 + 'Bewarned though - for you only get **3** guesses and each message counts as one guess',
                             files: [await WheelOfFortuneFocusGame.renderWheelOfFortuneState(newRound)]
                         });
+                        // Schedule next reveal
+                        await this.scheduleNextReveal();
                     }
                     // Otherwise, standard round
                     else {
