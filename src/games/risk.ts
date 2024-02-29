@@ -884,6 +884,16 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         this.state.players[userId].newTroops = this.getPlayerNewTroops(userId) + quantity;
     }
 
+    /**
+     * For a given player, gets the number of "add" decisions they have scheduled currently.
+     */
+    private getPlayerNumPendingAdditions(userId: Snowflake): number {
+        if (!this.state.addDecisions) {
+            return 0;
+        }
+        return (this.state.addDecisions[userId] ?? []).length;
+    }
+
     private hasWeeklyPrize(userId: Snowflake): boolean {
         return this.state.players[userId]?.weeklyPrize ?? false;
     }
@@ -2452,13 +2462,26 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         if (this.state.addDecisions) {
             const addDecisions = this.state.addDecisions;
             const additions: Record<string, number> = {};
+            const failedAdditions: Record<Snowflake, number> = {};
             for (const userId of Object.keys(addDecisions)) {
                 const territoryIds = addDecisions[userId];
                 for (const territoryId of territoryIds) {
-                    this.addTerritoryTroops(territoryId, 1);
-                    this.addPlayerNewTroops(userId, -1);
-                    additions[territoryId] = (additions[territoryId] ?? 0) + 1;
+                    // Validate that the player actually has enough new troops to do the addition
+                    if (this.getPlayerNewTroops(userId) > 0) {
+                        // Do the addition and decrement "new troops" allowance
+                        this.addTerritoryTroops(territoryId, 1);
+                        this.addPlayerNewTroops(userId, -1);
+                        additions[territoryId] = (additions[territoryId] ?? 0) + 1;
+                    }
+                    // If not, then log it
+                    else {
+                        failedAdditions[userId] = (failedAdditions[userId] ?? 0) + 1;
+                    }
                 }
+            }
+            // If there were any failed additions, log that now
+            if (Object.keys(failedAdditions).length > 0) {
+                void logger.log(`Failed troop additions:\n` + Object.entries(failedAdditions).map(([userId, n]) => `**${n}** by <@${userId}>`).join('\n'));
             }
             // Delete the add decisions to prevent further processing on them
             delete this.state.addDecisions;
@@ -3361,6 +3384,11 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                         } else {
                             throw new Error(`You don't own _${this.getTerritoryName(selectedTerritoryId)}_!`);
                         }
+                    }
+                    // Validate the pending decision
+                    const additionsRemaining = this.getPlayerNewTroops(userId) - this.getPlayerNumPendingAdditions(userId);
+                    if (additionsRemaining <= 0) {
+                        throw new Error('You\'ve already spent this week\'s troop allowance! Click "Start Over" to clear your decisions');
                     }
                     // Add the pending decision
                     if (!this.state.addDecisions[userId]) {
