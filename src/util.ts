@@ -430,3 +430,20 @@ export async function generateSynopsisWithAi(story: string): Promise<string> {
         + story
         + '\n\nThis concludes the story. Now that the story has ended, please give a synopsis of the story, explaining the premise, conflict, and characters.')
 }
+
+/**
+ * Given some source list, returns a copy shortened to the desired list by removing elements at even intervals.
+ * @param values Source list
+ * @param newLength Desired length of shortened list
+ * @returns Copy of the source list shortened to the desired length
+ */
+// TODO: Move to common library
+export function getEvenlyShortened<T>(values: T[], newLength: number): T[] {
+    const result: T[] = [];
+    const n = values.length;
+    for (let i = 0; i < newLength; i++) {
+        const sourceIndex = Math.floor(i * n / newLength);
+        result[i] = values[sourceIndex];
+    }
+    return result;
+}

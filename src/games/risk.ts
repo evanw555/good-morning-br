@@ -3,7 +3,7 @@ import { DecisionProcessingResult, GamePlayerAddition, MessengerPayload, PrizeTy
 import AbstractGame from "./abstract-game";
 import { Canvas, Image, createCanvas } from "canvas";
 import { DiscordTimestampFormat, chance, fillBackground, findCycle, getDateBetween, getJoinedMentions, getRankString, joinCanvasesHorizontal, joinCanvasesVertical, naturalJoin, randChoice, randInt, resize, shuffle, shuffleWithDependencies, toCircle, toDiscordTimestamp, toFixed, withDropShadow } from "evanw555.js";
-import { getMinKey, getMaxKey, getTextLabel, drawBackground, quantify, superimpose } from "../util";
+import { getMinKey, getMaxKey, getTextLabel, drawBackground, quantify, superimpose, getEvenlyShortened } from "../util";
 import { RiskGameState, RiskMovementData, RiskTerritoryState, RiskPlayerState, RiskConflictState, RiskPlannedAttack, RiskConflictAgentData } from "./types";
 
 import logger from "../logger";
@@ -3967,9 +3967,10 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         for (let i = 1; i < maxValueExclusive; i++) {
             quantityValues.push(`${i}`);
         }
-        // If there are more than 25 options, delete from the middle
+        // If there are more than 25 options, remove elements evenly from the center
         if (quantityValues.length > 25) {
-            quantityValues = [...quantityValues.slice(0,12), ...quantityValues.slice(-13)];
+            // 3 from the beginning, N-6 from the center (shortened to 19), 3 from the end
+            quantityValues = [...quantityValues.slice(0,3), ...getEvenlyShortened(quantityValues.slice(3, -3), 19), ...quantityValues.slice(-3)];
         }
         return quantityValues.map(x => ({
             value: x,
