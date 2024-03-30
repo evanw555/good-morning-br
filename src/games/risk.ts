@@ -860,6 +860,12 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         this.state.territories[territoryId].deaths = this.getTerritoryDeaths(territoryId) + deaths;
     }
 
+    private getTotalDeaths(): number {
+        return Object.values(this.state.territories)
+            .map(t => t.deaths ?? 0)
+            .reduce((x, y) => x + y, 0);
+    }
+
     /**
      * For a given player, gets the total number of troops on the board in territories they own.
      */
@@ -914,6 +920,10 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         this.state.players[userId].kills = this.getPlayerKills(userId) + kills;
     }
 
+    private getPlayerWithMostKills(): Snowflake {
+        return getMaxKey(this.getPlayers(), userId => this.getPlayerKills(userId));
+    }
+
     private getPlayerDeaths(userId: Snowflake): number {
         return this.state.players[userId]?.deaths ?? 0;
     }
@@ -924,6 +934,10 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             return;
         }
         this.state.players[userId].deaths = this.getPlayerDeaths(userId) + deaths;
+    }
+
+    private getPlayerWithMostDeaths(): Snowflake {
+        return getMaxKey(this.getPlayers(), userId => this.getPlayerDeaths(userId));
     }
 
     private hasCustomTroopIcon(userId: Snowflake): boolean {
@@ -1089,7 +1103,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             if (this.isPlayerEliminated(userId)) {
                 return -this.getPlayerFinalRank(userId);
             }
-            return 100 * this.getNumTerritoriesForPlayer(userId) + this.getTroopsForPlayer(userId);
+            // Note: This assumes the number of troops is below 200
+            return 200 * this.getNumTerritoriesForPlayer(userId) + this.getTroopsForPlayer(userId);
         };
         return this.getPlayers().sort((x, y) => getSortValue(y) - getSortValue(x));
     }
@@ -1915,41 +1930,58 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         return fillBackground(resize(compositeRosterCanvas, { height }) as Canvas, { background: 'black' });
     }
 
-    private async renderMap(options?: { showRoster?: boolean, invasion?: RiskConflictState, additions?: Record<string, number>, movements?: RiskMovementData[] }): Promise<Canvas> {
+    private async renderMap(options?: { showRoster?: boolean, invasion?: RiskConflictState, additions?: Record<string, number>, movements?: RiskMovementData[], casualtyHeatMap?: boolean }): Promise<Canvas> {
         const mapImage = await imageLoader.loadImage('assets/risk/map.png');
 
         // Define the canvas
         const canvas = createCanvas(mapImage.width, mapImage.height);
         const context = canvas.getContext('2d');
 
+        // Compute some casualty heat map-related data
+        const maxTerritoryDeaths = Math.max(...this.getTerritories().map(territoryId => this.getTerritoryDeaths(territoryId)));
+
         // Draw each territory cutout
         for (const territoryId of this.getTerritories()) {
-            context.drawImage(await this.getTerritoryCutoutRender(territoryId), 0, 0);
+            // If rendering a casualty heat map, override the cutout color to represent the proportional number of deaths
+            let fillStyleOverride: string | undefined = undefined;
+            if (options?.casualtyHeatMap) {
+                const territoryDeaths = this.getTerritoryDeaths(territoryId);
+                const intensity = territoryDeaths / maxTerritoryDeaths;
+                fillStyleOverride = `hsl(0, ${Math.floor(100 * intensity)}%, ${20 + Math.floor(30 * intensity)}%)`;
+            }
+            // Draw the cutout
+            context.drawImage(await this.getTerritoryCutoutRender(territoryId, { fillStyleOverride }), 0, 0);
         }
 
         // Draw the map template as the top layer
         context.drawImage(mapImage, 0, 0);
 
-        // Draw the number of troops in each territory
-        // const troopsImage = await imageLoader.loadImage('assets/risk/troops/1.png');
-        // const newTroopsImage = await imageLoader.loadImage('assets/risk/troops/1new.png');
-        // const invadingTroopsImage = await imageLoader.loadImage('assets/risk/troops/1invading.png');
-        const troopsWidth = 24;
-        for (const territoryId of this.getTerritories()) {
-            // const troopsImage = await imageLoader.loadAvatar(this.getTerritoryOwner(territoryId) ?? '', 16);
-            const numTroops = this.getTerritoryTroops(territoryId);
-            const additions = (options?.additions ?? {})[territoryId] ?? 0;
-            // TODO: Improve this logic
-            const invadingTroops = options?.invasion?.attackers.filter(a => a.territoryId == territoryId)[0]?.initialTroops ?? 0;
-            const movedTroops = options?.movements?.filter(m => m.to === territoryId)[0]?.quantity ?? 0;
-            const troopLocations = this.getRandomTerritoryTroopLocations(territoryId, numTroops);
-            for (let i = 0; i < troopLocations.length; i++) {
-                const { x, y } = troopLocations[i];
-                const newAddition = troopLocations.length - i <= additions;
-                const invading = troopLocations.length - i <= invadingTroops;
-                const moved = troopLocations.length - i <= movedTroops;
-                const troopImage = await this.getTroopImage(this.getTerritoryOwner(territoryId) ?? '', invading ? 'attacking' : (newAddition ? 'added' : (moved ? 'moved' : undefined)));
-                context.drawImage(troopImage, x - troopsWidth / 2, y - troopsWidth / 2, troopsWidth, troopsWidth);
+        // If rendering a casualty heat map, draw the death count over each territory
+        if (options?.casualtyHeatMap) {
+            for (const territoryId of this.getTerritories()) {
+                const { x, y } = RiskGame.config.territories[territoryId].center;
+                const label = withDropShadow(getTextLabel(this.getTerritoryDeaths(territoryId).toString(), 64, 48), { expandCanvas: true });
+                context.drawImage(label, x - label.width, y - label.height);
+            }
+        }
+        // Else, draw the number of troops in each territory
+        else {
+            const troopsWidth = 24;
+            for (const territoryId of this.getTerritories()) {
+                const numTroops = this.getTerritoryTroops(territoryId);
+                const additions = (options?.additions ?? {})[territoryId] ?? 0;
+                // TODO: Improve this logic
+                const invadingTroops = options?.invasion?.attackers.filter(a => a.territoryId == territoryId)[0]?.initialTroops ?? 0;
+                const movedTroops = options?.movements?.filter(m => m.to === territoryId)[0]?.quantity ?? 0;
+                const troopLocations = this.getRandomTerritoryTroopLocations(territoryId, numTroops);
+                for (let i = 0; i < troopLocations.length; i++) {
+                    const { x, y } = troopLocations[i];
+                    const newAddition = troopLocations.length - i <= additions;
+                    const invading = troopLocations.length - i <= invadingTroops;
+                    const moved = troopLocations.length - i <= movedTroops;
+                    const troopImage = await this.getTroopImage(this.getTerritoryOwner(territoryId) ?? '', invading ? 'attacking' : (newAddition ? 'added' : (moved ? 'moved' : undefined)));
+                    context.drawImage(troopImage, x - troopsWidth / 2, y - troopsWidth / 2, troopsWidth, troopsWidth);
+                }
             }
         }
 
@@ -2046,6 +2078,17 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             // Join the roster to the map and return
             return joinCanvasesHorizontal([canvas, await this.renderRoster(canvas.height)]);
         }
+        // Else, render a casualty-specific title
+        else if (options?.casualtyHeatMap) {
+            const titleLabel = getTextLabel(`Season ${this.getSeasonNumber()} - Casualties`,
+                RiskGame.config.map.title.width,
+                RiskGame.config.map.title.height, {
+                    font: `bold ${RiskGame.config.map.title.height * 0.75}px serif`
+                });
+            context.drawImage(withDropShadow(titleLabel, { expandCanvas: true }),
+                RiskGame.config.map.title.x,
+                RiskGame.config.map.title.y);
+        }
 
         return canvas;
     }
@@ -2069,11 +2112,16 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         return new AttachmentBuilder((await this.renderMap()).toBuffer()).setName('risk-map.png');
     }
 
+    // TODO: This should be private (public for testing)
+    public async renderCasualtyHeatMap(): Promise<AttachmentBuilder> {
+        return new AttachmentBuilder((await this.renderMap({ casualtyHeatMap: true })).toBuffer()).setName('risk-casualty-heat-map.png');
+    }
+
     async renderState(options?: { showPlayerDecision?: string | undefined; seasonOver?: boolean | undefined; admin?: boolean | undefined; } | undefined): Promise<Buffer> {
         return (await this.renderMap({ showRoster: true })).toBuffer();
     }
 
-    private async getTerritoryCutoutRender(territoryId: string, options?: { grayedOut?: true }): Promise<Canvas> {
+    private async getTerritoryCutoutRender(territoryId: string, options?: { fillStyleOverride?: string }): Promise<Canvas> {
         const maskImage = await imageLoader.loadImage(`assets/risk/cutouts/${territoryId.toLowerCase()}.png`);
         const canvas = createCanvas(maskImage.width, maskImage.height);
         const context = canvas.getContext('2d');
@@ -2083,7 +2131,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
 
         // Then, fill the entire canvas with the owner's color using the cutout as a mask
         context.globalCompositeOperation = 'source-in';
-        context.fillStyle = options?.grayedOut ? 'rgb(35, 35, 35)' : this.getTerritoryColor(territoryId);
+        context.fillStyle = options?.fillStyleOverride ?? this.getTerritoryColor(territoryId);
         context.fillRect(0, 0, canvas.width, canvas.height);
 
         return canvas;
@@ -2512,6 +2560,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 let defendersLost = 0;
                 // Compare each set and update the conflict state
                 let rollWinners: ('attacker' | 'defender' | 'neither')[] = [];
+                let numTiedRolls = 0;
                 for (let i = 0; i < numComparisons; i++) {
                     if (attackerRolls[i] > defenderRolls[i]) {
                         defender.troops--;
@@ -2525,6 +2574,9 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                         this.addPlayerKills(defender.userId, 1);
                         this.addPlayerDeaths(attacker.userId, 1);
                         rollWinners.push('defender');
+                    }
+                    if (attackerRolls[i] === defenderRolls[i]) {
+                        numTiedRolls++;
                     }
                     // Add one territory death regardless of which team suffered a casualty
                     this.addTerritoryDeaths(defender.territoryId, 1);
@@ -2546,14 +2598,28 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     } else {
                         summary += 'A little more triple action!\n';
                     }
+                } else if (defender.troops === 1 && attacker.troops === 1) {
+                    summary += 'It comes down to a final 1v1...\n';
                 } else if (defender.troops === 1 && rollWinners.every(w => w === 'defender')) {
                     summary += 'The defender makes a valiant last stand!\n';
                 } else if (attacker.troops === 1 && rollWinners.every(w => w === 'attacker')) {
                     summary += 'The last attacker standing continues the fight!\n';
                 } else if (defendersLost === 2) {
-                    summary += 'The attacker waffle stomps the defending army!\n';
+                    if (attacker.troops < defender.troops + 2) {
+                        summary += 'Though outnumbered, the attackers give it their all!\n';
+                    } else {
+                        summary += 'The attacker waffle stomps the defending army!\n';
+                    }
                 } else if (attackersLost === 2) {
-                    summary += 'The defenders swing back with a little sick yiik action!\n';
+                    if (numTiedRolls === 2) {
+                        summary += 'Wow! The defenders are really glad they\'re on defense right now...\n'
+                    } else if (numTiedRolls === 1) {
+                        summary += 'The defenders flex their defending advantage\n';
+                    } else if (defender.troops < defender.initialTroops && defender.troops < attacker.troops + 2) {
+                        summary += 'The defenders refuse to give up, swinging back with a little bit of that you-know-what!\n';
+                    } else {
+                        summary += 'The defenders swing back with a little sick yiik action!\n';
+                    }
                 } else {
                     // TODO: Improve this...
                     // summary += 'Stuff happened!\n';
@@ -2620,14 +2686,6 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     if (defender.userId && this.getNumTerritoriesForPlayer(defender.userId) === 0) {
                         // Mark them as eliminated and assign their elimination index
                         this.setPlayerEliminationIndex(defender.userId, this.getNumEliminatedPlayers());
-                        // If they're eliminated for 2nd, assign the final winners
-                        // TODO: Handle the end-of-game condition properly
-                        // if (finalRank === 2) {
-                        //     this.addWinner(attacker.userId);
-                        //     this.addWinner(defender.userId);
-                        //     // TODO: This is pretty hacky and seems flimsy. Can we add winners differently?
-                        //     this.addWinner(this.getPlayerWithFinalRank(3));
-                        // }
                         // Before adjusting this player's eliminator/color, render the elimination image
                         const inheritedVassals = this.getPlayerVassals(defender.userId);
                         extraSummaries.push({
@@ -2983,6 +3041,14 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     flags: MessageFlags.SuppressNotifications
                 }
             };
+        }
+        // If there are 3 or fewer remaining players, add the final winners (causing the game to end at noon)
+        if (this.getNumRemainingPlayers() <= 3) {
+            // Add the top 3 as winners (sorting will account for tie breakers and eliminated players)
+            for (const userId of this.getOrderedPlayers().slice(0, 3)) {
+                this.addWinner(userId);
+            }
+            void logger.log(`Added final Risk winners: ${this.getWinners().map(w => `<@${w}>`).join(', ')}`);
         }
         // If there are any move decisions, process them last
         if (this.state.moveDecisions) {
@@ -4046,5 +4112,24 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 }))
             }]
         }];
+    }
+
+    override async getSeasonEndMessages(): Promise<MessengerPayload[]> {
+        const maxKillPlayer = this.getPlayerWithMostKills();
+        const maxDeathPlayer = this.getPlayerWithMostDeaths();
+        return [
+            `**${this.getNumPlayers()}** friendly faces waged war against one another - father against son, and brother against brother...`,
+            `Without any hesitation, troops were amassed and sent to die (**${this.getTotalDeaths()}** in total)`,
+            'Schemes were cooked up, alliances were formed, and hearts were broken',
+            `Some were more bloodthirsty than others; our dear friend <@${maxKillPlayer}> was responsible for the deaths of **${this.getPlayerKills(maxKillPlayer)}** enemy men`,
+            `Meanwhile, some weren't so lucky; poor old <@${maxDeathPlayer}> lost **${this.getPlayerDeaths(maxDeathPlayer)}** of his own`,
+            {
+                content: `Some territories will be forever remembered as hosting the bloodiest battles the morning sun has ever seen...`,
+                files: [await this.renderCasualtyHeatMap()]
+            },
+            'But at the end of the day, only few would remain standing on these blood-soaked grounds...',
+            `<@${this.getWinners()[2]}> came in third, then <@${this.getWinners()[1]}> followed in second`,
+            `But only one could be crowned champion of this _risky_ endeavor... <@${this.getWinners()[0]}>!`
+        ];
     }
 }

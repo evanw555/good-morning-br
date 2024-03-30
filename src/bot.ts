@@ -3388,12 +3388,17 @@ const processCommands = async (msg: Message): Promise<void> => {
         }
         else if (sanitizedText.includes('game')) {
             if (state.hasGame()) {
+                const game = state.getGame();
                 try { // TODO: refactor typing event to somewhere else?
                     await msg.channel.sendTyping();
                 } catch (err) {}
-                await msg.channel.send({ content: state.getGame().getDebugText() || 'No Debug Text.', files: [
-                    new AttachmentBuilder(await state.getGame().renderState({ admin: true })).setName('game-test-admin.png')
+                await msg.channel.send({ content: game.getDebugText() || 'No Debug Text.', files: [
+                    new AttachmentBuilder(await game.renderState({ admin: true })).setName('game-test-admin.png')
                 ]});
+                // TODO: Temp logic to check game-specific rendering
+                if (game instanceof RiskGame) {
+                    await msg.channel.send({ content: 'Risk casualty heat map', files: [await (game as RiskGame).renderCasualtyHeatMap()]});
+                }
             } else {
                 await msg.reply('The game hasn\'t been created yet!');
             }
