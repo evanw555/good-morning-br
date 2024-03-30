@@ -251,8 +251,13 @@ const revokeGMChannelAccess = async (userIds: Snowflake[]): Promise<void> => {
 const updateSungazer = async (userId: Snowflake, terms: number): Promise<void> => {
     if (history.sungazers[userId] === undefined) {
         history.sungazers[userId] = terms;
-        const member: GuildMember = await guild.members.fetch(userId);
-        await member.roles.add(config.sungazers.role);
+        // TODO: Can this be refactored with the role removal logic?
+        try {
+            const member: GuildMember = await guild.members.fetch(userId);
+            await member.roles.add(config.sungazers.role);
+        } catch (err) {
+            await logger.log(`Failed to add sungazer role \`${config.sungazers.role}\` for user <@${userId}>: \`${err}\``);
+        }
     } else {
         history.sungazers[userId] += terms;
     }
@@ -309,11 +314,12 @@ const updateSungazers = async (winners: { gold?: Snowflake, silver?: Snowflake, 
         await sleep(60000);
         for (let userId of expirees) {
             delete history.sungazers[userId];
+            // TODO: Can this be refactored with the role addition logic?
             try {
                 const member: GuildMember = await guild.members.fetch(userId);
                 await member.roles.remove(config.sungazers.role);
             } catch (err) {
-                await logger.log(`Failed to remove role \`${config.sungazers.role}\` for user <@${userId}>: \`${err}\``);
+                await logger.log(`Failed to remove sungazer role \`${config.sungazers.role}\` for user <@${userId}>: \`${err}\``);
             }
         }
     }
