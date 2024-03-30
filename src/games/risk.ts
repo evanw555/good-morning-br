@@ -1961,7 +1961,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             for (const territoryId of this.getTerritories()) {
                 const { x, y } = RiskGame.config.territories[territoryId].center;
                 const label = withDropShadow(getTextLabel(this.getTerritoryDeaths(territoryId).toString(), 64, 48), { expandCanvas: true });
-                context.drawImage(label, x - label.width, y - label.height);
+                context.drawImage(label, x - Math.floor(label.width / 2), y - Math.floor(label.height / 2));
             }
         }
         // Else, draw the number of troops in each territory
