@@ -259,5 +259,7 @@ export interface GoodMorningHistory {
 
 export interface SubmissionPromptHistory {
     used: string[],
-    unused: string[]
+    unused: string[],
+    /** Unused prompt that should always be suggested. */
+    priority?: string
 }

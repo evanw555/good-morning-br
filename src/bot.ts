@@ -638,7 +638,7 @@ const loadSubmissionPromptHistory = async (): Promise<SubmissionPromptHistory> =
     }
 };
 
-const updateSubmissionPromptHistory = async (used: string[], unused: string[]) => {
+const updateSubmissionPromptHistory = async (used: string[], unused: string[], priority: string | undefined) => {
     try {
         const promptHistory: SubmissionPromptHistory = await loadSubmissionPromptHistory();
         // Update the used prompts
@@ -653,6 +653,12 @@ const updateSubmissionPromptHistory = async (used: string[], unused: string[]) =
             unusedSet.add(prompt);
         }
         promptHistory.unused = Array.from(unusedSet).filter(p => !usedSet.has(p)).sort();
+        // Update or clear the priority prompt
+        if (priority) {
+            promptHistory.priority = priority;
+        } else {
+            delete promptHistory.priority;
+        }
         // Dump it
         await storage.write('prompts.json', JSON.stringify(promptHistory, null, 2));
         // TODO: Temp logging
@@ -662,27 +668,32 @@ const updateSubmissionPromptHistory = async (used: string[], unused: string[]) =
     }
 };
 
-const chooseRandomUnusedSubmissionPrompt = async (): Promise<string> => {
-    const choices = await chooseRandomUnusedSubmissionPrompts(1);
-    if (choices.length === 1) {
-        return choices[0];
-    }
-    // Random fallback
-    return randChoice(
-        // 50% chance to suggest a text prompt
-        randChoice("haiku", "limerick", "poem (ABAB)", "2-sentence horror story", "fake movie title", `${randInt(6, 12)}-word story`),
-        // 50% chance to suggest an image prompt
-        randChoice("pic that goes hard", "cursed image", "dummy stupid pic", "pic that goes adorable", randChoice("pic that goes ruh", "pic that goes buh"))
-    );
-};
-
+/**
+ * Get a number of random unused submission prompts, including the priority prompt (if it exists).
+ * Will not necessarily return N prompts, but will never return more than N prompts.
+ * @param n Number of random unused prompts to get
+ * @returns List of random unused prompts
+ */
 const chooseRandomUnusedSubmissionPrompts = async (n: number): Promise<string[]> => {
     try {
-        const choices = (await loadSubmissionPromptHistory()).unused;
-        if (choices.length > 0) {
-            shuffle(choices);
-            return choices.slice(0, n);
+        const promptHistory = await loadSubmissionPromptHistory();
+        const choices = promptHistory.unused;
+        if (choices.length === 0) {
+            // Random fallback
+            return [randChoice(
+                // 50% chance to suggest a text prompt
+                randChoice("haiku", "limerick", "poem (ABAB)", "2-sentence horror story", "fake movie title", `${randInt(6, 12)}-word story`),
+                // 50% chance to suggest an image prompt
+                randChoice("pic that goes hard", "cursed image", "dummy stupid pic", "pic that goes adorable", randChoice("pic that goes ruh", "pic that goes buh"))
+            )];
         }
+        // Populate the list with N unused prompts in a random order
+        const result = shuffle(choices).slice(0, n);
+        // If a priority prompt is defined and isn't already in the list, swap one random element with it
+        if (promptHistory.priority && !result.includes(promptHistory.priority)) {
+            result[randInt(0, result.length)] = promptHistory.priority;
+        }
+        return result;
     } catch (err) {
         await logger.log(`Unhandled exception while choosing random unused prompt:\n\`\`\`${err.message}\`\`\``);
     }
@@ -1795,14 +1806,17 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                     const fyiText: string = 'FYI gazers: it\'s time to pick a submission prompt for tomorrow! '
                         + `Reply to this message before ${toDiscordTimestamp(pollStartDate, DiscordTimestampFormat.ShortTime)} to suggest a prompt ${config.defaultGoodMorningEmoji}`;
                     const fyiMessage = await sungazersChannel.send(fyiText);
-                    // Schedule a timeout to prime the suggestions with a random unused prompt (use delete strategy because it's not required)
-                    const arg: ReplyToMessageData = {
-                        channelId: fyiMessage.channelId,
-                        messageId: fyiMessage.id,
-                        // If it's the first week of the season (game not initialized), stick with classic prompt
-                        content: state.hasGame() ? (await chooseRandomUnusedSubmissionPrompt()) : 'pic that goes hard'
-                    };
-                    await registerTimeout(TimeoutType.ReplyToMessage, getRandomDateBetween(new Date(), pollStartDate, { maxAlong: 0.8, bates: 2 }), { arg, pastStrategy: PastTimeoutStrategy.Delete });
+                    // Schedule timeouts to prime the suggestions with a couple random unused prompts (use delete strategy because it's not required)
+                    // If it's the first week of the season (game not initialized), stick with classic prompt
+                    const unusedPrompts = state.hasGame() ? (await chooseRandomUnusedSubmissionPrompts(randChoice(1, 2))) : ['pic that goes hard'];
+                    for (const unusedPrompt of unusedPrompts) {
+                        const arg: ReplyToMessageData = {
+                            channelId: fyiMessage.channelId,
+                            messageId: fyiMessage.id,
+                            content: unusedPrompt
+                        };
+                        await registerTimeout(TimeoutType.ReplyToMessage, getRandomDateBetween(new Date(), pollStartDate, { maxAlong: 0.8, bates: 2 }), { arg, pastStrategy: PastTimeoutStrategy.Delete });
+                    }
                     // Use the delete strategy because it's not required and we want to ensure it's before the morning date
                     await registerTimeout(TimeoutType.AnonymousSubmissionTypePollStart, pollStartDate, { arg: fyiMessage.id, pastStrategy: PastTimeoutStrategy.Delete });
                 }
@@ -1815,8 +1829,8 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                     const fyiText: string = 'Hello gazers, this upcoming Tuesday will be this month\'s _high-effort_ submissions contest! '
                         + `Reply to this message before ${toDiscordTimestamp(pollStartDate, DiscordTimestampFormat.ShortTime)} to suggest a prompt ${config.defaultGoodMorningEmoji}`;
                     const fyiMessage = await sungazersChannel.send(fyiText);
-                    // Schedule timeouts to prime the suggestions with a few random unused prompts (use delete strategy because it's not required)
-                    const unusedPrompts = await chooseRandomUnusedSubmissionPrompts(3);
+                    // Schedule timeouts to prime the suggestions with several random unused prompts (use delete strategy because it's not required)
+                    const unusedPrompts = await chooseRandomUnusedSubmissionPrompts(randChoice(3, 4));
                     for (const unusedPrompt of unusedPrompts) {
                         const arg: ReplyToMessageData = {
                             channelId: fyiMessage.channelId,
@@ -2215,23 +2229,16 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         // Fetch the poll message
         const pollMessage = await sungazersChannel.messages.fetch(arg.messageId);
 
-        // Determine the winner(s) of the poll
-        // TODO: Can we refactor the poll logic to the common util library?
-        let maxVotes: number = -1;
-        let winningChoices: string[] = [];
-        for (const key of Object.keys(arg.choices)) {
-            const choice: string = arg.choices[key];
-            const votes: number = pollMessage.reactions.cache.get(key)?.count ?? 0;
-            if (votes > maxVotes) {
-                maxVotes = votes;
-                winningChoices = [choice];
-            } else if (votes == maxVotes) {
-                winningChoices.push(choice);
-            }
-        }
+        // Sort the prompts by number of votes descending (shuffle first to break ties randomly)
+        const getVotes = (key: string) => {
+            return pollMessage.reactions.cache.get(key)?.count ?? 0;
+        };
+        const sortedKeys = shuffle(Object.keys(arg.choices)).sort((x, y) => getVotes(y) - getVotes(x));
+        const sortedPrompts = sortedKeys.map(key => arg.choices[key]);
 
         // Update the next submission prompt in the state
-        const chosenPrompt = randChoice(...winningChoices)
+        const chosenPrompt = sortedPrompts[0];
+        const runnerUpPrompt = sortedPrompts[1];
         state.setAnonymousSubmissions({
             prompt: chosenPrompt,
             phase: 'submissions',
@@ -2243,7 +2250,10 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         await dumpState();
 
         // Update the submission prompt history
-        await updateSubmissionPromptHistory([chosenPrompt], Object.values(arg.choices));
+        await updateSubmissionPromptHistory([chosenPrompt], sortedPrompts, runnerUpPrompt);
+
+        // TODO: Temp logging the make sure this works correctly
+        await logger.log('__Prompt voting results:__\n' + sortedKeys.map(key => `**(${getVotes(key)})** _${arg.choices[key]}_`));
 
         // Notify the channel
         await pollMessage.reply(`The results are in, everyone will be sending me a _${chosenPrompt}_ ${config.defaultGoodMorningEmoji}. You can start sending me submissions now!`);
@@ -3528,7 +3538,7 @@ const processCommands = async (msg: Message): Promise<void> => {
                 }
             }
             const s = new AnonymousSubmissionsState({
-                prompt: await chooseRandomUnusedSubmissionPrompt(),
+                prompt: await chooseRandomUnusedSubmissionPrompts(1)[0],
                 forfeiters,
                 phase: 'results',
                 submissionOwnersByCode,
