@@ -496,15 +496,15 @@ const chooseEvent = async (date: Date): Promise<DailyEvent | undefined> => {
             type: DailyEventType.AnonymousSubmissions
         };
     }
-    // Thursday: High-focus event
-    if (date.getDay() === 4) {
+    // Thursday: High-focus event (sometimes)
+    if (date.getDay() === 4 && chance(0.5)) {
         return {
             type: DailyEventType.HighFocus,
             focusGame: await getRandomFocusGame()
         };
     }
-    // Friday: Monkey Friday
-    if (date.getDay() === 5) {
+    // Friday: Monkey Friday (sometimes)
+    if (date.getDay() === 5 && chance(0.75)) {
         const fridayEvents: DailyEvent[] = [{
             type: DailyEventType.MonkeyFriday
         }, {
@@ -524,8 +524,8 @@ const chooseEvent = async (date: Date): Promise<DailyEvent | undefined> => {
     if (calendarDate in config.goodMorningMessageOverrides) {
         return undefined;
     }
-    // Wednesday: Wishful Wednesday (sometimes!)
-    if (date.getDay() === 3 && chance(0.5)) {
+    // Wednesday: Wishful Wednesday (sometimes)
+    if (date.getDay() === 3 && chance(0.25)) {
         return {
             type: DailyEventType.WishfulWednesday,
             wishesReceived: {}
@@ -540,7 +540,7 @@ const chooseEvent = async (date: Date): Promise<DailyEvent | undefined> => {
     //     };
     // }
     // High chance of a random event every day
-    if (chance(0.95)) {
+    if (chance(0.75)) {
         // Compile a list of potential events (include default events)
         const potentialEvents: DailyEvent[] = [
             {
@@ -1880,10 +1880,10 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             if (winners.gold) {
                 await updateRobertism(winners.gold);
             }
-            // Register the next GM timeout for next Monday
+            // Register the next GM timeout for 3 Mondays from now (if it's Sunday, do 4 Mondays from now)
             const nextSeasonStart: Date = new Date();
             nextSeasonStart.setHours(8, 0, 0, 0);
-            nextSeasonStart.setDate(nextSeasonStart.getDate() + 8 - nextSeasonStart.getDay());
+            nextSeasonStart.setDate(nextSeasonStart.getDate() + 22 - nextSeasonStart.getDay());
             await registerTimeout(TimeoutType.NextGoodMorning, nextSeasonStart, { pastStrategy: PastTimeoutStrategy.IncrementDay });
             await logger.log(`Registered next season's first GM for **${getRelativeDateTimeString(nextSeasonStart)}**`);
             // If the submissions prompt was held over, notify the sungazers
