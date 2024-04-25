@@ -1,5 +1,5 @@
 import { ActionRowData, AttachmentBuilder, GuildMember, Interaction, MessageActionRowComponentData, Snowflake } from "discord.js";
-import { DecisionProcessingResult, GamePlayerAddition, MessengerPayload, PrizeType } from "../types";
+import { DecisionProcessingResult, GamePlayerAddition, MessengerManifest, MessengerPayload, PrizeType } from "../types";
 import { text } from "../util";
 import { getJoinedMentions } from "evanw555.js";
 import { GameState } from "./types";
@@ -26,6 +26,18 @@ export default abstract class AbstractGame<T extends GameState> {
      */
     getSeasonNumber(): number {
         return this.state.season;
+    }
+
+    isAcceptingDecisions(): boolean {
+        return this.state.acceptingDecisions ?? false;
+    }
+
+    setAcceptingDecisions(acceptingDecisions: boolean): void {
+        if (acceptingDecisions) {
+            this.state.acceptingDecisions = true;
+        } else {
+            delete this.state.acceptingDecisions;
+        }
     }
 
     /**
@@ -250,7 +262,10 @@ export default abstract class AbstractGame<T extends GameState> {
         return {};
     }
 
-    abstract addPlayerDecision(userId: Snowflake, text: string): Promise<MessengerPayload>
+    async addPlayerDecision(userId: Snowflake, text: string): Promise<MessengerPayload> {
+        throw new Error('This game doesn\'t accept text-based decisions. Use the buttons!');
+    }
+
     abstract processPlayerDecisions(): Promise<DecisionProcessingResult>
 
     /**
@@ -260,7 +275,7 @@ export default abstract class AbstractGame<T extends GameState> {
         return [];
     }
 
-    async handleGameInteraction(interaction: Interaction): Promise<MessengerPayload[] | undefined> {
+    async handleGameInteraction(interaction: Interaction): Promise<MessengerManifest | undefined> {
         return undefined;
     };
 

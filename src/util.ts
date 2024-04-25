@@ -447,3 +447,23 @@ export function getEvenlyShortened<T>(values: T[], newLength: number): T[] {
     }
     return result;
 }
+
+/**
+ * Given a list of string options, a specified length, and the specified number of sequential repeats to avoid,
+ * generates an N-length random sequences of string options without letting the same elements be within M indices of each other.
+ * @param choices Choices to use when populating each element
+ * @param m Number of recent elements to avoid using
+ * @param n Length of output list
+ * @returns Random nonsequential sequence of strings
+ */
+// TODO: Move to common library
+export function  generateRandomNonsequentialSequence<T>(choices: T[], m: number, n: number) {
+    const result: T[] = [];
+    for (let i = 0; i < n; i++) {
+        const banned = result.slice(-m);
+        const validChoices = choices.filter(o => !banned.includes(o));
+        const element = validChoices[Math.floor(Math.random() * validChoices.length)];
+        result.push(element);
+    }
+    return result;
+}

@@ -44,6 +44,7 @@ export interface AbstractGameState<T> {
     readonly type: T,
     readonly season: number,
     readonly winners: Snowflake[],
+    acceptingDecisions?: true,
     decisions: Record<Snowflake, string[]>,
     turn: number
 }
@@ -192,6 +193,32 @@ export interface RiskGameState extends AbstractGameState<'RISK'> {
     currentConflict?: RiskConflictState
 }
 
+export type CandyLandColor = 'R' | 'O' | 'Y' | 'G' | 'B' | 'P' | 'K' | 'W' | 'START' | 'END';
+
+
+export interface CandyLandPlayerState {
+    displayName: string,
+    points: number,
+    /**
+     * Index of the space this player is occupying.
+     */
+    location: number
+}
+
+export interface CandyLandWeeklyCard {
+    card: CandyLandColor,
+    variant: number,
+    log: string[],
+    trade?: Snowflake
+}
+
+export interface CandyLandGameState extends AbstractGameState<'CANDYLAND'> {
+    readonly players: Record<Snowflake, CandyLandPlayerState>,
+    // Turn-specific info
+    cards: Record<Snowflake, CandyLandWeeklyCard>,
+    spaces: CandyLandColor[]
+}
+
 export interface ClassicGameState extends AbstractGameState<'CLASSIC'> {
     halloween?: true,
     // Goal as determined by a point threshold
@@ -204,4 +231,4 @@ export interface ClassicGameState extends AbstractGameState<'CLASSIC'> {
     revealedActions: Record<Snowflake, string>,
 }
 
-export type GameState = MazeGameState | IslandGameState | ArenaGameState | MasterpieceGameState | RiskGameState | ClassicGameState;
+export type GameState = MazeGameState | IslandGameState | ArenaGameState | MasterpieceGameState | RiskGameState | CandyLandGameState | ClassicGameState;

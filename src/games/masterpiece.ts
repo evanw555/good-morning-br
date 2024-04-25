@@ -1,6 +1,6 @@
 import canvas, { Canvas, CanvasRenderingContext2D } from 'canvas';
 import { ActionRowData, AttachmentBuilder, ButtonInteraction, ButtonStyle, ComponentType, GuildMember, Interaction, MessageActionRowComponentData, MessageFlags, Snowflake } from "discord.js";
-import { DecisionProcessingResult, GamePlayerAddition, MessengerPayload, PrizeType } from "../types";
+import { DecisionProcessingResult, GamePlayerAddition, MessengerManifest, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 import { capitalize, joinCanvasesHorizontal, naturalJoin, randChoice, shuffle, toCircle, toFixed, toLetterId, withDropShadow } from "evanw555.js";
 import { getTextLabel, text } from '../util';
@@ -1095,7 +1095,7 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
         }];
     }
 
-    override async handleGameInteraction(interaction: Interaction): Promise<MessengerPayload[] | undefined> {
+    override async handleGameInteraction(interaction: Interaction): Promise<MessengerManifest | undefined> {
         const userId = interaction.user.id;
         if (interaction.isButton()) {
             switch (interaction.customId) {

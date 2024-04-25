@@ -1,5 +1,5 @@
 import { APIActionRowComponent, APIMessageActionRowComponent, APISelectMenuOption, ActionRowData, AttachmentBuilder, ButtonStyle, ComponentType, GuildMember, Interaction, InteractionReplyOptions, MessageActionRowComponentData, MessageFlags, Snowflake } from "discord.js";
-import { DecisionProcessingResult, GamePlayerAddition, MessengerPayload, PrizeType } from "../types";
+import { DecisionProcessingResult, GamePlayerAddition, MessengerManifest, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 import { Canvas, Image, createCanvas } from "canvas";
 import { DiscordTimestampFormat, chance, fillBackground, findCycle, getDateBetween, getJoinedMentions, getRankString, joinCanvasesHorizontal, joinCanvasesVertical, naturalJoin, randChoice, randInt, resize, shuffle, shuffleWithDependencies, toCircle, toDiscordTimestamp, toFixed, withDropShadow } from "evanw555.js";
@@ -2158,6 +2158,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         return canvas;
     }
 
+    // TODO: Refactor to somewhere else
     private async getAvatar(userId: Snowflake, options?: { colorOverride?: string }): Promise<Canvas> {
         const avatar = await imageLoader.loadAvatar(userId, 128);
         const ringWidth = 12;
@@ -2456,11 +2457,6 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 break;
         }
         return responses;
-    }
-
-    async addPlayerDecision(userId: string, text: string): Promise<MessengerPayload> {
-        // TODO: Handle this
-        throw new Error('Can\'t accept decisions yet...');
     }
 
     async processPlayerDecisions(): Promise<DecisionProcessingResult> {
@@ -3160,7 +3156,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         }]
     }
 
-    override async handleGameInteraction(interaction: Interaction): Promise<MessengerPayload[] | undefined> {
+    override async handleGameInteraction(interaction: Interaction): Promise<MessengerManifest | undefined> {
         const userId = interaction.user.id;
         if (interaction.isButton()) {
             const customId = interaction.customId;
@@ -3432,10 +3428,12 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     });
                     // Reply for the entire channel to see
                     const selectionPhrase = randChoice('has set up camp at', 'has selected', 'has posted up at', 'has set up shop at', 'chose', 'has chosen', 'is starting at');
-                    return [{
-                        content: `<@${userId}> ${selectionPhrase} _${this.getTerritoryName(territoryId)}_!`,
-                        files: [await this.renderBasicMap()]
-                    }];
+                    return {
+                        public: [{
+                            content: `<@${userId}> ${selectionPhrase} _${this.getTerritoryName(territoryId)}_!`,
+                            files: [await this.renderBasicMap()]
+                        }]
+                    };
                 }
                 case 'game:selectAdd': {
                     // First, validate that add decisions are being accepted

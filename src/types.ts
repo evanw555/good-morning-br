@@ -30,6 +30,14 @@ export enum TimeoutType {
 export type MessengerPayload = string | MessageCreateOptions;
 
 /**
+ * Interface containing messenger payloads to be sent to multiple targets, including the GM channel and multiple DM channels.
+ */
+export interface MessengerManifest {
+    public?: MessengerPayload[],
+    dms?: Record<Snowflake, MessengerPayload[]>
+};
+
+/**
  * A calendar date expressed as "{month}/{day}".
  */
 export type CalendarDate = string
@@ -225,7 +233,6 @@ export interface RawGoodMorningState {
     dailyStatus: Record<Snowflake, DailyPlayerState>,
     players: Record<Snowflake, PlayerState>,
     game?: GameState,
-    acceptingGameDecisions?: boolean,
     birthdayBoys?: Snowflake[]
 }
 

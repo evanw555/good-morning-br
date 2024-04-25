@@ -11,6 +11,7 @@ import { AnonymousSubmissionsState } from "./submissions";
 import ArenaGame from "./games/arena";
 import MasterpieceGame from "./games/masterpiece";
 import RiskGame from "./games/risk";
+import CandyLandGame from "./games/candyland";
 import { FocusGameState } from "./focus/types";
 import { GameState } from "./games/types";
 
@@ -40,6 +41,9 @@ export default class GoodMorningState {
                     break;
                 case 'RISK':
                     this.game = new RiskGame(rawState.game);
+                    break;
+                case 'CANDYLAND':
+                    this.game = new CandyLandGame(rawState.game);
                     break;
             }
         }
@@ -889,15 +893,7 @@ export default class GoodMorningState {
     }
 
     isAcceptingGameDecisions(): boolean {
-        return this.data.acceptingGameDecisions ?? false;
-    }
-
-    setAcceptingGameDecisions(acceptingGameDecisions: boolean): void {
-        if (acceptingGameDecisions) {
-            this.data.acceptingGameDecisions = true;
-        } else {
-            delete this.data.acceptingGameDecisions;
-        }
+        return this.hasGame() && this.getGame().isAcceptingDecisions();
     }
 
     setBirthdayBoys(birthdayBoys: Snowflake[]) {

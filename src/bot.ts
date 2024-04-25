@@ -26,6 +26,7 @@ import controller from './controller';
 
 // TODO: Remove the renaming in a later commit
 import { CONFIG as config, AUTH as auth } from './constants';
+import CandyLandGame from './games/candyland';
 
 const storage = new FileStorage('./data/');
 const sharedStorage = new FileStorage('/home/pi/.mcmp/');
@@ -1006,7 +1007,8 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         // const newGame = ClassicGame.create(members, true);
         // const newGame = IslandGame.create(members);
         // const newGame = MasterpieceGame.create(members, state.getSeasonNumber());
-        const newGame = RiskGame.create(members, state.getSeasonNumber());
+        // const newGame = RiskGame.create(members, state.getSeasonNumber());
+        const newGame = CandyLandGame.create(members, state.getSeasonNumber());
         state.setGame(newGame);
         if (config.testing) {
             newGame.setTesting(true);
@@ -1062,10 +1064,10 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         const beginTurnMessages = await state.getGame().beginTurn();
         extraGameMessages.push(...beginTurnMessages);
         // Start accepting game decisions
-        state.setAcceptingGameDecisions(true);
-    } else {
+        state.getGame().setAcceptingDecisions(true);
+    } else if (state.hasGame()) {
         // For all other morning types, stop accepting game decisions
-        state.setAcceptingGameDecisions(false);
+        state.getGame().setAcceptingDecisions(false);
     }
 
     // Increment "days since last good morning" counters for all participating users
@@ -2884,10 +2886,17 @@ client.on('interactionCreate', async (interaction): Promise<void> => {
             if (state.hasGame()) {
                 // Handle the game interaction in the game state
                 try {
-                    const messengerPayloads = await state.getGame().handleGameInteraction(interaction);
-                    // If any payloads were returned, send them to the channel
-                    if (messengerPayloads) {
-                        await messenger.sendAll(goodMorningChannel, messengerPayloads);
+                    const messengerManifest = await state.getGame().handleGameInteraction(interaction);
+                    // If any payloads were returned, send them to the channel or DMs
+                    if (messengerManifest) {
+                        if (messengerManifest.public) {
+                            await messenger.sendAll(goodMorningChannel, messengerManifest.public);
+                        }
+                        if (messengerManifest.dms) {
+                            for (const [recipientId, payloads] of Object.entries(messengerManifest.dms)) {
+                                await messenger.dmAll(recipientId, payloads);
+                            }
+                        }
                     }
                 } catch (err) {
                     await interaction.reply({
