@@ -6,6 +6,11 @@ import { AnonymousSubmission, GoodMorningConfig } from "./types";
 
 import { CONFIG, AUTH } from './constants';
 
+interface Coordinates {
+    x: number,
+    y: number
+}
+
 export function validateConfig(config: GoodMorningConfig): void {
     if (config.goodMorningChannelId === undefined) {
         console.log('No goodMorningChannelId is set in the config, aborting...');
@@ -338,7 +343,7 @@ export function getRotated(image: Image | Canvas, angle: number): Canvas {
 }
 
 // TODO: Move to common library
-export function crop(image: Image | Canvas, options?: { width?: number, height?: number, horizontal?: 'left' | 'center' | 'right', vertical?: 'top' | 'center' | 'bottom'}): Canvas {
+export function crop(image: Image | Canvas, options?: { x?: number, y?: number, width?: number, height?: number, horizontal?: 'left' | 'center' | 'right' | 'custom', vertical?: 'top' | 'center' | 'bottom' | 'custom'}): Canvas {
     const WIDTH = options?.width ?? image.width;
     const HEIGHT = options?.height ?? image.height;
     const HORIZONTAL = options?.horizontal ?? 'center';
@@ -347,7 +352,7 @@ export function crop(image: Image | Canvas, options?: { width?: number, height?:
     const canvas = createCanvas(WIDTH, HEIGHT);
     const context = canvas.getContext('2d');
 
-    let x;
+    let x = -(options?.x ?? 0);
     switch (HORIZONTAL) {
         case 'left':
             x = 0;
@@ -358,9 +363,12 @@ export function crop(image: Image | Canvas, options?: { width?: number, height?:
         case 'right':
             x = WIDTH - image.width;
             break;
+        case 'custom':
+            // Let override remain
+            break;
     }
 
-    let y;
+    let y = -(options?.y ?? 0);
     switch (VERTICAL) {
         case 'top':
             y = 0;
@@ -371,11 +379,92 @@ export function crop(image: Image | Canvas, options?: { width?: number, height?:
         case 'bottom':
             y = HEIGHT - image.height;
             break;
+        case 'custom':
+            // Let override remain
+            break;
     }
 
     context.drawImage(image, x, y);
 
     return canvas;
+}
+
+// TODO: Move to common library
+export function cropAroundPoints(image: Image | Canvas, points: { x: number, y: number }[], options?: { margin?: number }): Canvas {
+    if (points.length === 0) {
+        throw new Error('Cannot crop around no points!');
+    }
+    const leftX = Math.min(...points.map(p => p.x));
+    const rightX = Math.max(...points.map(p => p.x));
+    const topY = Math.min(...points.map(p => p.y));
+    const bottomY = Math.max(...points.map(p => p.y));
+    const margin = options?.margin ?? 0;
+
+    return crop(image, {
+        x: leftX - margin,
+        y: topY - margin,
+        width: rightX - leftX + 2 * margin,
+        height: bottomY - topY + 2 * margin,
+        horizontal: 'custom',
+        vertical: 'custom'
+    });
+}
+
+// TODO: Move to common library
+export function renderArrow(context: CanvasRenderingContext2D, from: Coordinates, to: Coordinates, options?: { thickness?: number, tipLength?: number, fillStyle?: string, tailPadding?: number, tipPadding?: number }) {
+    const getPointRelative = (point: Coordinates, distance: number, angle: number): Coordinates => {
+        const { x, y } = point;
+        const dx = distance * Math.cos(angle);
+        const dy = distance * Math.sin(angle);
+        return {
+            x: x + dx,
+            y: y + dy
+        };
+    };
+
+    const tailPadding = options?.tailPadding ?? 0;
+    const tipPadding = options?.tipPadding ?? 0;
+
+    const t = options?.thickness ?? 10;
+    const l = distance(from, to) - tailPadding - tipPadding;
+    const tl = options?.tipLength ?? t;
+    const tt = t * 2;
+
+    const theta = Math.atan2(to.y - from.y, to.x - from.x);
+    const hpi = Math.PI / 2;
+
+    const trueFrom = getPointRelative(from, tailPadding, theta);
+    const trueTo = getPointRelative(to, -tailPadding, theta);
+
+    const rear1 = getPointRelative(trueFrom, t / 2, theta + hpi);
+    const rear2 = getPointRelative(trueFrom, t / 2, theta - hpi);
+    const notch1 = getPointRelative(rear1, l - tl, theta);
+    const notch2 = getPointRelative(rear2, l - tl, theta);
+    const side1 = getPointRelative(notch1, (tt - t) / 2, theta + hpi);
+    const side2 = getPointRelative(notch2, (tt - t) / 2, theta - hpi);
+    const tip = trueTo;
+
+    context.beginPath();
+    context.moveTo(rear1.x, rear1.y);
+    context.lineTo(notch1.x, notch1.y);
+    context.lineTo(side1.x, side1.y);
+    context.lineTo(tip.x, tip.y);
+    context.lineTo(side2.x, side2.y);
+    context.lineTo(notch2.x, notch2.y);
+    context.lineTo(rear2.x, rear2.y);
+    context.lineTo(rear1.x, rear1.y);
+    context.closePath();
+
+    context.fillStyle = options?.fillStyle ?? 'white';
+    context.fill();
+    context.strokeStyle = 'black';
+    context.lineWidth = 2;
+    context.stroke();
+}
+
+// TODO: Move to common library
+export function distance(a: Coordinates, b: Coordinates): number {
+    return Math.sqrt(Math.pow(a.x - b.x, 2) + Math.pow(a.y - b.y, 2));
 }
 
 // TODO: Can we move this to a common library?

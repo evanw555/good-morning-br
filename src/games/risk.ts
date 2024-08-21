@@ -3,7 +3,7 @@ import { DecisionProcessingResult, GamePlayerAddition, MessengerManifest, Messen
 import AbstractGame from "./abstract-game";
 import { Canvas, Image, createCanvas } from "canvas";
 import { DiscordTimestampFormat, chance, fillBackground, findCycle, getDateBetween, getJoinedMentions, getRankString, joinCanvasesHorizontal, joinCanvasesVertical, naturalJoin, randChoice, randInt, resize, shuffle, shuffleWithDependencies, toCircle, toDiscordTimestamp, toFixed, withDropShadow } from "evanw555.js";
-import { getMinKey, getMaxKey, getTextLabel, drawBackground, quantify, superimpose, getEvenlyShortened } from "../util";
+import { getMinKey, getMaxKey, getTextLabel, drawBackground, quantify, superimpose, getEvenlyShortened, renderArrow, distance } from "../util";
 import { RiskGameState, RiskMovementData, RiskTerritoryState, RiskPlayerState, RiskConflictState, RiskPlannedAttack, RiskConflictAgentData } from "./types";
 
 import logger from "../logger";
@@ -1428,12 +1428,12 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 const left = { x: x - ARROW_WIDTH / 2, y };
                 const right = { x: x + ARROW_WIDTH / 2, y };
                 if (rollWinner === 'attacker') {
-                    this.renderArrow(context, left, right, { thickness: ARROW_HEIGHT / 2, fillStyle: this.getPlayerTeamColor(attacker.userId) });
+                    renderArrow(context, left, right, { thickness: ARROW_HEIGHT / 2, fillStyle: this.getPlayerTeamColor(attacker.userId) });
                     // If this player is in the rightmost column, render an arrow on the far left too
                     if (j === n - 1) {
                         const otherLeft = { x: -ARROW_WIDTH / 2, y: left.y };
                         const otherRight = { x: ARROW_WIDTH / 2, y: right.y };
-                        this.renderArrow(context, otherLeft, otherRight, { thickness: ARROW_HEIGHT / 2, fillStyle: this.getPlayerTeamColor(attacker.userId) });
+                        renderArrow(context, otherLeft, otherRight, { thickness: ARROW_HEIGHT / 2, fillStyle: this.getPlayerTeamColor(attacker.userId) });
                     }
                 }
             }
@@ -1533,11 +1533,11 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             const left = { x: x - ARROW_WIDTH / 2, y };
             const right = { x: x + ARROW_WIDTH / 2, y };
             if (rollWinner === 'attacker') {
-                this.renderArrow(context, left, right, { thickness: ARROW_HEIGHT / 2, fillStyle: this.getPlayerTeamColor(attacker.userId) });
+                renderArrow(context, left, right, { thickness: ARROW_HEIGHT / 2, fillStyle: this.getPlayerTeamColor(attacker.userId) });
                 // const attackerArrowImage = await imageLoader.loadImage('assets/risk/attacker-arrow.png');
                 // context.drawImage(attackerArrowImage, x - ARROW_WIDTH / 2, y - ARROW_HEIGHT / 2, ARROW_WIDTH, ARROW_HEIGHT);
             } else if (rollWinner === 'defender') {
-                this.renderArrow(context, right, left, { thickness: ARROW_HEIGHT / 2, fillStyle: this.getPlayerTeamColor(defender.userId) });
+                renderArrow(context, right, left, { thickness: ARROW_HEIGHT / 2, fillStyle: this.getPlayerTeamColor(defender.userId) });
                 // const defenderArrowImage = await imageLoader.loadImage('assets/risk/defender-arrow.png');
                 // context.drawImage(defenderArrowImage, x - ARROW_WIDTH / 2, y - ARROW_HEIGHT / 2, ARROW_WIDTH, ARROW_HEIGHT);
             }
@@ -1627,10 +1627,6 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         return new AttachmentBuilder(canvas.toBuffer()).setName('risk-conflict.png');
     }
 
-    private getDistanceBetween(a: Coordinates, b: Coordinates): number {
-        return Math.sqrt(Math.pow(a.x - b.x, 2) + Math.pow(a.y - b.y, 2));
-    }
-
     private getRandomTerritoryTroopLocations(territoryId: string, n: number): Coordinates[] {
         const center = RiskGame.config.territories[territoryId].center;
         // const corners = RiskGame.config.territories[territoryId].troopBounds;
@@ -1638,7 +1634,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         const getMinDistance = (location): number => {
             // TODO: Should corner repelling be re-enabled?
             const distToCorners = []; //corners.map(l => this.getDistanceBetween(location, l));
-            const distToResults = result.map(l => this.getDistanceBetween(location, l));
+            const distToResults = result.map(l => distance(location, l));
             return Math.min(...distToCorners, ...distToResults);
         };
         while (result.length < n) {
@@ -1649,9 +1645,9 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             const grid = this.getTerritoryCoordinateGrid(territoryId, 20);
             // Don't place troops more than 20 pixels away from the closest troop
             // const validGrid = grid.filter(l => result.length === 0 || getMinDistance(l) < 20);
-            const idealLocations = grid.filter(l => getMinDistance(l) > 10 + this.getDistanceBetween(l, center) / 8);
+            const idealLocations = grid.filter(l => getMinDistance(l) > 10 + distance(l, center) / 8);
             if (idealLocations.length > 0) {
-                result.push(getMinKey(idealLocations, (l) => this.getDistanceBetween(l, center)));
+                result.push(getMinKey(idealLocations, (l) => distance(l, center)));
                 continue;
             }
             const maxMinDistanceLocation = getMaxKey(grid, (l) => getMinDistance(l));
@@ -1691,56 +1687,11 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         return result;
     }
 
-    private renderArrow(context: CanvasRenderingContext2D, from: Coordinates, to: Coordinates, options?: { thickness?: number, tipLength?: number, fillStyle?: string }) {
-        const getPointRelative = (point: Coordinates, distance: number, angle: number): Coordinates => {
-            const { x, y } = point;
-            const dx = distance * Math.cos(angle);
-            const dy = distance * Math.sin(angle);
-            return {
-                x: x + dx,
-                y: y + dy
-            };
-        };
-
-        const t = options?.thickness ?? 10;
-        const l = this.getDistanceBetween(from, to);
-        const tl = options?.tipLength ?? t;
-        const tt = t * 2;
-
-        const theta = Math.atan2(to.y - from.y, to.x - from.x);
-        const hpi = Math.PI / 2;
-
-        const rear1 = getPointRelative(from, t / 2, theta + hpi);
-        const rear2 = getPointRelative(from, t / 2, theta - hpi);
-        const notch1 = getPointRelative(rear1, l - tl, theta);
-        const notch2 = getPointRelative(rear2, l - tl, theta);
-        const side1 = getPointRelative(notch1, (tt - t) / 2, theta + hpi);
-        const side2 = getPointRelative(notch2, (tt - t) / 2, theta - hpi);
-        const tip = to;
-
-        context.beginPath();
-        context.moveTo(rear1.x, rear1.y);
-        context.lineTo(notch1.x, notch1.y);
-        context.lineTo(side1.x, side1.y);
-        context.lineTo(tip.x, tip.y);
-        context.lineTo(side2.x, side2.y);
-        context.lineTo(notch2.x, notch2.y);
-        context.lineTo(rear2.x, rear2.y);
-        context.lineTo(rear1.x, rear1.y);
-        context.closePath();
-
-        context.fillStyle = options?.fillStyle ?? 'white';
-        context.fill();
-        context.strokeStyle = 'black';
-        context.lineWidth = 2;
-        context.stroke();
-    }
-
     // TODO: Move to common library
     private getRightArrow(width: number, height: number): Canvas {
         const canvas = createCanvas(width, height);
         const context = canvas.getContext('2d');
-        this.renderArrow(context, { x: 0, y: Math.floor(height / 2)}, { x: width - 1, y: Math.floor(height / 2)}, { thickness: height / 2, fillStyle: 'white' });
+        renderArrow(context, { x: 0, y: Math.floor(height / 2)}, { x: width - 1, y: Math.floor(height / 2)}, { thickness: height / 2, fillStyle: 'white' });
         return canvas;
     }
 
@@ -2027,7 +1978,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     const from = attacker.territoryId;
                     const fromCoordinates = RiskGame.config.territories[from].termini[to];
                     const toCoordinates = RiskGame.config.territories[to].termini[from];
-                    this.renderArrow(context, fromCoordinates, toCoordinates);
+                    renderArrow(context, fromCoordinates, toCoordinates);
                 }
             }
             // Else if the cycle consists of 2 attackers, draw a two-headed arrow
@@ -2040,8 +1991,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     x: Math.round((fromCoordinates.x + toCoordinates.x) / 2),
                     y: Math.round((fromCoordinates.y + toCoordinates.y) / 2)
                 };
-                this.renderArrow(context, midCoordinates, fromCoordinates);
-                this.renderArrow(context, midCoordinates, toCoordinates);
+                renderArrow(context, midCoordinates, fromCoordinates);
+                renderArrow(context, midCoordinates, toCoordinates);
             }
             // Else, render the arrows between the 3+ attackers
             else {
@@ -2051,7 +2002,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     const to = attackers[(i + 1) % attackers.length].territoryId;
                     const fromCoordinates = RiskGame.config.territories[from].termini[to];
                     const toCoordinates = RiskGame.config.territories[to].termini[from];
-                    this.renderArrow(context, fromCoordinates, toCoordinates);
+                    renderArrow(context, fromCoordinates, toCoordinates);
                 }
             }
         }
@@ -2061,7 +2012,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             for (const { from, to } of options.movements) {
                 const fromCoordinates = RiskGame.config.territories[from].termini[to];
                 const toCoordinates = RiskGame.config.territories[to].termini[from];
-                this.renderArrow(context, fromCoordinates, toCoordinates);
+                renderArrow(context, fromCoordinates, toCoordinates);
             }
         }
 

@@ -1,12 +1,13 @@
-import { APIButtonComponent, AttachmentBuilder, ButtonStyle, Colors, ComponentType, GuildMember, Interaction, Snowflake } from "discord.js";
+import { ActionRowData, APIButtonComponent, AttachmentBuilder, ButtonStyle, ComponentType, GuildMember, Interaction, MessageActionRowComponentData, Snowflake } from "discord.js";
 import { GamePlayerAddition, MessengerPayload, PrizeType, DecisionProcessingResult, MessengerManifest } from "../types";
 import AbstractGame from "./abstract-game";
 import { CandyLandColor, CandyLandGameState, CandyLandPlayerState } from "./types";
 import { naturalJoin, randChoice, randInt, shuffle, toCircle, toFixed } from "evanw555.js";
 import { Canvas, ImageData, createCanvas } from "canvas";
-import { generateRandomNonsequentialSequence, getTextLabel } from "../util";
+import { cropAroundPoints, generateRandomNonsequentialSequence, renderArrow } from "../util";
 
 import imageLoader from "../image-loader";
+import logger from "../logger";
 
 interface Coordinates {
     x: number,
@@ -22,6 +23,7 @@ interface PixelColor {
 
 interface CandyLandConfig {
     colorMap: Record<CandyLandColor, PixelColor>,
+    colorNames: Record<CandyLandColor, string>,
     spaces: Coordinates[]
 }
 
@@ -38,6 +40,18 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
             K: { r: 222, g: 84, b: 206, a: 255 },
             W: { r: 245, g: 245, b: 245, a: 255 },
             END: { r: 0, g: 0, b: 0, a: 255 },
+        },
+        colorNames: {
+            START: 'Start',
+            R: 'Red',
+            O: 'Orange',
+            Y: 'Yellow',
+            G: 'Green',
+            B: 'Blue',
+            P: 'Purple',
+            K: 'Pink',
+            W: 'White',
+            END: 'End'
         },
         spaces: [
             // 0
@@ -180,6 +194,14 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         return CandyLandGame.config.spaces[location];
     }
 
+    private getStretchCoordinates(fromLocation: number, toLocation: number): Coordinates[] {
+        const result: Coordinates[] = [];
+        for (let i = fromLocation; i <= toLocation; i++) {
+            result.push(this.getSpaceCoordinates(i));
+        }
+        return result;
+    }
+
     private drawRandomCard(): CandyLandColor {
         return randChoice('R', 'O', 'Y', 'G', 'B', 'P', 'K', 'W');
     }
@@ -187,8 +209,13 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
     override async getIntroductionMessages(): Promise<MessengerPayload[]> {
         return [{
             content: 'Welcome to Candy Land!',
-            files: [await this.renderStateAttachment()]
+            files: [await this.renderStateAttachment()],
+            components: this.getDecisionActionRow()
         }];
+    }
+
+    override getInstructionsText(): string {
+        return 'Click to draw a card!';
     }
 
     getSeasonCompletion(): number {
@@ -232,6 +259,17 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         // TODO: Handle pending trades
     }
 
+    override addNPCs(): void {
+        // for (let i = 0; i < 10; i++) {
+        //     const userId = `npc${i}`;
+        //     this.state.players[userId] = {
+        //         displayName: `NPC ${i}`,
+        //         points: 0,
+        //         location: 0
+        //     };
+        // }
+    }
+
     private getPlayerDisplayName(userId: Snowflake): string {
         return this.state.players[userId]?.displayName ?? `<@${userId}>`;
     }
@@ -268,7 +306,41 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         return this.state.cards[userId].log.push(text);
     }
 
-    override async renderState(options?: { showPlayerDecision?: string | undefined; seasonOver?: boolean | undefined; admin?: boolean | undefined; } | undefined): Promise<Buffer> {
+    private getTokenCoordinates(coordinates: Coordinates, n: number, options?: { spacing?: number }): Coordinates[] {
+        const spacing = options?.spacing ?? 16;
+        if (n === 0) {
+            return [];
+        } else if (n === 1) {
+            return [{ ...coordinates }];
+        } else if (n < 7) {
+            // Get a series of locations around the target coordinates
+            const result: Coordinates[] = [];
+            for (let i = 0; i < n; i++) {
+                const angle = (i / n) * Math.PI * 2
+                    // Add 45 degrees just to shift it diagonally
+                    + (Math.PI / 4);
+                result.push({
+                    x: coordinates.x + Math.round(spacing * Math.cos(angle)),
+                    y: coordinates.y + Math.round(spacing * Math.sin(angle))
+                });
+            }
+            // void logger.log(`Drawing ${n} concentric tokens at space: \`${JSON.stringify(result)}\``);
+            return result;
+        } else {
+            // Else, just show them haphazardly
+            const result: Coordinates[] = [];
+            for (let i = 0; i < n; i++) {
+                result.push({
+                    x: randInt(coordinates.x - spacing * 2, coordinates.x + spacing * 2),
+                    y: randInt(coordinates.y - spacing * 2, coordinates.y + spacing * 2)
+                });
+            }
+            // void logger.log(`Drawing ${n} haphazard tokens at space: \`${JSON.stringify(result)}\``);
+            return result;
+        }
+    }
+
+    async renderBoard(options?: { from?: number, to?: number }): Promise<Buffer> {
         const boardBase = await imageLoader.loadImage('assets/candyland/board_base.png');
 
         const canvas = createCanvas(boardBase.width, boardBase.height);
@@ -284,10 +356,11 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         const spaceImageData = spaceContext.getImageData(0, 0, spaceCanvas.width, spaceCanvas.height);
         for (let i = 0; i < this.getNumSpaces(); i++) {
             const color = this.state.spaces[i];
-            const coordinates = CandyLandGame.config.spaces[i];
+            const coordinates = this.getSpaceCoordinates(i);
             if (color === 'START' || color === 'END') {
                 continue;
             }
+            // Adjust the color for this space
             this.floodColor(spaceImageData, coordinates, CandyLandGame.config.colorMap[color]);
         }
         spaceContext.putImageData(spaceImageData, 0, 0);
@@ -295,16 +368,29 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
 
         // For each space, draw all players on that space
         for (let i = 0; i < this.getNumSpaces(); i++) {
-            const coordinates = CandyLandGame.config.spaces[i];
+            const coordinates = this.getSpaceCoordinates(i);
             const playersHere = this.getPlayersAtLocation(i);
-            // TODO: Figure out a nice even spacing if there are multiple
-            for (const userId of playersHere) {
+            // Show all player tokens on this space
+            const tokenCoordinates = this.getTokenCoordinates(coordinates, playersHere.length, { spacing: 14 });
+            for (let j = 0; j < playersHere.length; j++) {
+                const userId = playersHere[j];
+                const { x, y } = tokenCoordinates[j];
                 const avatar = await this.getAvatarBall(userId);
-                context.drawImage(avatar, coordinates.x - 21, coordinates.y - 21, 42, 42);
+                context.drawImage(avatar, x - 21, y - 21, 42, 42);
             }
         }
 
+        // If to/from are specified, crop to all the spaces traversed
+        if (options?.from !== undefined && options?.to !== undefined) {
+            renderArrow(context, this.getSpaceCoordinates(options.from), this.getSpaceCoordinates(options.to), { thickness: 14, tailPadding: 14, tipPadding: 14 });
+            return cropAroundPoints(canvas, this.getStretchCoordinates(options.from, options.to), { margin: 42 }).toBuffer();
+        }
+
         return canvas.toBuffer();
+    }
+
+    override async renderState(options?: { showPlayerDecision?: string | undefined; seasonOver?: boolean | undefined; admin?: boolean | undefined; } | undefined): Promise<Buffer> {
+        return await this.renderBoard();
     }
 
     private getPixelColor(imageData: ImageData, point: Coordinates): PixelColor {
@@ -401,6 +487,18 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         // Wipe all turn-related data for every player
         this.state.cards = {};
 
+        // If there are NPCs, choose actions for them
+        for (const userId of this.getPlayers()) {
+            if (userId.startsWith('npc')) {
+                const card = this.drawRandomCard();
+                this.state.cards[userId] = {
+                    card,
+                    log: [`drew a **${CandyLandGame.config.colorNames[card]}**`],
+                    variant: this.getRandomCardVariant()
+                };
+            }
+        }
+
         return [];
     }
 
@@ -422,20 +520,47 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         throw new Error("Method not implemented.");
     }
 
+    private getNextLocationWithColor(location: number, color: CandyLandColor): number {
+        for (let i = location + 1; i < this.getNumSpaces(); i++) {
+            if (this.getSpaceColor(i) === color) {
+                return i;
+            }
+        }
+        // Else, return the end space
+        return this.getNumSpaces() - 1;
+    }
+
     override async processPlayerDecisions(): Promise<DecisionProcessingResult> {
         const playersToProcess = shuffle(Object.keys(this.state.cards));
+        // TODO: Handle undefined case
         const userId = randChoice(...playersToProcess);
         const { card, log } = this.state.cards[userId];
         delete this.state.cards[userId];
 
-        // TODO: Do more
+        const currentLocation = this.getPlayerLocation(userId);
+        const nextLocation = this.getNextLocationWithColor(currentLocation, card);
+        const diff = nextLocation - currentLocation;
+        this.state.players[userId].location = nextLocation;
+
         return {
             continueProcessing: Object.keys(this.state.cards).length > 0,
             summary: {
-                content: `**${this.getPlayerDisplayName(userId)}** ${naturalJoin(log, { conjunction: 'then' })}!`,
-                files: [await this.renderStateAttachment()]
+                content: `**${this.getPlayerDisplayName(userId)}** ${naturalJoin(log, { conjunction: 'then' })}, moving **${diff}** space(s)!`,
+                files: [await new AttachmentBuilder(await this.renderBoard({ from: currentLocation, to: nextLocation })).setName(`game-week${this.getTurn()}.png`)]
             }
         };
+    }
+
+    override getDecisionActionRow(): ActionRowData<MessageActionRowComponentData>[] {
+        return [{
+            type: ComponentType.ActionRow,
+            components: [{
+                type: ComponentType.Button,
+                label: 'Draw Card',
+                style: ButtonStyle.Success,
+                customId: 'game:draw'
+            }]
+        }]
     }
 
     override async handleGameInteraction(interaction: Interaction): Promise<MessengerManifest | undefined> {
@@ -456,18 +581,19 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
                         custom_id: 'game:trade'
                     }];
                     if (this.hasPlayerCard(userId)) {
-                        content = `You previously drew **${this.getPlayerCard(userId)}**. `;
+                        content = `You previously drew **${CandyLandGame.config.colorNames[this.getPlayerCard(userId)]}**. `;
                     } else {
                         // Actually draw a card and save it in the state
                         const card = this.drawRandomCard();
                         this.state.cards[userId] = {
                             card,
                             variant: this.getRandomCardVariant(),
-                            log: [`drew a **${card}**`]
+                            log: [`drew a **${CandyLandGame.config.colorNames[card]}**`]
                         };
-                        content = `You've drawn **${card}**! `;
+                        content = `You've drawn **${CandyLandGame.config.colorNames[card]}**! `;
                     }
                     // Add the option to replace if they can afford it
+                    // TODO: Refactor the conditional re-draw code with the same logic below
                     if (this.getPoints(userId) >= this.getReplacementCost()) {
                         content += `You have **${this.getPoints(userId)}** points, so you can opt to re-draw at a cost of **${this.getReplacementCost()}** points. Alternatively, you can trade your card with another player`;
                         buttons.unshift({
@@ -504,13 +630,35 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
                     const card = this.drawRandomCard();
                     this.state.cards[userId].card = card;
                     this.state.cards[userId].variant = this.getRandomCardVariant();
-                    this.addToPlayerLog(userId, `re-drew for a **${card}**`);
-                    // Reply to the user
-                    // TODO: Show buttons for further action, will require refactoring
+                    this.addToPlayerLog(userId, `re-drew for a **${CandyLandGame.config.colorNames[card]}**`);
+                    // TODO: Refactor the conditional re-draw code with the same logic above
+                    // Add the option to replace if they can afford it
+                    let content = `You've re-drawn a **${CandyLandGame.config.colorNames[card]}**. `;
+                    const buttons: APIButtonComponent[] = [{
+                        type: ComponentType.Button,
+                        style: ButtonStyle.Primary,
+                        label: 'Trade',
+                        custom_id: 'game:trade'
+                    }];
+                    if (this.getPoints(userId) >= this.getReplacementCost()) {
+                        content += `You have **${this.getPoints(userId)}** points, so you can opt to re-draw again at a cost of **${this.getReplacementCost()}** points. Alternatively, you can trade your card with another player`;
+                        buttons.unshift({
+                            type: ComponentType.Button,
+                            style: ButtonStyle.Danger,
+                            label: 'Re-Draw',
+                            custom_id: 'game:redraw'
+                        });
+                    } else {
+                        content += `You only have **${this.getPoints(userId)}** points, so either keep your card or trade it with someone else`;
+                    }
                     await interaction.reply({
                         ephemeral: true,
-                        content: `You've re-drawn a **${card}**`
-                    })
+                        content,
+                        components: [{
+                            type: ComponentType.ActionRow,
+                            components: buttons
+                        }]
+                    });
                     break;
                 }
                 case 'game:trade': {
@@ -564,6 +712,7 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
                         dms: {
                             [targetUserId]: [{
                                 content: `**${this.getPlayerDisplayName(userId)}** has sent you a trade offer!`
+                                // TODO: How should they accept?
                             }]
                         }
                     };
