@@ -1,10 +1,10 @@
-import { ActionRowData, APIButtonComponent, AttachmentBuilder, ButtonStyle, ComponentType, GuildMember, Interaction, MessageActionRowComponentData, Snowflake } from "discord.js";
+import { ActionRowData, APIButtonComponent, AttachmentBuilder, ButtonStyle, ComponentType, GuildMember, Interaction, MessageActionRowComponentData, MessageEditOptions, Snowflake } from "discord.js";
 import { GamePlayerAddition, MessengerPayload, PrizeType, DecisionProcessingResult, MessengerManifest } from "../types";
 import AbstractGame from "./abstract-game";
 import { CandyLandColor, CandyLandGameState, CandyLandPlayerState } from "./types";
-import { naturalJoin, randChoice, randInt, shuffle, toCircle, toFixed } from "evanw555.js";
+import { chance, joinCanvasesHorizontal, joinCanvasesVertical, naturalJoin, randChoice, randInt, shuffle, toCircle, toFixed, withDropShadow } from "evanw555.js";
 import { Canvas, ImageData, createCanvas } from "canvas";
-import { cropAroundPoints, generateRandomNonsequentialSequence, renderArrow } from "../util";
+import { cropAroundPoints, generateRandomNonsequentialSequence, renderArrow, withAn } from "../util";
 
 import imageLoader from "../image-loader";
 import logger from "../logger";
@@ -24,6 +24,7 @@ interface PixelColor {
 interface CandyLandConfig {
     colorMap: Record<CandyLandColor, PixelColor>,
     colorNames: Record<CandyLandColor, string>,
+    variantNames: Record<number, string>,
     spaces: Coordinates[]
 }
 
@@ -52,6 +53,12 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
             K: 'Pink',
             W: 'White',
             END: 'End'
+        },
+        variantNames: {
+            0: '',
+            1: 'uncommon',
+            2: 'rare',
+            3: 'mythic'
         },
         spaces: [
             // 0
@@ -179,7 +186,35 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
     }
 
     private getRandomCardVariant(): number {
-        return randInt(0, 3);
+        // Lower variant numbers are more common
+        const NUM_VARIANTS = 4;
+        for (let i = 0; i < NUM_VARIANTS; i++) {
+            if (chance(0.6)) {
+                return i;
+            }
+        }
+        return NUM_VARIANTS - 1;
+    }
+
+    private getCardDescriptor(color: CandyLandColor, variant: number): string {
+        const variantName = CandyLandGame.config.variantNames[variant];
+        if (!variantName) {
+            return withAn(`**${CandyLandGame.config.colorNames[color]}**`);
+        }
+        return withAn(`_${variantName}_ **${CandyLandGame.config.colorNames[color]}**`);
+    }
+
+    private getPlayerCardDescriptor(userId: Snowflake): string {
+        const weeklyCard = this.state.cards[userId];
+        if (!weeklyCard) {
+            return 'nothing';
+        }
+        return this.getCardDescriptor(weeklyCard.card, weeklyCard.variant);
+    }
+
+    private getColorStyle(color: CandyLandColor): string {
+        const map = CandyLandGame.config.colorMap[color];
+        return `rgb(${map.r}, ${map.g}, ${map.b})`;
     }
 
     private getNumSpaces(): number {
@@ -208,14 +243,22 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
 
     override async getIntroductionMessages(): Promise<MessengerPayload[]> {
         return [{
-            content: 'Welcome to Candy Land!',
-            files: [await this.renderStateAttachment()],
+            content: 'Welcome to _Cute Scott\'s Candy Kingdom_!',
+            files: [await this.renderStateAttachment()]
+        }, 'The goal is hop merrily from space to space along the winding rainbow trail until you reach Cute Scott\'s Candy Keep!', {
+            content: 'Each week, you\'ll be able to draw a random card that dictates how far you shall go. When you draw a card of a given color, '
+                + 'you will hop to the next space of that color. You can use your hard-earned GMBR points to re-draw if your card is crud. '
+                + 'Also, card trading will be supported in 2 weeks, so you can anticipate that...',
             components: this.getDecisionActionRow()
         }];
     }
 
     override getInstructionsText(): string {
         return 'Click to draw a card!';
+    }
+
+    override getReminderText(): string {
+        return 'Reminder! You have until tomorrow morning to draw a card';
     }
 
     getSeasonCompletion(): number {
@@ -302,6 +345,10 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         return this.state.cards[userId].card;
     }
 
+    private getPlayerCardVariant(userId: Snowflake): number {
+        return this.state.cards[userId].variant;
+    }
+
     private addToPlayerLog(userId: Snowflake, text: string) {
         return this.state.cards[userId].log.push(text);
     }
@@ -340,7 +387,19 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         }
     }
 
-    async renderBoard(options?: { from?: number, to?: number }): Promise<Buffer> {
+    async renderCardDraw(color: CandyLandColor, variant: number): Promise<Canvas> {
+        const cardImage = await imageLoader.loadImage(`assets/candyland/cards/${color}${variant}.png`);
+
+        const canvas = createCanvas(cardImage.width, cardImage.height);
+        const context = canvas.getContext('2d');
+
+        // TODO: Should there be a background too?
+        context.drawImage(cardImage, 0, 0);
+
+        return canvas;
+    }
+
+    async renderBoard(options?: { from?: number, to?: number, card?: { card: CandyLandColor, variant: number } }): Promise<Buffer> {
         const boardBase = await imageLoader.loadImage('assets/candyland/board_base.png');
 
         const canvas = createCanvas(boardBase.width, boardBase.height);
@@ -381,9 +440,15 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         }
 
         // If to/from are specified, crop to all the spaces traversed
-        if (options?.from !== undefined && options?.to !== undefined) {
-            renderArrow(context, this.getSpaceCoordinates(options.from), this.getSpaceCoordinates(options.to), { thickness: 14, tailPadding: 14, tipPadding: 14 });
-            return cropAroundPoints(canvas, this.getStretchCoordinates(options.from, options.to), { margin: 42 }).toBuffer();
+        if (options?.from !== undefined && options?.to !== undefined && options?.card !== undefined) {
+            const { center } = renderArrow(context, this.getSpaceCoordinates(options.from), this.getSpaceCoordinates(options.to), { fillStyle: this.getColorStyle(options.card.card), thickness: 14, tailPadding: 14, tipPadding: 14 });
+            // Show the card if specified
+            const cardImage = withDropShadow(await this.renderCardDraw(options.card.card, options.card.variant), { expandCanvas: true });
+            // Show the card on the center of the arrow
+            context.drawImage(cardImage, center.x - (cardImage.width * 0.175), center.y - (cardImage.height * 0.175), cardImage.width * 0.35, cardImage.height * 0.35);
+            
+            const cropped = cropAroundPoints(canvas, this.getStretchCoordinates(options.from, options.to), { margin: 42 });
+            return cropped.toBuffer();
         }
 
         return canvas.toBuffer();
@@ -491,10 +556,11 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         for (const userId of this.getPlayers()) {
             if (userId.startsWith('npc')) {
                 const card = this.drawRandomCard();
+                const variant = this.getRandomCardVariant();
                 this.state.cards[userId] = {
                     card,
-                    log: [`drew a **${CandyLandGame.config.colorNames[card]}**`],
-                    variant: this.getRandomCardVariant()
+                    log: [`drew ${this.getCardDescriptor(card, variant)}`],
+                    variant
                 };
             }
         }
@@ -517,7 +583,8 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
     }
 
     awardPrize(userId: string, type: PrizeType, intro: string): MessengerPayload[] {
-        throw new Error("Method not implemented.");
+        // TODO: What should this actually do?
+        return [];
     }
 
     private getNextLocationWithColor(location: number, color: CandyLandColor): number {
@@ -534,7 +601,7 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         const playersToProcess = shuffle(Object.keys(this.state.cards));
         // TODO: Handle undefined case
         const userId = randChoice(...playersToProcess);
-        const { card, log } = this.state.cards[userId];
+        const { card, variant, log } = this.state.cards[userId];
         delete this.state.cards[userId];
 
         const currentLocation = this.getPlayerLocation(userId);
@@ -546,7 +613,7 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
             continueProcessing: Object.keys(this.state.cards).length > 0,
             summary: {
                 content: `**${this.getPlayerDisplayName(userId)}** ${naturalJoin(log, { conjunction: 'then' })}, moving **${diff}** space(s)!`,
-                files: [await new AttachmentBuilder(await this.renderBoard({ from: currentLocation, to: nextLocation })).setName(`game-week${this.getTurn()}.png`)]
+                files: [await new AttachmentBuilder(await this.renderBoard({ from: currentLocation, to: nextLocation, card: { card, variant } })).setName(`game-week${this.getTurn()}.png`)]
             }
         };
     }
@@ -570,32 +637,109 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
             throw new Error('I\'m not accepting game decisions right now');
         }
         if (interaction.isButton()) {
+            // Handle trade handling specially since there's an argument
+            if (interaction.customId.startsWith('game:handleTrade:')) {
+                const [ rootId, subId, decision, offererId ] = interaction.customId.split(':');
+                // Validate that there is a valid trade offer for this user from that user
+                const offererCard = this.state.cards[offererId];
+                if (!offererCard) {
+                    throw new Error(`Can't ${decision} trade offer from **${this.getPlayerDisplayName(offererId)}**, as they don't have a card!`);
+                }
+                if (!offererCard.trade) {
+                    throw new Error(`Can't ${decision} trade offer from **${this.getPlayerDisplayName(offererId)}**, as their card isn't being offered!`);
+                }
+                if (offererCard.trade !== userId) {
+                    throw new Error(`Can't ${decision} trade offer from **${this.getPlayerDisplayName(offererId)}**, as they're not offering their card to you!`);
+                }
+                // Validate that this user's card state is acceptable
+                const userCard = this.state.cards[userId];
+                if (!userCard) {
+                    throw new Error(`Can't ${decision} trade offer from **${this.getPlayerDisplayName(offererId)}**, as you don't have a card to trade!`);
+                }
+                if (userCard.trade) {
+                    throw new Error(`Can't ${decision} trade offer from **${this.getPlayerDisplayName(offererId)}**, as you're offering your card to someone else!`);
+                }
+                // Remove buttons from original trade offer
+                await interaction.message.edit({
+                    components: []
+                });
+                // Handle the trade decision
+                if (decision === 'accept') {
+                    // Swap the cards in the state
+                    const userCardDescriptor = this.getCardDescriptor(userCard.card, userCard.variant);
+                    this.state.cards[offererId] = {
+                        card: userCard.card,
+                        variant: userCard.variant,
+                        log: [...offererCard.log, `traded with **${this.getPlayerDisplayName(userId)}** for ${userCardDescriptor}`]
+                    };
+                    const offererCardDescriptor = this.getCardDescriptor(offererCard.card, offererCard.variant);
+                    this.state.cards[userId] = {
+                        card: offererCard.card,
+                        variant: offererCard.variant,
+                        log: [...userCard.log, `traded with **${this.getPlayerDisplayName(offererId)}** for ${offererCardDescriptor}`]
+                    };
+                    // Notify both users
+                    await interaction.reply({
+                        ephemeral: true,
+                        content: `Accepted trade offer from **${this.getPlayerDisplayName(offererId)}**. You traded ${userCardDescriptor} for ${offererCardDescriptor}!`,
+                        files: [new AttachmentBuilder((await this.renderCardDraw(offererCard.card, offererCard.variant)).toBuffer()).setName('trade.png')]
+                    });
+                    return {
+                        dms: {
+                            [offererId]: [{
+                                content: `**${this.getPlayerDisplayName(userId)}** accepted your trade offer. You traded ${offererCardDescriptor} for ${userCardDescriptor}!`,
+                                files: [new AttachmentBuilder((await this.renderCardDraw(userCard.card, userCard.variant)).toBuffer()).setName('trade.png')]
+                            }]
+                        }
+                    };
+                } else if (decision === 'decline') {
+                    // Wipe the pending trade offer flag
+                    delete offererCard.trade;
+                    // Notify both users
+                    await interaction.reply({
+                        ephemeral: true,
+                        content: `Declined trade offer from **${this.getPlayerDisplayName(offererId)}**, they have been notified.`
+                    });
+                    return {
+                        dms: {
+                            [offererId]: [`**${this.getPlayerDisplayName(userId)}** has declined your trade offer...`]
+                        }
+                    };
+                } else {
+                    throw new Error(`Unrecognized trade decision: \`${decision}\``);
+                }
+            }
             switch (interaction.customId) {
                 case 'game:draw': {
                     // Handle the free draw
                     let content = '';
-                    const buttons: APIButtonComponent[] = [{
-                        type: ComponentType.Button,
-                        style: ButtonStyle.Primary,
-                        label: 'Trade',
-                        custom_id: 'game:trade'
-                    }];
+                    const files: AttachmentBuilder[] = [];
+                    const buttons: APIButtonComponent[] = [];
+                    // TODO: Enable once trading is implemented and tested
+                    // const buttons: APIButtonComponent[] = [{
+                    //     type: ComponentType.Button,
+                    //     style: ButtonStyle.Primary,
+                    //     label: 'Trade',
+                    //     custom_id: 'game:trade'
+                    // }];
                     if (this.hasPlayerCard(userId)) {
-                        content = `You previously drew **${CandyLandGame.config.colorNames[this.getPlayerCard(userId)]}**. `;
+                        content = `You previously drew ${this.getPlayerCardDescriptor(userId)}. `;
                     } else {
                         // Actually draw a card and save it in the state
                         const card = this.drawRandomCard();
+                        const variant = this.getRandomCardVariant();
                         this.state.cards[userId] = {
                             card,
-                            variant: this.getRandomCardVariant(),
-                            log: [`drew a **${CandyLandGame.config.colorNames[card]}**`]
+                            variant,
+                            log: [`drew ${this.getCardDescriptor(card, variant)}`]
                         };
-                        content = `You've drawn **${CandyLandGame.config.colorNames[card]}**! `;
+                        content = `You've drawn ${this.getCardDescriptor(card, variant)}! `;
+                        files.push(new AttachmentBuilder((await this.renderCardDraw(card, variant)).toBuffer()).setName('draw.png'));
                     }
                     // Add the option to replace if they can afford it
                     // TODO: Refactor the conditional re-draw code with the same logic below
                     if (this.getPoints(userId) >= this.getReplacementCost()) {
-                        content += `You have **${this.getPoints(userId)}** points, so you can opt to re-draw at a cost of **${this.getReplacementCost()}** points. Alternatively, you can trade your card with another player`;
+                        content += `You have **${this.getPoints(userId)}** points, so you can opt to re-draw at a cost of **${this.getReplacementCost()}** points`; // `. Alternatively, you can trade your card with another player`;
                         buttons.unshift({
                             type: ComponentType.Button,
                             style: ButtonStyle.Danger,
@@ -603,15 +747,16 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
                             custom_id: 'game:redraw'
                         });
                     } else {
-                        content += `You only have **${this.getPoints(userId)}** points, so either keep your card or trade it with someone else`;
+                        content += `You only have **${this.getPoints(userId)}** points, so you're stuck with this card`; // `either keep your card or trade it with someone else`;
                     }
                     await interaction.reply({
                         ephemeral: true,
                         content,
-                        components: [{
+                        files,
+                        components: buttons.length > 0 ? [{
                             type: ComponentType.ActionRow,
                             components: buttons
-                        }]
+                        }] : undefined
                     });
                     break;
                 }
@@ -628,20 +773,23 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
                     this.addPoints(userId, -this.getReplacementCost());
                     // Re-draw a card
                     const card = this.drawRandomCard();
+                    const variant = this.getRandomCardVariant();
                     this.state.cards[userId].card = card;
-                    this.state.cards[userId].variant = this.getRandomCardVariant();
-                    this.addToPlayerLog(userId, `re-drew for a **${CandyLandGame.config.colorNames[card]}**`);
+                    this.state.cards[userId].variant = variant;
+                    this.addToPlayerLog(userId, `re-drew for ${this.getCardDescriptor(card, variant)}`);
                     // TODO: Refactor the conditional re-draw code with the same logic above
                     // Add the option to replace if they can afford it
-                    let content = `You've re-drawn a **${CandyLandGame.config.colorNames[card]}**. `;
-                    const buttons: APIButtonComponent[] = [{
-                        type: ComponentType.Button,
-                        style: ButtonStyle.Primary,
-                        label: 'Trade',
-                        custom_id: 'game:trade'
-                    }];
+                    let content = `You've re-drawn ${this.getCardDescriptor(card, variant)}. `;
+                    const buttons: APIButtonComponent[] = [];
+                    // TODO: Enable once trading is implemented and tested
+                    // const buttons: APIButtonComponent[] = [{
+                    //     type: ComponentType.Button,
+                    //     style: ButtonStyle.Primary,
+                    //     label: 'Trade',
+                    //     custom_id: 'game:trade'
+                    // }];
                     if (this.getPoints(userId) >= this.getReplacementCost()) {
-                        content += `You have **${this.getPoints(userId)}** points, so you can opt to re-draw again at a cost of **${this.getReplacementCost()}** points. Alternatively, you can trade your card with another player`;
+                        content += `You have **${this.getPoints(userId)}** points, so you can opt to re-draw again at a cost of **${this.getReplacementCost()}** points`; // `. Alternatively, you can trade your card with another player`;
                         buttons.unshift({
                             type: ComponentType.Button,
                             style: ButtonStyle.Danger,
@@ -649,19 +797,22 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
                             custom_id: 'game:redraw'
                         });
                     } else {
-                        content += `You only have **${this.getPoints(userId)}** points, so either keep your card or trade it with someone else`;
+                        content += `You only have **${this.getPoints(userId)}** points, so you're stuck with this card`; // `either keep your card or trade it with someone else`;
                     }
+                    // TODO: Merge logic once a default trade button is added
                     await interaction.reply({
                         ephemeral: true,
                         content,
-                        components: [{
+                        files: [new AttachmentBuilder((await this.renderCardDraw(card, variant)).toBuffer()).setName('draw.png')],
+                        components: buttons.length > 0 ? [{
                             type: ComponentType.ActionRow,
                             components: buttons
-                        }]
+                        }] : undefined
                     });
                     break;
                 }
-                case 'game:trade': {
+                // TODO: Emergency stopgap to ensure this never gets triggered
+                case 'ZZZgame:trade': {
                     // Validate that the user actually has a card
                     if (!this.hasPlayerCard(userId)) {
                         throw new Error('You can\'t trade, you don\'t have a card to begin with!');
@@ -684,7 +835,8 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
             }
         } else if (interaction.isUserSelectMenu()) {
             switch (interaction.customId) {
-                case 'game:selectTradeUser': {
+                // TODO: Emergency stopgap to ensure this never gets triggered
+                case 'ZZZgame:selectTradeUser': {
                     // Validate that the user actually has a card
                     if (!this.hasPlayerCard(userId)) {
                         throw new Error('You can\'t trade, you don\'t have a card to begin with!');
@@ -700,6 +852,9 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
                     if (!this.hasPlayerCard(targetUserId)) {
                         throw new Error(`**${this.getPlayerDisplayName(targetUserId)}** hasn't drawn a card yet, try again once they've done so`);
                     }
+                    if (this.state.cards[targetUserId].trade) {
+                        throw new Error(`**${this.getPlayerDisplayName(targetUserId)}** is currently offering their card to someone else...`);
+                    }
                     // Set the trade target in the state
                     this.state.cards[userId].trade = targetUserId;
                     // Extend the trade offer
@@ -711,8 +866,21 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
                     return {
                         dms: {
                             [targetUserId]: [{
-                                content: `**${this.getPlayerDisplayName(userId)}** has sent you a trade offer!`
-                                // TODO: How should they accept?
+                                content: `**${this.getPlayerDisplayName(userId)}** has sent you a trade offer! You won't see what the card is until you accept`,
+                                components: [{
+                                    type: ComponentType.ActionRow,
+                                    components: [{
+                                        type: ComponentType.Button,
+                                        style: ButtonStyle.Success,
+                                        label: 'Accept',
+                                        custom_id: `game:handleTrade:accept:${userId}`
+                                    }, {
+                                        type: ComponentType.Button,
+                                        style: ButtonStyle.Danger,
+                                        label: 'Decline',
+                                        custom_id: `game:handleTrade:decline:${userId}`
+                                    }]
+                                }]
                             }]
                         }
                     };

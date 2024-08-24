@@ -411,7 +411,11 @@ export function cropAroundPoints(image: Image | Canvas, points: { x: number, y: 
 }
 
 // TODO: Move to common library
-export function renderArrow(context: CanvasRenderingContext2D, from: Coordinates, to: Coordinates, options?: { thickness?: number, tipLength?: number, fillStyle?: string, tailPadding?: number, tipPadding?: number }) {
+export function renderArrow(context: CanvasRenderingContext2D, from: Coordinates, to: Coordinates, options?: { thickness?: number, tipLength?: number, fillStyle?: string, tailPadding?: number, tipPadding?: number }): {
+    tail: Coordinates,
+    center: Coordinates,
+    head: Coordinates
+} {
     const getPointRelative = (point: Coordinates, distance: number, angle: number): Coordinates => {
         const { x, y } = point;
         const dx = distance * Math.cos(angle);
@@ -460,6 +464,15 @@ export function renderArrow(context: CanvasRenderingContext2D, from: Coordinates
     context.strokeStyle = 'black';
     context.lineWidth = 2;
     context.stroke();
+
+    return {
+        tail: trueFrom,
+        center: {
+            x: Math.round((trueFrom.x + trueTo.x) / 2),
+            y: Math.round((trueFrom.y + trueTo.y) / 2)
+        },
+        head: trueTo
+    };
 }
 
 // TODO: Move to common library
@@ -546,7 +559,7 @@ export function getEvenlyShortened<T>(values: T[], newLength: number): T[] {
  * @returns Random nonsequential sequence of strings
  */
 // TODO: Move to common library
-export function  generateRandomNonsequentialSequence<T>(choices: T[], m: number, n: number) {
+export function generateRandomNonsequentialSequence<T>(choices: T[], m: number, n: number) {
     const result: T[] = [];
     for (let i = 0; i < n; i++) {
         const banned = result.slice(-m);
@@ -555,4 +568,12 @@ export function  generateRandomNonsequentialSequence<T>(choices: T[], m: number,
         result.push(element);
     }
     return result;
+}
+
+// TODO: Move to common library
+export function withAn(input: string): string {
+    if ('aeiou'.includes(input.replace(/[^0-9a-z]/gi, '').toLowerCase().charAt(0))) {
+        return `an ${input}`;
+    }
+    return `a ${input}`;
 }
