@@ -2665,7 +2665,7 @@ client.on('ready', async (): Promise<void> => {
     await loadYouTubeIds();
 
     if (guildOwner && goodMorningChannel) {
-        await logger.log(`Bot rebooting at **${getClockTime()}** with guild owner **${guildOwner.displayName}** and GM channel ${goodMorningChannel.toString()}`);
+        await logger.log(`Bot rebooting at **${new Date().toLocaleTimeString()}** on Node **${process.version}** with guild owner **${guildOwner.displayName}** and GM channel ${goodMorningChannel.toString()}`);
         dailyVolatileLog.push([new Date(), 'Bot rebooting...']);
     }
 
