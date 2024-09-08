@@ -924,4 +924,8 @@ export default class GoodMorningState {
             }
         });
     }
+
+    getRawState(): RawGoodMorningState {
+        return this.data;
+    }
 }

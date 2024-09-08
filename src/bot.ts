@@ -3295,7 +3295,7 @@ const processCommands = async (msg: Message): Promise<void> => {
             // e.g. "+state? users.123123.balance"
             const selector: string = msg.content.replace(/\s*\+?\s*state\s*\??\s*/i, '').trim() || '';
             if (selector) {
-                const selectedState: any = getSelectedNode(state, selector);
+                const selectedState: any = getSelectedNode(state.getRawState(), selector);
                 await messenger.sendLargeMonospaced(msg.channel, prettyPrint(selectedState));
             } else {
                 // Collapse all primitive lists into one line
