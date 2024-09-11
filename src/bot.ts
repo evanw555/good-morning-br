@@ -46,6 +46,14 @@ messenger.setMemberResolver(async (id) => {
     return await guild.members.fetch(id);
 });
 
+process.on('uncaughtException', async (err) => {
+    await logger.log(`**FATAL** uncaught exception: \`${err}\``);
+});
+
+process.on('unhandledRejection', async (reason, promise) => {
+    await logger.log(`**FATAL** unhandled rejection: \`${reason}\``);
+});
+
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
