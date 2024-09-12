@@ -420,7 +420,8 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
                 continue;
             }
             // Adjust the color for this space
-            this.floodColor(spaceImageData, coordinates, CandyLandGame.config.colorMap[color]);
+            // TODO: Disabling just to see if this is causing the fatal memory errors
+            // this.floodColor(spaceImageData, coordinates, CandyLandGame.config.colorMap[color]);
         }
         spaceContext.putImageData(spaceImageData, 0, 0);
         context.drawImage(spaceCanvas, 0, 0);
