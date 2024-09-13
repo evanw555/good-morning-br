@@ -420,7 +420,8 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
                 continue;
             }
             // Adjust the color for this space
-            this.floodColor(spaceImageData, coordinates, CandyLandGame.config.colorMap[color]);
+            // TODO: Temporarily disabling to see if avatar loading is causing the crashes
+            // this.floodColor(spaceImageData, coordinates, CandyLandGame.config.colorMap[color]);
         }
         spaceContext.putImageData(spaceImageData, 0, 0);
         context.drawImage(spaceCanvas, 0, 0);
