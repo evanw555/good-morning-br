@@ -436,7 +436,7 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
                 const { x, y } = tokenCoordinates[j];
                 // const avatar = await this.getAvatarBall(userId);
                 // TODO: Temporarily disabling to see if avatar loading is causing the crashes
-                const avatar = await imageLoader.loadAvatar(userId, 128);
+                const avatar = await imageLoader.loadAvatar(userId, 32);
                 context.drawImage(avatar, x - 21, y - 21, 42, 42);
             }
         }
