@@ -408,10 +408,12 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         context.drawImage(boardBase, 0, 0);
 
         // For each space, edit the color of that part of the image data
+        await logger.log('Loading board spaces image...');
         const boardSpaces = await imageLoader.loadImage('assets/candyland/board_spaces.png');
         const spaceCanvas = createCanvas(boardSpaces.width, boardSpaces.height);
         const spaceContext = spaceCanvas.getContext('2d');
         spaceContext.drawImage(boardSpaces, 0, 0);
+        await logger.log('Getting board spaces image data...');
         const spaceImageData = spaceContext.getImageData(0, 0, spaceCanvas.width, spaceCanvas.height);
         for (let i = 0; i < this.getNumSpaces(); i++) {
             const color = this.state.spaces[i];
@@ -423,6 +425,7 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
             // TODO: Temporarily disabling to see if avatar loading is causing the crashes
             // this.floodColor(spaceImageData, coordinates, CandyLandGame.config.colorMap[color]);
         }
+        await logger.log('Putting board spaces image data...');
         spaceContext.putImageData(spaceImageData, 0, 0);
         context.drawImage(spaceCanvas, 0, 0);
 
