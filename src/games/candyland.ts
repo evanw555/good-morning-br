@@ -427,18 +427,19 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         context.drawImage(spaceCanvas, 0, 0);
 
         // For each space, draw all players on that space
-        for (let i = 0; i < this.getNumSpaces(); i++) {
-            const coordinates = this.getSpaceCoordinates(i);
-            const playersHere = this.getPlayersAtLocation(i);
-            // Show all player tokens on this space
-            const tokenCoordinates = this.getTokenCoordinates(coordinates, playersHere.length, { spacing: 14 });
-            for (let j = 0; j < playersHere.length; j++) {
-                const userId = playersHere[j];
-                const { x, y } = tokenCoordinates[j];
-                const avatar = await this.getAvatarBall(userId);
-                context.drawImage(avatar, x - 21, y - 21, 42, 42);
-            }
-        }
+        // TODO: Disabling just to see if this is causing the fatal memory errors
+        // for (let i = 0; i < this.getNumSpaces(); i++) {
+        //     const coordinates = this.getSpaceCoordinates(i);
+        //     const playersHere = this.getPlayersAtLocation(i);
+        //     // Show all player tokens on this space
+        //     const tokenCoordinates = this.getTokenCoordinates(coordinates, playersHere.length, { spacing: 14 });
+        //     for (let j = 0; j < playersHere.length; j++) {
+        //         const userId = playersHere[j];
+        //         const { x, y } = tokenCoordinates[j];
+        //         const avatar = await this.getAvatarBall(userId);
+        //         context.drawImage(avatar, x - 21, y - 21, 42, 42);
+        //     }
+        // }
 
         // If to/from are specified, crop to all the spaces traversed
         if (options?.from !== undefined && options?.to !== undefined && options?.card !== undefined) {
