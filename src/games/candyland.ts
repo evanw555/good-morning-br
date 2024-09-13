@@ -427,9 +427,11 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         }
         await logger.log('Putting board spaces image data...');
         spaceContext.putImageData(spaceImageData, 0, 0);
+        await logger.log('Drawing altered image data onto main context...');
         context.drawImage(spaceCanvas, 0, 0);
 
         // For each space, draw all players on that space
+        await logger.log('Loading avatars...');
         for (let i = 0; i < this.getNumSpaces(); i++) {
             const coordinates = this.getSpaceCoordinates(i);
             const playersHere = this.getPlayersAtLocation(i);
@@ -440,7 +442,6 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
                 const { x, y } = tokenCoordinates[j];
                 // const avatar = await this.getAvatarBall(userId);
                 // TODO: Temporarily disabling to see if avatar loading is causing the crashes
-                await logger.log(`Loading avatar for **${this.getPlayerDisplayName(userId)}**...`);
                 const avatar = await imageLoader.loadAvatar(userId, 128);
                 context.drawImage(avatar, x - 21, y - 21, 42, 42);
             }
