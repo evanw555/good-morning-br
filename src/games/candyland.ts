@@ -420,26 +420,26 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
                 continue;
             }
             // Adjust the color for this space
-            // TODO: Disabling just to see if this is causing the fatal memory errors
-            // this.floodColor(spaceImageData, coordinates, CandyLandGame.config.colorMap[color]);
+            this.floodColor(spaceImageData, coordinates, CandyLandGame.config.colorMap[color]);
         }
         spaceContext.putImageData(spaceImageData, 0, 0);
         context.drawImage(spaceCanvas, 0, 0);
 
         // For each space, draw all players on that space
-        // TODO: Disabling just to see if this is causing the fatal memory errors
-        // for (let i = 0; i < this.getNumSpaces(); i++) {
-        //     const coordinates = this.getSpaceCoordinates(i);
-        //     const playersHere = this.getPlayersAtLocation(i);
-        //     // Show all player tokens on this space
-        //     const tokenCoordinates = this.getTokenCoordinates(coordinates, playersHere.length, { spacing: 14 });
-        //     for (let j = 0; j < playersHere.length; j++) {
-        //         const userId = playersHere[j];
-        //         const { x, y } = tokenCoordinates[j];
-        //         const avatar = await this.getAvatarBall(userId);
-        //         context.drawImage(avatar, x - 21, y - 21, 42, 42);
-        //     }
-        // }
+        for (let i = 0; i < this.getNumSpaces(); i++) {
+            const coordinates = this.getSpaceCoordinates(i);
+            const playersHere = this.getPlayersAtLocation(i);
+            // Show all player tokens on this space
+            const tokenCoordinates = this.getTokenCoordinates(coordinates, playersHere.length, { spacing: 14 });
+            for (let j = 0; j < playersHere.length; j++) {
+                const userId = playersHere[j];
+                const { x, y } = tokenCoordinates[j];
+                // const avatar = await this.getAvatarBall(userId);
+                // TODO: Temporarily disabling to see if avatar loading is causing the crashes
+                const avatar = await imageLoader.loadAvatar('npc0', 128);
+                context.drawImage(avatar, x - 21, y - 21, 42, 42);
+            }
+        }
 
         // If to/from are specified, crop to all the spaces traversed
         if (options?.from !== undefined && options?.to !== undefined && options?.card !== undefined) {
