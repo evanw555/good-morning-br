@@ -540,15 +540,15 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
 
     // TODO: Refactor to somewhere else
     private async getAvatarBall(userId: Snowflake): Promise<Canvas> {
-        const avatar = await imageLoader.loadAvatar(userId, 128);
-        const ringWidth = 12;
+        const avatar = await imageLoader.loadAvatar(userId, 32);
+        const ringWidth = 3;
 
-        const canvas = createCanvas(128 + 2 * ringWidth, 128 + 2 * ringWidth);
+        const canvas = createCanvas(32 + 2 * ringWidth, 32 + 2 * ringWidth);
         const context = canvas.getContext('2d');
 
         context.fillStyle = 'black';
         context.fillRect(0, 0, canvas.width, canvas.height);
-        context.drawImage(toCircle(avatar), ringWidth, ringWidth, 128, 128);
+        context.drawImage(toCircle(avatar), ringWidth, ringWidth, 32, 32);
 
         return toCircle(canvas);
     }
