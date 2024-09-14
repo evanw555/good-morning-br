@@ -422,8 +422,7 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
                 continue;
             }
             // Adjust the color for this space
-            // TODO: Temporarily disabling to see if avatar loading is causing the crashes
-            // this.floodColor(spaceImageData, coordinates, CandyLandGame.config.colorMap[color]);
+            this.floodColor(spaceImageData, coordinates, CandyLandGame.config.colorMap[color]);
         }
         await logger.log('Putting board spaces image data...');
         spaceContext.putImageData(spaceImageData, 0, 0);
@@ -440,9 +439,9 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
             for (let j = 0; j < playersHere.length; j++) {
                 const userId = playersHere[j];
                 const { x, y } = tokenCoordinates[j];
-                // const avatar = await this.getAvatarBall(userId);
                 // TODO: Temporarily disabling to see if avatar loading is causing the crashes
-                const avatar = await imageLoader.loadAvatar(userId, 128);
+                const avatar = await this.getAvatarBall(userId);
+                // const avatar = await imageLoader.loadAvatar(userId, 128);
                 context.drawImage(avatar, x - 21, y - 21, 42, 42);
             }
         }
