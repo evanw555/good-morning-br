@@ -3568,6 +3568,28 @@ const processCommands = async (msg: Message): Promise<void> => {
             msg.channel.send('__Scoring Details__:\n' + scoringDetailsString);
             const scaledPoints = getScaledPoints(results.filter(r => !r.disqualified), { maxPoints: config.grandContestAward, order: 3 });
             msg.channel.send('__Points Awarded (n/i forfeits or handicaps)__:\n' + scaledPoints.map(r => `**${r.rank}.** <@${r.userId}> \`${toFixed(r.points)}\``).join('\n'));
+        } else if (sanitizedText.includes('rendertest')) {
+            await msg.reply('Starting game rendering test...');
+            const members = shuffle((await guild.members.list({ limit: 75 })).toJSON()).slice(0, 20);
+            // Island testing
+            const islandTest = IslandGame.create(members, 99);
+            await msg.channel.send('Rendering the Island game 20 times...');
+            for (let i = 0; i < 20; i++) {
+                const render = await islandTest.renderState();
+            }
+            // Maze testing
+            const mazeTest = MazeGame.create(members, 99);
+            await msg.channel.send('Rendering the Maze game 20 times...');
+            for (let i = 0; i < 20; i++) {
+                const render = await mazeTest.renderState();
+            }
+            // Candy Land testing
+            const candyTest = CandyLandGame.create(members, 99);
+            await msg.channel.send('Rendering the Candy Land game 20 times...');
+            for (let i = 0; i < 20; i++) {
+                const render = await candyTest.renderState();
+            }
+            await msg.channel.send('Test complete!');
         }
     }
 };
