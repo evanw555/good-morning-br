@@ -3571,23 +3571,28 @@ const processCommands = async (msg: Message): Promise<void> => {
         } else if (sanitizedText.includes('rendertest')) {
             await msg.reply('Starting game rendering test...');
             const members = shuffle((await guild.members.list({ limit: 75 })).toJSON()).slice(0, 20);
+            const numIterations = 30;
             // Island testing
             const islandTest = IslandGame.create(members, 99);
-            await msg.channel.send('Rendering the Island game 20 times...');
-            for (let i = 0; i < 20; i++) {
+            const islandMessage = await msg.channel.send(`Rendering the Island game ${numIterations} times...`);
+            for (let i = 0; i < numIterations; i++) {
                 const render = await islandTest.renderState();
+                await islandMessage.edit(`Rendering the Island game **${i}/${numIterations}** times...`);
+                await sleep(500);
             }
             // Maze testing
-            const mazeTest = MazeGame.create(members, 99);
-            await msg.channel.send('Rendering the Maze game 20 times...');
-            for (let i = 0; i < 20; i++) {
-                const render = await mazeTest.renderState();
-            }
+            // const mazeTest = MazeGame.create(members, 99);
+            // await msg.channel.send('Rendering the Maze game 20 times...');
+            // for (let i = 0; i < 20; i++) {
+            //     const render = await mazeTest.renderState();
+            // }
             // Candy Land testing
             const candyTest = CandyLandGame.create(members, 99);
-            await msg.channel.send('Rendering the Candy Land game 20 times...');
-            for (let i = 0; i < 20; i++) {
+            const candyMessage = await msg.channel.send(`Rendering the Candy Land game ${numIterations} times...`);
+            for (let i = 0; i < numIterations; i++) {
                 const render = await candyTest.renderState();
+                await candyMessage.edit(`Rendering the Candy Land game **${i}/${numIterations}** times...`);
+                await sleep(500);
             }
             await msg.channel.send('Test complete!');
         }
