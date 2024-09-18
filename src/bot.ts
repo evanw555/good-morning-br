@@ -3577,7 +3577,7 @@ const processCommands = async (msg: Message): Promise<void> => {
             const islandMessage = await msg.channel.send(`Rendering the Island game ${numIterations} times...`);
             for (let i = 0; i < numIterations; i++) {
                 const render = await islandTest.renderState();
-                await islandMessage.edit(`Rendering the Island game **${i}/${numIterations}** times...`);
+                await islandMessage.edit(`Rendering the Island game **${i + 1}/${numIterations}** times...`);
                 await sleep(500);
             }
             // Maze testing
@@ -3591,7 +3591,7 @@ const processCommands = async (msg: Message): Promise<void> => {
             const candyMessage = await msg.channel.send(`Rendering the Candy Land game ${numIterations} times...`);
             for (let i = 0; i < numIterations; i++) {
                 const render = await candyTest.renderState();
-                await candyMessage.edit(`Rendering the Candy Land game **${i}/${numIterations}** times...`);
+                await candyMessage.edit(`Rendering the Candy Land game **${i + 1}/${numIterations}** times...`);
                 await sleep(500);
             }
             await msg.channel.send('Test complete!');

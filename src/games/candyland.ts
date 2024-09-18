@@ -409,25 +409,25 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
 
         // For each space, edit the color of that part of the image data
         // await logger.log('Loading board spaces image...');
-        const boardSpaces = await imageLoader.loadImage('assets/candyland/board_spaces.png');
-        const spaceCanvas = createCanvas(boardSpaces.width, boardSpaces.height);
-        const spaceContext = spaceCanvas.getContext('2d');
-        spaceContext.drawImage(boardSpaces, 0, 0);
-        // await logger.log('Getting board spaces image data...');
-        const spaceImageData = spaceContext.getImageData(0, 0, spaceCanvas.width, spaceCanvas.height);
-        for (let i = 0; i < this.getNumSpaces(); i++) {
-            const color = this.state.spaces[i];
-            const coordinates = this.getSpaceCoordinates(i);
-            if (color === 'START' || color === 'END') {
-                continue;
-            }
-            // Adjust the color for this space
-            this.floodColor(spaceImageData, coordinates, CandyLandGame.config.colorMap[color]);
-        }
-        // await logger.log('Putting board spaces image data...');
-        spaceContext.putImageData(spaceImageData, 0, 0);
-        // await logger.log('Drawing altered image data onto main context...');
-        context.drawImage(spaceCanvas, 0, 0);
+        // const boardSpaces = await imageLoader.loadImage('assets/candyland/board_spaces.png');
+        // const spaceCanvas = createCanvas(boardSpaces.width, boardSpaces.height);
+        // const spaceContext = spaceCanvas.getContext('2d');
+        // spaceContext.drawImage(boardSpaces, 0, 0);
+        // // await logger.log('Getting board spaces image data...');
+        // const spaceImageData = spaceContext.getImageData(0, 0, spaceCanvas.width, spaceCanvas.height);
+        // for (let i = 0; i < this.getNumSpaces(); i++) {
+        //     const color = this.state.spaces[i];
+        //     const coordinates = this.getSpaceCoordinates(i);
+        //     if (color === 'START' || color === 'END') {
+        //         continue;
+        //     }
+        //     // Adjust the color for this space
+        //     this.floodColor(spaceImageData, coordinates, CandyLandGame.config.colorMap[color]);
+        // }
+        // // await logger.log('Putting board spaces image data...');
+        // spaceContext.putImageData(spaceImageData, 0, 0);
+        // // await logger.log('Drawing altered image data onto main context...');
+        // context.drawImage(spaceCanvas, 0, 0);
 
         // For each space, draw all players on that space
         // await logger.log('Loading avatars...');
