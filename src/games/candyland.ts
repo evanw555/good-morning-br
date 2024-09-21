@@ -398,6 +398,7 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         return canvas;
     }
 
+    // WARNING: Use of "getImageData" may cause fatal errors on 32-bit systems (e.g. raspbian), DO NOT USE!
     private async renderSpaces(): Promise<Canvas> {
         // For each space, edit the color of that part of the image data
         // await logger.log('Loading board spaces image...');
@@ -437,6 +438,9 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
 
         // Draw the dynamically colored spaces
         // context.drawImage(await this.renderSpaces(), 0, 0);
+        // TODO: Temporarily coloring the spaces manually until the problem is fixed
+        const season14Spaces = await imageLoader.loadImage('assets/candyland/board_spaces_season14.png');
+        context.drawImage(season14Spaces, 0, 0);
 
         // For each space, draw all players on that space
         // await logger.log('Loading avatars...');
