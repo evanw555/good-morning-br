@@ -619,8 +619,15 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
 
     override async processPlayerDecisions(): Promise<DecisionProcessingResult> {
         const playersToProcess = shuffle(Object.keys(this.state.cards));
-        // TODO: Handle undefined case
+        // Handle undefined case
+        if (playersToProcess.length === 0) {
+            throw new Error('No player cards left to process!');
+        }
+
         const userId = randChoice(...playersToProcess);
+        if (!this.hasPlayer(userId)) {
+            throw new Error(`Cannot process card from player <@${userId}>, as they're not in the game!`);
+        }
         const { card, variant, log } = this.state.cards[userId];
         delete this.state.cards[userId];
 
@@ -731,6 +738,10 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
             }
             switch (interaction.customId) {
                 case 'game:draw': {
+                    // Validate that this user is in the game
+                    if (!this.hasPlayer(userId)) {
+                        throw new Error('You can\'t draw a card yet, say _good morning_ and try again next week!');
+                    }
                     // Handle the free draw
                     let content = '';
                     const files: AttachmentBuilder[] = [];
