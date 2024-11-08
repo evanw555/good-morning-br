@@ -323,11 +323,19 @@ export default abstract class AbstractGame<T extends GameState> {
         return this.getWinners().length;
     }
 
+    getNumWinnersUncapped(): number {
+        return this.state.winners.length;
+    }
+
     protected addWinner(userId: Snowflake): boolean {
         if (!this.state.winners.includes(userId)) {
             this.state.winners.push(userId);
             return true;
         }
         return false;
+    }
+
+    protected hasWinner(userId: Snowflake): boolean {
+        return this.state.winners.includes(userId);
     }
 }

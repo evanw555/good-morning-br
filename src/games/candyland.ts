@@ -2,7 +2,7 @@ import { ActionRowData, APIButtonComponent, AttachmentBuilder, ButtonStyle, Comp
 import { GamePlayerAddition, MessengerPayload, PrizeType, DecisionProcessingResult, MessengerManifest } from "../types";
 import AbstractGame from "./abstract-game";
 import { CandyLandColor, CandyLandGameState, CandyLandPlayerState } from "./types";
-import { chance, naturalJoin, randChoice, randInt, shuffle, toCircle, toFixed, withDropShadow } from "evanw555.js";
+import { chance, getRankString, naturalJoin, randChoice, randInt, shuffle, toCircle, toFixed, withDropShadow } from "evanw555.js";
 import { Canvas, ImageData, createCanvas } from "canvas";
 import { cropAroundPoints, generateRandomNonsequentialSequence, renderArrow, withAn } from "../util";
 
@@ -260,6 +260,14 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         return 'Reminder! You have until tomorrow morning to draw a card';
     }
 
+    override async onDecisionPreNoon(): Promise<MessengerPayload[]> {
+        return [{
+            content: this.getReminderText(),
+            files: [await this.renderStateAttachment()],
+            components: this.getDecisionActionRow()
+        }];
+    }
+
     getSeasonCompletion(): number {
         return this.getMaxPlayerLocation() / this.getNumSpaces();
     }
@@ -334,6 +342,10 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
 
     private getPlayersAtLocation(location: number): Snowflake[] {
         return this.getPlayers().filter(userId => this.getPlayerLocation(userId) === location);
+    }
+
+    private isPlayerAtEnd(userId: Snowflake): boolean {
+        return this.getSpaceColor(this.getPlayerLocation(userId)) === 'END';
     }
 
     private hasPlayerCard(userId: Snowflake): boolean {
@@ -612,8 +624,12 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
             if (this.getSpaceColor(i) === color) {
                 return i;
             }
+            // The "end" space functions as a catch-all
+            else if (this.getSpaceColor(i) === 'END') {
+                return i;
+            }
         }
-        // Else, return the end space
+        // If we're starting from the end or past the end, return the end
         return this.getNumSpaces() - 1;
     }
 
@@ -624,7 +640,8 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
             throw new Error('No player cards left to process!');
         }
 
-        const userId = randChoice(...playersToProcess);
+        // Shuffle the players left to process, sort by card rarity, then choose the first
+        const userId = shuffle(playersToProcess).sort((x, y) => this.state.cards[y].variant - this.state.cards[x].variant)[0];
         if (!this.hasPlayer(userId)) {
             throw new Error(`Cannot process card from player <@${userId}>, as they're not in the game!`);
         }
@@ -636,10 +653,18 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         const diff = nextLocation - currentLocation;
         this.state.players[userId].location = nextLocation;
 
+        // If this player reached the end, add them as a winner
+        if (this.isPlayerAtEnd(userId)) {
+            const added = this.addWinner(userId);
+            if (added) {
+                log.push(`reached the end for _${getRankString(this.getNumWinnersUncapped())}_ place`);
+            }
+        }
+
         return {
             continueProcessing: Object.keys(this.state.cards).length > 0,
             summary: {
-                content: `**${this.getPlayerDisplayName(userId)}** ${naturalJoin(log, { conjunction: 'then' })}, moving **${diff}** space(s)!`,
+                content: `**${this.getPlayerDisplayName(userId)}** ${naturalJoin(log, { conjunction: 'then' })}, moving **${diff}** space${diff === 1 ? '' : 's'}!`,
                 files: [await new AttachmentBuilder(await this.renderBoard({ from: currentLocation, to: nextLocation, card: { card, variant } })).setName(`game-week${this.getTurn()}.png`)]
             }
         };
@@ -666,6 +691,10 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         if (interaction.isButton()) {
             // Handle trade handling specially since there's an argument
             if (interaction.customId.startsWith('game:handleTrade:')) {
+                // Validate the user hasn't already finished
+                if (this.isPlayerAtEnd(userId)) {
+                    throw new Error('You\'ve already reached the end, no need to trade!');
+                }
                 const [ rootId, subId, decision, offererId ] = interaction.customId.split(':');
                 // Validate that there is a valid trade offer for this user from that user
                 const offererCard = this.state.cards[offererId];
@@ -742,6 +771,10 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
                     if (!this.hasPlayer(userId)) {
                         throw new Error('You can\'t draw a card yet, say _good morning_ and try again next week!');
                     }
+                    // Validate the user hasn't already finished
+                    if (this.isPlayerAtEnd(userId)) {
+                        throw new Error('You\'ve already reached the end!');
+                    }
                     // Handle the free draw
                     let content = '';
                     const files: AttachmentBuilder[] = [];
@@ -792,6 +825,10 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
                     break;
                 }
                 case 'game:redraw': {
+                    // Validate the user hasn't already finished
+                    if (this.isPlayerAtEnd(userId)) {
+                        throw new Error('You\'ve already reached the end!');
+                    }
                     // Validate that the user actually has a card
                     if (!this.hasPlayerCard(userId)) {
                         throw new Error('You can\'t re-draw, you don\'t have a card to begin with!');
@@ -844,6 +881,10 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
                 }
                 // TODO: Emergency stopgap to ensure this never gets triggered
                 case 'ZZZgame:trade': {
+                    // Validate the user hasn't already finished
+                    if (this.isPlayerAtEnd(userId)) {
+                        throw new Error('You\'ve already reached the end, no need to trade!');
+                    }
                     // Validate that the user actually has a card
                     if (!this.hasPlayerCard(userId)) {
                         throw new Error('You can\'t trade, you don\'t have a card to begin with!');
@@ -868,6 +909,10 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
             switch (interaction.customId) {
                 // TODO: Emergency stopgap to ensure this never gets triggered
                 case 'ZZZgame:selectTradeUser': {
+                    // Validate the user hasn't already finished
+                    if (this.isPlayerAtEnd(userId)) {
+                        throw new Error('You\'ve already reached the end, no need to trade!');
+                    }
                     // Validate that the user actually has a card
                     if (!this.hasPlayerCard(userId)) {
                         throw new Error('You can\'t trade, you don\'t have a card to begin with!');

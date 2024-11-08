@@ -1046,9 +1046,9 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
                 displayName: m.displayName,
                 points: state.getPlayerPoints(m.id)
             }));
-        // If testing and not just starting the game, add 15 random new NPCs each week
-        if (config.testing && state.getGame().getTurn() !== 0) {
-            for (let i = 0; i < 15; i++) {
+        // If testing and not just starting the game, add 5 random new NPCs each week until reaching 15 players
+        if (config.testing && state.getGame().getTurn() !== 0 && state.getGame().getNumPlayers() < 15) {
+            for (let i = 0; i < 5; i++) {
                 const npcNumber = state.getGame().getNumPlayers() + i;
                 gamePlayerAdditions.push({
                     userId: `npc${npcNumber}`,
