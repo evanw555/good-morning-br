@@ -7,6 +7,7 @@ import { Canvas, ImageData, createCanvas } from "canvas";
 import { cropAroundPoints, generateRandomNonsequentialSequence, renderArrow, withAn } from "../util";
 
 import imageLoader from "../image-loader";
+import logger from "../logger";
 
 interface Coordinates {
     x: number,
@@ -306,6 +307,7 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
 
     removePlayer(userId: string): void {
         delete this.state.players[userId];
+        delete this.state.cards[userId];
         // TODO: Handle pending trades
     }
 
@@ -358,6 +360,10 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
 
     private getPlayerCardVariant(userId: Snowflake): number {
         return this.state.cards[userId].variant;
+    }
+
+    private getNumPlayerCards(): number {
+        return Object.keys(this.state.cards).length;
     }
 
     private addToPlayerLog(userId: Snowflake, text: string) {
@@ -637,13 +643,21 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         const playersToProcess = shuffle(Object.keys(this.state.cards));
         // Handle undefined case
         if (playersToProcess.length === 0) {
-            throw new Error('No player cards left to process!');
+            return {
+                continueProcessing: false,
+                summary: 'Looks like there are no more cards left in the pile!'
+            };
         }
 
         // Shuffle the players left to process, sort by card rarity, then choose the first
         const userId = shuffle(playersToProcess).sort((x, y) => this.state.cards[y].variant - this.state.cards[x].variant)[0];
         if (!this.hasPlayer(userId)) {
-            throw new Error(`Cannot process card from player <@${userId}>, as they're not in the game!`);
+            delete this.state.cards[userId];
+            void logger.log(`Tried to draw Candy Land card by nonexistent player <@${userId}>`);
+            return {
+                continueProcessing: this.getNumPlayerCards() > 0,
+                summary: 'Looks like a card was drawn by a nonexistent player. Hmmmm I\'ll skip that one...'
+            };
         }
         const { card, variant, log } = this.state.cards[userId];
         delete this.state.cards[userId];
@@ -662,7 +676,7 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         }
 
         return {
-            continueProcessing: Object.keys(this.state.cards).length > 0,
+            continueProcessing: this.getNumPlayerCards() > 0,
             summary: {
                 content: `**${this.getPlayerDisplayName(userId)}** ${naturalJoin(log, { conjunction: 'then' })}, moving **${diff}** space${diff === 1 ? '' : 's'}!`,
                 files: [await new AttachmentBuilder(await this.renderBoard({ from: currentLocation, to: nextLocation, card: { card, variant } })).setName(`game-week${this.getTurn()}.png`)]
