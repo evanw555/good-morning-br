@@ -639,8 +639,23 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         return this.getNumSpaces() - 1;
     }
 
+    private getCardDrawOrder(): Snowflake[] {
+        const userIds = shuffle(Object.keys(this.state.cards));
+        // Sort primarily by variant, then by user points
+        userIds.sort((x, y) => {
+            return (100 * this.getPlayerCardVariant(y) + this.getPoints(y)) - (100 * this.getPlayerCardVariant(x) + this.getPoints(x));
+        });
+        return userIds;
+    }
+
+    getCardDrawOrderDebugString(): string {
+        return this.getCardDrawOrder()
+            .map(id => `- **${this.getPlayerDisplayName(id)}**: v${this.getPlayerCardVariant(id)}, ${this.getPoints(id)}pts`)
+            .join('\n');
+    }
+
     override async processPlayerDecisions(): Promise<DecisionProcessingResult> {
-        const playersToProcess = shuffle(Object.keys(this.state.cards));
+        const playersToProcess = this.getCardDrawOrder();
         // Handle undefined case
         if (playersToProcess.length === 0) {
             return {
@@ -649,8 +664,8 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
             };
         }
 
-        // Shuffle the players left to process, sort by card rarity, then choose the first
-        const userId = shuffle(playersToProcess).sort((x, y) => this.state.cards[y].variant - this.state.cards[x].variant)[0];
+        // Draw the first card from the draw order list
+        const userId = playersToProcess[0];
         if (!this.hasPlayer(userId)) {
             delete this.state.cards[userId];
             void logger.log(`Tried to draw Candy Land card by nonexistent player <@${userId}>`);

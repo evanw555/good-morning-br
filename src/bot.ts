@@ -3433,6 +3433,8 @@ const processCommands = async (msg: Message): Promise<void> => {
                 // TODO: Temp logic to check game-specific rendering
                 if (game instanceof RiskGame) {
                     await msg.channel.send({ content: 'Risk casualty heat map', files: [await (game as RiskGame).renderCasualtyHeatMap()]});
+                } else if (game instanceof CandyLandGame) {
+                    await msg.channel.send('Candyland draw order:\n' + (game as CandyLandGame).getCardDrawOrderDebugString());
                 }
             } else {
                 await msg.reply('The game hasn\'t been created yet!');
