@@ -1661,8 +1661,8 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         // Update current leader property
         const previousLeader = state.getCurrentLeader();
         const leaderUpset: boolean = state.updateCurrentLeader();
-        // TODO (2.0): Should this be re-enabled?
-        if (false && leaderUpset) {
+        // Only send a notification if it's a casual season
+        if (leaderUpset && state.isCasualSeason()) {
             const newLeader = state.getCurrentLeader();
             // If it's not the end of the season, notify the channel of the leader shift
             if (!state.isSeasonGoalReached() && previousLeader && newLeader) {
