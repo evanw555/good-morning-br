@@ -214,6 +214,7 @@ export interface RawAnonymousSubmissionsState {
 
 export interface RawGoodMorningState {
     season: number,
+    casual?: true,
     startedOn: FullDate,
     isMorning: boolean,
     isGracePeriod?: boolean,

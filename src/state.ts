@@ -83,6 +83,18 @@ export default class GoodMorningState {
         }
     }
 
+    isCasualSeason(): boolean {
+        return this.data.casual ?? false;
+    }
+
+    setCasualSeason(casual: boolean) {
+        if (casual) {
+            this.data.casual = true;
+        } else {
+            delete this.data.casual;
+        }
+    }
+
     getSeasonStartedOn(): FullDate {
         return this.data.startedOn;
     }
@@ -490,7 +502,11 @@ export default class GoodMorningState {
     }
 
     isSeasonGoalReached(): boolean {
-        return this.hasGame() && this.getGame().isSeasonComplete();
+        if (this.isCasualSeason()) {
+            return this.getSeasonCompletion() >= 1;
+        } else {
+            return this.hasGame() && this.getGame().isSeasonComplete();
+        }
     }
 
     /**
@@ -499,10 +515,24 @@ export default class GoodMorningState {
      * If there is no game, then the value should always be 0.
      */
     getSeasonCompletion(): number {
-        if (this.hasGame()) {
-            return this.getGame().getSeasonCompletion();
+        if (this.isCasualSeason()) {
+            // TODO: Make casual goal configurable
+            return Math.min(this.getMaxPoints() / 100, 1);
+        } else {
+            if (this.hasGame()) {
+                return this.getGame().getSeasonCompletion();
+            }
+            return 0;
         }
-        return 0;
+    }
+
+    getWinners(): Snowflake[] {
+        if (this.isCasualSeason()) {
+            return this.queryOrderedPlayers({ n: 3 });
+        } else if (this.hasGame()) {
+            return this.getGame().getWinners();
+        }
+        return [];
     }
 
     /**
@@ -747,7 +777,7 @@ export default class GoodMorningState {
             gameType: this.data.game?.type,
             startedOn: this.data.startedOn,
             finishedOn: getTodayDateString(),
-            winners: this.hasGame() ? this.getGame().getWinners() : []
+            winners: this.getWinners()
         };
     }
 

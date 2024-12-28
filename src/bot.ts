@@ -1,6 +1,6 @@
-import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, BaseMessageOptions, ButtonStyle, Client, ComponentType, DMChannel, GatewayIntentBits, MessageFlags, PartialMessage, Partials, TextChannel, TextInputStyle, User } from 'discord.js';
+import { ActivityType, ApplicationCommandOptionType, Attachment, AttachmentBuilder, BaseMessageOptions, ButtonStyle, Client, ComponentType, DMChannel, GatewayIntentBits, MessageFlags, PartialMessage, Partials, TextChannel, TextInputStyle, User } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discord.js';
-import { DailyEvent, DailyEventType, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, SubmissionPromptHistory, ReplyToMessageData, MessengerPayload, AnonymousSubmission, GamePlayerAddition, DecisionProcessingResult } from './types';
+import { DailyEvent, DailyEventType, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, SubmissionPromptHistory, ReplyToMessageData, MessengerPayload, AnonymousSubmission, GamePlayerAddition, DecisionProcessingResult, RawGoodMorningState } from './types';
 import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, getScaledPoints, getSimpleScaledPoints, text } from './util';
 import GoodMorningState from './state';
 import { addReactsSync, chance, DiscordTimestampFormat, FileStorage, forEachMessage, generateKMeansClusters, getClockTime, getJoinedMentions, getPollChoiceKeys, getRandomDateBetween,
@@ -27,6 +27,7 @@ import controller from './controller';
 // TODO: Remove the renaming in a later commit
 import { CONFIG as config, AUTH as auth } from './constants';
 import CandyLandGame from './games/candyland';
+import { renderCasualLeaderboard } from './graphics';
 
 const storage = new FileStorage('./data/');
 const sharedStorage = new FileStorage('/home/pi/.mcmp/');
@@ -439,7 +440,7 @@ const advanceSeason = async (): Promise<{ gold?: Snowflake, silver?: Snowflake, 
     const newHistoryEntry: Season = state.toHistorySeasonEntry();
     history.seasons.push(newHistoryEntry);
     // Compute medals
-    const winnersList: Snowflake[] = state.getGame().getWinners();
+    const winnersList: Snowflake[] = state.getWinners();
     const winners = {
         gold: winnersList[0],
         silver: winnersList[1],
@@ -463,6 +464,8 @@ const advanceSeason = async (): Promise<{ gold?: Snowflake, silver?: Snowflake, 
     const nextSeason: number = state.getSeasonNumber() + 1;
     state = new GoodMorningState({
         season: nextSeason,
+        // Every other season will be a casual one
+        casual: state.isCasualSeason() ? undefined : true,
         startedOn: getTodayDateString(),
         isMorning: false,
         isGracePeriod: true,
@@ -472,6 +475,7 @@ const advanceSeason = async (): Promise<{ gold?: Snowflake, silver?: Snowflake, 
         // Just in case there's a prompt that needs to be held over into the next season
         anonymousSubmissions: state.getRawAnonymousSubmissions()
     });
+
     // Dump the state and history
     await dumpState();
     await dumpHistory();
@@ -481,7 +485,7 @@ const advanceSeason = async (): Promise<{ gold?: Snowflake, silver?: Snowflake, 
 
 const chooseEvent = async (date: Date): Promise<DailyEvent | undefined> => {
     // If we're testing locally, alternate between game decision and update
-    if (config.testing) {
+    if (config.testing && !state.isCasualSeason()) {
         if (state.getEventType() === DailyEventType.GameDecision) {
             return {
                 type: DailyEventType.GameUpdate
@@ -492,11 +496,20 @@ const chooseEvent = async (date: Date): Promise<DailyEvent | undefined> => {
             };
         }
     }
-    // Sunday: Game Update
-    if (date.getDay() === 0) {
-        return {
-            type: DailyEventType.GameUpdate
-        };
+    // Game-related events are only done in non-casual seasons
+    if (!state.isCasualSeason()) {
+        // Saturday: Game Decision
+        if (date.getDay() === 6) {
+            return {
+                type: DailyEventType.GameDecision
+            };
+        }
+        // Sunday: Game Update
+        if (date.getDay() === 0) {
+            return {
+                type: DailyEventType.GameUpdate
+            };
+        }
     }
     // Tuesday: Anonymous Submissions
     if (date.getDay() === 2) {
@@ -504,40 +517,37 @@ const chooseEvent = async (date: Date): Promise<DailyEvent | undefined> => {
             type: DailyEventType.AnonymousSubmissions
         };
     }
-    // Thursday: High-focus event (sometimes)
-    if (date.getDay() === 4 && chance(0.5)) {
-        return {
-            type: DailyEventType.HighFocus,
-            focusGame: await getRandomFocusGame()
-        };
-    }
-    // Friday: Monkey Friday (sometimes)
-    if (date.getDay() === 5 && chance(0.75)) {
-        const fridayEvents: DailyEvent[] = [{
-            type: DailyEventType.MonkeyFriday
-        }, {
-            type: DailyEventType.ChimpOutFriday
-        }];
-        // Return a random one of these Friday events
-        return randChoice(...fridayEvents);
-    }
-    // Saturday: Game Decision
-    if (date.getDay() === 6) {
-        return {
-            type: DailyEventType.GameDecision
-        };
-    }
     // If this date has a calendar date message override, then just do a standard GM (this means date overrides will take precedent over the below events)
     const calendarDate: CalendarDate = toCalendarDate(date); // e.g. "12/25" for xmas
     if (calendarDate in config.goodMorningMessageOverrides) {
         return undefined;
     }
-    // Wednesday: Wishful Wednesday (sometimes)
-    if (date.getDay() === 3 && chance(0.25)) {
-        return {
-            type: DailyEventType.WishfulWednesday,
-            wishesReceived: {}
-        };
+    // The following events are only done on non-casual seasons
+    if (!state.isCasualSeason()) {
+        // Wednesday: Wishful Wednesday (sometimes)
+        if (date.getDay() === 3 && chance(0.25)) {
+            return {
+                type: DailyEventType.WishfulWednesday,
+                wishesReceived: {}
+            };
+        }
+        // Thursday: High-focus event (sometimes)
+        if (date.getDay() === 4 && chance(0.5)) {
+            return {
+                type: DailyEventType.HighFocus,
+                focusGame: await getRandomFocusGame()
+            };
+        }
+        // Friday: Monkey Friday (sometimes)
+        if (date.getDay() === 5 && chance(0.75)) {
+            const fridayEvents: DailyEvent[] = [{
+                type: DailyEventType.MonkeyFriday
+            }, {
+                type: DailyEventType.ChimpOutFriday
+            }];
+            // Return a random one of these Friday events
+            return randChoice(...fridayEvents);
+        }
     }
     // Begin home stretch if we're far enough along and not currently in the home stretch (this will be delayed if an above event needs to happen instead e.g. MF)
     // TODO (2.0): Re-enable this?
@@ -859,8 +869,12 @@ const sendGoodMorningMessage = async (): Promise<void> => {
         default:
             // Otherwise, send the standard GM message as normal (do a season intro greeting if today is the first day)
             if (state.getSeasonStartedOn() === getTodayDateString()) {
-                const text = `Good morning everyone and welcome to season **${state.getSeasonNumber()}**! `
-                    + `I hope to see many familiar faces, and if I\'m lucky maybe even some new ones ${config.defaultGoodMorningEmoji}`;
+                let text = `Good morning everyone and welcome to season **${state.getSeasonNumber()}**! `
+                    + 'I hope to see many familiar faces, and if I\'m lucky maybe even some new ones';
+                if (state.isCasualSeason()) {
+                    text += '. This season will be a _casual_ one, meaning no extra games or decisions. Just good old fashioned GMBR mornings'
+                }
+                text += ` ${config.defaultGoodMorningEmoji}`;
                 await messenger.send(goodMorningChannel, text);
             } else if (chance(config.goodMorningMessageProbability)) {
                 await messenger.send(goodMorningChannel, languageGenerator.generate(overriddenMessage ?? '{goodMorning}'));
@@ -872,22 +886,27 @@ const sendGoodMorningMessage = async (): Promise<void> => {
 
 const sendSeasonEndMessages = async (channel: TextBasedChannel, previousState: GoodMorningState): Promise<void> => {
     // TODO (2.0): We should do this a little more safely...
-    const game = previousState.getGame();
     const newSeason: number = previousState.getSeasonNumber() + 1;
     // Send one preliminary hard-coded message signaling the end of the season
     await messenger.send(channel, `Well everyone, season **${previousState.getSeasonNumber()}** has finally come to an end!`);
     await sleep(10000);
     // Send custom messages for each game
-    const seasonEndMessages = await game.getSeasonEndMessages();
-    await messenger.sendAll(goodMorningChannel, seasonEndMessages);
-    // await messenger.send(channel, 'In a couple minutes, I\'ll reveal the winners and the final standings...');
-    // await messenger.send(channel, 'In the meantime, please congratulate yourselves (penalties are disabled), take a deep breath, and appreciate the friends you\'ve made in this channel 🙂');
-    // Send the "final results image"
-    // await sleep(120000);
-    // await messenger.send(channel, 'Alright, here are the final standings...');
-    // const attachment = new MessageAttachment(await createSeasonResultsImage(previousState, history.medals), 'results.png');
-    // await channel.send({ files: [attachment] });
-    // await sleep(5000);
+    if (previousState.hasGame()) {
+        const seasonEndMessages = await previousState.getGame().getSeasonEndMessages();
+        await messenger.sendAll(goodMorningChannel, seasonEndMessages);
+    } else {
+        // Else, assume it's a casual season and send generic messages
+        await messenger.send(channel, 'In a couple minutes, I\'ll reveal the winners and the final standings...');
+        await messenger.send(channel, 'In the meantime, please congratulate yourselves (penalties are disabled), take a deep breath, and appreciate the friends you\'ve made in this channel 🙂');
+        // Send the "final results image"
+        await sleep(120000);
+        await messenger.send(channel, 'Alright, here are the final standings...');
+        await messenger.send(goodMorningChannel, {
+            files: [new AttachmentBuilder(await renderCasualLeaderboard(previousState, history.medals)).setName('weekly-update.png')]
+        });
+        await sleep(5000);
+        await messenger.send(channel, `Let's congratulate our champion, <@${previousState.getTopPlayer()}>!`);
+    }
     // Send information about the season rewards
     // await sleep(60000);
     // await messenger.send(channel, `As a reward, our champion <@${winner}> will get the following perks throughout season **${newSeason}**:`);
@@ -997,85 +1016,91 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         }
     }
 
-    // If today is the first decision of the season, instantiate the game...
-    if (state.getEventType() === DailyEventType.GameDecision && !state.hasGame()) {
-        // Fetch all participating members, ordered by performance in the first week
-        const participatingUserIds: Snowflake[] = state.getOrderedPlayers();
-        const members: GuildMember[] = [];
-        for (const userId of participatingUserIds) {
-            const member = await fetchMember(userId);
-            if (member) {
-                members.push(member);
-            }
-        }
-        // Create the game using these initial members
-        // TODO (2.0): Eventually, this should be more generic for other game types (don't hardcode this)
-        // const dungeon = DungeonCrawler.createSectional(members, { sectionSize: 11, sectionsAcross: 3 });
-        // const newGame = MazeGame.createOrganicBest(members, 20, 43, 19, 90);
-        // const newGame = ClassicGame.create(members, true);
-        // const newGame = IslandGame.create(members);
-        // const newGame = MasterpieceGame.create(members, state.getSeasonNumber());
-        // const newGame = RiskGame.create(members, state.getSeasonNumber());
-        const newGame = CandyLandGame.create(members, state.getSeasonNumber());
-        state.setGame(newGame);
-        if (config.testing) {
-            newGame.setTesting(true);
-        }
-        // For all starting players, add the points they earned before the game was instantiated
-        for (const userId of participatingUserIds) {
-            state.getGame().addPoints(userId, state.getPlayerPoints(userId));
-        }
-        // Award a prize upfront for this week's submission winner(s)
-        const lastSubmissionWinners = state.getLastSubmissionWinners();
-        for (const userId of lastSubmissionWinners) {
-            await awardPrize(userId, lastSubmissionWinners.length === 1 ? 'submissions1' : 'submissions1-tied', 'Congrats on winning the first contest of the season (a few days ago)');
-        }
-    }
-
-    // If today is a decision day
+    // Game-related logic for non-casual seasons
     let extraGameMessages: MessengerPayload[] = [];
-    if (state.getEventType() === DailyEventType.GameDecision && state.hasGame()) {
-        // First, attempt to refresh state member info
-        await refreshStateMemberInfo();
-        // Add new players to the game
-        const newPlayers: Snowflake[] = state.getPlayers().filter(userId => !state.getGame().hasPlayer(userId));
-        const newMembersById = await fetchMembers(newPlayers);
-        const gamePlayerAdditions: GamePlayerAddition[] = Object.values(newMembersById)
-            .map(m => ({
-                userId: m.id,
-                displayName: m.displayName,
-                points: state.getPlayerPoints(m.id)
-            }));
-        // If testing and not just starting the game, add 5 random new NPCs each week until reaching 15 players
-        if (config.testing && state.getGame().getTurn() !== 0 && state.getGame().getNumPlayers() < 15) {
-            for (let i = 0; i < 5; i++) {
-                const npcNumber = state.getGame().getNumPlayers() + i;
-                gamePlayerAdditions.push({
-                    userId: `npc${npcNumber}`,
-                    displayName: `NPC ${npcNumber}`,
-                    points: randInt(0, 10)
-                });
+    if (!state.isCasualSeason()) {
+        // If today is the first decision of the season, instantiate the game...
+        if (state.getEventType() === DailyEventType.GameDecision && !state.hasGame()) {
+            // Fetch all participating members, ordered by performance in the first week
+            const participatingUserIds: Snowflake[] = state.getOrderedPlayers();
+            const members: GuildMember[] = [];
+            for (const userId of participatingUserIds) {
+                const member = await fetchMember(userId);
+                if (member) {
+                    members.push(member);
+                }
+            }
+            // Create the game using these initial members
+            // TODO (2.0): Eventually, this should be more generic for other game types (don't hardcode this)
+            // const dungeon = DungeonCrawler.createSectional(members, { sectionSize: 11, sectionsAcross: 3 });
+            // const newGame = MazeGame.createOrganicBest(members, 20, 43, 19, 90);
+            // const newGame = ClassicGame.create(members, true);
+            // const newGame = IslandGame.create(members);
+            // const newGame = MasterpieceGame.create(members, state.getSeasonNumber());
+            // const newGame = RiskGame.create(members, state.getSeasonNumber());
+            const newGame = CandyLandGame.create(members, state.getSeasonNumber());
+            state.setGame(newGame);
+            if (config.testing) {
+                newGame.setTesting(true);
+            }
+            // For all starting players, add the points they earned before the game was instantiated
+            for (const userId of participatingUserIds) {
+                state.getGame().addPoints(userId, state.getPlayerPoints(userId));
+            }
+            // Award a prize upfront for this week's submission winner(s)
+            const lastSubmissionWinners = state.getLastSubmissionWinners();
+            for (const userId of lastSubmissionWinners) {
+                await awardPrize(userId, lastSubmissionWinners.length === 1 ? 'submissions1' : 'submissions1-tied', 'Congrats on winning the first contest of the season (a few days ago)');
             }
         }
-        // Make sure the late additions are added in order of descending points (some games have a player cap)
-        gamePlayerAdditions.sort((x, y) => y.points - x.points);
-        // Process the late additions and keep track of the response payload
-        const addPlayersMessengerPayloads = state.getGame().addLatePlayers(gamePlayerAdditions);
-        extraGameMessages.push(...addPlayersMessengerPayloads);
-        // If testing, add a random number of points
-        if (config.testing) {
-            for (const userId of state.getGame().getPlayers()) {
-                state.getGame().addPoints(userId, randInt(0, 18));
+
+        // If the game exists or was just now created, handle decision-related logic
+        if (state.hasGame()) {
+            // If today is a decision day
+            if (state.getEventType() === DailyEventType.GameDecision) {
+                // First, attempt to refresh state member info
+                await refreshStateMemberInfo();
+                // Add new players to the game
+                const newPlayers: Snowflake[] = state.getPlayers().filter(userId => !state.getGame().hasPlayer(userId));
+                const newMembersById = await fetchMembers(newPlayers);
+                const gamePlayerAdditions: GamePlayerAddition[] = Object.values(newMembersById)
+                    .map(m => ({
+                        userId: m.id,
+                        displayName: m.displayName,
+                        points: state.getPlayerPoints(m.id)
+                    }));
+                // If testing and not just starting the game, add 5 random new NPCs each week until reaching 15 players
+                if (config.testing && state.getGame().getTurn() !== 0 && state.getGame().getNumPlayers() < 15) {
+                    for (let i = 0; i < 5; i++) {
+                        const npcNumber = state.getGame().getNumPlayers() + i;
+                        gamePlayerAdditions.push({
+                            userId: `npc${npcNumber}`,
+                            displayName: `NPC ${npcNumber}`,
+                            points: randInt(0, 10)
+                        });
+                    }
+                }
+                // Make sure the late additions are added in order of descending points (some games have a player cap)
+                gamePlayerAdditions.sort((x, y) => y.points - x.points);
+                // Process the late additions and keep track of the response payload
+                const addPlayersMessengerPayloads = state.getGame().addLatePlayers(gamePlayerAdditions);
+                extraGameMessages.push(...addPlayersMessengerPayloads);
+                // If testing, add a random number of points
+                if (config.testing) {
+                    for (const userId of state.getGame().getPlayers()) {
+                        state.getGame().addPoints(userId, randInt(0, 18));
+                    }
+                }
+                // Begin this week's turn
+                const beginTurnMessages = await state.getGame().beginTurn();
+                extraGameMessages.push(...beginTurnMessages);
+                // Start accepting game decisions
+                state.getGame().setAcceptingDecisions(true);
+            } else {
+                // For all other morning types, stop accepting game decisions
+                state.getGame().setAcceptingDecisions(false);
             }
         }
-        // Begin this week's turn
-        const beginTurnMessages = await state.getGame().beginTurn();
-        extraGameMessages.push(...beginTurnMessages);
-        // Start accepting game decisions
-        state.getGame().setAcceptingDecisions(true);
-    } else if (state.hasGame()) {
-        // For all other morning types, stop accepting game decisions
-        state.getGame().setAcceptingDecisions(false);
     }
 
     // Increment "days since last good morning" counters for all participating users
@@ -1681,6 +1706,24 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             await messenger.sendAll(goodMorningChannel, responseMessages);
         }
 
+        // If it's the first day of a casual season, let everyone know
+        if (state.isCasualSeason()) {
+            if (state.getSeasonStartedOn() === getTodayDateString()) {
+                // If it's the first day, remind everyone that it's a casual season
+                await messenger.send(goodMorningChannel, 'Reminder that this season will be a _casual_ one! No extra games or decisions, just chill morningtime fun');
+            } else if (new Date().getDay() === 0) {
+                // If it's Sunday, show the season update render
+                // TODO: This logic makes some assumptions... fix it!
+                const orderedPlayers: Snowflake[] = state.getOrderedPlayers();
+                const top: Snowflake = orderedPlayers[0];
+                const second: Snowflake = orderedPlayers[1];
+                await messenger.send(goodMorningChannel, {
+                    content: languageGenerator.generate('{weeklyUpdate}', { season: state.getSeasonNumber().toString(), top: `<@${top}>`, second: `<@${second}>` }),
+                    files: [new AttachmentBuilder(await renderCasualLeaderboard(state, history.medals)).setName('weekly-update.png')]
+                });
+            }
+        }
+
         // Dump state
         await dumpState();
     },
@@ -1830,8 +1873,8 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                     // Use the delete strategy because it's not required and we want to ensure it's before the morning date
                     await registerTimeout(TimeoutType.AnonymousSubmissionTypePollStart, pollStartDate, { arg: fyiMessage.id, pastStrategy: PastTimeoutStrategy.Delete });
                 }
-                // Alternatively, if it's the first Saturday of the month then start a high-effort submissions prompt poll
-                else if (new Date().getDay() === 6 && new Date().getDate() <= 7) {
+                // Alternatively, if it's the first Saturday of the month then start a high-effort submissions prompt poll (only in non-casual seasons)
+                else if (new Date().getDay() === 6 && new Date().getDate() <= 7 && !state.isCasualSeason()) {
                     // Accept suggestions for 5 hours
                     const pollStartDate = new Date();
                     pollStartDate.setHours(pollStartDate.getHours() + 5);
@@ -3436,6 +3479,8 @@ const processCommands = async (msg: Message): Promise<void> => {
                 } else if (game instanceof CandyLandGame) {
                     await msg.channel.send('Candyland draw order:\n' + (game as CandyLandGame).getCardDrawOrderDebugString());
                 }
+            } else if (state.isCasualSeason()) {
+                await msg.channel.send({ content: 'Casual season update render', files: [await renderCasualLeaderboard(state, history.medals)] });
             } else {
                 await msg.reply('The game hasn\'t been created yet!');
             }
