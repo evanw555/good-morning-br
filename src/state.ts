@@ -774,6 +774,7 @@ export default class GoodMorningState {
     toHistorySeasonEntry(): Season {
         return {
             season: this.data.season,
+            // This should be undefined during casual seasons
             gameType: this.data.game?.type,
             startedOn: this.data.startedOn,
             finishedOn: getTodayDateString(),

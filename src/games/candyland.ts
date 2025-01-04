@@ -2,9 +2,9 @@ import { ActionRowData, APIButtonComponent, AttachmentBuilder, ButtonStyle, Comp
 import { GamePlayerAddition, MessengerPayload, PrizeType, DecisionProcessingResult, MessengerManifest } from "../types";
 import AbstractGame from "./abstract-game";
 import { CandyLandColor, CandyLandGameState, CandyLandPlayerState } from "./types";
-import { chance, getRankString, naturalJoin, randChoice, randInt, shuffle, toCircle, toFixed, withDropShadow } from "evanw555.js";
+import { chance, cropAroundPoints, getRankString, naturalJoin, randChoice, randInt, shuffle, toCircle, toFixed, withDropShadow } from "evanw555.js";
 import { Canvas, ImageData, createCanvas } from "canvas";
-import { cropAroundPoints, generateRandomNonsequentialSequence, renderArrow, withAn } from "../util";
+import { generateRandomNonsequentialSequence, renderArrow, withAn } from "../util";
 
 import imageLoader from "../image-loader";
 import logger from "../logger";
