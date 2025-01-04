@@ -4,6 +4,7 @@ import { GameState } from "./games/types";
 
 export enum TimeoutType {
     NextGoodMorning = 'NEXT_GOOD_MORNING',
+    NextMidMorning = 'NEXT_MID_MORNING',
     NextPreNoon = 'NEXT_PRE_NOON',
     BaitingStart = 'BAITING_START',
     NextNoon = 'NEXT_NOON',

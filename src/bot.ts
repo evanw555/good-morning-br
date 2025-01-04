@@ -3,7 +3,7 @@ import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discor
 import { DailyEvent, DailyEventType, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, SubmissionPromptHistory, ReplyToMessageData, MessengerPayload, AnonymousSubmission, GamePlayerAddition, DecisionProcessingResult, RawGoodMorningState } from './types';
 import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, getScaledPoints, getSimpleScaledPoints, text } from './util';
 import GoodMorningState from './state';
-import { addReactsSync, chance, DiscordTimestampFormat, FileStorage, forEachMessage, generateKMeansClusters, getClockTime, getJoinedMentions, getPollChoiceKeys, getRandomDateBetween,
+import { addReactsSync, chance, DiscordTimestampFormat, FileStorage, forEachMessage, generateKMeansClusters, getClockTime, getDateBetween, getJoinedMentions, getPollChoiceKeys, getRandomDateBetween,
     getRankString, getRelativeDateTimeString, getSelectedNode, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger,
     naturalJoin, PastTimeoutStrategy, prettyPrint, R9KTextBank, randChoice, randInt, shuffle, sleep, TimeoutManager, TimeoutOptions, toCalendarDate, toDiscordTimestamp, toFixed, toLetterId } from 'evanw555.js';
 import { AnonymousSubmissionsState } from './submissions';
@@ -1190,6 +1190,11 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     // We register this with the "Increment Hour" strategy since its subsequent timeout (Noon) is registered in series
     await registerTimeout(TimeoutType.NextPreNoon, preNoonToday, { pastStrategy: PastTimeoutStrategy.IncrementHour });
 
+    // Schedule the mid-morning for some time around halfway between now and the pre-noon
+    const midMorningToday = getDateBetween(new Date(), preNoonToday, randInt(400, 600, 2) / 1000);
+    // We register this with the "Delete" strategy since it has no subsequent timeouts registered in series with it
+    await registerTimeout(TimeoutType.NextMidMorning, midMorningToday, { pastStrategy: PastTimeoutStrategy.Delete });
+
     // Update the bot's status to active
     await setStatus(true);
 
@@ -1582,6 +1587,9 @@ const finalizeAnonymousSubmissions = async () => {
 const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
     [TimeoutType.NextGoodMorning]: async (): Promise<void> => {
         await wakeUp(true);
+    },
+    [TimeoutType.NextMidMorning]: async (): Promise<void> => {
+        // TODO: Nothing here yet
     },
     [TimeoutType.NextPreNoon]: async (): Promise<void> => {
         // If attempting to invoke this while already asleep, warn the admin and abort
