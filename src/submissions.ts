@@ -122,6 +122,10 @@ export class AnonymousSubmissionsState {
         return audienceVotes;
     }
 
+    getAudienceVoters(): Snowflake[] {
+        return Object.keys(this.getAudienceVotes());
+    }
+
     getForfeiters(): Snowflake[] {
         return this.data.forfeiters;
     }

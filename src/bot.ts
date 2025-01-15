@@ -1421,6 +1421,12 @@ const finalizeAnonymousSubmissions = async () => {
         state.setDailyRank(userId, rank);
         state.resetDaysSinceLGM(userId);
     }
+    // Assign small points to audience voters so they get participation points
+    for (const userId of anonymousSubmissions.getAudienceVoters()) {
+        state.awardPoints(userId, config.defaultAward / 4);
+        state.setDailyRank(userId, state.getNextDailyRank());
+        state.resetDaysSinceLGM(userId);
+    }
     await dumpState(); // Just in case anything below fails
 
     // Reveal the winners (and losers) to the channel
@@ -1589,7 +1595,10 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         await wakeUp(true);
     },
     [TimeoutType.NextMidMorning]: async (): Promise<void> => {
-        // TODO: Nothing here yet
+        // TODO: Patch notes go here
+        if (getTodayDateString() === '1/15/25') {
+            await messenger.send(goodMorningChannel, '**GMBR Patch Notes 1/15/25:**\n- Everyone who votes in Tuesday submission contests (even those who didn\'t submit anything) will receive daily participation credit, letting them keep their streaks more easily');
+        }
     },
     [TimeoutType.NextPreNoon]: async (): Promise<void> => {
         // If attempting to invoke this while already asleep, warn the admin and abort
