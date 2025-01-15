@@ -526,6 +526,19 @@ export default class GoodMorningState {
         }
     }
 
+    /**
+     * Returns true if it's the first week of the season.
+     * For casual seasons, returns true using an arbitrary season completion threshold.
+     */
+    isFirstWeek(): boolean {
+        if (this.isCasualSeason()) {
+            // This is a VERY rough estimation
+            return this.getSeasonCompletion() < 0.1;
+        } else {
+            return !this.hasGame();
+        }
+    }
+
     getWinners(): Snowflake[] {
         if (this.isCasualSeason()) {
             return this.queryOrderedPlayers({ n: 3 });

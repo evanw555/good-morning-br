@@ -1860,16 +1860,16 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                 // If tomorrow is a submissions day then kick off a basic prompt poll now
                 // TODO: If the high-effort poll gets delayed for long enough, this could theoretically kick off in parallel. HANDLE THIS!
                 if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
-                    // Accept suggestions for 2 hours
+                    // Accept suggestions for 4 hours
                     const pollStartDate = new Date();
-                    pollStartDate.setHours(pollStartDate.getHours() + 2);
-                    // In 2 hours, fetch replies to this message and start a poll for the submission type
+                    pollStartDate.setHours(pollStartDate.getHours() + 4);
+                    // In 3 hours, fetch replies to this message and start a poll for the submission type
                     const fyiText: string = 'FYI gazers: it\'s time to pick a submission prompt for tomorrow! '
                         + `Reply to this message before ${toDiscordTimestamp(pollStartDate, DiscordTimestampFormat.ShortTime)} to suggest a prompt ${config.defaultGoodMorningEmoji}`;
                     const fyiMessage = await sungazersChannel.send(fyiText);
                     // Schedule timeouts to prime the suggestions with a couple random unused prompts (use delete strategy because it's not required)
-                    // If it's the first week of the season (game not initialized), stick with classic prompt
-                    const unusedPrompts = state.hasGame() ? (await chooseRandomUnusedSubmissionPrompts(randChoice(1, 2))) : ['pic that goes hard'];
+                    // If it's the first week of the season, stick with classic prompt
+                    const unusedPrompts = state.isFirstWeek() ? ['pic that goes hard'] : (await chooseRandomUnusedSubmissionPrompts(randChoice(1, 2)));
                     for (const unusedPrompt of unusedPrompts) {
                         const arg: ReplyToMessageData = {
                             channelId: fyiMessage.channelId,
@@ -1883,10 +1883,10 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                 }
                 // Alternatively, if it's the first Saturday of the month then start a high-effort submissions prompt poll (only in non-casual seasons)
                 else if (new Date().getDay() === 6 && new Date().getDate() <= 7 && !state.isCasualSeason()) {
-                    // Accept suggestions for 5 hours
+                    // Accept suggestions for 6 hours
                     const pollStartDate = new Date();
-                    pollStartDate.setHours(pollStartDate.getHours() + 5);
-                    // In 5 hours, fetch replies to this message and start a poll for the submission type
+                    pollStartDate.setHours(pollStartDate.getHours() + 6);
+                    // In 6 hours, fetch replies to this message and start a poll for the submission type
                     const fyiText: string = 'Hello gazers, this upcoming Tuesday will be this month\'s _high-effort_ submissions contest! '
                         + `Reply to this message before ${toDiscordTimestamp(pollStartDate, DiscordTimestampFormat.ShortTime)} to suggest a prompt ${config.defaultGoodMorningEmoji}`;
                     const fyiMessage = await sungazersChannel.send(fyiText);
@@ -2223,14 +2223,18 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             }
         }
 
-        // If there are no proposed alternatives...
-        if (proposalSet.size === 0) {
+        // If there aren't enough proposed prompts...
+        if (proposalSet.size < 3) {
             // Schedule the timeout again
             const in1Hour = new Date();
-            in1Hour.setHours(in1Hour.getHours() + 2);
+            in1Hour.setHours(in1Hour.getHours() + 1);
             await registerTimeout(TimeoutType.AnonymousSubmissionTypePollStart, in1Hour, { arg: messageId, pastStrategy: PastTimeoutStrategy.Delete });
             // Notify the channel
-            await sungazersChannel.send('I don\'t see any prompt ideas, I\'ll give you one more hour to pitch some...');
+            if (proposalSet.size === 0) {
+                await sungazersChannel.send('I don\'t see any prompt ideas, I\'ll give you one more hour to pitch some...');
+            } else {
+                await sungazersChannel.send('Not feeling creative today? I\'ll give you guys one more hour...');
+            }
             return;
         }
 
