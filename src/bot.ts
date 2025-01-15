@@ -4249,6 +4249,35 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
         // React to the message to say goodbye
         await reactToMessage(msg, '👋');
     }
+    // Handle sungazer channel messages
+    if (msg.channelId === config.sungazers.channel) {
+        // If replying to a message while prompts are being suggested...
+        if (timeoutManager.hasTimeoutWithType(TimeoutType.AnonymousSubmissionTypePollStart) && msg.reference) {
+            // If replying to the bot user...
+            // TODO: This is a rough heuristic to avoid saving the message ID in the state. Should we save it in the state? Or fetch the arg from the timeout manager?
+            const reference = await msg.fetchReference();
+            if (reference.author.id === msg.client.user.id) {
+                // If the suggested prompt uses improper grammar, urge the user to edit their message
+                const sanitized = msg.content.trim().toLowerCase();
+                if (sanitized.startsWith('a ') || sanitized.startsWith('an ') || sanitized.startsWith('the ')) {
+                    const replyMessage = await messenger.reply(msg, 'Please edit your suggestion to remove the unnecessary leading article 🤓');
+                    // TODO: Refactor into send-and-delete utility
+                    await sleep(60000);
+                    try {
+                        await replyMessage?.delete();
+                    } catch (err) {}
+                }
+                if (sanitized && sanitized.split(' ')[0].endsWith('s')) {
+                    const replyMessage = await messenger.reply(msg, languageGenerator.generate('Stop pluralizing your {!prompts|suggestions|suggested prompts} {!please|you dunce} 😡'));
+                    // TODO: Refactor into send-and-delete utility
+                    await sleep(60000);
+                    try {
+                        await replyMessage?.delete();
+                    } catch (err) {}
+                }
+            }
+        }
+    }
 });
 
 client.on('messageUpdate', async (oldMessage: PartialMessage | Message, newMessage: PartialMessage | Message) => {
