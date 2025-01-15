@@ -4271,20 +4271,10 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 // If the suggested prompt uses improper grammar, urge the user to edit their message
                 const sanitized = msg.content.trim().toLowerCase();
                 if (sanitized.startsWith('a ') || sanitized.startsWith('an ') || sanitized.startsWith('the ')) {
-                    const replyMessage = await messenger.reply(msg, 'Please edit your suggestion to remove the unnecessary leading article 🤓');
-                    // TODO: Refactor into send-and-delete utility
-                    await sleep(60000);
-                    try {
-                        await replyMessage?.delete();
-                    } catch (err) {}
+                    await messenger.reply(msg, 'Please edit your suggestion to remove the unnecessary leading article 🤓', { ttl: 60_000 });
                 }
                 if (sanitized && sanitized.split(' ')[0].endsWith('s')) {
-                    const replyMessage = await messenger.reply(msg, languageGenerator.generate('Stop pluralizing your {!prompts|suggestions|suggested prompts} {!please|you dunce} 😡'));
-                    // TODO: Refactor into send-and-delete utility
-                    await sleep(60000);
-                    try {
-                        await replyMessage?.delete();
-                    } catch (err) {}
+                    await messenger.reply(msg, languageGenerator.generate('Stop pluralizing your {!prompts|suggestions|suggested prompts} {!please|you dunce} 😡'), { ttl: 60_000 });
                 }
             }
         }
