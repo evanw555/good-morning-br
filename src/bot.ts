@@ -1729,7 +1729,9 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                 // If it's the first day, remind everyone that it's a casual season
                 await messenger.send(goodMorningChannel, 'Reminder that this season will be a _casual_ one! No extra games or decisions, just chill morningtime fun');
             } else if (new Date().getDay() === 0) {
-                // If it's Sunday, show the season update render
+                // If it's Sunday, fill in missing display names
+                await refreshStateMemberInfo();
+                // Show the season update render
                 // TODO: This logic makes some assumptions... fix it!
                 const orderedPlayers: Snowflake[] = state.getOrderedPlayers();
                 const top: Snowflake = orderedPlayers[0];
