@@ -307,12 +307,28 @@ export default class GoodMorningState {
         this.getOrCreatePlayer(userId).multiplier = multiplier;
     }
 
+    /**
+     * Returns true if the given player should receive a handicap.
+     * For casual seasons, this is determined as being > 20% into the season while being < 50% the top player's points.
+     */
     doesPlayerNeedHandicap(userId: Snowflake): boolean {
-        return this.hasGame() && this.getGame().doesPlayerNeedHandicap(userId);
+        if (this.isCasualSeason()) {
+            return this.getSeasonCompletion() > 0.2 && this.getPlayerRelativePoints(userId) < 0.5;
+        } else {
+            return this.hasGame() && this.getGame().doesPlayerNeedHandicap(userId);
+        }
     }
 
+    /**
+     * Returns true if the given player should receive a nerf.
+     * For casual seasons, this is determined as being > 20% into the season while being > 90% the top player's points.
+     */
     doesPlayerNeedNerf(userId: Snowflake): boolean {
-        return this.hasGame() && this.getGame().doesPlayerNeedNerf(userId);
+        if (this.isCasualSeason()) {
+            return this.getSeasonCompletion() > 0.2 && this.getPlayerRelativePoints(userId) > 0.9;
+        } else {
+            return this.hasGame() && this.getGame().doesPlayerNeedNerf(userId);
+        }
     }
 
     getPlayerDeductions(userId: Snowflake): number {
