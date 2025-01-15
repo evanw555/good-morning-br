@@ -238,45 +238,6 @@ export function getMinKey<T>(keys: T[], valueFn: (x: T) => number): T {
     return bestKey;
 }
 
-
-// TODO: Move to common library
-export async function drawTextCentered(context: NodeCanvasRenderingContext2D, text: string, left: number, right: number, y: number, options?: { padding?: number }) {
-    const titleWidth = context.measureText(text).width;
-    const padding = options?.padding ?? 0;
-    const areaWidth = right - left - (2 * padding);
-    if (titleWidth > areaWidth) {
-        context.fillText(text, Math.floor(left + padding), y, areaWidth);
-    } else {
-        context.fillText(text, Math.floor(left + padding + (areaWidth - titleWidth) / 2), y);
-    }
-}
-
-// TODO: Move to common library
-export function getTextLabel(text: string, width: number, height: number, options?: { align?: 'center' | 'left' | 'right', font?: string, style?: string, alpha?: number }): Canvas {
-    const ALIGN = options?.align ?? 'center';
-    const canvas = createCanvas(width, height);
-    const context = canvas.getContext('2d');
-
-    context.font = options?.font ?? `${height * 0.6}px sans-serif`;
-    context.fillStyle = options?.style ?? 'white';
-    context.globalAlpha = options?.alpha ?? 1;
-
-    const ascent = context.measureText(text).actualBoundingBoxAscent;
-    const verticalMargin = (height - ascent) / 2;
-
-    if (ALIGN === 'center') {
-        drawTextCentered(context, text, 0, width, verticalMargin + ascent);
-    } else if (ALIGN === 'right') {
-        context.fillText(text, Math.floor(width - context.measureText(text).width), verticalMargin + ascent, width);
-    } else {
-        context.fillText(text, 0, verticalMargin + ascent, width);
-    }
-
-    context.restore();
-
-    return canvas;
-}
-
 export function drawBackground(context: NodeCanvasRenderingContext2D, image: Canvas | Image) {
     const widthRatio = context.canvas.width / image.width;
     const heightRatio = context.canvas.height / image.height;

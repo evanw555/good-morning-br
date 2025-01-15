@@ -1,6 +1,6 @@
-import canvas, { CanvasRenderingContext2D } from 'canvas';
+import canvas, { Canvas, CanvasRenderingContext2D } from 'canvas';
 import { AttachmentBuilder, GuildMember, MessageFlags, Snowflake } from 'discord.js';
-import { getRankString, getNumberBetween, naturalJoin, randInt, shuffle, toLetterId, fromLetterId, AStarPathFinder, shuffleWithDependencies, toFixed, collapseRedundantStrings, chance, randChoice, toCircle, findCycle } from 'evanw555.js';
+import { getRankString, getNumberBetween, naturalJoin, randInt, shuffle, toLetterId, fromLetterId, AStarPathFinder, shuffleWithDependencies, toFixed, collapseRedundantStrings, chance, randChoice, toCircle, findCycle, getTextLabel } from 'evanw555.js';
 import { DecisionProcessingResult, GamePlayerAddition, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 import { MazeItemName, MazeLocation, MazeGameState, MazeLine, MazePlayerState } from './types';
@@ -334,10 +334,8 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                     // context.fillRect(c * MazeGame.TILE_SIZE, r * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE, MazeGame.TILE_SIZE);
                     if (this.isTileType(r, c, TileType.DOORWAY)) {
                         // Draw key hole cost
-                        context.fillStyle = MazeGame.STYLE_LIGHT_SKY;
-                        context.font = `${MazeGame.TILE_SIZE * .6}px sans-serif`;
-                        this.fillTextOnTile(context, this.state.doorwayCosts[MazeGame.getLocationString(r, c)].toString(), r, c);
-                        // context.fillRect((c + .4) * MazeGame.TILE_SIZE, (r + .3) * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE * .2, MazeGame.TILE_SIZE * .4);
+                        const costLabel = this.getTileLabel(this.state.doorwayCosts[MazeGame.getLocationString(r, c)].toString(), `${MazeGame.TILE_SIZE * .6}px sans-serif`, MazeGame.STYLE_LIGHT_SKY);
+                        this.drawImageOnTile(context, costLabel, r, c);
                     } else if (this.isTileType(r, c, TileType.OPENED_DOORWAY)) {
                         context.fillStyle = MazeGame.STYLE_SKY;
                         if (this.isWalkable(r - 1, c) || this.isWalkable(r + 1, c)) {
@@ -347,9 +345,8 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                             context.fillRect(c * MazeGame.TILE_SIZE, (r + .1) * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE, MazeGame.TILE_SIZE * .8);
                         }
                         // Draw opened key hole cost
-                        context.fillStyle = MazeGame.STYLE_CLOUD;
-                        context.font = `${MazeGame.TILE_SIZE * .6}px sans-serif`;
-                        this.fillTextOnTile(context, this.state.doorwayCosts[MazeGame.getLocationString(r, c)].toString(), r, c);
+                        const costLabel = this.getTileLabel(this.state.doorwayCosts[MazeGame.getLocationString(r, c)].toString(), `${MazeGame.TILE_SIZE * .6}px sans-serif`, MazeGame.STYLE_CLOUD);
+                        this.drawImageOnTile(context, costLabel, r, c);
                     }
                 } else {
                     context.fillStyle = 'black';
@@ -381,12 +378,11 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         // Render admin stuff
         if (options?.admin) {
             // Render trap owners
-            context.font = `${MazeGame.TILE_SIZE * .35}px sans-serif`;
-            context.fillStyle = 'black';
             for (const [ locationString, trapOwnerId ] of Object.entries(this.state.trapOwners)) {
                 const location = MazeGame.parseLocationString(locationString);
                 if (location) {
-                    this.fillTextOnTile(context, this.getDisplayName(trapOwnerId), location.r, location.c);
+                    const ownerLabel = this.getTileLabel(this.getDisplayName(trapOwnerId), `${MazeGame.TILE_SIZE * .35}px sans-serif`, 'black');
+                    this.drawImageOnTile(context, ownerLabel, location.r, location.c);
                 }
             }
             // Render all player decisions
@@ -542,9 +538,8 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         if (this.isPlayerStunned(userId)) {
             // If the player has pending decisions, show the stuns left; else just draw an X
             if (this.hasPendingDecisions(userId)) {
-                context.font = `bold ${MazeGame.TILE_SIZE * .85}px arial`;
-                context.fillStyle = 'red';
-                this.fillTextOnTile(context,this.getPlayerStuns(userId).toString(), player.r, player.c);
+                const stunsLabel = this.getTileLabel(this.getPlayerStuns(userId).toString(), `bold ${MazeGame.TILE_SIZE * .85}px arial`, 'red');
+                this.drawImageOnTile(context, stunsLabel, player.r, player.c);
             } else {
                 context.strokeStyle = 'red';
                 context.lineWidth = 2;
@@ -559,14 +554,12 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         }
     }
 
-    private fillTextOnTile(context: CanvasRenderingContext2D, text: string, r: number, c: number): void {
-        const width = context.measureText(text).width;
-        const baseX = c * MazeGame.TILE_SIZE;
-        const horizontalMargin = (MazeGame.TILE_SIZE - width) / 2;
-        const ascent = context.measureText(text).actualBoundingBoxAscent;
-        const baseY = r * MazeGame.TILE_SIZE;
-        const verticalMargin = (MazeGame.TILE_SIZE - ascent) / 2;
-        context.fillText(text, baseX + horizontalMargin, baseY + verticalMargin + ascent);
+    private getTileLabel(text: string, font: string, style: string): Canvas {
+        return getTextLabel(text, MazeGame.TILE_SIZE, MazeGame.TILE_SIZE, { font, style }); 
+    }
+
+    private drawImageOnTile(context: CanvasRenderingContext2D, image: Canvas, r: number, c: number): void {
+        context.drawImage(canvas, c * MazeGame.TILE_SIZE, r * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE, MazeGame.TILE_SIZE);
     }
 
     private drawRandomPolygonOnTile(context: CanvasRenderingContext2D, r: number, c: number, options?: { numVertices?: number, minRadius?: number, maxRadius?: number }): void {
@@ -673,15 +666,12 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
             context.drawImage(avatarImage, finalLocation.c * MazeGame.TILE_SIZE, finalLocation.r * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE, MazeGame.TILE_SIZE);
         }
         // Show attempted "placement" actions
-        context.font = `${MazeGame.TILE_SIZE * .5}px sans-serif`;
-        context.lineWidth = 1;
-        context.fillStyle = 'red';
-        context.setLineDash([]);
         for (const decision of decisions.filter(d => d.startsWith('trap:') || d.startsWith('boulder:') || d.startsWith('coin:'))) {
             const [ action, locationString ] = decision.split(':');
             const location = MazeGame.parseLocationString(locationString);
             if (location) {
-                this.fillTextOnTile(context, action.toUpperCase(), location.r, location.c);
+                const placementLabel = this.getTileLabel(action.toUpperCase(), `${MazeGame.TILE_SIZE * .5}px sans-serif`, 'red');
+                this.drawImageOnTile(context, placementLabel, location.r, location.c);
             }
         }
         // Show placed traps
