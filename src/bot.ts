@@ -558,7 +558,7 @@ const chooseEvent = async (date: Date): Promise<DailyEvent | undefined> => {
     //     };
     // }
     // High chance of a random event every day
-    if (chance(0.75)) {
+    if (state.isCasualSeason() ? chance(0.5) : chance(0.75)) {
         // Compile a list of potential events (include default events)
         const potentialEvents: DailyEvent[] = [
             {
