@@ -1,9 +1,9 @@
-import { ActivityType, ApplicationCommandOptionType, Attachment, AttachmentBuilder, BaseMessageOptions, ButtonStyle, Client, ComponentType, DMChannel, GatewayIntentBits, MessageFlags, PartialMessage, Partials, TextChannel, TextInputStyle, User } from 'discord.js';
+import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, BaseMessageOptions, ButtonStyle, Client, ComponentType, DMChannel, GatewayIntentBits, MessageFlags, PartialMessage, Partials, TextChannel, TextInputStyle, User } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discord.js';
-import { DailyEvent, DailyEventType, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, SubmissionPromptHistory, ReplyToMessageData, MessengerPayload, AnonymousSubmission, GamePlayerAddition, DecisionProcessingResult, RawGoodMorningState } from './types';
+import { DailyEvent, DailyEventType, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, SubmissionPromptHistory, ReplyToMessageData, MessengerPayload, AnonymousSubmission, GamePlayerAddition, DecisionProcessingResult, FinalizeSungazerPollData } from './types';
 import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, getScaledPoints, getSimpleScaledPoints, text } from './util';
 import GoodMorningState from './state';
-import { addReactsSync, chance, DiscordTimestampFormat, FileStorage, forEachMessage, generateKMeansClusters, getClockTime, getDateBetween, getJoinedMentions, getPollChoiceKeys, getRandomDateBetween,
+import { chance, DiscordTimestampFormat, FileStorage, forEachMessage, generateKMeansClusters, getClockTime, getDateBetween, getJoinedMentions, getRandomDateBetween,
     getRankString, getRelativeDateTimeString, getSelectedNode, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger,
     naturalJoin, PastTimeoutStrategy, prettyPrint, R9KTextBank, randChoice, randInt, shuffle, sleep, TimeoutManager, TimeoutOptions, toCalendarDate, toDiscordTimestamp, toFixed, toLetterId } from 'evanw555.js';
 import { AnonymousSubmissionsState } from './submissions';
@@ -12,13 +12,15 @@ import { getFocusHandler, getNewWheelOfFortuneRound, getRandomFocusGame } from '
 import { WordleFocusGame } from './focus/wordle';
 import { WheelOfFortuneFocusGame } from './focus/wheel-of-fortune';
 import { WheelOfFortuneRound, WordlePuzzle } from './focus/types';
-import { GameState } from './games/types';
+import { renderCasualLeaderboard } from './graphics';
+import { GameState, GameType } from './games/types';
 import AbstractGame from './games/abstract-game';
 import ClassicGame from './games/classic';
 import MazeGame from './games/maze';
 import MasterpieceGame from './games/masterpiece';
 import IslandGame from './games/island';
 import RiskGame from './games/risk';
+import CandyLandGame from './games/candyland';
 
 import logger from './logger';
 import imageLoader from './image-loader';
@@ -26,8 +28,7 @@ import controller from './controller';
 
 // TODO: Remove the renaming in a later commit
 import { CONFIG as config, AUTH as auth } from './constants';
-import CandyLandGame from './games/candyland';
-import { renderCasualLeaderboard } from './graphics';
+import { GAME_FACTORIES, GAME_TYPE_NAMES, GAME_TYPES } from './games/constants';
 
 const storage = new FileStorage('./data/');
 const sharedStorage = new FileStorage('/home/pi/.mcmp/');
@@ -1030,15 +1031,11 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
                     members.push(member);
                 }
             }
+            // Attempt to read the selected game type from the state, else fall back onto a random game type
+            const selectedGameType = state.getSelectedGameType() ?? randChoice(...GAME_TYPES);
+            state.clearSelectedGameType();
             // Create the game using these initial members
-            // TODO (2.0): Eventually, this should be more generic for other game types (don't hardcode this)
-            // const dungeon = DungeonCrawler.createSectional(members, { sectionSize: 11, sectionsAcross: 3 });
-            // const newGame = MazeGame.createOrganicBest(members, 20, 43, 19, 90);
-            // const newGame = ClassicGame.create(members, true);
-            // const newGame = IslandGame.create(members);
-            // const newGame = MasterpieceGame.create(members, state.getSeasonNumber());
-            // const newGame = RiskGame.create(members, state.getSeasonNumber());
-            const newGame = CandyLandGame.create(members, state.getSeasonNumber());
+            const newGame = GAME_FACTORIES[selectedGameType](members, state.getSeasonNumber());
             state.setGame(newGame);
             if (config.testing) {
                 newGame.setTesting(true);
@@ -1166,7 +1163,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
         // First, cancel all pending submission prompt polls (if any have been delayed for long enough)
         await controller.cancelTimeoutsWithType(TimeoutType.AnonymousSubmissionTypePollStart);
-        await controller.cancelTimeoutsWithType(TimeoutType.AnonymousSubmissionTypePollEnd);
+        await controller.cancelTimeoutsWithType(TimeoutType.FinalizeSungazerPoll);
         // Set timeout for anonymous submission reveal
         const submissionRevealTime = new Date();
         submissionRevealTime.setHours(10, 50, 0, 0);
@@ -1915,6 +1912,30 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                     await registerTimeout(TimeoutType.AnonymousSubmissionTypePollStart, pollStartDate, { arg: fyiMessage.id, pastStrategy: PastTimeoutStrategy.Delete });
                 }
             }
+            // If the game hasn't been selected in a non-casual season, start the game type polling process (after Monday)
+            if (!state.isCasualSeason() && !state.hasGame() && !state.hasSelectedGameType()) {
+                // Only do this if there's no active game/prompt poll...
+                if (!timeoutManager.hasTimeoutWithType(TimeoutType.FinalizeSungazerPoll) && !timeoutManager.hasTimeoutWithType(TimeoutType.AnonymousSubmissionTypePollStart)) {
+                    // The set of valid game types are anything that hasn't been used recently
+                    const recentTypes = history.seasons.filter(s => s.gameType)
+                        .slice(-2)
+                        .map(s => s.gameType) as GameType[];
+                    const validTypes = GAME_TYPES.filter(t => !recentTypes.includes(t));
+                    shuffle(validTypes);
+
+                    // Determine the poll end time
+                    const pollEndDate = new Date();
+                    pollEndDate.setHours(pollEndDate.getHours() + 24);
+
+                    await controller.startSungazerPoll({
+                        values: validTypes,
+                        pollEndDate,
+                        type: 'game-type',
+                        title: 'What game should we play this season?',
+                        valueNames: GAME_TYPE_NAMES
+                    });
+                }
+            }
         }
 
         // If this is happening at a non-standard time, explicitly warn players (add some tolerance in case of timeout variance)
@@ -2260,13 +2281,6 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         const proposedTypes: string[] = Array.from(proposalSet);
         shuffle(proposedTypes);
 
-        // Construct the poll data
-        const choiceKeys: string[] = getPollChoiceKeys(proposedTypes);
-        const choices: Record<string, string> = {};
-        for (let i = 0; i < proposedTypes.length; i++) {
-            choices[choiceKeys[i]] = proposedTypes[i];
-        }
-
         // Determine the poll end time (extend it longer if it's a high-effort submission poll)
         const pollEndDate = new Date();
         if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
@@ -2275,64 +2289,12 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             pollEndDate.setHours(pollEndDate.getHours() + 8);
         }
 
-        // Send the poll message and prime the choices
-        const pollMessage = await sungazersChannel.send(`What should people submit? (poll ends ${toDiscordTimestamp(pollEndDate, DiscordTimestampFormat.ShortTime)})\n`
-            + Object.entries(choices).map(([key, value]) => `${key} _${value}_`).join('\n'));
-        await addReactsSync(pollMessage, choiceKeys, { delay: 500 });
-
-        // Schedule the end of the poll
-        const arg = {
-            messageId: pollMessage.id,
-            choices
-        }
-        // Use the delete strategy because it's not required and we want to ensure it's before the morning date
-        await registerTimeout(TimeoutType.AnonymousSubmissionTypePollEnd, pollEndDate, { arg, pastStrategy: PastTimeoutStrategy.Delete });
-    },
-    [TimeoutType.AnonymousSubmissionTypePollEnd]: async (arg: { messageId: Snowflake, choices: Record<string, string> }): Promise<void> => {
-        if (!arg || !arg.messageId || !arg.choices) {
-            await logger.log('Aborting anonymous submission type poll end, as there\'s no timeout arg...');
-            return;
-        }
-        if (!sungazersChannel) {
-            await logger.log('Aborting anonymous submission type poll end, as there\'s no sungazers channel...');
-            return;
-        }
-        if (state.hasAnonymousSubmissions()) {
-            await logger.log(`Aborting anonymous submission type poll end, as the next submission prompt is already set: \`${state.getAnonymousSubmissions().getPrompt()}\``);
-            return;
-        }
-
-        // Fetch the poll message
-        const pollMessage = await sungazersChannel.messages.fetch(arg.messageId);
-
-        // Sort the prompts by number of votes descending (shuffle first to break ties randomly)
-        const getVotes = (key: string) => {
-            return pollMessage.reactions.cache.get(key)?.count ?? 0;
-        };
-        const sortedKeys = shuffle(Object.keys(arg.choices)).sort((x, y) => getVotes(y) - getVotes(x));
-        const sortedPrompts = sortedKeys.map(key => arg.choices[key]);
-
-        // Update the next submission prompt in the state
-        const chosenPrompt = sortedPrompts[0];
-        const runnerUpPrompt = sortedPrompts[1];
-        state.setAnonymousSubmissions({
-            prompt: chosenPrompt,
-            phase: 'submissions',
-            submissions: {},
-            submissionOwnersByCode: {},
-            votes: {},
-            forfeiters: []
+        await controller.startSungazerPoll({
+            values: proposedTypes,
+            pollEndDate,
+            type: 'submission-prompt',
+            title: 'What should people submit?'
         });
-        await dumpState();
-
-        // Update the submission prompt history
-        await updateSubmissionPromptHistory([chosenPrompt], sortedPrompts, runnerUpPrompt);
-
-        // TODO: Temp logging the make sure this works correctly
-        await logger.log('__Prompt voting results:__\n' + sortedKeys.map(key => `**(${getVotes(key)})** _${arg.choices[key]}_`));
-
-        // Notify the channel
-        await pollMessage.reply(`The results are in, everyone will be sending me a _${chosenPrompt}_ ${config.defaultGoodMorningEmoji}. You can start sending me submissions now!`);
     },
     [TimeoutType.Nightmare]: async (): Promise<void> => {
         if (state.getEventType() !== DailyEventType.Nightmare) {
@@ -2524,6 +2486,80 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
     },
     [TimeoutType.RobertismShiftFallback]: async () => {
         await shiftHonoraryRoberts();
+    },
+    [TimeoutType.FinalizeSungazerPoll]: async (arg: FinalizeSungazerPollData) => {
+        if (!arg || !arg.type || !arg.messageId || !arg.choices) {
+            await logger.log('Aborting sungazer poll finalizing, as there\'s no timeout arg...');
+            return;
+        }
+        if (!sungazersChannel) {
+            await logger.log(`Aborting ${arg.type} poll end, as there's no sungazers channel...`);
+            return;
+        }
+
+        // Fetch the poll message
+        const pollMessage = await sungazersChannel.messages.fetch(arg.messageId);
+
+        // Sort the prompts by number of votes descending (shuffle first to break ties randomly)
+        const getVotes = (key: string) => {
+            return pollMessage.reactions.cache.get(key)?.count ?? 0;
+        };
+        const sortedKeys = shuffle(Object.keys(arg.choices)).sort((x, y) => getVotes(y) - getVotes(x));
+        const sortedValues = sortedKeys.map(key => arg.choices[key]);
+
+        switch (arg.type) {
+            case 'submission-prompt': {
+                // Validate
+                if (state.hasAnonymousSubmissions()) {
+                    await logger.log(`Aborting ${arg.type} poll end, as the next submission prompt is already set: \`${state.getAnonymousSubmissions().getPrompt()}\``);
+                    return;
+                }
+
+                // Update the next submission prompt in the state
+                const chosenPrompt = sortedValues[0];
+                const runnerUpPrompt = sortedValues[1];
+                state.setAnonymousSubmissions({
+                    prompt: chosenPrompt,
+                    phase: 'submissions',
+                    submissions: {},
+                    submissionOwnersByCode: {},
+                    votes: {},
+                    forfeiters: []
+                });
+                await dumpState();
+
+                // Update the submission prompt history
+                await updateSubmissionPromptHistory([chosenPrompt], sortedValues, runnerUpPrompt);
+
+                // TODO: Temp logging the make sure this works correctly
+                await logger.log('__Prompt voting results:__\n' + sortedKeys.map(key => `**(${getVotes(key)})** _${arg.choices[key]}_`));
+
+                // Notify the channel
+                await pollMessage.reply(`The results are in, everyone will be sending me a _${chosenPrompt}_ ${config.defaultGoodMorningEmoji}. You can start sending me submissions now!`);
+                break;
+            }
+            case 'game-type': {
+                // Validate
+                if (state.hasSelectedGameType()) {
+                    await logger.log(`Aborting ${arg.type} poll end, as the next game type is already selected: \`${state.getSelectedGameType()}\``);
+                    return;
+                }
+                if (state.hasGame()) {
+                    await logger.log(`Aborting ${arg.type} poll end, as the game has already begun!`);
+                    return;
+                }
+
+                // Set the selected game type in the state
+                const chosenGameType = sortedValues[0] as GameType;
+                state.setSelectedGameType(chosenGameType);
+                await dumpState();
+
+                // Notify the channel
+                await pollMessage.reply(`The results are in, we'll be playing _${GAME_TYPE_NAMES[chosenGameType]}_ ${config.defaultGoodMorningEmoji}`);
+                break;
+            }
+        }
+
     }
 };
 
@@ -2754,12 +2790,14 @@ client.on('ready', async (): Promise<void> => {
     // Set properties of the controller
     controller.setAllReferences({
         state,
+        history,
         storage,
         sharedStorage,
         timeoutManager,
         languageGenerator,
         messenger,
-        goodMorningChannel
+        goodMorningChannel,
+        sungazersChannel
     });
 
     // Load all timeouts now that everything else has loaded and references have been set

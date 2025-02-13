@@ -13,7 +13,7 @@ import MasterpieceGame from "./games/masterpiece";
 import RiskGame from "./games/risk";
 import CandyLandGame from "./games/candyland";
 import { FocusGameState } from "./focus/types";
-import { GameState } from "./games/types";
+import { GameState, GameType } from "./games/types";
 
 export default class GoodMorningState {
     private data: RawGoodMorningState;
@@ -927,6 +927,22 @@ export default class GoodMorningState {
 
     hasFocusGame(): boolean {
         return this.data.event?.focusGame !== undefined;
+    }
+
+    getSelectedGameType(): GameType | undefined {
+        return this.data.selectedGameType;
+    }
+
+    hasSelectedGameType(): boolean {
+        return this.data.selectedGameType !== undefined;
+    }
+
+    setSelectedGameType(selectedGameType: GameType) {
+        this.data.selectedGameType = selectedGameType;
+    }
+
+    clearSelectedGameType() {
+        delete this.data.selectedGameType;
     }
 
     getGame(): AbstractGame<GameState> {

@@ -40,7 +40,7 @@ export interface MazePlayerState {
     warped?: boolean
 }
 
-export interface AbstractGameState<T> {
+export interface AbstractGameState<T extends GameType> {
     readonly type: T,
     readonly season: number,
     readonly winners: Snowflake[],
@@ -231,4 +231,6 @@ export interface ClassicGameState extends AbstractGameState<'CLASSIC'> {
     revealedActions: Record<Snowflake, string>,
 }
 
-export type GameState = MazeGameState | IslandGameState | ArenaGameState | MasterpieceGameState | RiskGameState | CandyLandGameState | ClassicGameState;
+export type GameType = 'CLASSIC' | 'MAZE' | 'ISLAND' | 'MASTERPIECE' | 'RISK' | 'CANDYLAND' | 'ARENA';
+
+export type GameState = ClassicGameState | MazeGameState | IslandGameState | MasterpieceGameState | RiskGameState | CandyLandGameState | ArenaGameState;

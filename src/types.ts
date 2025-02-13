@@ -1,6 +1,6 @@
 import { MessageCreateOptions, Snowflake } from "discord.js"
 import { FocusGameState } from "./focus/types";
-import { GameState } from "./games/types";
+import { GameState, GameType } from "./games/types";
 
 export enum TimeoutType {
     NextGoodMorning = 'NEXT_GOOD_MORNING',
@@ -14,7 +14,6 @@ export enum TimeoutType {
     AnonymousSubmissionReveal = 'ANONYMOUS_SUBMISSION_REVEAL',
     AnonymousSubmissionVotingReminder = 'ANONYMOUS_SUBMISSION_VOTING_REMINDER',
     AnonymousSubmissionTypePollStart = 'ANONYMOUS_SUBMISSION_TYPE_POLL_START',
-    AnonymousSubmissionTypePollEnd = 'ANONYMOUS_SUBMISSION_TYPE_POLL_END',
     Nightmare = 'NIGHTMARE',
     HomeStretchSurprise = 'HOME_STRETCH_SURPRISE',
     // GMBR 2.0 events
@@ -22,7 +21,8 @@ export enum TimeoutType {
     GameDecisionPhase = 'GAME_DECISION_PHASE',
     // Utilities
     ReplyToMessage = 'REPLY_TO_MESSAGE',
-    RobertismShiftFallback = 'ROBERTISM_SHIFT_FALLBACK'
+    RobertismShiftFallback = 'ROBERTISM_SHIFT_FALLBACK',
+    FinalizeSungazerPoll = 'FINALIZE_SUNGAZER_POLL'
 }
 
 /**
@@ -90,6 +90,14 @@ export interface ReplyToMessageData {
      */
     messageId?: Snowflake,
     content?: string
+}
+
+export type SungazerPollType = 'submission-prompt' | 'game-type';
+
+export interface FinalizeSungazerPollData {
+    type: SungazerPollType,
+    messageId: Snowflake,
+    choices: Record<string, string>
 }
 
 export interface DailyPlayerState {
@@ -234,13 +242,15 @@ export interface RawGoodMorningState {
     lastSubmissionWinners?: Snowflake[],
     dailyStatus: Record<Snowflake, DailyPlayerState>,
     players: Record<Snowflake, PlayerState>,
+    /** This should be populated once the desired game type is chosen, then wiped once the game is created (i.e. in the first week only). */
+    selectedGameType?: GameType,
     game?: GameState,
     birthdayBoys?: Snowflake[]
 }
 
 export interface Season {
     season: number,
-    gameType?: string,
+    gameType?: GameType,
     startedOn: FullDate
     finishedOn: FullDate,
     winners: Snowflake[]
