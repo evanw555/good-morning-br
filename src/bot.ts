@@ -4044,6 +4044,10 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     if (state.doesPlayerNeedNerf(userId)) {
                         state.awardPoints(userId, Math.min(rankedPoints, activityPoints));
                         logStory += `and was awarded \`min(${rankedPoints}, ${activityPoints})\` with leader nerf`;
+                    } else if (state.isCasualSeason() && state.doesPlayerNeedHandicap(userId)) {
+                        // TODO: Can we do this in non-casual seasons? Is there some way to guarantee it would be safe?
+                        state.awardPoints(userId, 2 * Math.max(rankedPoints, activityPoints));
+                        logStory += `and was awarded \`2 * max(${rankedPoints}, ${activityPoints})\` with casual handicap`;
                     } else {
                         state.awardPoints(userId, Math.max(rankedPoints, activityPoints));
                         logStory += `and was awarded \`max(${rankedPoints}, ${activityPoints})\``;
