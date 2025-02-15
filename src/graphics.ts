@@ -5,7 +5,7 @@ import GoodMorningState from './state';
 import { Medals } from './types';
 
 import imageLoader from './image-loader';
-import { getNumberOfDaysSince, getTextLabel, joinCanvasesHorizontal } from 'evanw555.js';
+import { getNumberOfDaysSince, getTextLabel, joinCanvasesHorizontal, resize } from 'evanw555.js';
 
 // TODO: This logic is horrible, please clean it up
 // TODO: Can we collapse this with the classic game render logic?
@@ -118,30 +118,31 @@ export async function renderCasualLeaderboard(state: GoodMorningState, medals: R
 
         // Draw medals for this user
         if (medals && medals[userId]) {
+            const overlayHeight = BAR_HEIGHT - 2 * BAR_PADDING;
             const overlays: (Canvas | canvas.Image)[] = [];
 
             const numGolds = medals[userId].gold ?? 0;
             if (numGolds > 0) {
-                overlays.push(rank1Image);
+                overlays.push(resize(rank1Image, { height: overlayHeight }));
             }
             if (numGolds > 1) {
-                overlays.push(getTextLabel(`x${numGolds}`, rank1Image.width, rank1Image.width, { style: 'BLACKISH' }));
+                overlays.push(getTextLabel(`x${numGolds}`, overlayHeight, overlayHeight, { style: 'BLACKISH', align: 'left' }));
             }
 
             const numSilvers = medals[userId].silver ?? 0;
             if (numSilvers > 0) {
-                overlays.push(rank2Image);
+                overlays.push(resize(rank2Image, { height: overlayHeight }));
             }
             if (numSilvers > 1) {
-                overlays.push(getTextLabel(`x${numSilvers}`, rank2Image.width, rank2Image.width, { style: 'BLACKISH' }));
+                overlays.push(getTextLabel(`x${numSilvers}`, overlayHeight, overlayHeight, { style: 'BLACKISH', align: 'left' }));
             }
 
             const numBronzes = medals[userId].bronze ?? 0;
             if (numBronzes > 0) {
-                overlays.push(rank3Image);
+                overlays.push(resize(rank3Image, { height: overlayHeight }));
             }
             if (numBronzes > 1) {
-                overlays.push(getTextLabel(`x${numBronzes}`, rank3Image.width, rank3Image.width, { style: 'BLACKISH' }));
+                overlays.push(getTextLabel(`x${numBronzes}`, overlayHeight, overlayHeight, { style: 'BLACKISH', align: 'left' }));
             }
 
             const overlay = joinCanvasesHorizontal(overlays, { spacing: BAR_PADDING });
