@@ -118,34 +118,34 @@ export async function renderCasualLeaderboard(state: GoodMorningState, medals: R
 
         // Draw medals for this user
         if (medals && medals[userId]) {
-            const overlayHeight = BAR_HEIGHT - 2 * BAR_PADDING;
+            const iconHeight = BAR_HEIGHT - 2 * BAR_PADDING;
             const overlays: (Canvas | canvas.Image)[] = [];
 
             const numGolds = medals[userId].gold ?? 0;
             if (numGolds > 0) {
-                overlays.push(resize(rank1Image, { height: overlayHeight }));
+                overlays.push(resize(rank1Image, { height: iconHeight }));
             }
             if (numGolds > 1) {
-                overlays.push(getTextLabel(`x${numGolds}`, overlayHeight, overlayHeight, { style: 'BLACKISH', align: 'left' }));
+                overlays.push(getTextLabel(`x${numGolds}`, iconHeight * 0.6, iconHeight * 0.6, { style: 'BLACKISH', align: 'left' }));
             }
 
             const numSilvers = medals[userId].silver ?? 0;
             if (numSilvers > 0) {
-                overlays.push(resize(rank2Image, { height: overlayHeight }));
+                overlays.push(resize(rank2Image, { height: iconHeight }));
             }
             if (numSilvers > 1) {
-                overlays.push(getTextLabel(`x${numSilvers}`, overlayHeight, overlayHeight, { style: 'BLACKISH', align: 'left' }));
+                overlays.push(getTextLabel(`x${numSilvers}`, iconHeight * 0.6, iconHeight * 0.6, { style: 'BLACKISH', align: 'left' }));
             }
 
             const numBronzes = medals[userId].bronze ?? 0;
             if (numBronzes > 0) {
-                overlays.push(resize(rank3Image, { height: overlayHeight }));
+                overlays.push(resize(rank3Image, { height: iconHeight }));
             }
             if (numBronzes > 1) {
-                overlays.push(getTextLabel(`x${numBronzes}`, overlayHeight, overlayHeight, { style: 'BLACKISH', align: 'left' }));
+                overlays.push(getTextLabel(`x${numBronzes}`, iconHeight * 0.6, iconHeight * 0.6, { style: 'BLACKISH', align: 'left' }));
             }
 
-            const overlay = joinCanvasesHorizontal(overlays, { spacing: BAR_PADDING });
+            const overlay = joinCanvasesHorizontal(overlays, { spacing: BAR_PADDING, align: 'bottom' });
             context.drawImage(overlay, WIDTH - MARGIN - BAR_PADDING - overlay.width, baseY + BAR_PADDING);
         }
     }
