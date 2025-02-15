@@ -1,11 +1,11 @@
 
-import canvas from 'canvas';
+import canvas, { Canvas } from 'canvas';
 import { Snowflake } from 'discord.js';
 import GoodMorningState from './state';
 import { Medals } from './types';
 
 import imageLoader from './image-loader';
-import { getNumberOfDaysSince } from 'evanw555.js';
+import { getNumberOfDaysSince, getTextLabel, joinCanvasesHorizontal } from 'evanw555.js';
 
 // TODO: This logic is horrible, please clean it up
 // TODO: Can we collapse this with the classic game render logic?
@@ -118,33 +118,34 @@ export async function renderCasualLeaderboard(state: GoodMorningState, medals: R
 
         // Draw medals for this user
         if (medals && medals[userId]) {
-            const numMedals = Object.values(medals[userId]).reduce((x, y) => x + y);
-
-            const imageWidth = BAR_HEIGHT - 2 * BAR_PADDING - 2;
-            const IMAGE_WIDTH = imageWidth + BAR_PADDING;
-            let j = 0;
-            const baseMedalX = WIDTH - MARGIN - BAR_PADDING - (numMedals * IMAGE_WIDTH);
+            const overlays: (Canvas | canvas.Image)[] = [];
 
             const numGolds = medals[userId].gold ?? 0;
-            for (let k = 0; k < numGolds; k++) {
-                context.drawImage(rank1Image, baseMedalX + j * IMAGE_WIDTH, baseY + BAR_PADDING, imageWidth, imageWidth);
-                j++;
+            if (numGolds > 0) {
+                overlays.push(rank1Image);
             }
+            if (numGolds > 1) {
+                overlays.push(getTextLabel(`x${numGolds}`, rank1Image.width, rank1Image.width, { style: 'BLACKISH' }));
+            }
+
             const numSilvers = medals[userId].silver ?? 0;
-            for (let k = 0; k < numSilvers; k++) {
-                context.drawImage(rank2Image, baseMedalX + j * IMAGE_WIDTH, baseY + BAR_PADDING, imageWidth, imageWidth);
-                j++;
+            if (numSilvers > 0) {
+                overlays.push(rank2Image);
             }
+            if (numSilvers > 1) {
+                overlays.push(getTextLabel(`x${numSilvers}`, rank2Image.width, rank2Image.width, { style: 'BLACKISH' }));
+            }
+
             const numBronzes = medals[userId].bronze ?? 0;
-            for (let k = 0; k < numBronzes; k++) {
-                context.drawImage(rank3Image, baseMedalX + j * IMAGE_WIDTH, baseY + BAR_PADDING, imageWidth, imageWidth);
-                j++;
+            if (numBronzes > 0) {
+                overlays.push(rank3Image);
             }
-            const numSkulls = medals[userId].skull ?? 0
-            for (let k = 0; k < numSkulls; k++) {
-                context.drawImage(rankLastImage, baseMedalX + j * IMAGE_WIDTH, baseY + BAR_PADDING, imageWidth, imageWidth);
-                j++;
+            if (numBronzes > 1) {
+                overlays.push(getTextLabel(`x${numBronzes}`, rank3Image.width, rank3Image.width, { style: 'BLACKISH' }));
             }
+
+            const overlay = joinCanvasesHorizontal(overlays, { spacing: BAR_PADDING });
+            context.drawImage(overlay, WIDTH - MARGIN - BAR_PADDING - overlay.width, baseY + BAR_PADDING);
         }
     }
 
