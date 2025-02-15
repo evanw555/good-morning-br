@@ -126,7 +126,7 @@ export async function renderCasualLeaderboard(state: GoodMorningState, medals: R
                 overlays.push(resize(rank1Image, { height: iconHeight }));
             }
             if (numGolds > 1) {
-                overlays.push(getTextLabel(`x${numGolds}`, iconHeight * 0.6, iconHeight * 0.6, { style: 'BLACKISH', align: 'left' }));
+                overlays.push(getTextLabel(`x${numGolds}`, iconHeight * 0.75, iconHeight * 0.75, { style: 'BLACKISH', align: 'left' }));
             }
 
             const numSilvers = medals[userId].silver ?? 0;
@@ -134,7 +134,7 @@ export async function renderCasualLeaderboard(state: GoodMorningState, medals: R
                 overlays.push(resize(rank2Image, { height: iconHeight }));
             }
             if (numSilvers > 1) {
-                overlays.push(getTextLabel(`x${numSilvers}`, iconHeight * 0.6, iconHeight * 0.6, { style: 'BLACKISH', align: 'left' }));
+                overlays.push(getTextLabel(`x${numSilvers}`, iconHeight * 0.75, iconHeight * 0.75, { style: 'BLACKISH', align: 'left' }));
             }
 
             const numBronzes = medals[userId].bronze ?? 0;
@@ -142,7 +142,7 @@ export async function renderCasualLeaderboard(state: GoodMorningState, medals: R
                 overlays.push(resize(rank3Image, { height: iconHeight }));
             }
             if (numBronzes > 1) {
-                overlays.push(getTextLabel(`x${numBronzes}`, iconHeight * 0.6, iconHeight * 0.6, { style: 'BLACKISH', align: 'left' }));
+                overlays.push(getTextLabel(`x${numBronzes}`, iconHeight * 0.75, iconHeight * 0.75, { style: 'BLACKISH', align: 'left' }));
             }
 
             const overlay = joinCanvasesHorizontal(overlays, { spacing: BAR_PADDING, align: 'bottom' });

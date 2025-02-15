@@ -533,7 +533,7 @@ const chooseEvent = async (date: Date): Promise<DailyEvent | undefined> => {
             };
         }
         // Thursday: High-focus event (sometimes)
-        if (date.getDay() === 4 && chance(0.5)) {
+        if (date.getDay() === 4 && chance(0.25)) {
             return {
                 type: DailyEventType.HighFocus,
                 focusGame: await getRandomFocusGame()
@@ -570,12 +570,15 @@ const chooseEvent = async (date: Date): Promise<DailyEvent | undefined> => {
             },
             {
                 type: DailyEventType.SleepyMorning
-            },
-            {
-                type: DailyEventType.EarlyEnd,
-                minutesEarly: randChoice(1, 2, 5, 10, 15, randInt(3, 20))
             }
         ];
+        // Do the early end event with a smaller likelihood
+        if (chance(0.75)) {
+            potentialEvents.push({
+                type: DailyEventType.EarlyEnd,
+                minutesEarly: randChoice(1, 2, 5, 10, 15, randInt(3, 20))
+            });
+        }
         // Do the reverse GM event with a smaller likelihood
         if (chance(0.5)) {
             potentialEvents.push({
