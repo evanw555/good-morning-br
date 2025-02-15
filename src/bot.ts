@@ -4,7 +4,7 @@ import { DailyEvent, DailyEventType, GoodMorningHistory, Season, TimeoutType, Co
 import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, getScaledPoints, getSimpleScaledPoints, text } from './util';
 import GoodMorningState from './state';
 import { chance, DiscordTimestampFormat, FileStorage, forEachMessage, generateKMeansClusters, getClockTime, getDateBetween, getJoinedMentions, getRandomDateBetween,
-    getRankString, getRelativeDateTimeString, getSelectedNode, getTodayDateString, getTomorrow, LanguageGenerator, loadJson, Messenger,
+    getRankString, getRelativeDateTimeString, getSelectedNode, getTodayDateString, getTomorrow, getWordRepetitionScore, LanguageGenerator, loadJson, Messenger,
     naturalJoin, PastTimeoutStrategy, prettyPrint, R9KTextBank, randChoice, randInt, shuffle, sleep, TimeoutManager, TimeoutOptions, toCalendarDate, toDiscordTimestamp, toFixed, toLetterId } from 'evanw555.js';
 import { AnonymousSubmissionsState } from './submissions';
 import ActivityTracker from './activity-tracker';
@@ -84,6 +84,9 @@ let history: GoodMorningHistory;
 
 let dailyVolatileLog: [Date, String][] = [];
 
+// Volatile list containing the content of messages that correctly said the magic word
+// TODO: Can we make this non-volatile? Does it matter that much?
+let magicWordSourceTexts: string[] = [];
 
 // TODO(testing): Use this during testing to directly trigger subsequent timeouts
 const showTimeoutTriggerButton = async (type: TimeoutType, arg?: any) => {
@@ -1216,6 +1219,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     state.clearBaiters();
     dailyVolatileLog = [];
     dailyVolatileLog.push([new Date(), 'GMBR has arisen.']);
+    magicWordSourceTexts = [];
 
     // Send the remaining game decision messages
     if (state.getEventType() === DailyEventType.GameDecision && state.hasGame()) {
@@ -3969,9 +3973,29 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
 
                 // If the player said a magic word, reward them and let them know privately
                 if (extractedMagicWord) {
-                    state.awardPoints(userId, config.bonusAward);
-                    await messenger.dm(userId, `You said _"${extractedMagicWord}"_, one of today's magic words! Nice 😉`);
-                    logStory += `said a magic word "${extractedMagicWord}", `;
+                    // If the user straight up copied another magic word message, penalize them
+                    // TODO: Sanitize the text
+                    if (magicWordSourceTexts.some(t => msg.content.toLowerCase().includes(t.toLowerCase()))) {
+                        state.deductPoints(userId, config.defaultAward);
+                        await messenger.reply(msg, 'You think you\'re slick?! 🤬');
+                    }
+                    // If most words in another magic word message were repeated here, don't award anything
+                    else if (magicWordSourceTexts.some(t => getWordRepetitionScore(msg.content, t) > 0.5)) {
+                        await messenger.reply(msg, randChoice('You\'re gonna have to be a little more clever than that...', 'You thought I wouldn\'t notice what you did there?'));
+                    }
+                    // Else, reward them
+                    else {
+                        state.awardPoints(userId, config.bonusAward);
+                        await messenger.dm(userId, `You said _"${extractedMagicWord}"_, one of today's magic words! Nice 😉`);
+                        await logger.log(`**${state.getPlayerDisplayName(userId)}** just said a magic word _"${extractedMagicWord}"_!`);
+                        logStory += `said a magic word "${extractedMagicWord}", `;
+                        // If the message had 4+ words, try to stop users from plagiarizing it
+                        if (msg.content.split(' ').length >= 4) {
+                            magicWordSourceTexts.push(msg.content);
+                        } else {
+                            await logger.log(`Magic word message by **${state.getPlayerDisplayName(userId)}** has too few words for later plagiarism detection`);
+                        }
+                    }
                 }
 
                 // If today is wishful wednesday, cut the generic logic off here
