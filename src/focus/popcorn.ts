@@ -1,8 +1,8 @@
 import { Message, PartialMessage, Snowflake, Typing } from "discord.js";
 import AbstractFocusHandler from "./abstract-focus";
-import { canonicalizeText, generateSynopsisWithAi, getMessageMentions, getSimpleScaledPoints, reactToMessage } from "../util";
+import { generateSynopsisWithAi, getMessageMentions, getSimpleScaledPoints, reactToMessage } from "../util";
 import { MessengerPayload, TimeoutType } from "../types";
-import { PastTimeoutStrategy, getRankString, getRelativeDateTimeString, naturalJoin, randChoice, randInt, splitTextNaturally } from "evanw555.js";
+import { PastTimeoutStrategy, canonicalizeText, getRankString, getRelativeDateTimeString, naturalJoin, randChoice, randInt, splitTextNaturally } from "evanw555.js";
 
 import controller from "../controller";
 import logger from "../logger";

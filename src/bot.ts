@@ -3,7 +3,7 @@ import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discor
 import { DailyEvent, DailyEventType, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, SubmissionPromptHistory, ReplyToMessageData, MessengerPayload, AnonymousSubmission, GamePlayerAddition, DecisionProcessingResult, FinalizeSungazerPollData } from './types';
 import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, getScaledPoints, getSimpleScaledPoints, text } from './util';
 import GoodMorningState from './state';
-import { chance, DiscordTimestampFormat, FileStorage, forEachMessage, generateKMeansClusters, getClockTime, getDateBetween, getJoinedMentions, getRandomDateBetween,
+import { canonicalizeText, chance, DiscordTimestampFormat, FileStorage, forEachMessage, generateKMeansClusters, getClockTime, getDateBetween, getJoinedMentions, getRandomDateBetween,
     getRankString, getRelativeDateTimeString, getSelectedNode, getTodayDateString, getTomorrow, getWordRepetitionScore, LanguageGenerator, loadJson, Messenger,
     naturalJoin, PastTimeoutStrategy, prettyPrint, R9KTextBank, randChoice, randInt, shuffle, sleep, TimeoutManager, TimeoutOptions, toCalendarDate, toDiscordTimestamp, toFixed, toLetterId } from 'evanw555.js';
 import { AnonymousSubmissionsState } from './submissions';
@@ -3973,9 +3973,13 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
 
                 // If the player said a magic word, reward them and let them know privately
                 if (extractedMagicWord) {
+                    // TODO: Temp logging to see how the word repitition score is working
+                    if (magicWordSourceTexts.length > 0) {
+                        await logger.log(`**${state.getPlayerDisplayName(userId)}** magic word source repetition scores: ${magicWordSourceTexts.map(t => getWordRepetitionScore(msg.content, t).toFixed(2))}`);
+                    }
                     // If the user straight up copied another magic word message, penalize them
                     // TODO: Sanitize the text
-                    if (magicWordSourceTexts.some(t => msg.content.toLowerCase().includes(t.toLowerCase()))) {
+                    if (magicWordSourceTexts.some(t => canonicalizeText(msg.content).includes(canonicalizeText(t)))) {
                         state.deductPoints(userId, config.defaultAward);
                         await messenger.reply(msg, 'You think you\'re slick?! 🤬');
                     }
@@ -3987,7 +3991,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     else {
                         state.awardPoints(userId, config.bonusAward);
                         await messenger.dm(userId, `You said _"${extractedMagicWord}"_, one of today's magic words! Nice 😉`);
-                        await logger.log(`**${state.getPlayerDisplayName(userId)}** just said a magic word _"${extractedMagicWord}"_!`);
+                        await logger.log(`**${state.getPlayerDisplayName(userId)}** just said a magic word _"${extractedMagicWord}"_! (**${magicWordSourceTexts.length}** source text${magicWordSourceTexts.length === 1 ? '' : 's'})`);
                         logStory += `said a magic word "${extractedMagicWord}", `;
                         // If the message had 4+ words, try to stop users from plagiarizing it
                         if (msg.content.split(' ').length >= 4) {

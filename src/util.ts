@@ -158,16 +158,6 @@ export function getMessageMentions(msg: Message): Snowflake[] {
     return msg.mentions.parsedUsers.toJSON().filter(u => !u.bot).map(u => u.id);
 }
 
-/**
- * // TODO: Refactor to common library
- * @returns The given text in lower-case with all non-alphanumeric characters removed
- */
-export function canonicalizeText(text: string): string {
-    return text.toLowerCase()
-        // Remove non-alphanumeric characters
-        .replace(/[^0-9a-zA-Z]/g, '');
-}
-
 interface ScaledPointsInputEntry {
     userId: Snowflake,
     rank: number
@@ -208,34 +198,6 @@ export function getScaledPoints(entries: { userId: Snowflake, rank: number }[], 
     }
 
     return results;
-}
-
-// TODO: Move to common library
-export function getMaxKey<T>(keys: T[], valueFn: (x: T) => number): T {
-    let maxValue = Number.MIN_SAFE_INTEGER;
-    let bestKey: T = keys[0];
-    for (const key of keys) {
-        const value = valueFn(key);
-        if (value > maxValue) {
-            bestKey = key;
-            maxValue = value;
-        }
-    }
-    return bestKey;
-}
-
-// TODO: Move to common library
-export function getMinKey<T>(keys: T[], valueFn: (x: T) => number): T {
-    let minValue = Number.MAX_SAFE_INTEGER;
-    let bestKey: T = keys[0];
-    for (const key of keys) {
-        const value = valueFn(key);
-        if (value < minValue) {
-            bestKey = key;
-            minValue = value;
-        }
-    }
-    return bestKey;
 }
 
 export function drawBackground(context: NodeCanvasRenderingContext2D, image: Canvas | Image) {
@@ -373,23 +335,6 @@ export async function generateSynopsisWithAi(story: string): Promise<string> {
     return await generateWithAi('The following is a story told by several different storytellers:\n\n'
         + story
         + '\n\nThis concludes the story. Now that the story has ended, please give a synopsis of the story, explaining the premise, conflict, and characters.')
-}
-
-/**
- * Given some source list, returns a copy shortened to the desired list by removing elements at even intervals.
- * @param values Source list
- * @param newLength Desired length of shortened list
- * @returns Copy of the source list shortened to the desired length
- */
-// TODO: Move to common library
-export function getEvenlyShortened<T>(values: T[], newLength: number): T[] {
-    const result: T[] = [];
-    const n = values.length;
-    for (let i = 0; i < newLength; i++) {
-        const sourceIndex = Math.floor(i * n / newLength);
-        result[i] = values[sourceIndex];
-    }
-    return result;
 }
 
 /**
