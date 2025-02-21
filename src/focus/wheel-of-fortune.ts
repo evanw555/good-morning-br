@@ -1,6 +1,7 @@
 import { Canvas, createCanvas } from "canvas";
 import { drawBackground, getSimpleScaledPoints, reactToMessage } from "../util";
-import { PastTimeoutStrategy, canonicalizeText, chance, crop, getRankString, getRotated, getTextLabel, joinCanvasesHorizontal, joinCanvasesVertical, randChoice, randInt, setHue, shuffle, sleep, withDropShadow, withMargin } from "evanw555.js";
+import { PastTimeoutStrategy, canonicalizeText, chance, getRankString, randChoice, randInt, shuffle, sleep } from "evanw555.js";
+import { crop, getRotated, getTextLabel, joinCanvasesHorizontal, joinCanvasesVertical, setHue, withDropShadow, withMargin } from "node-canvas-utils";
 import { AttachmentBuilder, Message, MessageFlags, Snowflake } from "discord.js";
 import { WheelOfFortune, WheelOfFortuneRound } from "./types";
 import AbstractFocusHandler from "./abstract-focus";

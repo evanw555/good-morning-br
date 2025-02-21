@@ -1,6 +1,6 @@
 {
     "name": "good-morning-br",
-    "version": "2.9.19",
+    "version": "2.9.20",
     "description": "Saying \"good morning\" is now a feature-rich Battle Royale experience!",
     "main": "./build/bot.js",
     "author": "Evan Williams",
@@ -11,6 +11,7 @@
         "discord.js": "14.15.3",
         "canvas": "2.9.2",
         "evanw555.js": "evanw555/evanw555.js",
+        "node-canvas-utils": "evanw555/node-canvas-utils",
         "openai": "4.26.0"
     },
     "devDependencies": {
@@ -21,7 +22,9 @@
     },
     "overrides": {
         "evanw555.js": {
-            "discord.js": "$discord.js",
+            "discord.js": "$discord.js"
+        },
+        "node-canvas-utils": {
             "canvas": "$canvas"
         }
     }

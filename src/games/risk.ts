@@ -2,7 +2,8 @@ import { APIActionRowComponent, APIMessageActionRowComponent, APISelectMenuOptio
 import { DecisionProcessingResult, GamePlayerAddition, MessengerManifest, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 import { Canvas, Image, createCanvas } from "canvas";
-import { DiscordTimestampFormat, chance, fillBackground, findCycle, getDateBetween, getEvenlyShortened, getJoinedMentions, getMaxKey, getMinKey, getRankString, getTextLabel, joinCanvasesHorizontal, joinCanvasesVertical, naturalJoin, randChoice, randInt, resize, shuffle, shuffleWithDependencies, superimpose, toCircle, toDiscordTimestamp, toFixed, withDropShadow } from "evanw555.js";
+import { DiscordTimestampFormat, chance, findCycle, getDateBetween, getEvenlyShortened, getJoinedMentions, getMaxKey, getMinKey, getRankString, naturalJoin, randChoice, randInt, shuffle, shuffleWithDependencies, toDiscordTimestamp, toFixed } from "evanw555.js";
+import { fillBackground, getTextLabel, joinCanvasesHorizontal, joinCanvasesVertical, resize, superimpose, toCircle, withDropShadow } from "node-canvas-utils";
 import { drawBackground, quantify, renderArrow, distance } from "../util";
 import { RiskGameState, RiskMovementData, RiskTerritoryState, RiskPlayerState, RiskConflictState, RiskPlannedAttack, RiskConflictAgentData } from "./types";
 

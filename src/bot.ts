@@ -3991,7 +3991,6 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     else {
                         state.awardPoints(userId, config.bonusAward);
                         await messenger.dm(userId, `You said _"${extractedMagicWord}"_, one of today's magic words! Nice 😉`);
-                        await logger.log(`**${state.getPlayerDisplayName(userId)}** just said a magic word _"${extractedMagicWord}"_! (**${magicWordSourceTexts.length}** source text${magicWordSourceTexts.length === 1 ? '' : 's'})`);
                         logStory += `said a magic word "${extractedMagicWord}", `;
                         // If the message had 4+ words, try to stop users from plagiarizing it
                         if (msg.content.split(' ').length >= 4) {
@@ -3999,6 +3998,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                         } else {
                             await logger.log(`Magic word message by **${state.getPlayerDisplayName(userId)}** has too few words for later plagiarism detection`);
                         }
+                        await logger.log(`**${state.getPlayerDisplayName(userId)}** just said a magic word _"${extractedMagicWord}"_! (**${magicWordSourceTexts.length}** source text${magicWordSourceTexts.length === 1 ? '' : 's'})`);
                     }
                 }
 

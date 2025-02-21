@@ -1,11 +1,12 @@
 
 import canvas, { Canvas } from 'canvas';
 import { Snowflake } from 'discord.js';
+import { getNumberOfDaysSince } from 'evanw555.js';
+import { getTextLabel, joinCanvasesHorizontal, resize } from 'node-canvas-utils';
 import GoodMorningState from './state';
 import { Medals } from './types';
 
 import imageLoader from './image-loader';
-import { getNumberOfDaysSince, getTextLabel, joinCanvasesHorizontal, resize } from 'evanw555.js';
 
 // TODO: This logic is horrible, please clean it up
 // TODO: Can we collapse this with the classic game render logic?
