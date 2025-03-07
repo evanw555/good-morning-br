@@ -124,6 +124,66 @@ export interface MasterpieceGameState extends AbstractGameState<'MASTERPIECE'> {
     silentAuctionPieceId?: string,
 }
 
+export type Masterpiece2ItemType = 'sneaky-peek' | 'random-peek';
+export type Masterpiece2AbilityType = 'sell' | 'buy' | 'force';
+export type Masterpiece2AuctionType = 'bank' | 'private';
+
+export interface Masterpiece2PlayerState {
+    displayName: string,
+    points: number,
+    // Items persist throughout the entire season
+    items?: Partial<Record<Masterpiece2ItemType, number>>,
+    // Abilities are wiped at the beginning of every game decision phase
+    abilities?: Partial<Record<Masterpiece2AbilityType, number>>,
+    // 
+}
+
+export interface Masterpiece2PieceState {
+    value: number,
+    name: string,
+    // Path of the BLOB containing this file's image
+    imagePath: string,
+    // User ID of whoever uploaded this piece
+    artist: Snowflake,
+    // Snowflake -> owner ID, false -> unsold, true -> sold
+    owner: Snowflake | boolean,
+    // If true, this piece will be sold during the next game update
+    toBeSold?: true
+}
+
+export interface Masterpiece2AuctionState {
+    pieceId: string,
+    // Description of this auction, NOT the title of the piece
+    description: string,
+    type: Masterpiece2AuctionType,
+    bid: number,
+    bidder?: Snowflake,
+    previousBidder?: Snowflake,
+    active?: true
+}
+
+export interface Masterpiece2GameState extends AbstractGameState<'MASTERPIECE_2'> {
+    readonly players: Record<Snowflake, Masterpiece2PlayerState>,
+    readonly pieces: Record<string, Masterpiece2PieceState>,
+    readonly auctions: Masterpiece2AuctionState[],
+    // If true, all pieces should be sold off and revealed
+    finalReveal?: true,
+    // ID of the piece being offered in the "silent auction"
+    silentAuctionPieceId?: string,
+    // Data for the first week initial setup phase, wiped once complete
+    setup?: {
+        // First step: Uploading pieces (without assigned values)
+        pieces: Omit<Masterpiece2PieceState, 'value'>,
+        // Second step: Vote on randomly assigned pieces
+        voting?: Record<Snowflake, {
+            // IDs of the pieces this user may vote on
+            pieceIds: string[],
+            // IDs of their favorite, second-favorite, and least-favorite pieces (if populated, this user has voted)
+            picks?: [string, string, string]
+        }>
+    }
+}
+
 export interface RiskPlayerState {
     displayName: string,
     points: number,
@@ -231,6 +291,6 @@ export interface ClassicGameState extends AbstractGameState<'CLASSIC'> {
     revealedActions: Record<Snowflake, string>,
 }
 
-export type GameType = 'CLASSIC' | 'MAZE' | 'ISLAND' | 'MASTERPIECE' | 'RISK' | 'CANDYLAND' | 'ARENA';
+export type GameType = 'CLASSIC' | 'MAZE' | 'ISLAND' | 'MASTERPIECE' | 'MASTERPIECE_2' | 'RISK' | 'CANDYLAND' | 'ARENA';
 
-export type GameState = ClassicGameState | MazeGameState | IslandGameState | MasterpieceGameState | RiskGameState | CandyLandGameState | ArenaGameState;
+export type GameState = ClassicGameState | MazeGameState | IslandGameState | MasterpieceGameState | Masterpiece2GameState | RiskGameState | CandyLandGameState | ArenaGameState;

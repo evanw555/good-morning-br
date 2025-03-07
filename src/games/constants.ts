@@ -8,12 +8,14 @@ import MasterpieceGame from "./masterpiece";
 import RiskGame from "./risk";
 import CandyLandGame from "./candyland";
 import ArenaGame from "./arena";
+import Masterpiece2Game from "./masterpiece2";
 
 export const GAME_TYPE_NAMES: Record<GameType, string> = {
     CLASSIC: 'Classic',
     MAZE: 'Maze Dungeon Crawler',
     ISLAND: 'Island Survivor',
-    MASTERPIECE: 'Masterpiece Art Auction',
+    MASTERPIECE: 'Masterpiece (Legacy)',
+    MASTERPIECE_2: 'Masterpiece 2: Auctionhouse Anarchy',
     RISK: 'Risk',
     CANDYLAND: 'Cute Scott\'s Candy Kingdom',
     ARENA: 'Bob\'s Arena (INCOMPLETE)'
@@ -32,6 +34,9 @@ export const GAME_FACTORIES: Record<GameType, (members: GuildMember[], season: n
     },
     MASTERPIECE: (members, season) => {
         return MasterpieceGame.create(members, season);
+    },
+    MASTERPIECE_2: (members, season) => {
+        return Masterpiece2Game.create(members, season);
     },
     RISK: (members, season) => {
         return RiskGame.create(members, season);
