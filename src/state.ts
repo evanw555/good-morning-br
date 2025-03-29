@@ -14,6 +14,7 @@ import RiskGame from "./games/risk";
 import CandyLandGame from "./games/candyland";
 import { FocusGameState } from "./focus/types";
 import { GameState, GameType } from "./games/types";
+import Masterpiece2Game from "./games/masterpiece2";
 
 export default class GoodMorningState {
     private data: RawGoodMorningState;
@@ -38,6 +39,9 @@ export default class GoodMorningState {
                     break;
                 case 'MASTERPIECE':
                     this.game = new MasterpieceGame(rawState.game);
+                    break;
+                case 'MASTERPIECE_2':
+                    this.game = new Masterpiece2Game(rawState.game);
                     break;
                 case 'RISK':
                     this.game = new RiskGame(rawState.game);
