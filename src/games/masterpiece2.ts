@@ -17,8 +17,7 @@ type VoteRank = 'most' | 'second' | 'least';
 // TODO(2): IMPORTANT TODOS:
 // 1. Actually implement some of the item code
 // 2. Implement a timer so that player reward choosers don't run the clock out
-// 3. Design new rule sheet
-// 4. Enforce some sort of cap on how many pieces will be in the game? Or a minimum?
+// 3. Enforce some sort of cap on how many pieces will be in the game? Or a minimum?
 
 // If true, this item type will be wiped each week at the beginning of the decision phase
 const TEMPORARY_ITEMS: Record<Masterpiece2ItemType, boolean> = {
@@ -684,9 +683,8 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
         return c;
     }
 
-    // TODO(2): Update the rules render
     private async renderRules(): Promise<AttachmentBuilder> {
-        return new AttachmentBuilder('assets/masterpiece/rules.png');
+        return new AttachmentBuilder('assets/masterpiece/rules2.png');
     }
 
     private async renderGallery(pieceIds: string[], background: string, options?: { showAvatars?: boolean, showValues?: boolean }): Promise<AttachmentBuilder> {
@@ -1582,8 +1580,7 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                     await interaction.reply({
                         ephemeral: true,
                         content: 'Your uploaded pieces...',
-                        // TODO(2): Use different background
-                        files: [await this.renderGallery(pieceIds, 'reveal', { showValues: false })],
+                        files: [await this.renderGallery(pieceIds, 'studio', { showValues: false })],
                         components: [{
                             type: ComponentType.ActionRow,
                             components: buttons
@@ -1643,8 +1640,7 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                         ephemeral: true,
                         content: 'Here are the pieces you\'ll be voting on, use the drop-downs below. '
                             + 'Your favorite and second-favorite pieces will be appraised at a higher value, meanwhile your _least_ favorite piece\'s value will tank...',
-                        // TODO(2): Make custom background for voting
-                        files: [await this.renderGallery(pieceIds, 'reveal', { showValues: false })],
+                        files: [await this.renderGallery(pieceIds, 'voting', { showValues: false })],
                         components: [{
                             type: ComponentType.ActionRow,
                             components: [{
