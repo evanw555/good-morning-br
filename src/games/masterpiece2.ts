@@ -50,6 +50,7 @@ const ITEM_DESCRIPTIONS: Record<Masterpiece2ItemType, string> = {
 export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState> {
     private static MAX_PIECES_BY_ARTIST = 3;
     private auctionLock: boolean = false;
+    private uploadLock: boolean = false;
 
     constructor(state: Masterpiece2GameState) {
         super(state);
@@ -273,8 +274,24 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
     override async onDecisionPreNoon(): Promise<MessengerPayload[]> {
         const responseMessages: MessengerPayload[] = [];
 
-        // If still in the setup phase, don't do anything
+        // If still in the setup phase...
         if (this.state.setup) {
+            // If voting hasn't started yet, urge users to upload art
+            if (!this.state.setup.voting) {
+                return [{
+                    content: 'You have until tomorrow to upload your own art! You can upload art, funny pics, honey pics, anything. Those who upload something will be rewarded with a free starter piece',
+                    components: [{
+                        type: ComponentType.ActionRow,
+                        components: [{
+                            type: ComponentType.Button,
+                            custom_id: 'game:upload',
+                            label: 'Upload',
+                            style: ButtonStyle.Primary
+                        }]
+                    }]
+                }];
+            }
+            // Otherwise, do nothing
             return [];
         }
 
@@ -1012,8 +1029,8 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                     components: [{
                         type: ComponentType.Button,
                         custom_id: 'game:upload',
-                        label: 'Upload Piece',
-                        style: ButtonStyle.Success
+                        label: 'Upload',
+                        style: ButtonStyle.Primary
                     }]
                 }]
             }];
@@ -1203,8 +1220,8 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                             components: [{
                                 type: ComponentType.Button,
                                 custom_id: 'game:upload',
-                                label: 'Upload Piece',
-                                style: ButtonStyle.Success
+                                label: 'Upload',
+                                style: ButtonStyle.Primary
                             }]
                         }]
                     }
@@ -1482,6 +1499,12 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                     await dmReplyCollector.solicitImageReply(interaction.user,
                         'Reply to this message (click "Reply") with an image (your art) and text (the title of the piece)',
                         async (replyMessage, imageAttachment) => {
+                            // Check and acquire the lock
+                            if (this.uploadLock) {
+                                await replyMessage.reply('Someone else is uploading a piece at this exact moment, try again in half a second...');
+                                return;
+                            }
+                            this.uploadLock = true;
                             // Validate (again) that the user can do this
                             if (!this.state.setup) {
                                 await replyMessage.reply('It\'s a little too late to upload art!');
@@ -1498,15 +1521,15 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                             // Validate the title
                             const title = replyMessage.content.trim();
                             if (!title) {
-                                await replyMessage.reply('Please include the title of your piece');
+                                await replyMessage.reply('Your piece needs a title! Please reply to the message again but with both the picture _and_ your piece\'s title');
                                 return;
                             }
                             if (title.length < 5) {
-                                await replyMessage.reply('Your title is too short! (5 characters or more please)');
+                                await replyMessage.reply(`The minimum title length is **5** characters, yet yours is only **${title.length}**! Come up with a longer title`);
                                 return;
                             }
-                            if (title.length > 30) {
-                                await replyMessage.reply('Your title is too long! (30 characters or fewer please)');
+                            if (title.length > 35) {
+                                await replyMessage.reply(`The maximum title length is **35** characters, yet yours is **${title.length}**! Come up with a shorter title`);
                                 return;
                             }
                             // Determine the next available piece ID
@@ -1530,6 +1553,8 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                                 owner: false
                             };
                             await logger.log(`<@${userId}> uploaded MP2 piece **${pieceId}** (**${this.getNumPieces()}** total)`);
+                            // Release the lock
+                            this.uploadLock = false;
                             // Prompt the player to upload more
                             const remainingUploads = Masterpiece2Game.MAX_PIECES_BY_ARTIST - this.getNumPiecesByArtist(userId);
                             await replyMessage.reply({

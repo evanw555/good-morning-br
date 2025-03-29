@@ -4271,8 +4271,8 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 }
                 return;
             }
-            // Otherwise if accepting game decisions, process this DM as a game decision
-            if (state.isAcceptingGameDecisions()) {
+            // Otherwise if accepting game decisions, process this DM as a game decision (ignore replies)
+            if (state.isAcceptingGameDecisions() && !msg.reference) {
                 await processGameDecision(userId, msg.content, 'DM', async (response: MessengerPayload) => {
                     await msg.reply(response);
                 });
