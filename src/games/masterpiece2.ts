@@ -1507,16 +1507,9 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                         throw new Error(`You've already uploaded the max of **${Masterpiece2Game.MAX_PIECES_BY_ARTIST}** pieces!`);
                     }
                     // Send a DM to this user prompting them to send an image
-                    const setup = this.state.setup;
                     await dmReplyCollector.solicitImageReply(interaction.user,
                         'Reply to this message (click "Reply") with an image (your art) and text (the title of the piece)',
                         async (replyMessage, imageAttachment) => {
-                            // Check and acquire the lock
-                            if (this.uploadLock) {
-                                await replyMessage.reply('Someone else is uploading a piece at this exact moment, try again in half a second...');
-                                return;
-                            }
-                            this.uploadLock = true;
                             // Validate (again) that the user can do this
                             if (!this.state.setup) {
                                 await replyMessage.reply('It\'s a little too late to upload art!');
@@ -1544,42 +1537,54 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                                 await replyMessage.reply(`The maximum title length is **35** characters, yet yours is **${title.length}**! Come up with a shorter title`);
                                 return;
                             }
-                            // Determine the next available piece ID
-                            const pieceId = this.getNextUnusedPieceId();
-                            // Center-crop the piece and save it locally
-                            const croppedImage = cropToSquare(await imageLoader.loadImage(imageAttachment.url));
-                            // Download the image and save it locally
-                            // const downloadedImage = await downloadBufferFromUrl(imageAttachment.url);
-                            // const fileName = `${pieceId}_${imageAttachment.name}`;
-                            const fileName = `${pieceId}.png`;
-                            const blobUrl = await controller.getAllReferences().storage.writeBlob(`blobs/masterpiece2/${fileName}`, croppedImage.toBuffer());
-                            // Pre-evict this URL from the image cache just in case there was already a piece with this ID
-                            imageLoader.evict(blobUrl);
-                            // Write the piece to state
-                            this.state.pieces[pieceId] = {
-                                value: 0,
-                                name: title,
-                                imageUrl: blobUrl,
-                                artist: userId,
-                                owner: false
-                            };
-                            await logger.log(`<@${userId}> uploaded MP2 piece **${pieceId}** (**${this.getNumPieces()}** total)`);
+                            // Check and acquire the lock (after validation)
+                            if (this.uploadLock) {
+                                await replyMessage.reply('Someone else is uploading a piece at this exact moment, try again in half a second...');
+                                return;
+                            }
+                            this.uploadLock = true;
+                            // Do all this in a try-catch just to ensure the lock gets released
+                            try {
+                                // Determine the next available piece ID
+                                const pieceId = this.getNextUnusedPieceId();
+                                // Center-crop the piece and save it locally
+                                const croppedImage = cropToSquare(await imageLoader.loadImage(imageAttachment.url));
+                                // Download the image and save it locally
+                                // const downloadedImage = await downloadBufferFromUrl(imageAttachment.url);
+                                // const fileName = `${pieceId}_${imageAttachment.name}`;
+                                const fileName = `${pieceId}.png`;
+                                const blobUrl = await controller.getAllReferences().storage.writeBlob(`blobs/masterpiece2/${fileName}`, croppedImage.toBuffer());
+                                // Pre-evict this URL from the image cache just in case there was already a piece with this ID
+                                imageLoader.evict(blobUrl);
+                                // Write the piece to state
+                                this.state.pieces[pieceId] = {
+                                    value: 0,
+                                    name: title,
+                                    imageUrl: blobUrl,
+                                    artist: userId,
+                                    owner: false
+                                };
+                                await logger.log(`<@${userId}> uploaded MP2 piece **${pieceId}** (**${this.getNumPieces()}** total)`);
+                                // Prompt the player to upload more
+                                const remainingUploads = Masterpiece2Game.MAX_PIECES_BY_ARTIST - this.getNumPiecesByArtist(userId);
+                                await replyMessage.reply({
+                                    content: 'Your piece was accepted! ' + (remainingUploads > 0 ? `You may upload **${remainingUploads}** more.` : 'You\'ve uploaded the maximum number of pieces, enjoy your participation bonus!'),
+                                    components: [{
+                                        type: ComponentType.ActionRow,
+                                        components: [{
+                                            type: ComponentType.Button,
+                                            custom_id: 'game:viewUploads',
+                                            style: ButtonStyle.Primary,
+                                            label: 'View Uploads'
+                                        }]
+                                    }]
+                                });
+                            } catch (err) {
+                                await logger.log(`Unhandled error while <@${userId}> was uploading art: \`${err}\``);
+                                await replyMessage.reply('There was an error while processing your upload, please try again or see the admin.');
+                            }
                             // Release the lock
                             this.uploadLock = false;
-                            // Prompt the player to upload more
-                            const remainingUploads = Masterpiece2Game.MAX_PIECES_BY_ARTIST - this.getNumPiecesByArtist(userId);
-                            await replyMessage.reply({
-                                content: 'Your piece was accepted! ' + (remainingUploads > 0 ? `You may upload **${remainingUploads}** more.` : 'You\'ve uploaded the maximum number of pieces, enjoy your participation bonus!'),
-                                components: [{
-                                    type: ComponentType.ActionRow,
-                                    components: [{
-                                        type: ComponentType.Button,
-                                        custom_id: 'game:viewUploads',
-                                        style: ButtonStyle.Primary,
-                                        label: 'View Uploads'
-                                    }]
-                                }]
-                            });
                         });
                     // Reply to the interaction
                     await interaction.reply({
@@ -1647,7 +1652,16 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                     await logger.log(`<@${userId}> deleted ${pieceIds.length} MP2 upload(s) (**${this.getNumPieces()}** total)`);
                     await interaction.reply({
                         ephemeral: true,
-                        content: 'Deleted all your uploads. You should upload again to ensure you get the participation bonus.'
+                        content: 'Deleted all your uploads. You should upload again to ensure you get the participation bonus.',
+                        components: [{
+                            type: ComponentType.ActionRow,
+                            components: [{
+                                type: ComponentType.Button,
+                                custom_id: 'game:upload',
+                                label: 'Upload',
+                                style: ButtonStyle.Primary
+                            }]
+                        }]
                     });
                     break;
                 }
