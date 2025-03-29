@@ -1503,8 +1503,22 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                     if (this.state.setup.voting) {
                         throw new Error('It\'s too late to upload art, voting has already begun!');
                     }
+                    // If they've already uploaded the max number of pieces, prompt them to view the pieces
                     if (this.getNumPiecesByArtist(userId) >= Masterpiece2Game.MAX_PIECES_BY_ARTIST) {
-                        throw new Error(`You've already uploaded the max of **${Masterpiece2Game.MAX_PIECES_BY_ARTIST}** pieces!`);
+                        await interaction.reply({
+                            ephemeral: true,
+                            content: `You've already uploaded the max of **${Masterpiece2Game.MAX_PIECES_BY_ARTIST}** pieces! Click below to view them or start over.`,
+                            components: [{
+                                type: ComponentType.ActionRow,
+                                components: [{
+                                    type: ComponentType.Button,
+                                    custom_id: 'game:viewUploads',
+                                    style: ButtonStyle.Primary,
+                                    label: 'View Uploads'
+                                }]
+                            }]
+                        });
+                        return;
                     }
                     // Send a DM to this user prompting them to send an image
                     await dmReplyCollector.solicitImageReply(interaction.user,
@@ -1567,18 +1581,38 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                                 await logger.log(`<@${userId}> uploaded MP2 piece **${pieceId}** (**${this.getNumPieces()}** total)`);
                                 // Prompt the player to upload more
                                 const remainingUploads = Masterpiece2Game.MAX_PIECES_BY_ARTIST - this.getNumPiecesByArtist(userId);
-                                await replyMessage.reply({
-                                    content: 'Your piece was accepted! ' + (remainingUploads > 0 ? `You may upload **${remainingUploads}** more.` : 'You\'ve uploaded the maximum number of pieces, enjoy your participation bonus!'),
-                                    components: [{
-                                        type: ComponentType.ActionRow,
+                                if (remainingUploads === 0) {
+                                    await replyMessage.reply({
+                                        content: 'Your piece was accepted! You\'ve uploaded the maximum number of pieces, enjoy your participation bonus!',
                                         components: [{
-                                            type: ComponentType.Button,
-                                            custom_id: 'game:viewUploads',
-                                            style: ButtonStyle.Primary,
-                                            label: 'View Uploads'
+                                            type: ComponentType.ActionRow,
+                                            components: [{
+                                                type: ComponentType.Button,
+                                                custom_id: 'game:viewUploads',
+                                                style: ButtonStyle.Primary,
+                                                label: 'View Uploads'
+                                            }]
                                         }]
-                                    }]
-                                });
+                                    });
+                                } else {
+                                    await replyMessage.reply({
+                                        content: `Your piece was accepted! You may upload **${remainingUploads}** more.`,
+                                        components: [{
+                                            type: ComponentType.ActionRow,
+                                            components: [{
+                                                type: ComponentType.Button,
+                                                custom_id: 'game:upload',
+                                                style: ButtonStyle.Primary,
+                                                label: 'Upload More'
+                                            }, {
+                                                type: ComponentType.Button,
+                                                custom_id: 'game:viewUploads',
+                                                style: ButtonStyle.Primary,
+                                                label: 'View Uploads'
+                                            }]
+                                        }]
+                                    });
+                                }
                             } catch (err) {
                                 await logger.log(`Unhandled error while <@${userId}> was uploading art: \`${err}\``);
                                 await replyMessage.reply('There was an error while processing your upload, please try again or see the admin.');
