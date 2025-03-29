@@ -14,6 +14,10 @@ class ImageLoader {
         this.users = users;
     }
 
+    evict(key: string) {
+        delete this.imageCache[key];
+    }
+
     async loadImage(key: string, options?: { fallbacks?: string[] }): Promise<canvas.Image> {
         if (key in this.imageCache) {
             return this.imageCache[key];

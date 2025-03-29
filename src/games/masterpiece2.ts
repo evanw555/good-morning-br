@@ -138,6 +138,19 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
         return pieceId in this.state.pieces;
     }
 
+    /**
+     * WARNING: You must use a lock when using this method, as it may result in ID collision.
+     * @returns The lowest unused piece ID.
+     */
+    private getNextUnusedPieceId(): string {
+        let i = 0;
+        // Determine the next available piece ID
+        while (this.hasPieceWithId(toLetterId(i))) {
+            i++;
+        }
+        return toLetterId(i);
+    }
+
     private getNumPieces(): number {
         return Object.keys(this.state.pieces).length;
     }
@@ -924,8 +937,7 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
         // If it's the very first week, prep the setup data
         if (this.getTurn() === 1) {
             this.state.setup = {
-                warningsLeft: 3,
-                pieceIdCounter: 0
+                warningsLeft: 3
             };
             return [{
                 content: 'Click here to upload your own pieces of art!',
@@ -1533,10 +1545,7 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                                 return;
                             }
                             // Determine the next available piece ID
-                            while (toLetterId(setup.pieceIdCounter) in this.state.pieces) {
-                                setup.pieceIdCounter++;
-                            }
-                            const pieceId = toLetterId(setup.pieceIdCounter);
+                            const pieceId = this.getNextUnusedPieceId();
                             // Center-crop the piece and save it locally
                             const croppedImage = cropToSquare(await imageLoader.loadImage(imageAttachment.url));
                             // Download the image and save it locally
@@ -1544,6 +1553,8 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                             // const fileName = `${pieceId}_${imageAttachment.name}`;
                             const fileName = `${pieceId}.png`;
                             const blobUrl = await controller.getAllReferences().storage.writeBlob(`blobs/masterpiece2/${fileName}`, croppedImage.toBuffer());
+                            // Pre-evict this URL from the image cache just in case there was already a piece with this ID
+                            imageLoader.evict(blobUrl);
                             // Write the piece to state
                             this.state.pieces[pieceId] = {
                                 value: 0,
@@ -1628,6 +1639,9 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                     }
                     // Delete the pieces from state
                     for (const pieceId of pieceIds) {
+                        // Evict this key from the cache to prevent future collisions on this ID
+                        imageLoader.evict(this.getPieceImageUrl(pieceId));
+                        // Delete it from state
                         delete this.state.pieces[pieceId];
                     }
                     await logger.log(`<@${userId}> deleted ${pieceIds.length} MP2 upload(s) (**${this.getNumPieces()}** total)`);

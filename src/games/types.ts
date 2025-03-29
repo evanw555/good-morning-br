@@ -181,8 +181,6 @@ export interface Masterpiece2GameState extends AbstractGameState<'MASTERPIECE_2'
         // How many piece submission warnings are given before starting the voting process
         warningsLeft: number,
         // First step: Players upload their own pieces
-        // Counter representing the pre-serialized ID of the next piece of art (we must do this since players can delete their submissions)
-        pieceIdCounter: number,
         // Second step: Vote on randomly assigned pieces
         voting?: Record<Snowflake, {
             // IDs of the pieces this user may vote on
