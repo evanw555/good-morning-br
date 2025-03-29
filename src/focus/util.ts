@@ -90,10 +90,11 @@ export async function getNewWheelOfFortuneState(): Promise<WheelOfFortune | unde
 // Effective odds: wof = 0.4, wordle = 0.54, popcorn = 0.06
 export async function getRandomFocusGame(): Promise<FocusGameState> {
     // If a wheel of fortune solution can be found, return that with 40% odds
-    const wheelOfFortune = await getNewWheelOfFortuneState();
-    if (wheelOfFortune && chance(0.4)) {
-        return wheelOfFortune;
-    }
+    // TODO: The WOF logic should be completely removed from GMBR and added to another more general bot
+    // const wheelOfFortune = await getNewWheelOfFortuneState();
+    // if (wheelOfFortune && chance(0.4)) {
+    //     return wheelOfFortune;
+    // }
     // If a wordle solution can be found, return that with 90% odds
     const wordleWords = await controller.chooseMagicWords(1, { characters: 6, bonusMultiplier: 8 });
     if (wordleWords.length > 0 && chance(0.9)) {
