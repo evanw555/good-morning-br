@@ -243,7 +243,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
         return result;
     }
 
-    override endDay(): void {
+    override async endDay() {
         // If the end date has been reached, add players to the winners list in-order
         if (this.isTodayEndDate()) {
             for (const userId of this.getOrderedPlayers()) {
@@ -252,6 +252,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
                 }
             }
         }
+        return [];
     }
 
     getPoints(userId: string): number {

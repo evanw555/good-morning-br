@@ -175,7 +175,7 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
             phases.push({
                 key: 'beginPrivateAuction',
                 millis: this.isTesting() ? (1000 * 10) : (1000 * 60 * 90) // 1.5 hours, 10 seconds if testing
-            })
+            });
         }
         return phases;
     }
@@ -786,13 +786,14 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
         return [];
     }
 
-    override endDay(): void {
+    override async endDay() {
         // At noon after the final game update all the pieces should be sold, so add the winners here to complete the game
         if (this.getNumUnsoldPieces() === 0) {
             for (const userId of this.getTrueOrderedPlayers().slice(0, 3)) {
                 this.addWinner(userId);
             }
         }
+        return [];
     }
 
     override getPoints(userId: string): number {
@@ -812,6 +813,10 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
     override awardPrize(userId: string, type: PrizeType, intro: string): MessengerPayload[] {
         // If player isn't in the game yet, do nothing
         if (!this.hasPlayer(userId)) {
+            return [];
+        }
+        // If this is the first week victory, abort because they don't have time to choose
+        if (this.getTurn() === 0) {
             return [];
         }
         switch (type) {

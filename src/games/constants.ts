@@ -21,6 +21,17 @@ export const GAME_TYPE_NAMES: Record<GameType, string> = {
     ARENA: 'Bob\'s Arena (INCOMPLETE)'
 };
 
+export const GAME_DESCRIPTIONS: Record<GameType, string> = {
+    CLASSIC: 'Basic GMBR with cheer/take/peek',
+    MAZE: 'The labyrinth of clouds',
+    ISLAND: 'Elimination by voting players off the island',
+    MASTERPIECE: 'Art auction with random pieces and values',
+    MASTERPIECE_2: 'Art auction with user-submitted pieces and crazy items',
+    RISK: 'Board game of Risk over a map of Newport',
+    CANDYLAND: 'RNG-heavy Candyland knockoff',
+    ARENA: 'DO NOT RESEARCH'
+};
+
 export const GAME_FACTORIES: Record<GameType, (members: GuildMember[], season: number) => AbstractGame<GameState>> = {
     CLASSIC: (members, season) => {
         const month = new Date().getMonth();

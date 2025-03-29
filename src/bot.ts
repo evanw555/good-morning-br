@@ -24,6 +24,7 @@ import CandyLandGame from './games/candyland';
 
 import logger from './logger';
 import imageLoader from './image-loader';
+import dmReplyCollector from './dm-reply-collector';
 import controller from './controller';
 
 // TODO: Remove the renaming in a later commit
@@ -992,7 +993,7 @@ const registerGoodMorningTimeout = async (): Promise<void> => {
     }
 
     // We register this with the "Increment Day" strategy since it happens at a particular time and it's not competing with any other triggers.
-    await registerTimeout(TimeoutType.NextGoodMorning, nextMorning, { pastStrategy: PastTimeoutStrategy.IncrementDay }, { testingSeconds: 5 });
+    await registerTimeout(TimeoutType.NextGoodMorning, nextMorning, { pastStrategy: PastTimeoutStrategy.IncrementDay });
 };
 
 const registerGuestReveilleFallbackTimeout = async (): Promise<void> => {
@@ -1820,9 +1821,23 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
 
         // If we're testing locally, simulate the prize award system by awarding a prize to a random user
         if (config.testing && state.getEventType() === DailyEventType.GameDecision) {
-            const randomUserId = randChoice(...state.getPlayers());
-            await awardPrize(randomUserId, 'submissions1', 'Congrats for existing');
-            await goodMorningChannel.send(`Sent prize offer to <@${randomUserId}>`);
+            const [ randomUser1, randomUser2, randomUser3 ] = shuffle(state.getPlayers());
+            if (chance(0.8)) {
+                if (randomUser1) {
+                    await awardPrize(randomUser1, 'submissions1', 'Congrats on being randomly selected as the winner');
+                }
+                if (randomUser2) {
+                    await awardPrize(randomUser2, 'submissions2', 'Congrats on being randomly selected as the runner-up');
+                }
+                if (randomUser3) {
+                    await awardPrize(randomUser3, 'submissions3', 'Congrats on being randomly selected as the third place winner');
+                }
+            } else if (randomUser1 && randomUser2 && randomUser3) {
+                await awardPrize(randomUser1, 'submissions1-tied', 'Congrats on being randomly selected as the tied winner');
+                await awardPrize(randomUser2, 'submissions1-tied', 'Congrats on being randomly selected as the tied winner');
+                await awardPrize(randomUser3, 'submissions3', 'Congrats on being randomly selected as the third place winner');
+            }
+            await goodMorningChannel.send(`Sent prize offers to ${getJoinedMentions([randomUser1, randomUser2, randomUser3])}`);
         }
 
         // Set tomorrow's magic words (if it's not an abnormal event tomorrow)
@@ -1835,7 +1850,8 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         // Invoke the daily noon game endpoint, which may subsequently result in the season being over.
         // This MUST be invoked before any checks on the season end condition.
         if (state.hasGame()) {
-            state.getGame().endDay();
+            const payloads = await state.getGame().endDay();
+            await messenger.sendAll(goodMorningChannel, payloads);
         }
 
         // If the season is still going... (before dumping state)
@@ -2599,6 +2615,10 @@ const processGameDecision = async (userId: Snowflake, decision: string, source: 
     try {
         // Validate decision string
         const response = await game.addPlayerDecision(userId, decision);
+        // If the response is null, the user should be ignore
+        if (response === null) {
+            return;
+        }
         // If it succeeds, dump the state and reply with the validation response
         await dumpState();
         await callback(response);
@@ -3273,12 +3293,16 @@ const processCommands = async (msg: Message): Promise<void> => {
             } else {
                 try {
                     const response = await tempDungeon.addPlayerDecision(msg.author.id, msg.content.replace(/^\+/, '').replace(/!$/, ''));
-                    try { // TODO: refactor typing event to somewhere else?
-                        await msg.channel.sendTyping();
-                    } catch (err) {}
-                    // const randomOrdering: Snowflake[] = tempDungeon.getDecisionShuffledPlayers();
-                    await msg.reply(response);
-                    await sleep(5000);
+                    if (response) {
+                        try { // TODO: refactor typing event to somewhere else?
+                            await msg.channel.sendTyping();
+                        } catch (err) {}
+                        // const randomOrdering: Snowflake[] = tempDungeon.getDecisionShuffledPlayers();
+                        await msg.reply(response);
+                        await sleep(5000);
+                    } else {
+                        return;
+                    }
                 } catch (err) {
                     await msg.reply(err.toString());
                     return;
@@ -3751,6 +3775,8 @@ const extractMagicWord = (message: Message): string | undefined => {
 
 client.on('messageCreate', async (msg: Message): Promise<void> => {
     const userId: Snowflake = msg.author.id;
+    // Feed all incoming messages into the DM reply collector
+    await dmReplyCollector.onMessage(msg);
     // First and foremost, ignore all bot messages
     if (msg.author.bot) {
         return;

@@ -1,12 +1,9 @@
 import { Snowflake, TextChannel } from "discord.js";
 import { DiscordTimestampFormat, FileStorage, LanguageGenerator, Messenger, PastTimeoutStrategy, TimeoutManager, addReactsSync, getPollChoiceKeys, loadJson, naturalJoin, shuffle, toDiscordTimestamp } from "evanw555.js";
 import GoodMorningState from "./state";
-import { DailyEventType, FinalizeSungazerPollData, GoodMorningHistory, SungazerPollType, TimeoutType } from "./types";
+import { FinalizeSungazerPollData, GoodMorningHistory, SungazerPollType, TimeoutType } from "./types";
 
 import logger from "./logger";
-import { GAME_TYPES } from "./games/constants";
-import { GameType } from "./games/types";
-import state from "./state";
 
 interface ControllerReferences {
     state: GoodMorningState,

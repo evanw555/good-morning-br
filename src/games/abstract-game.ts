@@ -242,9 +242,10 @@ export default abstract class AbstractGame<T extends GameState> {
     /**
      * Endpoint that's called daily at noon before the season end condition is checked.
      * This is primarily used to end the season on a specific day (even if it's a day other than saturday).
+     * Also used to send out daily reminder texts during critical phases of the game.
      */
-    endDay() {
-
+    async endDay(): Promise<MessengerPayload[]> {
+        return [];
     }
 
     abstract getPoints(userId: Snowflake): number
@@ -262,7 +263,14 @@ export default abstract class AbstractGame<T extends GameState> {
         return {};
     }
 
-    async addPlayerDecision(userId: Snowflake, text: string): Promise<MessengerPayload> {
+    /**
+     * Adds a player's text-based decision and returns the response payload.
+     * @param userId User submitting the decision
+     * @param text The decision text being submitted
+     * @returns The response payload if the decision was valid or null if the user should be ignored
+     * @throws Error if the decision was invalid and the user should be notified
+     */
+    async addPlayerDecision(userId: Snowflake, text: string): Promise<MessengerPayload | null> {
         throw new Error('This game doesn\'t accept text-based decisions. Use the buttons!');
     }
 

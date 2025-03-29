@@ -1,16 +1,55 @@
 import canvas, { Canvas, CanvasRenderingContext2D } from 'canvas';
-import { ActionRowData, AttachmentBuilder, ButtonInteraction, ButtonStyle, ComponentType, GuildMember, Interaction, MessageActionRowComponentData, MessageFlags, Snowflake } from "discord.js";
+import { ActionRowData, APIButtonComponent, AttachmentBuilder, ButtonInteraction, ButtonStyle, ComponentType, GuildMember, Interaction, MessageActionRowComponentData, MessageFlags, Snowflake } from "discord.js";
 import { DecisionProcessingResult, GamePlayerAddition, MessengerManifest, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
-import { capitalize, naturalJoin, randChoice, shuffle, toFixed, toLetterId, } from "evanw555.js";
-import { getTextLabel, joinCanvasesHorizontal, toCircle, withDropShadow } from "node-canvas-utils";
+import { getObjectSize, getRandomlyDistributedAssignments, incrementProperty, isObjectEmpty, naturalJoin, randChoice, shuffle, toFixed, toLetterId, } from "evanw555.js";
+import { cropToSquare, getTextLabel, joinCanvasesHorizontal, toCircle, withDropShadow } from "node-canvas-utils";
 import { text } from '../util';
-import { Masterpiece2PlayerState, Masterpiece2PieceState, Masterpiece2GameState, Masterpiece2AuctionType } from './types';
+import { Masterpiece2PlayerState, Masterpiece2PieceState, Masterpiece2GameState, Masterpiece2AuctionType, Masterpiece2ItemType, Masterpiece2AuctionState } from './types';
 
 import logger from "../logger";
 import imageLoader from '../image-loader';
+import dmReplyCollector from '../dm-reply-collector';
+import controller from '../controller';
+
+type VoteRank = 'most' | 'second' | 'least';
+
+// TODO(2): IMPORTANT TODOS:
+// 1. Actually implement some of the item code
+// 2. Implement a timer so that player reward choosers don't run the clock out
+// 3. Design new rule sheet
+// 4. Enforce some sort of cap on how many pieces will be in the game? Or a minimum?
+
+// If true, this item type will be wiped each week at the beginning of the decision phase
+const TEMPORARY_ITEMS: Record<Masterpiece2ItemType, boolean> = {
+    "random-peek": false,
+    "sneaky-peek": false,
+    buy: true,
+    force: true,
+    sell: true,
+    smudge: true
+};
+
+const ITEM_NAMES: Record<Masterpiece2ItemType, string> = {
+    "random-peek": 'Random Peek',
+    "sneaky-peek": 'Sneaky Peek',
+    buy: 'Buy Piece',
+    force: 'Force Auction',
+    sell: 'Sell Piece',
+    smudge: 'Smudge Piece'
+};
+
+const ITEM_DESCRIPTIONS: Record<Masterpiece2ItemType, string> = {
+    "random-peek": 'Peek at the value of one random piece in the game',
+    "sneaky-peek": 'Peek at the value of any piece of your choice',
+    buy: 'Buy one piece directly from the bank for an average price',
+    force: 'Force any opponent\'s piece of your choice into a private auction this week',
+    sell: 'Sell any piece directly to the bank for its listed value',
+    smudge: 'Smudge a piece, anyone who peeks at it will see a random lower value yet know it\'s smudged'
+};
 
 export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState> {
+    private static MAX_PIECES_BY_ARTIST = 3;
     private auctionLock: boolean = false;
 
     constructor(state: Masterpiece2GameState) {
@@ -26,40 +65,6 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                 points: 0
             };
         }
-        // Declare piece titles
-        const names: Record<string, string> = {
-            A: 'Broccolis That Go Hard',
-            B: 'Sex Tree',
-            C: 'The CWCVille Guardian',
-            D: 'Newgrounds Fauna',
-            E: 'Big Burger Time',
-            F: 'Cute Scott',
-            G: 'I Just Bought More Land',
-            H: 'Whomp\'s Fortress',
-            I: 'David Frappes?',
-            J: 'Death of Napoleon',
-            K: 'The Critic',
-            L: 'Love Yourself',
-            M: '1man #Movie',
-            N: 'Sematary',
-            O: 'Homsar',
-            P: 'Bliss',
-            Q: 'Ceiling Cat',
-            R: 'Smosh'
-        };
-        // Initialize all pieces with random values
-        const pieceValues = this.getPieceValues();
-        shuffle(pieceValues);
-        const totalNumPieces = pieceValues.length;
-        const pieces: Record<string, Masterpiece2PieceState> = {};
-        for (let i = 0; i < totalNumPieces; i++) {
-            const pieceId = toLetterId(i);
-            pieces[pieceId] = {
-                name: names[pieceId] ?? '???',
-                value: pieceValues[i],
-                owner: false
-            };
-        }
         return new Masterpiece2Game({
             type: 'MASTERPIECE_2',
             season,
@@ -67,22 +72,51 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
             decisions: {},
             turn: 0,
             players,
-            pieces,
-            auctions: []
+            pieces: {},
+            auctions: {}
         });
     }
 
     private static getPieceValues(): number[] {
         return [
-            40,
-            30,
-            25, 25,
-            20, 20, 20,
-            15, 15, 15,
+            50,
+            40, 40,
+            30, 30, 30,
+            25, 25, 25, 25,
+            20, 20, 20, 20, 20,
+            15, 15, 15, 15,
             10, 10, 10,
             5,  5,  5,
-            0,  0
-        ]
+            0,  0,  0,  0,  0,  0
+        ];
+    }
+
+    private static constructValueDistribution(n: number): number[] {
+        // TODO(2): Is there a better way to construct this?
+        const POSSIBLE_VALUES = [
+            // Start by uniformly adding every possible value
+            15, 30, 0,  20, 10, 25, 5, 40, 50,
+            // Add a lump from 0-25 from the middle outward
+            15, 10, 20, 5,  0,  25,
+            // Add a smaller lump from 10-20 from the middle outward
+            15, 10, 20,
+            // Move the curve upward by adding 25-30, add tiny lump from 15-20, fill in 0
+            30, 25, 15, 20, 0,
+            // Move the curve upward again by adding 25-40, add extra 0
+            40, 30, 25, 0,
+            // Add crown at the tip of the curve at 20, fill in chasm at 5, add extra 0
+            20, 5,  0,
+            // Add one final 0 for hilarity
+            0
+        ];
+        // First, fill the distribution using the above ordering
+        const result = POSSIBLE_VALUES.slice(0, n);
+        // If we're still short, just start adding random values
+        while (result.length < n) {
+            result.push(randChoice(...Array.from(new Set(POSSIBLE_VALUES))));
+        }
+        // Sort the list descending and return
+        return result.sort((x, y) => y - x);
     }
 
     private static getAuctionTypes(): Masterpiece2AuctionType[] {
@@ -93,6 +127,9 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
         return Object.values(this.state.pieces);
     }
 
+    /**
+     * @returns IDs of all pieces in the game.
+     */
     private getPieceIds(): string[] {
         return Object.keys(this.state.pieces);
     }
@@ -105,6 +142,9 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
         return Object.keys(this.state.pieces).length;
     }
 
+    /**
+     * @returns IDs of pieces that are ownerless and removed from the game.
+     */
     private getSoldPieceIds(): string[] {
         return Object.keys(this.state.pieces).filter(id => this.state.pieces[id].owner === true);
     }
@@ -113,6 +153,9 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
         return this.getSoldPieceIds().length;
     }
 
+    /**
+     * @returns IDs of pieces that are unsold (still in play or yet-to-be in play)
+     */
     private getUnsoldPieceIds(): string[] {
         return Object.keys(this.state.pieces).filter(id => this.state.pieces[id].owner !== true);
     }
@@ -121,6 +164,9 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
         return this.getUnsoldPieceIds().length;
     }
 
+    /**
+     * @returns IDs of pieces that are available (ownerless and ready to be auctioned off to players)
+     */
     private getAvailablePieceIds(): string[] {
         return Object.keys(this.state.pieces).filter(id => this.state.pieces[id].owner === false);
     }
@@ -129,18 +175,26 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
         return this.getAvailablePieceIds().length;
     }
 
+    /**
+     * @returns The number of pieces that aren't available to be auctioned off (currently owned by a player or out of play)
+     */
     private getNumUnavailablePieces(): number {
         return this.getNumPieces() - this.getNumAvailablePieces();
     }
 
+    /**
+     * @returns The number of pieces currently owned by a player.
+     */
     private getNumOwnedPieces(): number {
         return Object.values(this.state.pieces).filter(p => typeof p.owner === 'string').length;
     }
 
     override async getIntroductionMessages(): Promise<MessengerPayload[]> {
         return [
-            'I cordially invite you all to my high society _Auction House of Abundant Autism & Artistry!_',
-            'You will be use your coveted GMBR points as dollars to spend in live auctions each week, with the chance to own a valuable piece of culture and history!',
+            'I\'m sure you all remember the _Masterpiece_ Art Auction, well get ready for _Masterpiece 2: Auctionhouse Anarchy_!',
+            'Similar to the original game, you will use your coveted GMBR dollars to bid on pieces of art',
+            'In this twist, however all the pieces will be uploaded by YOU and their values will be determined via a confidential vote',
+            'In addition, new meddling mechanics have been introduced - such as the ability to peek at the value of other pieces 👀',
             {
                 content: 'Please read over the rules of the game',
                 files: [await this.renderRules()]
@@ -149,7 +203,12 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
     }
 
     override getInstructionsText(): string {
+        // During the first week, players should be instructed to upload images
         if (this.getTurn() === 1) {
+            return 'This week, everyone will be uploading their own pieces of art. Those who contribute will be rewarded with one free starter piece! You have until tomorrow morning to come up with something.';
+        }
+        // Auctions begin on the second week
+        if (this.getTurn() === 2) {
             return 'The very first auction begins in half an hour!';
         }
         // If for some reason there aren't any pieces available (this shouldn't happen), then handle gracefully...
@@ -160,82 +219,54 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
     }
 
     override getDecisionPhases(): { key: string; millis: number; }[] {
-        const phases: { key: string; millis: number; }[] = [];
-        // If there are enough pieces for a bank auction, schedule a phase for that
-        if (this.getNumAvailablePieces() > 0) {
-            phases.push({
-                key: 'beginBankAuction',
-                millis: this.isTesting() ? (1000 * 5) : (1000 * 60 * 30) // 30 minutes, 5 seconds if testing
-            });
+        // Do nothing the first week
+        if (this.getTurn() === 1) {
+            return [];
         }
-        // If there's a private auction today, schedule a phase for that
-        if (this.state.auctions.private) {
-            phases.push({
-                key: 'beginPrivateAuction',
-                millis: this.isTesting() ? (1000 * 10) : (1000 * 60 * 90) // 1.5 hours, 10 seconds if testing
-            })
-        }
-        return phases;
+
+        // Schedule a decision phase for each queued auction
+        // TODO: Should this somehow be relative? "along" until pre-noon?
+        return this.getAuctions().map((a, i) => ({
+            key: `beginAuction:${a.pieceId}`,
+            millis: this.isTesting() ? (1000 * 5 * (i + 1)) : (1000 * 60 * (30 + (i * 60))) // 30 minutes plus one hour per, 5 seconds per if testing
+        }));
     }
 
     override async onDecisionPhase(key: string): Promise<MessengerPayload[]> {
-        switch(key) {
-            case 'beginBankAuction':
-                // TODO: Handle if there are no pieces left
-                // First, choose a random available piece to auction off
-                const pieceId = randChoice(...this.getAvailablePieceIds());
-                // Set the bank auction state
-                this.state.auctions.bank = {
-                    pieceId,
-                    bid: 0,
-                    active: true
-                };
-                // Return the messages
-                return [
-                    'For today\'s bank auction, I present to you...',
-                    {
-                        files: [await this.renderAuction(pieceId, 'Bank Auction', 'bank')]
-                    },
-                    {
-                        content: 'Do we have any bidders? Let\'s start with **$1**',
+        const [root, arg] = key.split(':');
+        // Start a particular queued-up auction
+        if (root === 'beginAuction') {
+            const pieceId = arg;
+            const auction = this.state.auctions[pieceId];
+            // If somehow there is no auction with that ID, log and abort...
+            if (!auction) {
+                await logger.log(`Cannot start auction with ID \`${pieceId}\`, it doesn't exist!`);
+                return [];
+            }
+            // Mark it as active to begin!
+            auction.active = true;
+            // Introduce the piece and prompt players to bid
+            return [
+                auction.type === 'bank'
+                    ? 'For today\'s bank auction, I present to you...'
+                    // TODO(2): Since this can be any of the winners, specify which one
+                    : `Oh dear! It looks like this week\'s contest winner has chosen to force one of **${this.getPieceOwnerString(auction.pieceId)}'s** pieces into auction...`,
+                {
+                    files: [await this.renderAuction(pieceId, auction.description, auction.type)]
+                },
+                {
+                    content: 'Do we have any bidders? Let\'s start with **$1**',
+                    components: [{
+                        type: ComponentType.ActionRow,
                         components: [{
-                            type: ComponentType.ActionRow,
-                            components: [{
-                                type: ComponentType.Button,
-                                style: ButtonStyle.Success,
-                                label: 'Bid',
-                                custom_id: 'game:bankBid'
-                            }]
+                            type: ComponentType.Button,
+                            style: ButtonStyle.Success,
+                            label: 'Bid',
+                            custom_id: `game:bid:${auction.pieceId}`
                         }]
-                    }
-                ];
-            case 'beginPrivateAuction':
-                // Validate that the private auction even exists
-                const auction = this.state.auctions.private;
-                if (!auction) {
-                    return [];
+                    }]
                 }
-                // Activate the private auction
-                auction.active = true;
-                // Return the messages
-                return [
-                    `Oh dear! It looks like this week\'s contest winner has chosen to force one of **${this.getPieceOwnerString(auction.pieceId)}'s** pieces into auction...`,
-                    {
-                        files: [await this.renderAuction(auction.pieceId, 'Private Auction', 'private')]
-                    },
-                    {
-                        content: 'Do we have any bidders? Let\'s start with **$1**',
-                        components: [{
-                            type: ComponentType.ActionRow,
-                            components: [{
-                                type: ComponentType.Button,
-                                style: ButtonStyle.Success,
-                                label: 'Bid',
-                                custom_id: 'game:privateBid'
-                            }]
-                        }]
-                    }
-                ];
+            ];
         }
         return [];
     }
@@ -243,45 +274,47 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
     override async onDecisionPreNoon(): Promise<MessengerPayload[]> {
         const responseMessages: MessengerPayload[] = [];
 
+        // If still in the setup phase, don't do anything
+        if (this.state.setup) {
+            return [];
+        }
+
         // Mark all existing auctions as inactive to prevent further action
-        for (const auction of Object.values(this.state.auctions)) {
+        for (const auction of this.getAuctions()) {
             delete auction.active;
         }
 
         // Process the active auctions
-        for (const type of Object.keys(this.state.auctions)) {
-            const auction = this.state.auctions[type];
-            if (auction) {
-                const { pieceId, bid, bidder } = auction;
-                // Clear the auction to double-prevent further action
-                delete this.state.auctions[type];
-                if (bidder) {
-                    // If the piece belonged to another player, add points to their balance
-                    const previousOwnerId = this.getPieceOwner(pieceId);
-                    if (typeof previousOwnerId === 'string') {
-                        this.addPoints(previousOwnerId, bid);
-                    }
-                    // Assign the piece to this owner
-                    this.getPiece(pieceId).owner = bidder;
-                    // Deduct points from the player
-                    this.addPoints(bidder, -bid);
-                    // Reply with appropriate message
-                    responseMessages.push({
-                        content: `<@${bidder}> has won the auction for _"${this.getPieceName(pieceId)}"_ with a bid of **$${bid}**!`,
-                        files: [await this.renderAuction(pieceId, `${capitalize(type)} Auction`, type)],
-                        components: this.getDecisionActionRow()
-                    });
-                } else {
-                    // Reply with appropriate message
-                    responseMessages.push({
-                        content: `No one bid on _"${this.getPieceName(pieceId)}"_! What??? I guess we'll save that one for another day...`
-                    });
+        for (const auction of this.getAuctions()) {
+            const { pieceId, description, bid, bidder, type } = auction;
+            // Clear the auction to double-prevent further action
+            delete this.state.auctions[pieceId];
+            if (bidder) {
+                // If the piece belonged to another player, add points to their balance
+                const previousOwnerId = this.getPieceOwner(pieceId);
+                if (typeof previousOwnerId === 'string') {
+                    this.addPoints(previousOwnerId, bid);
                 }
+                // Assign the piece to this owner
+                this.getPiece(pieceId).owner = bidder;
+                // Deduct points from the player
+                this.addPoints(bidder, -bid);
+                // Reply with appropriate message
+                responseMessages.push({
+                    content: `<@${bidder}> has won the auction for _"${this.getPieceName(pieceId)}"_ with a bid of **$${bid}**!`,
+                    files: [await this.renderAuction(pieceId, description, type)],
+                    components: this.getDecisionActionRow()
+                });
+            } else {
+                // Reply with appropriate message
+                responseMessages.push({
+                    content: `No one bid on _"${this.getPieceName(pieceId)}"_! What??? I guess we'll save that one for another day...`
+                });
             }
         }
 
-        // Begin the silent auction
-        if (this.getNumAvailablePieces() > 0) {
+        // Begin the silent auction (if not in the midst of the setup process)
+        if (!this.state.setup && this.getNumAvailablePieces() > 0) {
             // Update the state to prepare the silent auction
             const pieceId = randChoice(...this.getAvailablePieceIds());
             this.state.silentAuctionPieceId = pieceId;
@@ -372,12 +405,50 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
         return naturalJoin(userIds.map(id => this.getPlayerDisplayName(id)), { bold: true });
     }
 
+    private getPlayerItems(userId: Snowflake): Partial<Record<Masterpiece2ItemType, number>> {
+        return this.state.players[userId]?.items ?? {};
+    }
+
+    private hasAnyItems(userId: Snowflake): boolean {
+        // TODO(2): This doesn't work if one of the entries is 0
+        return !isObjectEmpty(this.getPlayerItems(userId));
+    }
+
+    private getPlayerItemQuantity(userId: Snowflake, itemType: Masterpiece2ItemType): number {
+        return this.getPlayerItems(userId)[itemType] ?? 0;
+    }
+
+    private incrementPlayerItem(userId: Snowflake, itemType: Masterpiece2ItemType, amount: number) {
+        const player = this.state.players[userId];
+        if (!player) {
+            return;
+        }
+        // Initialize the items map if missing
+        if (!player.items) {
+            player.items = {};
+        }
+        // TODO(2): Update utility to accept partial records
+        incrementProperty(player.items as Record<Masterpiece2ItemType, number>, itemType, amount);
+        // Delete the items map if now empty
+        if (isObjectEmpty(player.items)) {
+            delete player.items;
+        }
+    }
+
+    private getPlayerItemsString(userId: Snowflake): string {
+        const player = this.state.players[userId];
+        if (!player || !player.items) {
+            return 'nothing';
+        }
+        return naturalJoin(Object.entries(player.items).map(([itemType, quantity]) => (quantity === 1 ? 'a' : `x${quantity}`) + ` **${ITEM_NAMES[itemType] ?? itemType}**`));
+    }
+
     private mayPlayerSell(userId: Snowflake): boolean {
-        return this.state.players[userId]?.maySell ?? false;
+        return this.getPlayerItemQuantity(userId, 'sell') > 0;
     }
 
     private mayPlayerForcePrivateAuction(userId: Snowflake): boolean {
-        return this.state.players[userId]?.mayForceAuction ?? false;
+        return this.getPlayerItemQuantity(userId, 'force') > 0;
     }
 
     private getPiece(pieceId: string): Masterpiece2PieceState {
@@ -388,8 +459,29 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
         return this.getPiece(pieceId)?.name ?? '???';
     }
 
+    private getPieceImageUrl(pieceId: string): string {
+        // TODO: Is there a more elegant way to handle missing URLs?
+        return this.getPiece(pieceId)?.imageUrl ?? '???';
+    }
+
     private getPieceValue(pieceId: string): number {
         return this.getPiece(pieceId)?.value ?? 0;
+    }
+
+    private getPieceArtist(pieceId: string): Snowflake {
+        return this.getPiece(pieceId).artist;
+    }
+
+    private getPieceIdsByArtist(userId: Snowflake): string[] {
+        return this.getPieceIds().filter(id => this.getPieceArtist(id) === userId);
+    }
+
+    private getPiecesByArtist(userId: Snowflake): Masterpiece2PieceState[] {
+        return this.getPieces().filter(piece => piece.artist === userId);
+    }
+
+    private getNumPiecesByArtist(userId: Snowflake): number {
+        return this.getPiecesByArtist(userId).length;
     }
 
     private getPieceIdsForUser(userId: Snowflake): string[] {
@@ -457,6 +549,23 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
     }
 
     /**
+     * @returns The values of all pieces, in descending order (duplicates included).
+     */
+    private getSortedPieceValues(): number[] {
+        return this.getPieces()
+            .map(p => p.value)
+            .sort((x, y) => y - x);
+    }
+
+    /**
+     * @returns The values of all pieces, in descending order (NOT including duplicates).
+     */
+    private getSortedUniquePieceValues(): number[] {
+        return Array.from(new Set(this.getSortedPieceValues()))
+            .sort((x, y) => y - x);
+    }
+
+    /**
      * @returns The average value of all unsold pieces
      */
     private getAverageUnsoldPieceValue(): number {
@@ -497,6 +606,18 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
             .reduce((a, b) => a + b, 0);
     }
 
+    private getAuctions(): Masterpiece2AuctionState[] {
+        return Object.values(this.state.auctions);
+    }
+
+    private getNumAuctions(): number {
+        return this.getAuctions().length;
+    }
+
+    private isAnyAuctionActive(): boolean {
+        return this.getAuctions().some(a => a.active);
+    }
+
     private async drawTextCentered(context: CanvasRenderingContext2D, text: string, left: number, right: number, y: number, options?: { padding?: number }) {
         const titleWidth = context.measureText(text).width;
         const padding = options?.padding ?? 0;
@@ -509,7 +630,7 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
     }
 
     private async renderLegend(): Promise<Canvas> {
-        const uniquePieceValues = Array.from(new Set(Masterpiece2Game.getPieceValues())).sort((x, y) => y - x);
+        const uniquePieceValues = this.getSortedUniquePieceValues();
         const rows = 7 + uniquePieceValues.length;
         const ROW_HEIGHT = 32;
         const padding = ROW_HEIGHT / 2;
@@ -563,26 +684,31 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
         return c;
     }
 
+    // TODO(2): Update the rules render
     private async renderRules(): Promise<AttachmentBuilder> {
         return new AttachmentBuilder('assets/masterpiece/rules.png');
     }
 
-    private async renderGallery(pieceIds: string[], background: string, options?: { showAvatars?: boolean }): Promise<AttachmentBuilder> {
+    private async renderGallery(pieceIds: string[], background: string, options?: { showAvatars?: boolean, showValues?: boolean }): Promise<AttachmentBuilder> {
         const backgroundImage = await imageLoader.loadImage(`assets/masterpiece/gallery/${background}.png`);
         const c = canvas.createCanvas(backgroundImage.width * pieceIds.length, backgroundImage.height);
         const context = c.getContext('2d');
+        const showAvatars = options?.showAvatars ?? false;
+        const showValues = options?.showValues ?? true;
         for (let i = 0; i < pieceIds.length; i++) {
             const pieceId = pieceIds[i];
             const baseX = i * backgroundImage.width;
             context.drawImage(backgroundImage, baseX, 0);
             // Draw the painting on the wall
-            const pieceImage = await imageLoader.loadImage(`assets/masterpiece/pieces/${pieceId.toLowerCase()}.png`);
-            context.drawImage(pieceImage, baseX + 154, 59);
+            const pieceImage = await imageLoader.loadImage(this.getPieceImageUrl(pieceId));
+            context.drawImage(pieceImage, baseX + 154, 59, 256, 256);
             // Draw text below the piece
             context.drawImage(withDropShadow(getTextLabel(this.getPieceName(pieceId), 250, 40, { font: 'italic 30px serif', style: 'white' }), { expandCanvas: true }), baseX + 157, 369);
-            context.drawImage(withDropShadow(getTextLabel(`$${this.getPieceValue(pieceId)}`, 250, 40, { font: '30px serif',  style: 'white' }), { expandCanvas: true }), baseX + 157, 405);
+            if (showValues) {
+                context.drawImage(withDropShadow(getTextLabel(`$${this.getPieceValue(pieceId)}`, 250, 40, { font: '30px serif',  style: 'white' }), { expandCanvas: true }), baseX + 157, 405);
+            }
             // If enabled, draw the owner's avatar
-            if (options?.showAvatars) {
+            if (showAvatars) {
                 const ownerId = this.getPieceOwner(pieceId);
                 if (typeof ownerId === 'string') {
                     const avatarImage = withDropShadow(toCircle(await imageLoader.loadAvatar(ownerId, 64)), { expandCanvas: true });
@@ -600,7 +726,7 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
 
     private async renderAuction(pieceId: string, title: string, imageName: string): Promise<AttachmentBuilder> {
         const bankAuctionImage = await imageLoader.loadImage(`assets/masterpiece/auction/${imageName}.png`);
-        const pieceImage = await imageLoader.loadImage(`assets/masterpiece/pieces/${pieceId.toLowerCase()}.png`);
+        const pieceImage = await imageLoader.loadImage(this.getPieceImageUrl(pieceId));
         const c = canvas.createCanvas(1224, 816);
         const context = c.getContext('2d');
         // Draw background and piece image on top of it
@@ -710,7 +836,7 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
             baseX += AVATAR_WIDTH + HORIZONTAL_MARGIN;
             // Draw any pieces this player owns
             for (const pieceId of this.getPieceIdsForUser(userId)) {
-                const pieceImage = await imageLoader.loadImage(`assets/masterpiece/pieces/${pieceId.toLowerCase()}.png`);
+                const pieceImage = await imageLoader.loadImage(this.getPieceImageUrl(pieceId));
                 context.drawImage(pieceImage, baseX, baseY, AVATAR_WIDTH, AVATAR_WIDTH);
                 // Draw frame
                 context.strokeStyle = 'rgb(232,164,4)';
@@ -760,18 +886,141 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
         this.state.turn++;
         this.state.decisions = {};
 
+        // Wipe pending rewards data
+        delete this.state.pendingRewards;
+
         // Reset metadata for each player
         for (const userId of this.getPlayers()) {
-            // Revoke any pending prize offers
-            delete this.state.players[userId].maySell;
-            delete this.state.players[userId].mayForceAuction;
+            const items = this.state.players[userId].items;
+            if (items) {
+                // Revoke any temporary items the player may have
+                for (const itemType of Object.keys(items)) {
+                    if (TEMPORARY_ITEMS[itemType]) {
+                        delete items[itemType];
+                    }
+                }
+                // If all items have been wiped, delete the map
+                if (isObjectEmpty(items)) {
+                    delete this.state.players[userId].items;
+                }
+            }
         }
 
-        // TODO: Do something here
-        return [];
+        // If it's the very first week, prep the setup data
+        if (this.getTurn() === 1) {
+            this.state.setup = {
+                warningsLeft: 3,
+                pieceIdCounter: 0
+            };
+            return [{
+                content: 'Click here to upload your own pieces of art!',
+                components: [{
+                    type: ComponentType.ActionRow,
+                    components: [{
+                        type: ComponentType.Button,
+                        custom_id: 'game:upload',
+                        label: 'Upload',
+                        style: ButtonStyle.Primary
+                    }]
+                }]
+            }];
+        }
+
+        const payloads: MessengerPayload[] = [];
+
+        // If it's the second week, process the setup data
+        if (this.getTurn() === 2) {
+            if (this.state.setup && this.state.setup.voting) {
+                // TODO(2): Trim the total set of pieces to a proper number
+                // Count up all the votes and assign a total score to each piece
+                const pieceScores: Record<string, number> = {};
+                for (const pieceId of this.getPieceIds()) {
+                    pieceScores[pieceId] = 0;
+                }
+                for (const entry of Object.values(this.state.setup.voting)) {
+                    const { most, second, least } = entry.picks;
+                    if (most) {
+                        pieceScores[most] += 2;
+                    }
+                    if (second) {
+                        pieceScores[second] += 1;
+                    }
+                    if (least) {
+                        pieceScores[least] -= 1;
+                    }
+                }
+                // Sort the pieces by score (shuffle first to break ties randomly)
+                const sortedPieceIds = shuffle(this.getPieceIds()).sort((x, y) => pieceScores[y] - pieceScores[x]);
+                // Construct a value distribution and assign values to each piece
+                const values = Masterpiece2Game.constructValueDistribution(sortedPieceIds.length);
+                for (let i = 0; i < sortedPieceIds.length; i++) {
+                    this.getPiece(sortedPieceIds[i]).value = values[i];
+                }
+                await logger.log('__Piece Scores and Values:__\n' + sortedPieceIds.map((id, i) => `${i + 1}. **${pieceScores[id]}** -> _$${this.getPieceValue(id)}_`).join('\n'));
+                // Reward players for uploading at least one piece by awarding a random piece
+                let numPlayersAwardedPieces = 0;
+                for (const userId of this.getOrderedPlayers()) {
+                    // If there is at least one piece by this player, assign a random unsold piece to them
+                    if (this.getNumPiecesByArtist(userId) > 0 && this.getNumAvailablePieces() > 0) {
+                        const randomPieceId = randChoice(...this.getAvailablePieceIds());
+                        this.getPiece(randomPieceId).owner = userId;
+                        numPlayersAwardedPieces++;
+                    }
+                }
+                // Reward players for voting by awarding an item
+                let numPlayerAwardedItems = 0;
+                for (const [userId, entry] of Object.entries(this.state.setup.voting)) {
+                    // TODO: Decouple this logic from the assumed size of three
+                    if (getObjectSize(entry.picks) === 3) {
+                        this.incrementPlayerItem(userId, 'sneaky-peek', 1);
+                        numPlayerAwardedItems++;
+                    }
+                }
+                // Wipe the setup data from the state
+                delete this.state.setup;
+                // Send out a message indicating that users were rewarded
+                payloads.push(`**${numPlayersAwardedPieces}** players were awarded a free piece for uploading artwork, and **${numPlayerAwardedItems}** players were awarded a free item for voting! Good job guys`);
+            }
+        }
+
+        // Queue up available pieces as bank auctions until there are 2 auctions queued up
+        const randomAvailablePieces = shuffle(this.getAvailablePieceIds());
+        let i = 0;
+        while (this.getNumAuctions() < 2 && randomAvailablePieces.length > 0) {
+            const pieceId = randomAvailablePieces.pop();
+            i++;
+            if (!pieceId) {
+                // TODO(2): LOG
+                break;
+            }
+            this.state.auctions[pieceId] = {
+                pieceId: pieceId,
+                type: 'bank',
+                description: `Bank Auction ${i}`,
+                bid: 0
+            };
+        }
+
+        return payloads;
     }
 
     override async getPreProcessingMessages(): Promise<MessengerPayload[]> {
+        // If still in the setup process, don't show the state
+        if (this.state.setup) {
+            return [{
+                content: 'Good morning everyone! I\'m only accepting art piece submissions for a little while longer! Those who upload their own art pieces will be rewarded with a free piece at the start of the game.',
+                components: [{
+                    type: ComponentType.ActionRow,
+                    components: [{
+                        type: ComponentType.Button,
+                        custom_id: 'game:upload',
+                        label: 'Upload Piece',
+                        style: ButtonStyle.Success
+                    }]
+                }]
+            }];
+        }
+        // Otherwise, show the overall state render
         return [{
             content: 'Good morning everyone! Let me take a few minutes to look over the agenda for today, then we\'ll see the outcome of this weekend\'s pending sales...',
             files: [new AttachmentBuilder(await this.renderState()).setName(`game-turn${this.getTurn()}-preprocessing.png`)],
@@ -784,13 +1033,32 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
         return [];
     }
 
-    override endDay(): void {
+    override async endDay(): Promise<MessengerPayload[]> {
         // At noon after the final game update all the pieces should be sold, so add the winners here to complete the game
         if (this.getNumUnsoldPieces() === 0) {
             for (const userId of this.getTrueOrderedPlayers().slice(0, 3)) {
                 this.addWinner(userId);
             }
         }
+        // If people still need to vote, send a voting reminder message
+        if (this.state.setup && this.state.setup.voting) {
+            const votersRemaining = Object.values(this.state.setup.voting).filter(v => isObjectEmpty(v.picks)).length;
+            if (votersRemaining > 0) {
+                return [{
+                    content: `I'm still waiting on **${votersRemaining}** player${votersRemaining === 1 ? '' : 's'} to vote! If you vote I'll give you a free item`,
+                    components: [{
+                        type: ComponentType.ActionRow,
+                        components: [{
+                            type: ComponentType.Button,
+                            custom_id: 'game:vote',
+                            label: 'Vote',
+                            style: ButtonStyle.Primary
+                        }]
+                    }]
+                }];
+            }
+        }
+        return [];
     }
 
     override getPoints(userId: string): number {
@@ -812,81 +1080,65 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
         if (!this.hasPlayer(userId)) {
             return [];
         }
-        switch (type) {
-            case 'submissions1':
-                // If the player has no paintings, only allow them to force someone's paintings into auction
-                if (!this.hasAnyPieces(userId)) {
-                    this.state.players[userId].mayForceAuction = true;
-                    return [{
-                        content: `${intro}! Since you don't currently own any pieces, I will only let you choose an opponent's piece to be forced into auction on Saturday. You have until Saturday morning to select this option`,
-                        components: [{
-                            type: ComponentType.ActionRow,
-                            components: [{
-                                type: ComponentType.Button,
-                                style: ButtonStyle.Danger,
-                                label: 'Force Auction',
-                                customId: 'game:forcePrivateAuction'
-                            }]
-                        }]
-                    }];
-                }
-                // Else, allow them to pick
-                this.state.players[userId].maySell = true;
-                this.state.players[userId].mayForceAuction = true;
-                return [
-                    `${intro}, as a reward you may choose to sell one of your paintings to the museum or force another player's piece into auction. `
-                        + 'If you choose to sell a piece, it will be sold to a museum at face value on Sunday morning, at which point it will be removed from the game. '
-                        + 'If you choose to force a piece in auction, a private auction (excluding the piece\'s owner) will be held on Saturday morning for you and others to bid on it.',
-                    {
-                        content: 'Which would you like to do? You have until Saturday morning to choose',
-                        components: [{
-                            type: ComponentType.ActionRow,
-                            components: [{
-                                type: ComponentType.Button,
-                                style: ButtonStyle.Success,
-                                label: 'Sell',
-                                customId: 'game:sell'
-                            }, {
-                                type: ComponentType.Button,
-                                style: ButtonStyle.Danger,
-                                label: 'Force Auction',
-                                customId: 'game:forcePrivateAuction'
-                            }]
-                        }]
-                    }
-                ];
-            case 'submissions1-tied':
-                // If the player has no paintings, don't let them do anything
-                if (!this.hasAnyPieces(userId)) {
-                    return [`${intro}! Since you don't currently own any pieces, there's no special prize for you (I can't let multiple players force a private auction). Sorry!`];
-                }
-                // Else, allow them to sell
-                this.state.players[userId].maySell = true;
-                return [
-                    `${intro}, as a reward you may choose to sell one of your paintings to the museum (I can't let multiple players force a private auction). `
-                        + 'If you choose to sell a piece, it will be sold to a museum at face value on Sunday morning, at which point it will be removed from the game.',
-                    {
-                        content: 'Which would you like to do? You have until Saturday morning to choose',
-                        components: [{
-                            type: ComponentType.ActionRow,
-                            components: [{
-                                type: ComponentType.Button,
-                                style: ButtonStyle.Success,
-                                label: 'Sell',
-                                customId: 'game:sell'
-                            }]
-                        }]
-                    }
-                ];
-            default:
-                return [];
+        // Only process submissions-related prize types
+        if (!type.startsWith('submissions')) {
+            return [];
+        }
+        // If this is the reward for winning in the first week, just give them a peek because there's no time to choose
+        if (this.getTurn() === 0) {
+            this.incrementPlayerItem(userId, 'sneaky-peek', 1);
+            return [`${intro}! You've been awarded a **${ITEM_NAMES['sneaky-peek']}** for your early victory`];
+        }
+        // If there are no pending rewards, initialize that now
+        if (!this.state.pendingRewards) {
+            this.state.pendingRewards = {
+                players: [],
+                // TODO(2): Use utility method for getting random items
+                options: shuffle(Object.keys(TEMPORARY_ITEMS)).slice(0, 3) as Masterpiece2ItemType[]
+            };
+        }
+        // Add this player to the reward list
+        this.state.pendingRewards.players.push(userId);
+        // If they're first in the queue, prompt them to choose now
+        if (this.state.pendingRewards.players[0] === userId) {
+            return [this.constructPrizeSelectionPayload(intro)];
+        }
+        // Else, tell them they'll have to wait...
+        if (type === 'submissions1-tied') {
+            return [`${intro}! Even though you tied for first, RNG says that the other winner gets to pick their prize first. I'll let you know once they've picked, then you can claim your prize`];
+        } else {
+            return [`${intro}! You'll be able to choose a prize once the guy ahead of you chooses theirs. Hang tight, I'll let you know when it's your turn to pick`];
         }
     }
 
-    override async addPlayerDecision(userId: string, text: string): Promise<MessengerPayload> {
-        // Validate that there's an active silent auction
+    private constructPrizeSelectionPayload(intro: string): MessengerPayload {
+        if (!this.state.pendingRewards) {
+            throw new Error('Cannot construct prize selection payload if there are no pending prizes!');
+        }
+        const availableItems = this.state.pendingRewards.options;
+        return {
+            content: (availableItems.length === 1
+                    ? `${intro}! Since you podiumed last, you've been left with this final option. Click the button below to claim it. `
+                    : `${intro}! Select one prize from the following **${availableItems.length}** options. The other **${availableItems.length - 1}** will be available to the next-ranked player. `)
+                + 'Items with an hourglass expire on Saturday morning. Items with a star may be saved for later in the season.\n'
+                + availableItems.map((itemType, i) => `${i + 1}. **${ITEM_NAMES[itemType] ?? itemType}**: ${ITEM_DESCRIPTIONS[itemType] ?? '???'}`).join('\n'),
+            components: [{
+                type: ComponentType.ActionRow,
+                components: availableItems.map(itemType => ({
+                    type: ComponentType.Button,
+                    customId: `game:claimPrize:${itemType}`,
+                    label: ITEM_NAMES[itemType] ?? itemType,
+                    style: ButtonStyle.Secondary,
+                    emoji: TEMPORARY_ITEMS[itemType] ? '⏳' : '⭐'
+                }))
+            }]
+        };
+    }
+
+    override async addPlayerDecision(userId: string, text: string): Promise<MessengerPayload | null> {
+        // Ignore the user if there's no valid silent auction
         if (!this.state.silentAuctionPieceId) {
-            throw new Error('You can\'t do that now, there\'s no piece currently for sale!');
+            return null;
         }
         // Validate that the command is well-formed
         if (!text.startsWith('offer ')) {
@@ -908,6 +1160,60 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
     }
 
     override async processPlayerDecisions(): Promise<DecisionProcessingResult> {
+        // If still in the initial setup phase...
+        if (this.state.setup) {
+            // Give users one last chance to submit pieces...
+            if (this.state.setup.warningsLeft === 0) {
+                // End the submissions process by initialize the voting map
+                this.state.setup.voting = {};
+                // Randomly assign pieces to all eligible voters (any player who's already in the game)
+                // TODO(2): What happens if there are fewer than 5 pieces?
+                const assignments = getRandomlyDistributedAssignments(this.getPlayers(), this.getPieceIds(), { valuesPerKey: 5 });
+                // For all eligible voters (any player who's in the game), randomly assign them pieces to vote on
+                for (const [userId, pieceIds] of Object.entries(assignments)) {
+                    this.state.setup.voting[userId] = { picks: {}, pieceIds };
+                }
+                // Prompt players to vote
+                return {
+                    continueProcessing: false,
+                    summary: {
+                        content: 'And that\'s it, all submissions are in! Click here to vote on your randomly-assigned pieces. If you vote, you will be rewarded with a free item.',
+                        components: [{
+                            type: ComponentType.ActionRow,
+                            components: [{
+                                type: ComponentType.Button,
+                                custom_id: 'game:vote',
+                                label: 'Vote',
+                                style: ButtonStyle.Primary
+                            }]
+                        }]
+                    }
+                };
+            } else {
+                // Decrement the number of warnings left
+                this.state.setup.warningsLeft--;
+                // Prompt players to submit a piece
+                return {
+                    continueProcessing: true,
+                    delayMultiplier: 3,
+                    summary: {
+                        content: this.state.setup.warningsLeft === 0
+                            ? 'This is your final warning! Those who upload their own art pieces will be rewarded with a free piece at the start of the game.'
+                            : 'I\'m only accepting art piece submissions for a little while longer! Click here to upload a picture that can be purchased by other players.',
+                        components: [{
+                            type: ComponentType.ActionRow,
+                            components: [{
+                                type: ComponentType.Button,
+                                custom_id: 'game:upload',
+                                label: 'Upload Piece',
+                                style: ButtonStyle.Success
+                            }]
+                        }]
+                    }
+                };
+            }
+        }
+
         // Process any pending sale first and foremost
         const pendingSaleIds = this.getPieceIdsToBeSold();
         if (pendingSaleIds.length > 0) {
@@ -1105,12 +1411,24 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                         files: [await this.renderRules()]
                     });
                     break;
-                case 'game:inventory':
+                case 'game:inventory': {
                     if (this.hasAnyPieces(userId)) {
                         await interaction.reply({
                             ephemeral: true,
-                            content: `You have **$${this.getPoints(userId)}** in cash, plus the following pieces in your gallery:`,
-                            files: [await this.renderInventory(userId)]
+                            content: `You have **$${this.getPoints(userId)}** in cash, `
+                                + (this.hasAnyItems(userId) ? `${this.getPlayerItemsString(userId)}, ` : '')
+                                + `plus the following pieces in your gallery:`,
+                            files: [await this.renderInventory(userId)],
+                            components: this.hasAnyItems(userId)
+                                ? [{
+                                    type: ComponentType.ActionRow,
+                                    components: [{
+                                        type: ComponentType.Button,
+                                        custom_id: 'game:useItem',
+                                        label: 'Use Item',
+                                        style: ButtonStyle.Primary
+                                    }]
+                                }] : undefined
                         });
                     } else {
                         await interaction.reply({
@@ -1119,12 +1437,248 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                         });
                     }
                     break;
-                case 'game:bankBid':
-                    await this.handleBid('bank', interaction);
+                }
+                case 'game:useItem': {
+                    // Validate that the user can do this
+                    if (!this.hasAnyItems(userId)) {
+                        throw new Error('You don\'t have any items to use!');
+                    }
+                    // Don't allow item usage during active auctions
+                    if (this.isAnyAuctionActive()) {
+                        throw new Error('You can\'t use items during an active auction!');
+                    }
+                    // Show a select menu of items that may be used
+                    await interaction.reply({
+                        ephemeral: true,
+                        content: 'Which item would you like to use?',
+                        components: [{
+                            type: ComponentType.ActionRow,
+                            components: [{
+                                type: ComponentType.StringSelect,
+                                custom_id: 'game:selectItem',
+                                min_values: 1,
+                                max_values: 1,
+                                options: Object.keys(this.getPlayerItems(userId)).map(itemType => ({
+                                    value: itemType,
+                                    label: ITEM_NAMES[itemType] ?? itemType,
+                                    description: ITEM_DESCRIPTIONS[itemType]?.slice(0, 99)
+                                }))
+                            }]
+                        }]
+                    });
                     break;
-                case 'game:privateBid':
-                    await this.handleBid('private', interaction);
+                }
+                case 'game:upload': {
+                    // Validate that the user can do this
+                    if (!this.state.setup) {
+                        throw new Error('It\'s a little too late to upload art!');
+                    }
+                    if (this.state.setup.voting) {
+                        throw new Error('It\'s too late to upload art, voting has already begun!');
+                    }
+                    if (this.getNumPiecesByArtist(userId) >= Masterpiece2Game.MAX_PIECES_BY_ARTIST) {
+                        throw new Error(`You've already uploaded the max of **${Masterpiece2Game.MAX_PIECES_BY_ARTIST}** pieces!`);
+                    }
+                    // Send a DM to this user prompting them to send an image
+                    const setup = this.state.setup;
+                    await dmReplyCollector.solicitImageReply(interaction.user,
+                        'Reply to this message (click "Reply") with an image (your art) and text (the title of the piece)',
+                        async (replyMessage, imageAttachment) => {
+                            // Validate (again) that the user can do this
+                            if (!this.state.setup) {
+                                await replyMessage.reply('It\'s a little too late to upload art!');
+                                return;
+                            }
+                            if (this.state.setup.voting) {
+                                await replyMessage.reply('It\'s too late to upload art, voting has already begun!');
+                                return;
+                            }
+                            if (this.getNumPiecesByArtist(userId) >= Masterpiece2Game.MAX_PIECES_BY_ARTIST) {
+                                await replyMessage.reply(`You've already uploaded the max of **${Masterpiece2Game.MAX_PIECES_BY_ARTIST}** pieces!`);
+                                return;
+                            }
+                            // Validate the title
+                            const title = replyMessage.content.trim();
+                            if (!title) {
+                                await replyMessage.reply('Please include the title of your piece');
+                                return;
+                            }
+                            if (title.length < 5) {
+                                await replyMessage.reply('Your title is too short! (5 characters or more please)');
+                                return;
+                            }
+                            if (title.length > 30) {
+                                await replyMessage.reply('Your title is too long! (30 characters or fewer please)');
+                                return;
+                            }
+                            // Determine the next available piece ID
+                            while (toLetterId(setup.pieceIdCounter) in this.state.pieces) {
+                                setup.pieceIdCounter++;
+                            }
+                            const pieceId = toLetterId(setup.pieceIdCounter);
+                            // Center-crop the piece and save it locally
+                            const croppedImage = cropToSquare(await imageLoader.loadImage(imageAttachment.url));
+                            // Download the image and save it locally
+                            // const downloadedImage = await downloadBufferFromUrl(imageAttachment.url);
+                            // const fileName = `${pieceId}_${imageAttachment.name}`;
+                            const fileName = `${pieceId}.png`;
+                            const blobUrl = await controller.getAllReferences().storage.writeBlob(`blobs/masterpiece2/${fileName}`, croppedImage.toBuffer());
+                            // Write the piece to state
+                            this.state.pieces[pieceId] = {
+                                value: 0,
+                                name: title,
+                                imageUrl: blobUrl,
+                                artist: userId,
+                                owner: false
+                            };
+                            await logger.log(`<@${userId}> uploaded MP2 piece **${pieceId}** (**${this.getNumPieces()}** total)`);
+                            // Prompt the player to upload more
+                            const remainingUploads = Masterpiece2Game.MAX_PIECES_BY_ARTIST - this.getNumPiecesByArtist(userId);
+                            await replyMessage.reply({
+                                content: 'Your piece was accepted! ' + (remainingUploads > 0 ? `You may upload **${remainingUploads}** more.` : 'You\'ve uploaded the maximum number of pieces, enjoy your participation bonus!'),
+                                components: [{
+                                    type: ComponentType.ActionRow,
+                                    components: [{
+                                        type: ComponentType.Button,
+                                        custom_id: 'game:viewUploads',
+                                        style: ButtonStyle.Primary,
+                                        label: 'View Uploads'
+                                    }]
+                                }]
+                            });
+                        });
+                    // Reply to the interaction
+                    await interaction.reply({
+                        ephemeral: true,
+                        content: 'I just sent you a DM with instructions on how to upload a piece of art'
+                    });
                     break;
+                }
+                case 'game:viewUploads': {
+                    // Validate that the user can do this
+                    if (!this.state.setup) {
+                        throw new Error('You can\'t view your uploads right now');
+                    }
+                    // Get the user's uploaded pieces
+                    const pieceIds = this.getPieceIdsByArtist(userId);
+                    if (pieceIds.length === 0) {
+                        throw new Error('You haven\'t uploaded any pieces yet');
+                    }
+                    // Render the player's uploaded pieces and prompt more actions
+                    const buttons: APIButtonComponent[] = [{
+                        type: ComponentType.Button,
+                        custom_id: 'game:clearUploads',
+                        style: ButtonStyle.Danger,
+                        label: 'Delete All'
+                    }];
+                    if (this.getNumPiecesByArtist(userId) < Masterpiece2Game.MAX_PIECES_BY_ARTIST) {
+                        buttons.unshift({
+                            type: ComponentType.Button,
+                            custom_id: 'game:upload',
+                            style: ButtonStyle.Primary,
+                            label: 'Upload More'
+                        });
+                    }
+                    await interaction.reply({
+                        ephemeral: true,
+                        content: 'Your uploaded pieces...',
+                        // TODO(2): Use different background
+                        files: [await this.renderGallery(pieceIds, 'reveal', { showValues: false })],
+                        components: [{
+                            type: ComponentType.ActionRow,
+                            components: buttons
+                        }]
+                    });
+                    break;
+                }
+                case 'game:clearUploads': {
+                    // Validate that the user can do this
+                    if (!this.state.setup) {
+                        throw new Error('It\'s a little too late to delete your uploads!');
+                    }
+                    if (this.state.setup.voting) {
+                        throw new Error('It\'s too late to delete your uploads, voting has already begun!');
+                    }
+                    // Get the user's uploaded pieces
+                    const pieceIds = this.getPieceIdsByArtist(userId);
+                    if (pieceIds.length === 0) {
+                        throw new Error('You haven\'t uploaded any pieces yet');
+                    }
+                    // Delete the pieces from state
+                    for (const pieceId of pieceIds) {
+                        delete this.state.pieces[pieceId];
+                    }
+                    await logger.log(`<@${userId}> deleted ${pieceIds.length} MP2 upload(s) (**${this.getNumPieces()}** total)`);
+                    await interaction.reply({
+                        ephemeral: true,
+                        content: 'Deleted all your uploads. You should upload again to ensure you get the participation bonus.'
+                    });
+                    break;
+                }
+                case 'game:vote': {
+                    // Validate that the user can do this
+                    if (!this.state.setup) {
+                        throw new Error('It\'s a little too late to vote!');
+                    }
+                    if (!this.state.setup.voting) {
+                        throw new Error('It\'s not time to vote yet!');
+                    }
+                    // If there's no voting info for this player, generate it now
+                    const votingInfo = this.state.setup.voting[userId];
+                    if (!votingInfo) {
+                        this.state.setup.voting[userId] = {
+                            picks: {},
+                            // TODO(2): Should we make this more fair by only assigning pieces which were assigned to the fewest other players?
+                            pieceIds: shuffle(this.getPieceIds()).slice(0, 5)
+                        };
+                    }
+                    // Get the pieces this user may vote on
+                    const pieceIds = votingInfo.pieceIds ?? [];
+                    if (pieceIds.length === 0) {
+                        throw new Error('There are no pieces for you to vote on (see admin)');
+                    }
+                    // TODO(2): Start the voting process
+                    const options = pieceIds.map(id => ({ value: id, label: this.getPieceName(id) }));
+                    await interaction.reply({
+                        ephemeral: true,
+                        content: 'Here are the pieces you\'ll be voting on, use the drop-downs below. '
+                            + 'Your favorite and second-favorite pieces will be appraised at a higher value, meanwhile your _least_ favorite piece\'s value will tank...',
+                        // TODO(2): Make custom background for voting
+                        files: [await this.renderGallery(pieceIds, 'reveal', { showValues: false })],
+                        components: [{
+                            type: ComponentType.ActionRow,
+                            components: [{
+                                type: ComponentType.StringSelect,
+                                custom_id: 'game:selectPieceVoteMostFavorite',
+                                placeholder: 'Your favorite piece...',
+                                min_values: 1,
+                                max_values: 1,
+                                options
+                            }]
+                        }, {
+                            type: ComponentType.ActionRow,
+                            components: [{
+                                type: ComponentType.StringSelect,
+                                custom_id: 'game:selectPieceVoteSecondFavorite',
+                                placeholder: 'Your second favorite piece...',
+                                min_values: 1,
+                                max_values: 1,
+                                options
+                            }]
+                        }, {
+                            type: ComponentType.ActionRow,
+                            components: [{
+                                type: ComponentType.StringSelect,
+                                custom_id: 'game:selectPieceVoteLeastFavorite',
+                                placeholder: 'Your MOST HATED piece...',
+                                min_values: 1,
+                                max_values: 1,
+                                options
+                            }]
+                        }]
+                    });
+                    break;
+                }
                 case 'game:sell':
                     // Validate that this user can do this
                     if (!this.mayPlayerSell(userId)) {
@@ -1200,9 +1754,126 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                         }],
                     });
                     break;
+                default: {
+                    // Not handled directly by other cases, so parse it
+                    const [ rootCustomId, secondaryCustomId, arg ] = interaction.customId.split(':');
+                    switch (secondaryCustomId) {
+                        case 'bid': {
+                            if (!arg) {
+                                throw new Error('You seem to be bidding without specifying a piece to bid on... (see admin)');
+                            }
+                            await this.handleBid(arg, interaction);
+                            break;
+                        }
+                        case 'claimPrize': {
+                            // Validate that this user may claim a prize right now
+                            if (!this.state.pendingRewards) {
+                                throw new Error('Now is not the time to claim rewards! Too late?');
+                            }
+                            if (this.state.pendingRewards.players[0] !== userId) {
+                                throw new Error('It\'s not your turn to claim a prize!');
+                            }
+                            // Validate that the prize being selected is a valid option
+                            const itemType = arg as Masterpiece2ItemType;
+                            if (!this.state.pendingRewards.options.includes(itemType)) {
+                                // TODO(2): Use utility for getting item name/names
+                                throw new Error(`You can't claim a **${ITEM_NAMES[itemType] ?? itemType}**! Valid options right now are ${naturalJoin(this.state.pendingRewards.options)}`);
+                            }
+                            // Award them the item
+                            this.incrementPlayerItem(userId, itemType, 1);
+                            // Remove it from the options list
+                            this.state.pendingRewards.options = this.state.pendingRewards.options.filter(t => t !== itemType);
+                            // Remove them from the players queue
+                            this.state.pendingRewards.players.shift();
+                            // Let them know they've claimed the item, show them their items
+                            await interaction.reply({
+                                ephemeral: true,
+                                content: `You've claimed a **${ITEM_NAMES[itemType] ?? itemType}**! You now have ${this.getPlayerItemsString(userId)}`
+                            });
+                            // Notify the next guy in the queue
+                            const nextUserId = this.state.pendingRewards.players[0];
+                            if (nextUserId) {
+                                return {
+                                    dms: {
+                                        [nextUserId]: [this.constructPrizeSelectionPayload('It\'s time to claim your prize')]
+                                    }
+                                };
+                            }
+                            break;
+                        }
+                    }
+                    break;
+                }
             }
         } else if (interaction.isStringSelectMenu()) {
             switch (interaction.customId) {
+                case 'game:selectPieceVoteMostFavorite':
+                case 'game:selectPieceVoteSecondFavorite':
+                case 'game:selectPieceVoteLeastFavorite': {
+                    // Validate that the user can do this
+                    if (!this.state.setup) {
+                        throw new Error('It\'s a little too late to vote!');
+                    }
+                    if (!this.state.setup.voting) {
+                        throw new Error('It\'s not time to vote yet!');
+                    }
+                    const playerVotingData = this.state.setup.voting[userId];
+                    if (!playerVotingData) {
+                        throw new Error('You haven\'t been assigned any pieces to vote on! Likely because you haven\'t participated at all yet...');
+                    }
+                    // Determine the rank of the vote
+                    let rank: VoteRank = 'most';
+                    if (interaction.customId.endsWith('SecondFavorite')) {
+                        rank = 'second';
+                    } else if (interaction.customId.endsWith('LeastFavorite')) {
+                        rank = 'least';
+                    }
+                    // Insert the value into the picks map
+                    const pieceId = interaction.values[0];
+                    if (!pieceId) {
+                        throw new Error('No piece ID (see admin)');
+                    }
+                    // Validate that this piece isn't being selected as the same rank again (makes the response message confusing)
+                    if (pieceId === playerVotingData.picks[rank]) {
+                        throw new Error(`You've already selected _${this.getPieceName(pieceId)}_ as your **${rank} favorite** piece. Use the other drop-downs...`);
+                    }
+                    // If this piece was selected for something else, wipe it
+                    const allRanks: VoteRank[] = ['most', 'second', 'least'];
+                    let replacedText: string = '';
+                    for (const r of allRanks) {
+                        if (playerVotingData.picks[r] === pieceId) {
+                            delete playerVotingData.picks[r];
+                            replacedText = `It was previously your **${r} favorite** piece. `;
+                        }
+                    }
+                    playerVotingData.picks[rank] = pieceId;
+                    // Construct response message
+                    const remainingRanks = allRanks.filter(r => playerVotingData.picks[r] === undefined);
+                    await interaction.reply({
+                        ephemeral: true,
+                        content: `You've selected _${this.getPieceName(pieceId)}_ as your **${rank} favorite** piece. `
+                            + replacedText
+                            + (remainingRanks.length === 0 ? 'You\'re all done, enjoy your voting participation bonus!' : `Please finish up by selecting your ${naturalJoin(remainingRanks, { bold: true })} **favorite** piece${remainingRanks.length === 1 ? '' : 's'}.`)
+                    });
+                    break;
+                }
+                case 'game:selectItem': {
+                    const itemType = interaction.values[0] as Masterpiece2ItemType;
+                    // Validate that the user can do this
+                    if (this.getPlayerItemQuantity(userId, itemType) === 0) {
+                        throw new Error(`You don't have a **${ITEM_NAMES[itemType] ?? itemType}** to use!`);
+                    }
+                    // Don't allow item usage during active auctions
+                    if (this.isAnyAuctionActive()) {
+                        throw new Error('You can\'t use items during an active auction!');
+                    }
+                    // TODO(2): USE THE ITEM HERE AND DEDUCT QUANTITY, OR PROMPT FOR SECONDARY INTERACTION
+                    await interaction.reply({
+                        ephemeral: true,
+                        content: `You've used a **${ITEM_NAMES[itemType] ?? itemType}**, you now have ${this.getPlayerItemsString(userId)}`
+                    });
+                    break;
+                }
                 case 'game:sellSelect': {
                     // Validate that this user can do this
                     if (!this.mayPlayerSell(userId)) {
@@ -1230,8 +1901,7 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                     }
                     // Update the state
                     this.getPiece(pieceId).toBeSold = true;
-                    delete this.state.players[userId].maySell;
-                    delete this.state.players[userId].mayForceAuction;
+                    this.incrementPlayerItem(userId, 'sell', -1);
                     // Reply to the user confirming the sale
                     await interaction.reply({
                         ephemeral: true,
@@ -1265,13 +1935,22 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                         });
                         return;
                     }
+                    // Ensure there's not already a private auction queued up
+                    if (this.getAuctions().some(a => a.type === 'private')) {
+                        await interaction.reply({
+                            ephemeral: true,
+                            content: 'There\'s already a piece being forced into auction this week! Try again next week.'
+                        });
+                        return;
+                    }
                     // Update the state
-                    this.state.auctions.private = {
+                    this.state.auctions[pieceId] = {
                         pieceId,
+                        description: 'Private Auction',
+                        type: 'private',
                         bid: 0
                     };
-                    delete this.state.players[userId].maySell;
-                    delete this.state.players[userId].mayForceAuction;
+                    this.incrementPlayerItem(userId, 'force', -1);
                     // Reply to the user confirming the forced auction
                     await interaction.reply({
                         ephemeral: true,
@@ -1284,14 +1963,14 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
         }
     }
 
-    private async handleBid(type: AuctionType, interaction: ButtonInteraction) {
+    private async handleBid(pieceId: string, interaction: ButtonInteraction) {
         const userId = interaction.user.id;
-        const auction = this.state.auctions[type];
+        const auction = this.state.auctions[pieceId];
         // Ensure the auction exists and is active
         if (!auction || !auction.active) {
             await interaction.reply({
                 ephemeral: true,
-                content: `You can't place a bid right now, as there's no active ${type} auction!`
+                content: `You can't place a bid on _"${this.getPieceName(pieceId)}"_ right now, as it's not currently in auction!`
             });
             return;
         }
@@ -1333,10 +2012,10 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
         }
         this.auctionLock = true;
         // Place the bid
+        auction.previousBidder = auction.bidder;
         auction.bidder = userId;
         auction.bid = bidAmount;
         // Reply and notify the channel
-        const pieceId = auction.pieceId;
         const pieceName = this.getPiece(pieceId).name;
         await interaction.reply({
             ephemeral: true,
@@ -1354,7 +2033,7 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                     type: ComponentType.Button,
                     style: ButtonStyle.Success,
                     label: 'Bid',
-                    custom_id: `game:${type}Bid`
+                    custom_id: `game:bid:${pieceId}`
                 }]
             }],
             flags: MessageFlags.SuppressNotifications

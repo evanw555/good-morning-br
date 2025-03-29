@@ -1,5 +1,5 @@
 import { APIEmbed, Message, Snowflake } from "discord.js";
-import { Canvas, Image, createCanvas, CanvasRenderingContext2D as NodeCanvasRenderingContext2D } from "canvas";
+import { Canvas, Image, CanvasRenderingContext2D as NodeCanvasRenderingContext2D } from "canvas";
 import OpenAI from 'openai';
 import { randChoice, randInt, LanguageGenerator } from "evanw555.js";
 import { AnonymousSubmission, GoodMorningConfig } from "./types";

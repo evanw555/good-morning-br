@@ -124,29 +124,27 @@ export interface MasterpieceGameState extends AbstractGameState<'MASTERPIECE'> {
     silentAuctionPieceId?: string,
 }
 
-export type Masterpiece2ItemType = 'sneaky-peek' | 'random-peek';
-export type Masterpiece2AbilityType = 'sell' | 'buy' | 'force';
+export type Masterpiece2ItemType = 'sneaky-peek' | 'random-peek' | 'sell' | 'buy' | 'force' | 'smudge';
 export type Masterpiece2AuctionType = 'bank' | 'private';
 
 export interface Masterpiece2PlayerState {
     displayName: string,
     points: number,
     // Items persist throughout the entire season
-    items?: Partial<Record<Masterpiece2ItemType, number>>,
-    // Abilities are wiped at the beginning of every game decision phase
-    abilities?: Partial<Record<Masterpiece2AbilityType, number>>,
-    // 
+    items?: Partial<Record<Masterpiece2ItemType, number>>
 }
 
 export interface Masterpiece2PieceState {
     value: number,
     name: string,
     // Path of the BLOB containing this file's image
-    imagePath: string,
+    imageUrl: string,
     // User ID of whoever uploaded this piece
     artist: Snowflake,
     // Snowflake -> owner ID, false -> unsold, true -> sold
     owner: Snowflake | boolean,
+    // If true, anyone who peeks at this piece will see a lower value
+    smudged?: true,
     // If true, this piece will be sold during the next game update
     toBeSold?: true
 }
@@ -165,21 +163,32 @@ export interface Masterpiece2AuctionState {
 export interface Masterpiece2GameState extends AbstractGameState<'MASTERPIECE_2'> {
     readonly players: Record<Snowflake, Masterpiece2PlayerState>,
     readonly pieces: Record<string, Masterpiece2PieceState>,
-    readonly auctions: Masterpiece2AuctionState[],
+    // Active/queued auctions keyed by piece ID
+    readonly auctions: Record<string, Masterpiece2AuctionState>,
     // If true, all pieces should be sold off and revealed
     finalReveal?: true,
     // ID of the piece being offered in the "silent auction"
     silentAuctionPieceId?: string,
+    // Pending rewards that have yet to be claimed by contest winners
+    pendingRewards?: {
+        // Queue of remaining players who have yet to claim a reward (only the first player may claim at any given moment)
+        players: Snowflake[],
+        // Remaining rewards that may be claimed
+        options: Masterpiece2ItemType[]
+    },
     // Data for the first week initial setup phase, wiped once complete
     setup?: {
-        // First step: Uploading pieces (without assigned values)
-        pieces: Omit<Masterpiece2PieceState, 'value'>,
+        // How many piece submission warnings are given before starting the voting process
+        warningsLeft: number,
+        // First step: Players upload their own pieces
+        // Counter representing the pre-serialized ID of the next piece of art (we must do this since players can delete their submissions)
+        pieceIdCounter: number,
         // Second step: Vote on randomly assigned pieces
         voting?: Record<Snowflake, {
             // IDs of the pieces this user may vote on
             pieceIds: string[],
             // IDs of their favorite, second-favorite, and least-favorite pieces (if populated, this user has voted)
-            picks?: [string, string, string]
+            picks: { most?: string, second?: string, least?: string }
         }>
     }
 }
