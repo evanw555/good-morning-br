@@ -1750,17 +1750,17 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                         content: 'Here are the pieces you\'ll be voting on, use the drop-downs below. '
                             + 'Your favorite and second-favorite pieces will be appraised at a higher value, meanwhile your _least_ favorite piece\'s value will tank...',
                         files: [await this.renderGallery(pieceIds, 'voting', { showValues: false })],
-                        components: [{
+                        components: ALL_VOTE_RANKS.map(r => ({
                             type: ComponentType.ActionRow,
-                            components: ALL_VOTE_RANKS.map(r => ({
+                            components: [{
                                 type: ComponentType.StringSelect,
-                                custom_id: `game:selectPieceVote${capitalize(r)}Favorite`,
+                                custom_id: `game:selectPieceVote:${r}`,
                                 placeholder: `Your ${VOTE_RANK_NAMES[r]}...`,
                                 min_values: 1,
                                 max_values: 1,
                                 options
-                            }))
-                        }]
+                            }]
+                        }))
                     });
                     break;
                 }
@@ -1892,58 +1892,6 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
             }
         } else if (interaction.isStringSelectMenu()) {
             switch (interaction.customId) {
-                case 'game:selectPieceVoteMostFavorite':
-                case 'game:selectPieceVoteSecondFavorite':
-                case 'game:selectPieceVoteLeastFavorite': {
-                    // Validate that the user can do this
-                    if (!this.state.setup) {
-                        throw new Error('It\'s a little too late to vote!');
-                    }
-                    if (!this.state.setup.voting) {
-                        throw new Error('It\'s not time to vote yet!');
-                    }
-                    const playerVotingData = this.state.setup.voting[userId];
-                    if (!playerVotingData) {
-                        throw new Error('You haven\'t been assigned any pieces to vote on! Likely because you haven\'t participated at all yet...');
-                    }
-                    // Determine the rank of the vote
-                    let rank: VoteRank = 'most';
-                    if (interaction.customId.endsWith('SecondFavorite')) {
-                        rank = 'second';
-                    } else if (interaction.customId.endsWith('LeastFavorite')) {
-                        rank = 'least';
-                    }
-                    // Insert the value into the picks map
-                    const pieceId = interaction.values[0];
-                    if (!pieceId) {
-                        throw new Error('No piece ID (see admin)');
-                    }
-                    // Validate that this piece isn't being selected as the same rank again (makes the response message confusing)
-                    if (pieceId === playerVotingData.picks[rank]) {
-                        throw new Error(`You've already selected _${this.getPieceName(pieceId)}_ as your **${VOTE_RANK_NAMES[rank]}** piece. Use the other drop-downs...`);
-                    }
-                    // If this piece was selected for something else, wipe it
-                    let replacedText: string = '';
-                    for (const r of ALL_VOTE_RANKS) {
-                        if (playerVotingData.picks[r] === pieceId) {
-                            delete playerVotingData.picks[r];
-                            replacedText = `It was previously your **${VOTE_RANK_NAMES[r]}** piece. `;
-                        }
-                    }
-                    playerVotingData.picks[rank] = pieceId;
-                    // Construct response message
-                    const remainingRanks = ALL_VOTE_RANKS.filter(r => playerVotingData.picks[r] === undefined);
-                    await interaction.reply({
-                        ephemeral: true,
-                        content: `You've selected _${this.getPieceName(pieceId)}_ as your **${rank} favorite** piece. `
-                            + replacedText
-                            + (remainingRanks.length === 0 ? 'You\'re all done, enjoy your voting participation bonus!' : `Please finish up by selecting your ${naturalJoin(remainingRanks.map(r => VOTE_RANK_NAMES[r]), { bold: true })} piece${remainingRanks.length === 1 ? '' : 's'}.`)
-                    });
-                    if (remainingRanks.length === 0) {
-                        await logger.log(`<@${userId}> finished voting (**${this.getNumCompleteVoters()}** complete, **${this.getNumRemainingVoters()}** remaining)`);
-                    }
-                    break;
-                }
                 case 'game:selectItem': {
                     const itemType = interaction.values[0] as Masterpiece2ItemType;
                     // Validate that the user can do this
@@ -2044,6 +1992,61 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                         content: `Confirmed! _"${this.getPieceName(pieceId)}"_ will be forced into a private auction on Saturday morning`
                     });
                     void logger.log(`<@${userId}> has chosen to force **${this.getPieceOwnerString(pieceId)}'s** piece _"${this.getPieceName(pieceId)}"_ into a private auction`);
+                    break;
+                }
+                default: {
+                    // Not handled directly by other cases, so parse it
+                    const [rootCustomId, secondaryCustomId, arg] = interaction.customId.split(':');
+                    switch (secondaryCustomId) {
+                        case 'selectPieceVote': {
+                            // Validate that the user can do this
+                            if (!this.state.setup) {
+                                throw new Error('It\'s a little too late to vote!');
+                            }
+                            if (!this.state.setup.voting) {
+                                throw new Error('It\'s not time to vote yet!');
+                            }
+                            const playerVotingData = this.state.setup.voting[userId];
+                            if (!playerVotingData) {
+                                throw new Error('You haven\'t been assigned any pieces to vote on! Likely because you haven\'t participated at all yet...');
+                            }
+                            // Determine the rank of the vote
+                            let rank: VoteRank = arg as VoteRank;
+                            if (!ALL_VOTE_RANKS.includes(rank)) {
+                                throw new Error(`\`${rank}\` is an invalid vote rank (see admin)`);
+                            }
+                            // Insert the value into the picks map
+                            const pieceId = interaction.values[0];
+                            if (!pieceId) {
+                                throw new Error('No piece ID (see admin)');
+                            }
+                            // Validate that this piece isn't being selected as the same rank again (makes the response message confusing)
+                            if (pieceId === playerVotingData.picks[rank]) {
+                                throw new Error(`You've already selected _${this.getPieceName(pieceId)}_ as your **${VOTE_RANK_NAMES[rank]}** piece. Use the other drop-downs...`);
+                            }
+                            // If this piece was selected for something else, wipe it
+                            let replacedText: string = '';
+                            for (const r of ALL_VOTE_RANKS) {
+                                if (playerVotingData.picks[r] === pieceId) {
+                                    delete playerVotingData.picks[r];
+                                    replacedText = `It was previously your **${VOTE_RANK_NAMES[r]}** piece. `;
+                                }
+                            }
+                            playerVotingData.picks[rank] = pieceId;
+                            // Construct response message
+                            const remainingRanks = ALL_VOTE_RANKS.filter(r => playerVotingData.picks[r] === undefined);
+                            await interaction.reply({
+                                ephemeral: true,
+                                content: `You've selected _${this.getPieceName(pieceId)}_ as your **${rank} favorite** piece. `
+                                    + replacedText
+                                    + (remainingRanks.length === 0 ? 'You\'re all done, enjoy your voting participation bonus!' : `Please finish up by selecting your ${naturalJoin(remainingRanks.map(r => VOTE_RANK_NAMES[r]), { bold: true })} piece${remainingRanks.length === 1 ? '' : 's'}.`)
+                            });
+                            if (remainingRanks.length === 0) {
+                                await logger.log(`<@${userId}> finished voting (**${this.getNumCompleteVoters()}** complete, **${this.getNumRemainingVoters()}** remaining)`);
+                            }
+                            break;
+                        }
+                    }
                     break;
                 }
             }
