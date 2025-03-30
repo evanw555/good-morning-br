@@ -458,6 +458,7 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
     private incrementPlayerItem(userId: Snowflake, itemType: Masterpiece2ItemType, amount: number) {
         const player = this.state.players[userId];
         if (!player) {
+            void logger.log(`Tried to add ${amount} **${ITEM_NAMES[itemType] ?? itemType}** for nonexistent player <@${userId}>, aborting...`);
             return;
         }
         // Initialize the items map if missing
@@ -1020,6 +1021,7 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                 let numPlayerAwardedItems = 0;
                 for (const [userId, entry] of Object.entries(this.state.setup.voting)) {
                     if (getObjectSize(entry.picks) === NUM_VOTE_RANKS) {
+                        // Note that the voting map may contain players NOT in the game, the increment player item method handles this
                         this.incrementPlayerItem(userId, 'sneaky-peek', 1);
                         numPlayerAwardedItems++;
                     }
