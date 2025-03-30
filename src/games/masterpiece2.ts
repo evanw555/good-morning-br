@@ -2042,7 +2042,7 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                             const remainingRanks = ALL_VOTE_RANKS.filter(r => playerVotingData.picks[r] === undefined);
                             await interaction.reply({
                                 ephemeral: true,
-                                content: `You've selected _${this.getPieceName(pieceId)}_ as your **${rank} favorite** piece. `
+                                content: `You've selected _${this.getPieceName(pieceId)}_ as your **${VOTE_RANK_NAMES[rank]}** piece. `
                                     + replacedText
                                     + (remainingRanks.length === 0 ? 'You\'re all done, enjoy your voting participation bonus!' : `Please finish up by selecting your ${naturalJoin(remainingRanks.map(r => VOTE_RANK_NAMES[r]), { bold: true })} piece${remainingRanks.length === 1 ? '' : 's'}.`)
                             });
