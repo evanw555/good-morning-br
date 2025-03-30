@@ -1749,7 +1749,7 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                     await interaction.reply({
                         ephemeral: true,
                         content: 'Here are the pieces you\'ll be voting on, use the drop-downs below. '
-                            + 'Your favorite and second-favorite pieces will be appraised at a higher value, meanwhile your _least_ favorite piece\'s value will tank...',
+                            + 'Your _favorite_ and _second-favorite_ pieces will be appraised at a higher value, meanwhile your _most HATED_ piece\'s value will tank...',
                         files: [await this.renderGallery(pieceIds, 'voting', { showValues: false })],
                         components: ALL_VOTE_RANKS.map(r => ({
                             type: ComponentType.ActionRow,
