@@ -1139,6 +1139,11 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
             this.incrementPlayerItem(userId, 'sneaky-peek', 1);
             return [`${intro}! You've been awarded a **${ITEM_NAMES['sneaky-peek']}** for your early victory`];
         }
+        // If still in the setup phase, just award an item that can be used later
+        if (this.state.setup) {
+            this.incrementPlayerItem(userId, 'random-peek', 1);
+            return [`${intro}! Normally I would let you choose an item, but since we're still in the middle of voting I'll just award you a **${ITEM_NAMES['random-peek']}** to be used later`];
+        }
         // If there are no pending rewards, initialize that now
         if (!this.state.pendingRewards) {
             this.state.pendingRewards = {
