@@ -1738,13 +1738,12 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                         };
                         await logger.log(`Generated new voter info for player <@${userId}>`);
                     }
-                    // Get the pieces this user may vote on
+                    // Get the pieces this player may vote on
                     const pieceIds = votingInfo.pieceIds ?? [];
                     if (pieceIds.length === 0) {
                         throw new Error('There are no pieces for you to vote on (see admin)');
                     }
-                    // TODO(2): Start the voting process
-                    const options = pieceIds.map(id => ({ value: id, label: this.getPieceName(id) }));
+                    // Show the player the pieces they're voting on and present them with voting select menus
                     await interaction.reply({
                         ephemeral: true,
                         content: 'Here are the pieces you\'ll be voting on, use the drop-downs below. '
@@ -1758,7 +1757,11 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                                 placeholder: `Your ${VOTE_RANK_NAMES[r]}...`,
                                 min_values: 1,
                                 max_values: 1,
-                                options
+                                options: pieceIds.map(id => ({
+                                    value: id,
+                                    label: this.getPieceName(id),
+                                    default: id === votingInfo.picks[r]
+                                }))
                             }]
                         }))
                     });
