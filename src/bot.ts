@@ -3397,8 +3397,13 @@ const processCommands = async (msg: Message): Promise<void> => {
         await msg.reply('Mentions: ' + getJoinedMentions(mentions));
     }
     if (sanitizedText.includes('?')) {
+        // Force-dump the state
+        if (sanitizedText.includes('dump')) {
+            await dumpState();
+            await msg.reply('Dumped state!');
+        }
         // Test the experimental clusters logic
-        if (sanitizedText.includes('clusters')) {
+        else if (sanitizedText.includes('clusters')) {
             // msg.reply(JSON.stringify(generateKMeansClusters(state.points, 3)));
             const k: number = parseInt(sanitizedText.split(' ')[0]);
             msg.reply(JSON.stringify(generateKMeansClusters(state.toPointsMap(), k)));

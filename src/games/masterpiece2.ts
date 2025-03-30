@@ -2,7 +2,7 @@ import canvas, { Canvas, CanvasRenderingContext2D } from 'canvas';
 import { ActionRowData, APIButtonComponent, AttachmentBuilder, ButtonInteraction, ButtonStyle, ComponentType, GuildMember, Interaction, MessageActionRowComponentData, MessageFlags, Snowflake } from "discord.js";
 import { DecisionProcessingResult, GamePlayerAddition, MessengerManifest, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
-import { getObjectSize, getRandomlyDistributedAssignments, incrementProperty, isObjectEmpty, naturalJoin, randChoice, shuffle, toFixed, toLetterId, } from "evanw555.js";
+import { capitalize, getObjectSize, getRandomlyDistributedAssignments, incrementProperty, isObjectEmpty, naturalJoin, randChoice, shuffle, toFixed, toLetterId, } from "evanw555.js";
 import { cropToSquare, getTextLabel, joinCanvasesHorizontal, toCircle, withDropShadow } from "node-canvas-utils";
 import { text } from '../util';
 import { Masterpiece2PlayerState, Masterpiece2PieceState, Masterpiece2GameState, Masterpiece2AuctionType, Masterpiece2ItemType, Masterpiece2AuctionState } from './types';
@@ -13,6 +13,14 @@ import dmReplyCollector from '../dm-reply-collector';
 import controller from '../controller';
 
 type VoteRank = 'most' | 'second' | 'least';
+
+const VOTE_RANK_NAMES: Record<VoteRank, string> = {
+    most: 'favorite',
+    second: 'second favorite',
+    least: 'most HATED'
+};
+const ALL_VOTE_RANKS = Object.keys(VOTE_RANK_NAMES);
+const NUM_VOTE_RANKS = ALL_VOTE_RANKS.length;
 
 // TODO(2): IMPORTANT TODOS:
 // 1. Actually implement some of the item code
@@ -478,6 +486,20 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
 
     private mayPlayerForcePrivateAuction(userId: Snowflake): boolean {
         return this.getPlayerItemQuantity(userId, 'force') > 0;
+    }
+
+    private getNumCompleteVoters(): number {
+        if (!this.state.setup?.voting) {
+            return 0;
+        }
+        return Object.values(this.state.setup.voting).filter(v => getObjectSize(v.picks) === NUM_VOTE_RANKS).length;
+    }
+
+    private getNumRemainingVoters(): number {
+        if (!this.state.setup?.voting) {
+            return 0;
+        }
+        return Object.values(this.state.setup.voting).filter(v => getObjectSize(v.picks) < NUM_VOTE_RANKS).length;
     }
 
     private getPiece(pieceId: string): Masterpiece2PieceState {
@@ -997,8 +1019,7 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                 // Reward players for voting by awarding an item
                 let numPlayerAwardedItems = 0;
                 for (const [userId, entry] of Object.entries(this.state.setup.voting)) {
-                    // TODO: Decouple this logic from the assumed size of three
-                    if (getObjectSize(entry.picks) === 3) {
+                    if (getObjectSize(entry.picks) === NUM_VOTE_RANKS) {
                         this.incrementPlayerItem(userId, 'sneaky-peek', 1);
                         numPlayerAwardedItems++;
                     }
@@ -1069,7 +1090,7 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
         }
         // If people still need to vote, send a voting reminder message
         if (this.state.setup && this.state.setup.voting) {
-            const votersRemaining = Object.values(this.state.setup.voting).filter(v => isObjectEmpty(v.picks)).length;
+            const votersRemaining = this.getNumRemainingVoters();
             if (votersRemaining > 0) {
                 return [{
                     content: `I'm still waiting on **${votersRemaining}** player${votersRemaining === 1 ? '' : 's'} to vote! If you vote I'll give you a free item`,
@@ -1715,6 +1736,7 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                             // TODO(2): Should we make this more fair by only assigning pieces which were assigned to the fewest other players?
                             pieceIds: shuffle(this.getPieceIds()).slice(0, 5)
                         };
+                        await logger.log(`Generated new voter info for player <@${userId}>`);
                     }
                     // Get the pieces this user may vote on
                     const pieceIds = votingInfo.pieceIds ?? [];
@@ -1730,34 +1752,14 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                         files: [await this.renderGallery(pieceIds, 'voting', { showValues: false })],
                         components: [{
                             type: ComponentType.ActionRow,
-                            components: [{
+                            components: ALL_VOTE_RANKS.map(r => ({
                                 type: ComponentType.StringSelect,
-                                custom_id: 'game:selectPieceVoteMostFavorite',
-                                placeholder: 'Your favorite piece...',
+                                custom_id: `game:selectPieceVote${capitalize(r)}Favorite`,
+                                placeholder: `Your ${VOTE_RANK_NAMES[r]}...`,
                                 min_values: 1,
                                 max_values: 1,
                                 options
-                            }]
-                        }, {
-                            type: ComponentType.ActionRow,
-                            components: [{
-                                type: ComponentType.StringSelect,
-                                custom_id: 'game:selectPieceVoteSecondFavorite',
-                                placeholder: 'Your second favorite piece...',
-                                min_values: 1,
-                                max_values: 1,
-                                options
-                            }]
-                        }, {
-                            type: ComponentType.ActionRow,
-                            components: [{
-                                type: ComponentType.StringSelect,
-                                custom_id: 'game:selectPieceVoteLeastFavorite',
-                                placeholder: 'Your MOST HATED piece...',
-                                min_values: 1,
-                                max_values: 1,
-                                options
-                            }]
+                            }))
                         }]
                     });
                     break;
@@ -1918,26 +1920,28 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                     }
                     // Validate that this piece isn't being selected as the same rank again (makes the response message confusing)
                     if (pieceId === playerVotingData.picks[rank]) {
-                        throw new Error(`You've already selected _${this.getPieceName(pieceId)}_ as your **${rank} favorite** piece. Use the other drop-downs...`);
+                        throw new Error(`You've already selected _${this.getPieceName(pieceId)}_ as your **${VOTE_RANK_NAMES[rank]}** piece. Use the other drop-downs...`);
                     }
                     // If this piece was selected for something else, wipe it
-                    const allRanks: VoteRank[] = ['most', 'second', 'least'];
                     let replacedText: string = '';
-                    for (const r of allRanks) {
+                    for (const r of ALL_VOTE_RANKS) {
                         if (playerVotingData.picks[r] === pieceId) {
                             delete playerVotingData.picks[r];
-                            replacedText = `It was previously your **${r} favorite** piece. `;
+                            replacedText = `It was previously your **${VOTE_RANK_NAMES[r]}** piece. `;
                         }
                     }
                     playerVotingData.picks[rank] = pieceId;
                     // Construct response message
-                    const remainingRanks = allRanks.filter(r => playerVotingData.picks[r] === undefined);
+                    const remainingRanks = ALL_VOTE_RANKS.filter(r => playerVotingData.picks[r] === undefined);
                     await interaction.reply({
                         ephemeral: true,
                         content: `You've selected _${this.getPieceName(pieceId)}_ as your **${rank} favorite** piece. `
                             + replacedText
-                            + (remainingRanks.length === 0 ? 'You\'re all done, enjoy your voting participation bonus!' : `Please finish up by selecting your ${naturalJoin(remainingRanks, { bold: true })} **favorite** piece${remainingRanks.length === 1 ? '' : 's'}.`)
+                            + (remainingRanks.length === 0 ? 'You\'re all done, enjoy your voting participation bonus!' : `Please finish up by selecting your ${naturalJoin(remainingRanks.map(r => VOTE_RANK_NAMES[r]), { bold: true })} piece${remainingRanks.length === 1 ? '' : 's'}.`)
                     });
+                    if (remainingRanks.length === 0) {
+                        await logger.log(`<@${userId}> finished voting (**${this.getNumCompleteVoters()}** complete, **${this.getNumRemainingVoters()}** remaining)`);
+                    }
                     break;
                 }
                 case 'game:selectItem': {
