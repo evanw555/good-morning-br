@@ -765,8 +765,7 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
                         log: [...userCard.log, `traded with **${this.getPlayerDisplayName(offererId)}** for ${offererCardDescriptor}`]
                     };
                     // Notify both users
-                    await interaction.reply({
-                        ephemeral: true,
+                    await interaction.editReply({
                         content: `Accepted trade offer from **${this.getPlayerDisplayName(offererId)}**. You traded ${userCardDescriptor} for ${offererCardDescriptor}!`,
                         files: [new AttachmentBuilder((await this.renderCardDraw(offererCard.card, offererCard.variant)).toBuffer()).setName('trade.png')]
                     });
@@ -782,10 +781,7 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
                     // Wipe the pending trade offer flag
                     delete offererCard.trade;
                     // Notify both users
-                    await interaction.reply({
-                        ephemeral: true,
-                        content: `Declined trade offer from **${this.getPlayerDisplayName(offererId)}**, they have been notified.`
-                    });
+                    await interaction.editReply(`Declined trade offer from **${this.getPlayerDisplayName(offererId)}**, they have been notified.`);
                     return {
                         dms: {
                             [offererId]: [`**${this.getPlayerDisplayName(userId)}** has declined your trade offer...`]
@@ -843,8 +839,7 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
                     } else {
                         content += `You only have **${this.getPoints(userId)}** points, so you're stuck with this card`; // `either keep your card or trade it with someone else`;
                     }
-                    await interaction.reply({
-                        ephemeral: true,
+                    await interaction.editReply({
                         content,
                         files,
                         components: buttons.length > 0 ? [{
@@ -898,8 +893,7 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
                         content += `You only have **${this.getPoints(userId)}** points, so you're stuck with this card`; // `either keep your card or trade it with someone else`;
                     }
                     // TODO: Merge logic once a default trade button is added
-                    await interaction.reply({
-                        ephemeral: true,
+                    await interaction.editReply({
                         content,
                         files: [new AttachmentBuilder((await this.renderCardDraw(card, variant)).toBuffer()).setName('draw.png')],
                         components: buttons.length > 0 ? [{
@@ -919,8 +913,7 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
                     if (!this.hasPlayerCard(userId)) {
                         throw new Error('You can\'t trade, you don\'t have a card to begin with!');
                     }
-                    await interaction.reply({
-                        ephemeral: true,
+                    await interaction.editReply({
                         content: 'Who would you like to trade with? When you select a user, a DM will be sent to them extending the offer _however_ the card being offered won\'t be revealed',
                         components: [{
                             type: ComponentType.ActionRow,
@@ -964,10 +957,7 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
                     // Set the trade target in the state
                     this.state.cards[userId].trade = targetUserId;
                     // Extend the trade offer
-                    await interaction.reply({
-                        ephemeral: true,
-                        content: `Your trade offer has been sent to **${this.getPlayerDisplayName(targetUserId)}**!`
-                    })
+                    await interaction.editReply(`Your trade offer has been sent to **${this.getPlayerDisplayName(targetUserId)}**!`);
                     // TODO: Instruct them how to accept
                     return {
                         dms: {

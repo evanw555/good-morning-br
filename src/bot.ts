@@ -3031,6 +3031,8 @@ client.on('interactionCreate', async (interaction): Promise<void> => {
         // If this is a generic game interaction, pass the handling off to the game instance
         if (rootCustomId === 'game') {
             if (state.hasGame()) {
+                // Defer now, since there's no guarantee how long game implementations will take to reply
+                await interaction.deferReply({ ephemeral: true });
                 // Handle the game interaction in the game state
                 try {
                     const messengerManifest = await state.getGame().handleGameInteraction(interaction);
@@ -3046,18 +3048,12 @@ client.on('interactionCreate', async (interaction): Promise<void> => {
                         }
                     }
                 } catch (err) {
-                    await interaction.reply({
-                        ephemeral: true,
-                        content: err.toString()
-                    });
+                    await interaction.editReply(err.toString());
                 }
                 await dumpState();
                 // If not replied to, send an error reply
                 if (!interaction.replied) {
-                    await interaction.reply({
-                        ephemeral: true,
-                        content: 'This action could not be processed right now (see admin)'
-                    });
+                    await interaction.editReply('This action could not be processed right now (see admin)');
                 }
             } else {
                 await interaction.reply({

@@ -3127,8 +3127,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                         throw new Error('It\'s not your turn to draft, silly!');
                     }
                     // Respond with a prompt for the user to pick a color first
-                    await interaction.reply({
-                        ephemeral: true,
+                    await interaction.editReply({
                         content: 'First, choose a color:',
                         files: [await this.renderAvailableColors(userId)],
                         components: [{
@@ -3150,7 +3149,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                         throw new Error('I\'m not accepting any decisions related to _adding troops_ right now...');
                     }
                     // Reply with a prompt for them to make decisions
-                    await interaction.reply(this.getAddDecisionReply(userId));
+                    await interaction.editReply(this.getAddDecisionReply(userId));
                     break;
                 }
                 case 'game:attack': {
@@ -3163,7 +3162,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                         throw new Error(`You can\'t attack, you\'ve been eliminated! You can only _add_ troops to **${this.getPlayerDisplayName(this.getPlayerTeam(userId))}'s** territories...`);
                     }
                     // Reply with a prompt for them to make decisions
-                    await interaction.reply(this.getAttackDecisionReply(userId));
+                    await interaction.editReply(this.getAttackDecisionReply(userId));
                     break;
                 }
                 case 'game:move': {
@@ -3176,7 +3175,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                         throw new Error(`You can\'t move troops, you\'ve been eliminated! You can only _add_ troops to **${this.getPlayerDisplayName(this.getPlayerTeam(userId))}'s** territories...`);
                     }
                     // Reply with a prompt for them to make decisions
-                    await interaction.reply(this.getMoveDecisionReply(userId));
+                    await interaction.editReply(this.getMoveDecisionReply(userId));
                     break;
                 }
                 case 'game:clearAdd': {
@@ -3187,7 +3186,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     // Clear this player's add decisions
                     delete this.state.addDecisions[userId];
                     // Reply with a prompt for them to make new decisions
-                    await interaction.reply(this.getAddDecisionReply(userId));
+                    await interaction.editReply(this.getAddDecisionReply(userId));
                     break;
                 }
                 case 'game:clearMove': {
@@ -3199,7 +3198,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     delete this.pendingMoveDecisions[userId];
                     delete this.state.moveDecisions[userId];
                     // Reply with a prompt for them to make new decisions
-                    await interaction.reply(this.getMoveDecisionReply(userId));
+                    await interaction.editReply(this.getMoveDecisionReply(userId));
                     break;
                 }
                 case 'game:clearAttack': {
@@ -3211,7 +3210,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     delete this.pendingAttackDecisions[userId];
                     delete this.state.attackDecisions[userId];
                     // Reply with a prompt for them to make new decisions
-                    await interaction.reply(this.getAttackDecisionReply(userId));
+                    await interaction.editReply(this.getAttackDecisionReply(userId));
                     break;
                 }
                 case 'game:clearAll': {
@@ -3226,17 +3225,13 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     delete this.state.attackDecisions[userId];
                     delete this.state.moveDecisions[userId];
                     // Reply with a confirmation
-                    await interaction.reply({
-                        ephemeral: true,
-                        content: 'All your decisions have been erased! Use the buttons in the channel to arrange some new ones...'
-                    });
+                    await interaction.editReply('All your decisions have been erased! Use the buttons in the channel to arrange some new ones...');
                     break;
                 }
                 case 'game:reviewDecisions': {
                     const allDecisionStrings = [...this.getAddDecisionStrings(userId), ...this.getAttackDecisionStrings(userId), ...this.getMoveDecisionStrings(userId)];
                     if (allDecisionStrings.length > 0) {
-                        await interaction.reply({
-                            ephemeral: true,
+                        await interaction.editReply({
                             content: 'You\'ve made the following decisions:\n'
                                 + allDecisionStrings.join('\n')
                                 + '\nYou can use the "Start Over" button to delete all of these and start over.',
@@ -3251,10 +3246,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                             }]
                         });
                     } else {
-                        await interaction.reply({
-                            ephemeral: true,
-                            content: 'You don\'t have any actions lined up! Use the buttons in the channel to arrange some actions...'
-                        });
+                        await interaction.editReply('You don\'t have any actions lined up! Use the buttons in the channel to arrange some actions...');
                     }
                     break;
                 }
@@ -3267,8 +3259,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                         throw new Error('You don\'t have the privilege of picking a custom troop icon... how did you click this button?');
                     }
                     // Reply with a menu of all available troop icons
-                    await interaction.reply({
-                        ephemeral: true,
+                    await interaction.editReply({
                         content: 'Please select from the following options (the selection is confirmed once you click the option in the drop-down, so be careful)',
                         files: [await this.renderAvailableTroopIcons()],
                         components: [{
@@ -3285,8 +3276,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     break;
                 }
                 case 'game:help': {
-                    await interaction.reply({
-                        ephemeral: true,
+                    await interaction.editReply({
                         content: 'What would you like help with?',
                         components: this.getHelpOptionsActionRow()
                     });
@@ -3320,8 +3310,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     // Save the color as a pending color decision
                     this.pendingColorSelections[userId] = color;
                     // Now, prompt for them to choose a starting location
-                    await interaction.reply({
-                        ephemeral: true,
+                    await interaction.editReply({
                         content: `You've selected **${RiskGame.config.colors[color] ?? color}**. Now, where would you like to start?`,
                         components: [{
                             type: ComponentType.ActionRow,
@@ -3374,10 +3363,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     delete this.pendingColorSelections[userId];
                     delete draft[userId].available;
                     // Reply to the interaction
-                    await interaction.reply({
-                        ephemeral: true,
-                        content: `You have selected _${this.getTerritoryName(territoryId)}_!`
-                    });
+                    await interaction.editReply(`You have selected _${this.getTerritoryName(territoryId)}_!`);
                     // Reply for the entire channel to see
                     const selectionPhrase = randChoice('has set up camp at', 'has selected', 'has posted up at', 'has set up shop at', 'chose', 'has chosen', 'is starting at');
                     return {
@@ -3413,7 +3399,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     const pendingAdditions = this.state.addDecisions[userId];
                     pendingAdditions.push(selectedTerritoryId);
                     // Repond with a prompt to do more
-                    await interaction.reply(this.getAddDecisionReply(userId));
+                    await interaction.editReply(this.getAddDecisionReply(userId));
                     break;
                 }
                 case 'game:selectMoveFrom': {
@@ -3438,7 +3424,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     delete pendingMove.to;
                     delete pendingMove.quantity;
                     // Respond with a prompt to do more
-                    await interaction.reply(this.getMoveDecisionReply(userId));
+                    await interaction.editReply(this.getMoveDecisionReply(userId));
                     break;
                 }
                 case 'game:selectMoveTo': {
@@ -3461,7 +3447,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     // Delete the subsequent property to ensure it's not filled in backward
                     delete pendingMove.quantity;
                     // Respond with a prompt to do more
-                    await interaction.reply(this.getMoveDecisionReply(userId));
+                    await interaction.editReply(this.getMoveDecisionReply(userId));
                     break;
                 }
                 case 'game:selectMoveQuantity': {
@@ -3483,7 +3469,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     const pendingMove = this.pendingMoveDecisions[userId];
                     pendingMove.quantity = quantity;
                     // Respond with a prompt to do more
-                    await interaction.reply(this.getMoveDecisionReply(userId));
+                    await interaction.editReply(this.getMoveDecisionReply(userId));
                     break;
                 }
                 case 'game:selectAttackFrom': {
@@ -3508,7 +3494,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     delete pendingAttack.to;
                     delete pendingAttack.quantity;
                     // Respond with a prompt to do more
-                    await interaction.reply(this.getAttackDecisionReply(userId));
+                    await interaction.editReply(this.getAttackDecisionReply(userId));
                     break;
                 }
                 case 'game:selectAttackTo': {
@@ -3536,7 +3522,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     // Delete the subsequent property to ensure it's not filled in backward
                     delete pendingAttack.quantity;
                     // Respond with a prompt to do more
-                    await interaction.reply(this.getAttackDecisionReply(userId));
+                    await interaction.editReply(this.getAttackDecisionReply(userId));
                     break;
                 }
                 case 'game:selectAttackQuantity': {
@@ -3558,7 +3544,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     const pendingAttack = this.pendingAttackDecisions[userId];
                     pendingAttack.quantity = quantity;
                     // Respond with a prompt to do more
-                    await interaction.reply(this.getAttackDecisionReply(userId));
+                    await interaction.editReply(this.getAttackDecisionReply(userId));
                     break;
                 }
                 case 'game:selectTroopIcon': {
@@ -3581,10 +3567,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     this.setPlayerTroopIcon(userId, value);
                     delete this.state.players[userId].maySelectCustomTroopIcon;
                     // Confirm the selection
-                    await interaction.reply({
-                        ephemeral: true,
-                        content: `Confirmed! You have selected the **${this.getPlayerTroopIcon(userId)}** as your custom troop icon`
-                    });
+                    await interaction.editReply(`Confirmed! You have selected the **${this.getPlayerTroopIcon(userId)}** as your custom troop icon`);
                     break;
                 }
                 case 'game:selectHelpOption': {
@@ -3592,18 +3575,14 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     const helpOption = RiskGame.config.help[value];
                     if (helpOption) {
                         const { question, answer } = helpOption;
-                        await interaction.reply({
-                            ephemeral: true,
+                        await interaction.editReply({
                             content: `**Q:** _${question}_`
                                 + `\n**A:** ${answer}`
                                 + '\nWhat else would you like help with?',
                             components: this.getHelpOptionsActionRow()
                         });
                     } else {
-                        await interaction.reply({
-                            ephemeral: true,
-                            content: 'I don\'t recognize that help option...'
-                        });
+                        await interaction.editReply('I don\'t recognize that help option...');
                     }
                     break;
                 }

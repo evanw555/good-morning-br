@@ -1106,24 +1106,19 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
         if (interaction.isButton()) {
             switch (interaction.customId) {
                 case 'game:help':
-                    await interaction.reply({
-                        ephemeral: true,
+                    await interaction.editReply({
                         content: 'Here are the rules of the game',
                         files: [await this.renderRules()]
                     });
                     break;
                 case 'game:inventory':
                     if (this.hasAnyPieces(userId)) {
-                        await interaction.reply({
-                            ephemeral: true,
+                        await interaction.editReply({
                             content: `You have **$${this.getPoints(userId)}** in cash, plus the following pieces in your gallery:`,
                             files: [await this.renderInventory(userId)]
                         });
                     } else {
-                        await interaction.reply({
-                            ephemeral: true,
-                            content: `You have **$${this.getPoints(userId)}** in cash, but no pieces of art ...yet`
-                        });
+                        await interaction.editReply(`You have **$${this.getPoints(userId)}** in cash, but no pieces of art ...yet`);
                     }
                     break;
                 case 'game:bankBid':
@@ -1135,24 +1130,17 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
                 case 'game:sell':
                     // Validate that this user can do this
                     if (!this.mayPlayerSell(userId)) {
-                        await interaction.reply({
-                            ephemeral: true,
-                            content: 'You can\'t do that right now! Perhaps you\'ve already chosen an action?'
-                        });
+                        await interaction.editReply('You can\'t do that right now! Perhaps you\'ve already chosen an action?');
                         return;
                     }
                     // Get all the pieces that this user may sell
                     const pieceIds = this.getPieceIdsForUser(userId);
                     if (pieceIds.length === 0) {
-                        await interaction.reply({
-                            ephemeral: true,
-                            content: 'You don\'t have any pieces to sell at the moment!'
-                        });
+                        await interaction.editReply('You don\'t have any pieces to sell at the moment!');
                         return;
                     }
                     // Respond with a select menu of all the pieces this user may sell
-                    await interaction.reply({
-                        ephemeral: true,
+                    await interaction.editReply({
                         content: 'Which piece would you like to sell?',
                         components: [{
                             type: ComponentType.ActionRow,
@@ -1172,24 +1160,17 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
                 case 'game:forcePrivateAuction':
                     // Validate that this user can do this
                     if (!this.mayPlayerForcePrivateAuction(userId)) {
-                        await interaction.reply({
-                            ephemeral: true,
-                            content: 'You can\'t do that right now! Perhaps you\'ve already chosen an action?'
-                        });
+                        await interaction.editReply('You can\'t do that right now! Perhaps you\'ve already chosen an action?');
                         return;
                     }
                     // Get all the pieces that this user may force into auction
                     const otherPieceIds = this.getPieceIdsForOtherUsers(userId);
                     if (otherPieceIds.length === 0) {
-                        await interaction.reply({
-                            ephemeral: true,
-                            content: 'There are no pieces that can be forced into auction at this moment'
-                        });
+                        await interaction.editReply('There are no pieces that can be forced into auction at this moment');
                         return;
                     }
                     // Respond with a select menu of all the pieces this user may force into auction
-                    await interaction.reply({
-                        ephemeral: true,
+                    await interaction.editReply({
                         content: 'Which piece would you like to force into auction?',
                         components: [{
                             type: ComponentType.ActionRow,
@@ -1213,26 +1194,17 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
                 case 'game:sellSelect': {
                     // Validate that this user can do this
                     if (!this.mayPlayerSell(userId)) {
-                        await interaction.reply({
-                            ephemeral: true,
-                            content: 'You can\'t do that right now! Perhaps you\'ve already chosen an action?'
-                        });
+                        await interaction.editReply('You can\'t do that right now! Perhaps you\'ve already chosen an action?');
                         return;
                     }
                     // Validate and set up the sale of this piece
                     const pieceId = interaction.values[0];
                     if (!this.hasPieceWithId(pieceId)) {
-                        await interaction.reply({
-                            ephemeral: true,
-                            content: `Woah! Piece with ID \`${pieceId}\` doesn't exist... (see admin)`
-                        });
+                        await interaction.editReply(`Woah! Piece with ID \`${pieceId}\` doesn't exist... (see admin)`);
                         return;
                     }
                     if (this.getPieceOwner(pieceId) !== userId) {
-                        await interaction.reply({
-                            ephemeral: true,
-                            content: `You can't sell _"${this.getPieceName(pieceId)}"_, that piece belongs to **${this.getPieceOwnerString(pieceId)}**`
-                        });
+                        await interaction.editReply(`You can't sell _"${this.getPieceName(pieceId)}"_, that piece belongs to **${this.getPieceOwnerString(pieceId)}**`);
                         return;
                     }
                     // Update the state
@@ -1240,36 +1212,24 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
                     delete this.state.players[userId].maySell;
                     delete this.state.players[userId].mayForceAuction;
                     // Reply to the user confirming the sale
-                    await interaction.reply({
-                        ephemeral: true,
-                        content: `Confirmed! _"${this.getPieceName(pieceId)}"_ will be sold to the museum Sunday morning for **$${this.getPieceValue(pieceId)}**`
-                    });
+                    await interaction.editReply(`Confirmed! _"${this.getPieceName(pieceId)}"_ will be sold to the museum Sunday morning for **$${this.getPieceValue(pieceId)}**`);
                     void logger.log(`<@${userId}> has chosen to sell their piece _"${this.getPieceName(pieceId)}"_`);
                     break;
                 }
                 case 'game:forcePrivateAuctionSelect': {
                     // Validate that this user can do this
                     if (!this.mayPlayerForcePrivateAuction(userId)) {
-                        await interaction.reply({
-                            ephemeral: true,
-                            content: 'You can\'t do that right now! Perhaps you\'ve already chosen an action?'
-                        });
+                        await interaction.editReply('You can\'t do that right now! Perhaps you\'ve already chosen an action?');
                         return;
                     }
                     // Validate and set up the forced auction
                     const pieceId = interaction.values[0];
                     if (!this.hasPieceWithId(pieceId)) {
-                        await interaction.reply({
-                            ephemeral: true,
-                            content: `Woah! Piece with ID \`${pieceId}\` doesn't exist... (see admin)`
-                        });
+                        await interaction.editReply(`Woah! Piece with ID \`${pieceId}\` doesn't exist... (see admin)`);
                         return;
                     }
                     if (this.getPieceOwner(pieceId) === userId) {
-                        await interaction.reply({
-                            ephemeral: true,
-                            content: `You can't force _"${this.getPieceName(pieceId)}"_ into auction, that piece belongs to you!`
-                        });
+                        await interaction.editReply(`You can't force _"${this.getPieceName(pieceId)}"_ into auction, that piece belongs to you!`);
                         return;
                     }
                     // Update the state
@@ -1280,10 +1240,7 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
                     delete this.state.players[userId].maySell;
                     delete this.state.players[userId].mayForceAuction;
                     // Reply to the user confirming the forced auction
-                    await interaction.reply({
-                        ephemeral: true,
-                        content: `Confirmed! _"${this.getPieceName(pieceId)}"_ will be forced into a private auction on Saturday morning`
-                    });
+                    await interaction.editReply(`Confirmed! _"${this.getPieceName(pieceId)}"_ will be forced into a private auction on Saturday morning`);
                     void logger.log(`<@${userId}> has chosen to force **${this.getPieceOwnerString(pieceId)}'s** piece _"${this.getPieceName(pieceId)}"_ into a private auction`);
                     break;
                 }
@@ -1296,26 +1253,17 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
         const auction = this.state.auctions[type];
         // Ensure the auction exists and is active
         if (!auction || !auction.active) {
-            await interaction.reply({
-                ephemeral: true,
-                content: `You can't place a bid right now, as there's no active ${type} auction!`
-            });
+            await interaction.editReply(`You can't place a bid right now, as there's no active ${type} auction!`);
             return;
         }
         // The player cannot bid on the same piece twice in a row
         if (userId === auction.bidder) {
-            await interaction.reply({
-                ephemeral: true,
-                content: 'You were the last one to bid! Wait until someone else bids, then try again...'
-            });
+            await interaction.editReply('You were the last one to bid! Wait until someone else bids, then try again...');
             return;
         }
         // The player cannot bid on a piece they own (e.g. cannot bid on a piece stolen from you via private auction)
         if (userId === this.getPieceOwner(auction.pieceId)) {
-            await interaction.reply({
-                ephemeral: true,
-                content: 'This is your piece, buddy. You can\'t bid on it! You must sit in the corner and watch as everyone bids on your own piece.'
-            });
+            await interaction.editReply('This is your piece, buddy. You can\'t bid on it! You must sit in the corner and watch as everyone bids on your own piece.');
             return;
         }
         // Compute the target bid and validate whether the user can even place a bid
@@ -1323,19 +1271,13 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
         const existingBidLiability = this.getPlayerBidLiability(userId);
         const totalLiability = bidAmount + existingBidLiability;
         if (totalLiability > this.getPoints(userId)) {
-            await interaction.reply({
-                ephemeral: true,
-                content: `You can't place a **$${bidAmount}** bid, as you only have **$${this.getPoints(userId)}**!`
-                    + (existingBidLiability > 0 ? ` (and you're currently bidding **$${existingBidLiability}** on other auctions)` : '')
-            });
+            await interaction.editReply(`You can't place a **$${bidAmount}** bid, as you only have **$${this.getPoints(userId)}**!`
+                + (existingBidLiability > 0 ? ` (and you're currently bidding **$${existingBidLiability}** on other auctions)` : ''));
             return;
         }
         // Check and acquire the lock
         if (this.auctionLock) {
-            await interaction.reply({
-                ephemeral: true,
-                content: 'Someone else is placing a bid at this exact moment, try again in half a second...'
-            });
+            await interaction.editReply('Someone else is placing a bid at this exact moment, try again in half a second...');
             return;
         }
         this.auctionLock = true;
@@ -1345,10 +1287,7 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
         // Reply and notify the channel
         const pieceId = auction.pieceId;
         const pieceName = this.getPiece(pieceId).name;
-        await interaction.reply({
-            ephemeral: true,
-            content: `You've placed a bid on _"${pieceName}"_!`
-        });
+        await interaction.editReply(`You've placed a bid on _"${pieceName}"_!`);
         await interaction.channel?.send({
             content: `<@${userId}> has raised the bid on _"${pieceName}"_ to **$${bidAmount}**!`,
             flags: MessageFlags.SuppressNotifications
