@@ -1604,6 +1604,12 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         if (getTodayDateString() === '1/15/25') {
             await messenger.send(goodMorningChannel, '**GMBR Patch Notes 1/15/25:**\n- Everyone who votes in Tuesday submission contests (even those who didn\'t submit anything) will receive daily participation credit, letting them keep their streaks more easily');
         }
+        // If a mid-morning message override is specified, send it now
+        const calendarDate: CalendarDate = toCalendarDate(new Date());
+        const midMorningMessage: string | undefined = config.midMorningMessageOverrides[calendarDate];
+        if (midMorningMessage) {
+            await messenger.send(goodMorningChannel, languageGenerator.generate(midMorningMessage));
+        }
     },
     [TimeoutType.NextPreNoon]: async (): Promise<void> => {
         // If attempting to invoke this while already asleep, warn the admin and abort

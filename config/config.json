@@ -32,6 +32,14 @@
         "12/24": "Good morning, for today is Christmas Eve! Please refrain from rustling about, sneaking, and peeking tonight, for Santa is on his way... 🎅",
         "12/25": "Merry Christmas! I hope Santa brought you all not only the finest toys, but also the brightest of smiles! {!🎄|🌟|🕯️}"
     },
+    "midMorningMessageOverrides": {
+        "1/1": "Only a few hours into this brand new year and I'm already feeling {adjectives.positive?}!",
+        "2/14": "Love {!you all|my dogs} 💋",
+        "3/17": "To any of you who have plucked the elusive four-leaf clover today, I implore you to go out and buy as many {!scratchers|lottery tickets} as possible!",
+        "4/20": "{!Wow|Damn}... that {!hubba bubba|ganja|reefer|halflings' leaf|eldritch bluntweed|aged goatweed|grimy guam leaf} got {!me|a bot} {!yiiked|fugged} up...",
+        "9/29": "I may have gone a bit overboard for _National Laxative Day_... I'll be seeing the bathroom now",
+        "12/25": "Well, did Santa bring you guys anything good? Who got the best haul?"
+    },
     "defaultGoodMorningEmoji": "🌞",
     "goodMorningEmojiOverrides": {
         "2/14": ["❤️", "❤️", "❤️", "❤️", "❤️", "❤️", "🖤", "🩶", "🤍", "💙", "🩵", "💜", "🩷", "🧡", "💛"],

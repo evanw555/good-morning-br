@@ -67,6 +67,8 @@ export interface GoodMorningConfig {
     bonusAward: number,
     minimumComboDays: number,
     goodMorningMessageOverrides: Record<CalendarDate, string>,
+    /** Message that should be sent at mid-morning, if present for that month/day. */
+    midMorningMessageOverrides: Record<CalendarDate, string>,
     defaultGoodMorningEmoji: string,
     goodMorningEmojiOverrides: Record<CalendarDate, string[]>,
     downvoteEmoji: string,
