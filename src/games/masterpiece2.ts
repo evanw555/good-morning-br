@@ -496,11 +496,17 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
         return Object.values(this.state.setup.voting).filter(v => getObjectSize(v.picks) === NUM_VOTE_RANKS).length;
     }
 
-    private getNumRemainingVoters(): number {
+    private getRemainingVoters(): Snowflake[] {
         if (!this.state.setup?.voting) {
-            return 0;
+            return [];
         }
-        return Object.values(this.state.setup.voting).filter(v => getObjectSize(v.picks) < NUM_VOTE_RANKS).length;
+        return Object.entries(this.state.setup.voting)
+            .filter(([userId, v]) => getObjectSize(v.picks) < NUM_VOTE_RANKS)
+            .map(([userId, v]) => userId);
+    }
+
+    private getNumRemainingVoters(): number {
+        return this.getRemainingVoters().length;
     }
 
     private getPiece(pieceId: string): Masterpiece2PieceState {
@@ -1094,8 +1100,11 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
         if (this.state.setup && this.state.setup.voting) {
             const votersRemaining = this.getNumRemainingVoters();
             if (votersRemaining > 0) {
+                const targetText = votersRemaining <= 3
+                    ? this.getJoinedDisplayNames(this.getRemainingVoters())
+                    : `**${votersRemaining}** players`;
                 return [{
-                    content: `I'm still waiting on **${votersRemaining}** player${votersRemaining === 1 ? '' : 's'} to vote! If you vote I'll give you a free item`,
+                    content: `I'm still waiting on ${targetText} to vote on some art! If you vote I'll give you a free item`,
                     components: [{
                         type: ComponentType.ActionRow,
                         components: [{
