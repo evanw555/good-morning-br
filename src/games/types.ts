@@ -131,7 +131,9 @@ export interface Masterpiece2PlayerState {
     displayName: string,
     points: number,
     // Items persist throughout the entire season
-    items?: Partial<Record<Masterpiece2ItemType, number>>
+    items?: Partial<Record<Masterpiece2ItemType, number>>,
+    // If present, this player will buy a piece from the bank during the next game update
+    buying?: { price: number }
 }
 
 export interface Masterpiece2PieceState {

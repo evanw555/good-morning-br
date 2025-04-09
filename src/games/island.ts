@@ -641,7 +641,7 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
         }
     }
 
-    override handleNonDecisionDM(userId: Snowflake, text: string): string[] {
+    override handleNonDecisionDM(userId: Snowflake, text: string): MessengerPayload[] {
         // If this user has the power to grant immunity...
         if (this.mayPlayerGrantImmunity(userId)) {
             // If the user is trying to confirm...

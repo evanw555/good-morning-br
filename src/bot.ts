@@ -4269,13 +4269,11 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
         if (state.hasGame()) {
             const game = state.getGame();
             // Attempt to process this DM using the using the non-decision hook
-            const replyTexts = game.handleNonDecisionDM(userId, msg.content).filter(t => t);
+            const payloads = game.handleNonDecisionDM(userId, msg.content).filter(t => t);
             // If this DM warranted some sort of reply, then send the reply and return
-            if (replyTexts.length > 0) {
+            if (payloads.length > 0) {
                 await dumpState();
-                for (const replyText of replyTexts) {
-                    await messenger.reply(msg, replyText);
-                }
+                await messenger.sendAll(msg.channel, payloads);
                 return;
             }
             // Otherwise if accepting game decisions, process this DM as a game decision (ignore replies)

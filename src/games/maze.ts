@@ -2615,7 +2615,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         return undefined;
     }
 
-    override handleNonDecisionDM(userId: Snowflake, text: string): string[] {
+    override handleNonDecisionDM(userId: Snowflake, text: string): MessengerPayload[] {
         if (!this.hasPlayer(userId)) {
             return [];
         }

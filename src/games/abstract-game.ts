@@ -294,7 +294,7 @@ export default abstract class AbstractGame<T extends GameState> {
      * @param text Contents of the DM received
      * @returns Sequence of replies to use to reply to the DM (empty list means this DM was ignored)
      */
-    handleNonDecisionDM(userId: Snowflake, text: string): string[] {
+    handleNonDecisionDM(userId: Snowflake, text: string): MessengerPayload[] {
         return [];
     }
 

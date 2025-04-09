@@ -261,7 +261,7 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
             const auction = this.state.auctions[pieceId];
             // If somehow there is no auction with that ID, log and abort...
             if (!auction) {
-                await logger.log(`Cannot start auction with ID \`${pieceId}\`, it doesn't exist!`);
+                void logger.log(`Cannot start auction with ID \`${pieceId}\`, it doesn't exist!`);
                 return [];
             }
             // Mark it as active to begin!
@@ -336,6 +336,9 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                 this.getPiece(pieceId).owner = bidder;
                 // Deduct points from the player
                 this.addPoints(bidder, -bid);
+                // If this piece was flagged for sale, clear that
+                // TODO: Should the previous owner be notified? Need to change the return type to a messenger manifest
+                delete this.getPiece(pieceId).toBeSold;
                 // Reply with appropriate message
                 responseMessages.push({
                     content: `<@${bidder}> has won the auction for _"${this.getPieceName(pieceId)}"_ with a bid of **$${bid}**!`,
@@ -453,6 +456,10 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
 
     private getPlayerItemQuantity(userId: Snowflake, itemType: Masterpiece2ItemType): number {
         return this.getPlayerItems(userId)[itemType] ?? 0;
+    }
+
+    private hasItem(userId: Snowflake, itemType: Masterpiece2ItemType): boolean {
+        return this.getPlayerItemQuantity(userId, itemType) > 0;
     }
 
     private incrementPlayerItem(userId: Snowflake, itemType: Masterpiece2ItemType, amount: number) {
@@ -1279,6 +1286,7 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
         }
 
         // Process any pending sale first and foremost
+        // TODO: How to handle sales for pieces that were forced into auction?
         const pendingSaleIds = this.getPieceIdsToBeSold();
         if (pendingSaleIds.length > 0) {
             const pieceId = randChoice(...pendingSaleIds);
@@ -1306,6 +1314,48 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                     files: [await this.renderAuction(pieceId, 'Museum Sale', `sold${randChoice('1', '2')}`)]
                 }
             };
+        }
+
+        // Process any pending purchases
+        const pendingBuyingUserIds = this.getOrderedPlayers().filter(id => this.state.players[id].buying);
+        if (pendingBuyingUserIds.length > 0) {
+            const userId = randChoice(...pendingBuyingUserIds);
+            const playerState = this.state.players[userId];
+            // TODO: Can we handle this better? Guarantee?
+            const price = playerState.buying?.price ?? Math.floor(this.getAverageUnsoldPieceValue());
+            // Clear the flag to prevent further processing
+            delete playerState.buying;
+            // Validate that the player has enough money
+            if (this.getPoints(userId) < price) {
+                // Refund the user's buy item
+                this.incrementPlayerItem(userId, 'buy', 1);
+                return {
+                    continueProcessing: true,
+                    summary: `**${this.getPlayerDisplayName(userId)}** tried to buy a random piece from the bank for **$${price}** with only **$${this.getPoints(userId)}** in hand... their **${ITEM_NAMES['buy']}** item was refunded`
+                };
+            }
+            // Validate that there are any available pieces remaining
+            const randomAvailablePieces = shuffle(this.getAvailablePieceIds());
+            if (randomAvailablePieces.length === 0) {
+                // Refund the user's buy item
+                this.incrementPlayerItem(userId, 'buy', 1);
+                return {
+                    continueProcessing: true,
+                    summary: `**${this.getPlayerDisplayName(userId)}** tried to buy a random piece from the bank for **$${price}**, yet there are no available pieces remaining...`
+                };
+            }
+            // Assign the piece to this user and deduct points
+            const pieceId = randChoice(...randomAvailablePieces);
+            this.getPiece(pieceId).owner = userId;
+            this.addPoints(userId, -price);
+            return {
+                continueProcessing: true,
+                summary: {
+                    content: `**${this.getPlayerDisplayName(userId)}** bought a random piece from the bank for **$${price}**. Presenting... _"${this.getPieceName(pieceId)}"_!`,
+                    // TODO(2): Use special graphic for this render
+                    files: [await this.renderAuction(pieceId, 'Direct Bank Purchase', 'bank')]
+                }
+            }
         }
     
         // Otherwise, handle all the silent auction decisions
@@ -1770,36 +1820,6 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                     });
                     break;
                 }
-                case 'game:sell':
-                    // Validate that this user can do this
-                    if (!this.mayPlayerSell(userId)) {
-                        await interaction.editReply('You can\'t do that right now! Perhaps you\'ve already chosen an action?');
-                        return;
-                    }
-                    // Get all the pieces that this user may sell
-                    const pieceIds = this.getPieceIdsForUser(userId);
-                    if (pieceIds.length === 0) {
-                        await interaction.editReply('You don\'t have any pieces to sell at the moment!');
-                        return;
-                    }
-                    // Respond with a select menu of all the pieces this user may sell
-                    await interaction.editReply({
-                        content: 'Which piece would you like to sell?',
-                        components: [{
-                            type: ComponentType.ActionRow,
-                            components: [{
-                                type: ComponentType.StringSelect,
-                                custom_id: 'game:sellSelect',
-                                min_values: 1,
-                                max_values: 1,
-                                options: pieceIds.map(id => ({
-                                    label: this.getPieceName(id),
-                                    value: id
-                                }))
-                            }]
-                        }],
-                    });
-                    break;
                 case 'game:forcePrivateAuction':
                     // Validate that this user can do this
                     if (!this.mayPlayerForcePrivateAuction(userId)) {
@@ -1867,11 +1887,14 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                             // Notify the next guy in the queue
                             const nextUserId = this.state.pendingRewards.players[0];
                             if (nextUserId) {
+                                void logger.log(`<@${userId}> claimed **${itemType}**, sent prompt to next player <@${nextUserId}>`);
                                 return {
                                     dms: {
                                         [nextUserId]: [this.constructPrizeSelectionPayload('It\'s time to claim your prize')]
                                     }
                                 };
+                            } else {
+                                void logger.log(`<@${userId}> claimed **${itemType}**`);
                             }
                             break;
                         }
@@ -1884,15 +1907,101 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                 case 'game:selectItem': {
                     const itemType = interaction.values[0] as Masterpiece2ItemType;
                     // Validate that the user can do this
-                    if (this.getPlayerItemQuantity(userId, itemType) === 0) {
+                    if (!this.hasItem(userId, itemType)) {
                         throw new Error(`You don't have a **${ITEM_NAMES[itemType] ?? itemType}** to use!`);
                     }
                     // Don't allow item usage during active auctions
                     if (this.isAnyAuctionActive()) {
                         throw new Error('You can\'t use items during an active auction!');
                     }
-                    // TODO(2): USE THE ITEM HERE AND DEDUCT QUANTITY, OR PROMPT FOR SECONDARY INTERACTION
-                    await interaction.editReply(`You've used a **${ITEM_NAMES[itemType] ?? itemType}** (not really, this feature is still under construction), you now have ${this.getPlayerItemsString(userId)}`);
+                    const pieceIds = this.getPieceIdsForUser(userId);
+                    const otherPieceIds = shuffle(this.getPieceIdsForOtherUsers(userId));
+                    // Handle item-specific logic
+                    switch (itemType) {
+                        case 'sneaky-peek': {
+                            // TODO(2): FINISH THIS!
+                            await interaction.editReply('This item hasn\'t been implemented yet. Hound the admin to finish the code!');
+                            break;
+                        }
+                        case 'random-peek': {
+                            // TODO(2): FINISH THIS!
+                            await interaction.editReply('This item hasn\'t been implemented yet. Hound the admin to finish the code!');
+                            break;
+                        }
+                        case 'buy': {
+                            // Determine the current average price
+                            const averagePrice = Math.floor(this.getAverageUnsoldPieceValue());
+                            // Update the state
+                            this.state.players[userId].buying = {
+                                price: averagePrice
+                            };
+                            this.incrementPlayerItem(userId, 'buy', -1);
+                            // TODO: Give user option to confirm?
+                            await interaction.editReply(`Ok, you will buy a piece from the bank on Sunday morning for **$${averagePrice}**`
+                                + (this.getPoints(userId) < averagePrice ? ' (since you currently don\'t have enough money, the purchase will be cancelled if you can\'t raise the funds by then)' : ''));
+                            void logger.log(`<@${userId}> will buy a random piece from the bank for **$${averagePrice}**`);
+                            break;
+                        }
+                        case 'force': {
+                            // Get all the pieces that this user may force into auction
+                            if (otherPieceIds.length === 0) {
+                                throw new Error('There are no pieces that can be forced into auction at this moment');
+                            }
+                            // Respond with a select menu of all the pieces this user may force into auction
+                            await interaction.editReply({
+                                content: 'Which piece would you like to force into auction?'
+                                    // TODO(2): Is there a better way to do this? Two menus?
+                                    + (otherPieceIds.length > 25 ? ' (since there are more than 25 options, spawn this message again if you don\'t see the one you want)' : ''),
+                                components: [{
+                                    type: ComponentType.ActionRow,
+                                    components: [{
+                                        type: ComponentType.StringSelect,
+                                        custom_id: 'game:forcePrivateAuctionSelect',
+                                        min_values: 1,
+                                        max_values: 1,
+                                        options: otherPieceIds.slice(0, 25).map(id => ({
+                                            label: this.getPieceName(id),
+                                            description: `Owned by ${this.getPieceOwnerString(id)}`,
+                                            value: id
+                                        }))
+                                    }]
+                                }]
+                            });
+                            break;
+                        }
+                        case 'sell': {
+                            // Get all the pieces that this user may sell
+                            if (pieceIds.length === 0) {
+                                throw new Error('You don\'t have any pieces to sell at the moment!');
+                            }
+                            // Respond with a select menu of all the pieces this user may sell
+                            await interaction.editReply({
+                                content: 'Which piece would you like to sell?',
+                                components: [{
+                                    type: ComponentType.ActionRow,
+                                    components: [{
+                                        type: ComponentType.StringSelect,
+                                        custom_id: 'game:sellSelect',
+                                        min_values: 1,
+                                        max_values: 1,
+                                        options: pieceIds.map(id => ({
+                                            label: this.getPieceName(id),
+                                            value: id
+                                        }))
+                                    }]
+                                }]
+                            });
+                            break;
+                        }
+                        case 'smudge': {
+                            // TODO(2): FINISH THIS!
+                            await interaction.editReply('This item hasn\'t been implemented yet. Hound the admin to finish the code!');
+                            break;
+                        }
+                        default: {
+                            throw new Error(`No logic defined for item type **${itemType}** (see admin)`);
+                        }
+                    }
                     break;
                 }
                 case 'game:sellSelect': {
@@ -2009,6 +2118,25 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                 }
             }
         }
+    }
+
+    override handleNonDecisionDM(userId: Snowflake, text: string): MessengerPayload[] {
+        if (text.trim().toLowerCase() === 'inventory') {
+            return [{
+                content: 'Click here to see your inventory',
+                components: [{
+                    type: ComponentType.ActionRow,
+                    components: [{
+                        type: ComponentType.Button,
+                        style: ButtonStyle.Primary,
+                        label: 'My Inventory',
+                        emoji: '💰',
+                        customId: 'game:inventory'
+                    }]
+                }]
+            }]
+        }
+        return [];
     }
 
     private async handleBid(pieceId: string, interaction: ButtonInteraction) {
