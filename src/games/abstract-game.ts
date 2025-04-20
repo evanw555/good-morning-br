@@ -115,12 +115,14 @@ export default abstract class AbstractGame<T extends GameState> {
      * This is invoked at the end of the game decision pre-noon timeout.
      * @returns Messages to be sent to the good morning channel
      */
-    async onDecisionPreNoon(): Promise<MessengerPayload[]> {
+    async onDecisionPreNoon(): Promise<MessengerManifest> {
         // By default, just sent a decision reminder message
-        return [{
-            content: this.getReminderText(),
-            components: this.getDecisionActionRow()
-        }];
+        return {
+            public: [{
+                content: this.getReminderText(),
+                components: this.getDecisionActionRow()
+            }]
+        };
     }
     /**
      * Returns a number in the range [0, 1] representing the approximate completion of this game.

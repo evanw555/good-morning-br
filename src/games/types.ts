@@ -159,7 +159,10 @@ export interface Masterpiece2AuctionState {
     bid: number,
     bidder?: Snowflake,
     previousBidder?: Snowflake,
-    active?: true
+    /** If true, this auction can be bidded on / interacted with. */
+    active?: true,
+    /** Who forced this piece into auction. */
+    forcedBy?: Snowflake
 }
 
 export interface Masterpiece2GameState extends AbstractGameState<'MASTERPIECE_2'> {

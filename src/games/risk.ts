@@ -1054,38 +1054,42 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         return this.getPlayers().filter(otherId => userId !== otherId && this.getPlayerTeam(otherId) === userId);
     }
 
-    override async onDecisionPreNoon(): Promise<MessengerPayload[]> {
+    override async onDecisionPreNoon(): Promise<MessengerManifest> {
         // If there's an active draft, send a special message if anyone still needs to select a starting location
         if (this.state.draft) {
             const remainingAvailableUserIds = this.getAvailableDraftPlayers();
             if (remainingAvailableUserIds.length > 0) {
-                return [{
-                    content: `${getJoinedMentions(remainingAvailableUserIds)}, you still need to pick a starting location! If you don't choose by tomorrow morning, I'll have to choose for you`,
-                    components: [{
-                        type: ComponentType.ActionRow,
+                return {
+                    public: [{
+                        content: `${getJoinedMentions(remainingAvailableUserIds)}, you still need to pick a starting location! If you don't choose by tomorrow morning, I'll have to choose for you`,
                         components: [{
-                            type: ComponentType.Button,
-                            style: ButtonStyle.Primary,
-                            label: 'Pick Location',
-                            customId: 'game:pickStartingLocation'
+                            type: ComponentType.ActionRow,
+                            components: [{
+                                type: ComponentType.Button,
+                                style: ButtonStyle.Primary,
+                                label: 'Pick Location',
+                                customId: 'game:pickStartingLocation'
+                            }]
                         }]
                     }]
-                }];
+                };
             } else {
                 // Everyone has completed the draft, so no reminder message
-                return [];
+                return {};
             }
         }
         // Show the state render in the reminder message, plus show an additional action row
-        return [{
-            content: this.getReminderText(),
-            components: this.getDecisionActionRow(),
-            files: [await this.renderStateAttachment()]
-        }, {
-            content: 'If you need to, review your decisions...',
-            components: this.getAdditionalDecisionActionRow(),
-            flags: MessageFlags.SuppressNotifications
-        }];
+        return {
+            public: [{
+                content: this.getReminderText(),
+                components: this.getDecisionActionRow(),
+                files: [await this.renderStateAttachment()]
+            }, {
+                content: 'If you need to, review your decisions...',
+                components: this.getAdditionalDecisionActionRow(),
+                flags: MessageFlags.SuppressNotifications
+            }]
+        };
     }
 
     getSeasonCompletion(): number {

@@ -292,41 +292,53 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
         return [];
     }
 
-    override async onDecisionPreNoon(): Promise<MessengerPayload[]> {
+    override async onDecisionPreNoon(): Promise<MessengerManifest> {
+        const responseDMs: Record<Snowflake, MessengerPayload[]> = {};
         const responseMessages: MessengerPayload[] = [];
 
         // If still in the setup phase...
         if (this.state.setup) {
             // If voting hasn't started yet, urge users to upload art
             if (!this.state.setup.voting) {
-                return [{
-                    content: 'You have until tomorrow to upload your own art! You can upload art, funny pics, honey pics, anything. Those who upload something will be rewarded with a free starter piece',
-                    components: [{
-                        type: ComponentType.ActionRow,
+                return {
+                    public: [{
+                        content: 'You have until tomorrow to upload your own art! You can upload art, funny pics, honey pics, anything. Those who upload something will be rewarded with a free starter piece',
                         components: [{
-                            type: ComponentType.Button,
-                            custom_id: 'game:upload',
-                            label: 'Upload',
-                            style: ButtonStyle.Primary
+                            type: ComponentType.ActionRow,
+                            components: [{
+                                type: ComponentType.Button,
+                                custom_id: 'game:upload',
+                                label: 'Upload',
+                                style: ButtonStyle.Primary
+                            }]
                         }]
                     }]
-                }];
+                };
             }
             // Otherwise, do nothing
-            return [];
-        }
-
-        // Mark all existing auctions as inactive to prevent further action
-        for (const auction of this.getAuctions()) {
-            delete auction.active;
+            return {};
         }
 
         // Process the active auctions
         for (const auction of this.getAuctions()) {
-            const { pieceId, description, bid, bidder, type } = auction;
+            const { pieceId, description, bid, bidder, type, active, forcedBy } = auction;
+            // Mark as inactive to prevent futher action
+            delete auction.active;
             // Clear the auction to double-prevent further action
             delete this.state.auctions[pieceId];
-            if (bidder) {
+            // If the piece was somehow never activated (can happen due to outages), don't post anything about this piece
+            if (!active) {
+                void logger.log(`WARNING: ${type} auction for piece _"${this.getPieceName(pieceId)}"_ was never activated`);
+                // If the piece was forced by someone, refund their force item
+                if (forcedBy) {
+                    this.incrementPlayerItem(forcedBy, 'force', 1);
+                    void logger.log(`Refunded force item to forcer **${this.getPlayerDisplayName(forcedBy)}**`);
+                    // Notify the player
+                    responseDMs[forcedBy] = [`Since _"${this.getPieceName(pieceId)}"_ somehow failed to be forced into auction this week, I've refunded your **${ITEM_NAMES['force']}** item. Sorry about that...`];
+                }
+            }
+            // If the piece was bidded on, finalize the auction
+            else if (bidder) {
                 // If the piece belonged to another player, add points to their balance
                 const previousOwnerId = this.getPieceOwner(pieceId);
                 if (typeof previousOwnerId === 'string') {
@@ -345,7 +357,9 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                     files: [await this.renderAuction(pieceId, description, type)],
                     components: this.getDecisionActionRow()
                 });
-            } else {
+            }
+            // Else, point out that nobody bidded on the piece
+            else {
                 // Reply with appropriate message
                 responseMessages.push({
                     content: `No one bid on _"${this.getPieceName(pieceId)}"_! What??? I guess we'll save that one for another day...`
@@ -378,7 +392,10 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                 })
         }
 
-        return responseMessages;
+        return {
+            public: responseMessages,
+            dms: responseDMs
+        };
     }
 
     override getSeasonCompletion(): number {
@@ -2054,7 +2071,8 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                         pieceId,
                         description: 'Private Auction',
                         type: 'private',
-                        bid: 0
+                        bid: 0,
+                        forcedBy: userId
                     };
                     this.incrementPlayerItem(userId, 'force', -1);
                     // Reply to the user confirming the forced auction

@@ -262,12 +262,14 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         return 'Reminder! You have until tomorrow morning to draw a card';
     }
 
-    override async onDecisionPreNoon(): Promise<MessengerPayload[]> {
-        return [{
-            content: this.getReminderText(),
-            files: [await this.renderStateAttachment()],
-            components: this.getDecisionActionRow()
-        }];
+    override async onDecisionPreNoon(): Promise<MessengerManifest> {
+        return {
+            public: [{
+                content: this.getReminderText(),
+                files: [await this.renderStateAttachment()],
+                components: this.getDecisionActionRow()
+            }]
+        };
     }
 
     getSeasonCompletion(): number {

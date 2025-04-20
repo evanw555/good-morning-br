@@ -740,7 +740,7 @@ const sendGoodMorningMessage = async (): Promise<void> => {
             const orderedPlayers: Snowflake[] = state.getOrderedPlayers();
             const top: Snowflake = orderedPlayers[0];
             const second: Snowflake = orderedPlayers[1];
-            await goodMorningChannel.send({
+            await messenger.send(goodMorningChannel, {
                 content: languageGenerator.generate(overriddenMessage ?? '{weeklyUpdate}', { season: state.getSeasonNumber().toString(), top: `<@${top}>`, second: `<@${second}>` }),
                 files: [] // TODO (2.0): Should we just delete this?
             });
@@ -765,7 +765,7 @@ const sendGoodMorningMessage = async (): Promise<void> => {
             break;
         case DailyEventType.BeginHomeStretch:
             // TODO (2.0): If we enable home stretch again, fix this
-            await goodMorningChannel.send({
+            await messenger.send(goodMorningChannel, {
                 content: `WAKE UP MY DEAR FRIENDS! For we are now in the home stretch of season **${state.getSeasonNumber()}**! `
                     + 'There are some surprises which I will reveal in a short while, though in the meantime, please take a look at the current standings...',
                 files: [] // TODO (2.0): Should we just delete this?
@@ -831,8 +831,9 @@ const sendGoodMorningMessage = async (): Promise<void> => {
                 + `At ${getSubmissionRevealTimestamp()}, I'll post them here anonymously and you'll all be voting on your favorites 😉`;
             await messenger.send(goodMorningChannel, text, { immediate: overriddenMessage !== undefined });
             // Also, let players know they can forfeit
-            await sleep(10000);
-            await goodMorningChannel.send({
+            // TODO: Is it a problem that there's a delay here?
+            await sleep(5000);
+            await messenger.send(goodMorningChannel, {
                 content: 'If you won\'t be able to vote, then you can _forfeit_ to avoid the no-vote penalty. '
                     + `Your _${prompt}_ will still be presented, but you won't be rewarded if you win big.`,
                 components: [{
@@ -1233,7 +1234,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         } else {
             // If it's not the first week, send the state image for this week
             const attachment = new AttachmentBuilder(await state.getGame().renderState()).setName(`game-turn${state.getGame().getTurn()}-decision.png`);
-            await goodMorningChannel.send({
+            await messenger.send(goodMorningChannel, {
                 files: [attachment],
                 components: state.getGame().getDecisionActionRow()
             });
@@ -1730,8 +1731,19 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
 
         // Process the pre-noon game decision endpoint and send any messages
         if (state.getEventType() === DailyEventType.GameDecision && state.hasGame()) {
-            const responseMessages = await state.getGame().onDecisionPreNoon();
-            await messenger.sendAll(goodMorningChannel, responseMessages);
+            const messengerManifest = await state.getGame().onDecisionPreNoon();
+            // If any payloads were returned, send them to the channel or DMs
+            // TODO(2): Add support for this in the messenger utility
+            if (messengerManifest) {
+                if (messengerManifest.public) {
+                    await messenger.sendAll(goodMorningChannel, messengerManifest.public);
+                }
+                if (messengerManifest.dms) {
+                    for (const [recipientId, payloads] of Object.entries(messengerManifest.dms)) {
+                        await messenger.dmAll(recipientId, payloads);
+                    }
+                }
+            }
         }
 
         // If it's the first day of a casual season, let everyone know
@@ -3037,6 +3049,7 @@ client.on('interactionCreate', async (interaction): Promise<void> => {
                 try {
                     const messengerManifest = await state.getGame().handleGameInteraction(interaction);
                     // If any payloads were returned, send them to the channel or DMs
+                    // TODO(2): Add support for this in the messenger utility
                     if (messengerManifest) {
                         if (messengerManifest.public) {
                             await messenger.sendAll(goodMorningChannel, messengerManifest.public);

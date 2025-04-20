@@ -242,7 +242,7 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
         return [];
     }
 
-    override async onDecisionPreNoon(): Promise<MessengerPayload[]> {
+    override async onDecisionPreNoon(): Promise<MessengerManifest> {
         const responseMessages: MessengerPayload[] = [];
 
         // Mark all existing auctions as inactive to prevent further action
@@ -307,7 +307,7 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
                 })
         }
 
-        return responseMessages;
+        return { public: responseMessages };
     }
 
     override getSeasonCompletion(): number {
