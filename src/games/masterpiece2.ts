@@ -2,7 +2,7 @@ import canvas, { Canvas, CanvasRenderingContext2D } from 'canvas';
 import { ActionRowData, APIButtonComponent, AttachmentBuilder, ButtonInteraction, ButtonStyle, ComponentType, GuildMember, Interaction, MessageActionRowComponentData, MessageFlags, Snowflake } from "discord.js";
 import { DecisionProcessingResult, GamePlayerAddition, MessengerManifest, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
-import { capitalize, getObjectSize, getRandomlyDistributedAssignments, incrementProperty, isObjectEmpty, naturalJoin, randChoice, shuffle, toFixed, toLetterId, } from "evanw555.js";
+import { capitalize, getObjectSize, getRandomlyDistributedAssignments, groupByProperty, incrementProperty, isObjectEmpty, naturalJoin, randChoice, shuffle, toFixed, toLetterId, } from "evanw555.js";
 import { cropToSquare, getTextLabel, joinCanvasesHorizontal, toCircle, withDropShadow } from "node-canvas-utils";
 import { text } from '../util';
 import { Masterpiece2PlayerState, Masterpiece2PieceState, Masterpiece2GameState, Masterpiece2AuctionType, Masterpiece2ItemType, Masterpiece2AuctionState } from './types';
@@ -651,6 +651,14 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
     }
 
     /**
+     * @returns The highest occurrence of any given piece value (e.g. 5 if there are 5 zero-value pieces, with zero being the most represented value)
+     */
+    private getMaxPieceValueOccurrence(): number {
+        // TODO(2): Write a utility for this maybe?
+        return Math.max(...Object.values(groupByProperty(this.getPieces(), 'value')).map(l => l.length));
+    }
+
+    /**
      * @returns The average value of all unsold pieces
      */
     private getAverageUnsoldPieceValue(): number {
@@ -719,7 +727,8 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
         const rows = 7 + uniquePieceValues.length;
         const ROW_HEIGHT = 32;
         const padding = ROW_HEIGHT / 2;
-        const c = canvas.createCanvas(ROW_HEIGHT * 5, rows * ROW_HEIGHT);
+        const columns = Math.max(5, this.getMaxPieceValueOccurrence());
+        const c = canvas.createCanvas(columns * ROW_HEIGHT, rows * ROW_HEIGHT);
         const context = c.getContext('2d');
 
         // Draw background
