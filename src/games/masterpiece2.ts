@@ -736,7 +736,6 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
         context.fillRect(0, 0, c.width, c.height);
 
         // Draw the header
-        const baseX = padding;
         let baseY = padding;
         context.fillStyle = 'white';
         context.font = 'italic 24px serif';
@@ -753,8 +752,12 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
             const pieceIds = this.getPieceIdsWithValue(pieceValue);
             const numUnsold = pieceIds.filter(id => this.getPiece(id).owner !== true).length;
             const numSold = pieceIds.length - numUnsold;
-            context.fillText(`$${pieceValue}`, baseX, baseY + ROW_HEIGHT * 0.6, ROW_HEIGHT);
-            context.fillText(`${'▣'.repeat(numUnsold)}${'□'.repeat(numSold)}`, baseX + ROW_HEIGHT * 1.5, baseY + ROW_HEIGHT * 0.6, ROW_HEIGHT * 2.5);
+            let baseX = padding;
+            const valueWidth = ROW_HEIGHT;
+            context.fillText(`$${pieceValue}`, baseX, baseY + ROW_HEIGHT * 0.6, valueWidth);
+            baseX += valueWidth + padding;
+            const occurrencesWidth = c.width - baseX - padding;
+            context.fillText(`${'▣'.repeat(numUnsold)}${'□'.repeat(numSold)}`, baseX, baseY + ROW_HEIGHT * 0.6, occurrencesWidth);
             baseY += ROW_HEIGHT;
         }
     
