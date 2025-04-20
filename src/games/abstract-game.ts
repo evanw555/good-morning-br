@@ -97,9 +97,9 @@ export default abstract class AbstractGame<T extends GameState> {
         return 'Debug string';
     }
     /**
-     * @returns A list of decision phase events and their corresponding delay (in millis) after the initial message is sent out.
+     * @returns A list of decision phase events and their corresponding delay (in millis) after the initial message is sent out, or along factor (time between now and pre-noon).
      */
-    getDecisionPhases(): { key: string, millis: number }[] {
+    getDecisionPhases(): { key: string, millis?: number, along?: number }[] {
         return [];
     }
     /**

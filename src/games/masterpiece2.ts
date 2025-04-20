@@ -230,16 +230,16 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
         }
         // Auctions begin on the second week
         if (this.getTurn() === 2) {
-            return 'The very first auction begins in half an hour!';
+            return 'The very first auction begins at mid-morning!';
         }
         // If for some reason there aren't any pieces available (this shouldn't happen), then handle gracefully...
         if (this.getNumAvailablePieces() === 0) {
             return 'There won\'t be a bank auction today, as there are no pieces remaining in the bank';
         }
-        return 'Today\'s auction begins in half an hour!';
+        return 'Today\'s auction begins at mid-morning!';
     }
 
-    override getDecisionPhases(): { key: string; millis: number; }[] {
+    override getDecisionPhases(): { key: string, along: number }[] {
         // Do nothing the first week
         if (this.getTurn() === 1) {
             return [];
@@ -249,7 +249,10 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
         // TODO: Should this somehow be relative? "along" until pre-noon?
         return this.getAuctions().map((a, i) => ({
             key: `beginAuction:${a.pieceId}`,
-            millis: this.isTesting() ? (1000 * 5 * (i + 1)) : (1000 * 60 * (30 + (i * 60))) // 30 minutes plus one hour per, 5 seconds per if testing
+            // e.g. 1st auction is halfway to pre-noon, 2nd is 3/4 to pre-noon, 3rd is 7/8 to pre-noon, etc.
+            along: 1 - (1 / Math.pow(2, i + 1))
+                // Add a random variance of +/- 1/40
+                + ((Math.random() - 0.5) / 20)
         }));
     }
 

@@ -1243,7 +1243,10 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         await messenger.send(goodMorningChannel, state.getGame().getInstructionsText());
         // Get decision phases that need to be scheduled
         for (const decisionPhase of state.getGame().getDecisionPhases()) {
-            const phaseDate = new Date(new Date().getTime() + decisionPhase.millis);
+            // Process the decision phase date as either being a relative value or a specific delay in millis
+            const phaseDate = decisionPhase.along
+                ? getDateBetween(new Date(), preNoonToday, decisionPhase.along)
+                : new Date(new Date().getTime() + (decisionPhase.millis ?? 0));
             await registerTimeout(TimeoutType.GameDecisionPhase, phaseDate, { arg: decisionPhase.key, pastStrategy: PastTimeoutStrategy.Invoke});
         }
     }
