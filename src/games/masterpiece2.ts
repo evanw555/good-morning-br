@@ -727,7 +727,7 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
         const rows = 7 + uniquePieceValues.length;
         const ROW_HEIGHT = 32;
         const padding = ROW_HEIGHT / 2;
-        const columns = Math.max(5, this.getMaxPieceValueOccurrence());
+        const columns = Math.max(5, 1 + this.getMaxPieceValueOccurrence());
         const c = canvas.createCanvas(columns * ROW_HEIGHT, rows * ROW_HEIGHT);
         const context = c.getContext('2d');
 
