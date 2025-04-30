@@ -710,6 +710,13 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
     }
 
     /**
+     * @returns The highest assumed wealth of any player
+     */
+    private getMaxAssumedPlayerWealth(): number {
+        return Math.max(...this.getPlayers().map(userId => this.getAssumedPlayerWealth(userId)));
+    }
+
+    /**
      * @param userId Some player's user ID
      * @returns The true wealth of the player (cash + value of owned pieces)
      */
@@ -742,6 +749,11 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
 
     private isAnyAuctionActive(): boolean {
         return this.getAuctions().some(a => a.active);
+    }
+
+    override doesPlayerNeedHandicap(userId: Snowflake): boolean {
+        // Give players a handicap if they're below 20% of the max assumed wealth
+        return this.getAssumedPlayerWealth(userId) < 0.2 * this.getMaxAssumedPlayerWealth();
     }
 
     private async drawTextCentered(context: CanvasRenderingContext2D, text: string, left: number, right: number, y: number, options?: { padding?: number }) {
