@@ -2,7 +2,7 @@ import canvas, { Canvas, CanvasRenderingContext2D } from 'canvas';
 import { ActionRowData, APIButtonComponent, AttachmentBuilder, ButtonInteraction, ButtonStyle, ComponentType, GuildMember, Interaction, MessageActionRowComponentData, MessageFlags, Snowflake } from "discord.js";
 import { DecisionProcessingResult, GamePlayerAddition, MessengerManifest, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
-import { capitalize, getObjectSize, getRandomlyDistributedAssignments, groupByProperty, incrementProperty, isObjectEmpty, naturalJoin, randChoice, shuffle, toFixed, toLetterId, } from "evanw555.js";
+import { getObjectSize, getRandomlyDistributedAssignments, groupByProperty, incrementProperty, isObjectEmpty, naturalJoin, randChoice, shuffle, toFixed, toLetterId, } from "evanw555.js";
 import { cropToSquare, getTextLabel, joinCanvasesHorizontal, toCircle, withDropShadow } from "node-canvas-utils";
 import { text } from '../util';
 import { Masterpiece2PlayerState, Masterpiece2PieceState, Masterpiece2GameState, Masterpiece2AuctionType, Masterpiece2ItemType, Masterpiece2AuctionState } from './types';
@@ -1915,7 +1915,7 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                             // Remove them from the players queue
                             this.state.pendingRewards.players.shift();
                             // Let them know they've claimed the item, show them their items
-                            await interaction.editReply(`You've claimed a **${ITEM_NAMES[itemType] ?? itemType}**! You now have ${this.getPlayerItemsString(userId)}`);
+                            await interaction.editReply(`You've claimed a **${ITEM_NAMES[itemType] ?? itemType}**! You now have ${this.getPlayerItemsString(userId)}. DM me the word "inventory" at any time to see/use your items`);
                             // Notify the next guy in the queue
                             const nextUserId = this.state.pendingRewards.players[0];
                             if (nextUserId) {
@@ -1946,6 +1946,7 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                     if (this.isAnyAuctionActive()) {
                         throw new Error('You can\'t use items during an active auction!');
                     }
+                    void logger.log(`<@${userId}> is attempting to use a **${ITEM_NAMES[itemType]}**`);
                     const pieceIds = this.getPieceIdsForUser(userId);
                     const otherPieceIds = shuffle(this.getPieceIdsForOtherUsers(userId));
                     // Handle item-specific logic
