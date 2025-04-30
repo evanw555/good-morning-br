@@ -1,5 +1,5 @@
 import canvas, { Canvas, CanvasRenderingContext2D } from 'canvas';
-import { ActionRowData, APIButtonComponent, AttachmentBuilder, ButtonInteraction, ButtonStyle, ComponentType, GuildMember, Interaction, MessageActionRowComponentData, MessageFlags, Snowflake } from "discord.js";
+import { ActionRowData, APIActionRowComponent, APIButtonComponent, APISelectMenuOption, AttachmentBuilder, ButtonInteraction, ButtonStyle, ComponentType, GuildMember, Interaction, MessageActionRowComponentData, MessageFlags, Snowflake } from "discord.js";
 import { DecisionProcessingResult, GamePlayerAddition, MessengerManifest, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 import { getObjectSize, getRandomlyDistributedAssignments, groupByProperty, incrementProperty, isObjectEmpty, naturalJoin, randChoice, shuffle, toFixed, toLetterId, } from "evanw555.js";
@@ -551,6 +551,39 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
 
     private getPieceValue(pieceId: string): number {
         return this.getPiece(pieceId)?.value ?? 0;
+    }
+
+    private getPiecePeekString(pieceId: string): string {
+        if (!this.hasPieceWithId(pieceId)) {
+            return `Piece with ID \`${pieceId}\` doesn't exist (see admin)`;
+        }
+        const intro = `You peek at **${this.getPieceOwnerString(pieceId)}'s** piece _"${this.getPieceName(pieceId)}"_`;
+        // We want the list of unique values to be ASCENDING to the windows make sense
+        const allUniqueValues = this.getSortedUniquePieceValues().sort((x, y) => x - y);
+        const value = this.getPieceValue(pieceId);
+        // If the piece is smudged, report a random lower bound
+        if (this.getPiece(pieceId).smudged) {
+            // Get random lower bound
+            const possibleBoundValues = allUniqueValues.filter(v => v <= value);
+            const boundValue = randChoice(...possibleBoundValues);
+            return `${intro}. The piece is smudged so it's hard to make out its value, but you can tell it's worth at least **$${boundValue}**`;
+        }
+        // Determine the possible windows that can be reported by the peek
+        const windows: string[] = [];
+        const valueIndex = allUniqueValues.indexOf(value);
+        // If not the lowest or second lowest, an aggressively low window is possible
+        if (valueIndex > 1) {
+            windows.push(`**$${allUniqueValues[valueIndex - 2]}** and **$${value}**`);
+        }
+        // If not the highest or second highest, an aggressively high window is possible
+        if (valueIndex < allUniqueValues.length - 2) {
+            windows.push(`**$${value}** and **$${allUniqueValues[valueIndex + 2]}**`);
+        }
+        // If somewhere not on the edges, a centered window is possible
+        if (valueIndex > 0 && valueIndex < allUniqueValues.length - 1) {
+            windows.push(`**$${allUniqueValues[valueIndex - 1]}** and **$${allUniqueValues[valueIndex + 1]}**`);
+        }
+        return `${intro} and figure that it's worth somewhere between ${randChoice(...windows)}`;
     }
 
     private getPieceArtist(pieceId: string): Snowflake {
@@ -1952,13 +1985,39 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                     // Handle item-specific logic
                     switch (itemType) {
                         case 'sneaky-peek': {
-                            // TODO(2): FINISH THIS!
-                            await interaction.editReply('This item hasn\'t been implemented yet. Hound the admin to finish the code!');
+                            // Validate that there are any pieces to be peeked at
+                            if (otherPieceIds.length === 0) {
+                                throw new Error('There are no pieces in play for you to peek at!');
+                            }
+                            // Give the player a list of pieces to peek at
+                            await interaction.editReply({
+                                content: 'Which piece would you like to peek at?'
+                                    // TODO(2): Is there a better way to do this? Two menus?
+                                    + (otherPieceIds.length > 25 ? ' (since there are more than 25 options, spawn this message again if you don\'t see the one you want)' : ''),
+                                components: [{
+                                    type: ComponentType.ActionRow,
+                                    components: [{
+                                        type: ComponentType.StringSelect,
+                                        custom_id: 'game:peekSelect',
+                                        min_values: 1,
+                                        max_values: 1,
+                                        options: this.getPieceSelectOptions(otherPieceIds)
+                                    }]
+                                }]
+                            });
                             break;
                         }
                         case 'random-peek': {
-                            // TODO(2): FINISH THIS!
-                            await interaction.editReply('This item hasn\'t been implemented yet. Hound the admin to finish the code!');
+                            // Validate that there are any pieces to be peeked at
+                            if (otherPieceIds.length === 0) {
+                                throw new Error('There are no pieces in play for you to peek at!');
+                            }
+                            // Update the state
+                            this.incrementPlayerItem(userId, 'random-peek', -1);
+                            // Pick a random piece to peek at and report the result
+                            const randomOtherPieceId = randChoice(...otherPieceIds);
+                            await interaction.editReply(this.getPiecePeekString(randomOtherPieceId));
+                            void logger.log(`<@${userId}> randomly peeked at **${this.getPieceOwnerString(randomOtherPieceId)}'s** piece _"${this.getPieceName(randomOtherPieceId)}"_`);
                             break;
                         }
                         case 'buy': {
@@ -1992,11 +2051,7 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                                         custom_id: 'game:forcePrivateAuctionSelect',
                                         min_values: 1,
                                         max_values: 1,
-                                        options: otherPieceIds.slice(0, 25).map(id => ({
-                                            label: this.getPieceName(id),
-                                            description: `Owned by ${this.getPieceOwnerString(id)}`,
-                                            value: id
-                                        }))
+                                        options: this.getPieceSelectOptions(otherPieceIds)
                                     }]
                                 }]
                             });
@@ -2017,10 +2072,8 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                                         custom_id: 'game:sellSelect',
                                         min_values: 1,
                                         max_values: 1,
-                                        options: pieceIds.map(id => ({
-                                            label: this.getPieceName(id),
-                                            value: id
-                                        }))
+                                        // TODO(2): This may be trimmed, but will a player ever have 25+ pieces?
+                                        options: this.getPieceSelectOptions(pieceIds)
                                     }]
                                 }]
                             });
@@ -2035,6 +2088,26 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                             throw new Error(`No logic defined for item type **${itemType}** (see admin)`);
                         }
                     }
+                    break;
+                }
+                case 'game:peekSelect': {
+                    // Validate that the player can do this
+                    if (!this.hasItem(userId, 'sneaky-peek')) {
+                        throw new Error(`You don't have a **${ITEM_NAMES['sneaky-peek']}** to use!`);
+                    }
+                    // Validate the peeking of this particular piece
+                    const pieceId = interaction.values[0];
+                    if (!this.hasPieceWithId(pieceId)) {
+                        throw new Error(`Woah! Piece with ID \`${pieceId}\` doesn't exist... (see admin)`);
+                    }
+                    if (this.getPieceOwner(pieceId) !== userId) {
+                        throw new Error(`You can't peek at _"${this.getPieceName(pieceId)}"_, that's your own piece!`);
+                    }
+                    // Update the state
+                    this.incrementPlayerItem(userId, 'sneaky-peek', -1);
+                    // Report the result of this peek
+                    await interaction.editReply(this.getPiecePeekString(pieceId));
+                    void logger.log(`<@${userId}> sneakily peeked at **${this.getPieceOwnerString(pieceId)}'s** piece _"${this.getPieceName(pieceId)}"_`);
                     break;
                 }
                 case 'game:sellSelect': {
@@ -2154,6 +2227,16 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
         }
     }
 
+    getPieceSelectOptions(pieceIds: string[]): APISelectMenuOption[] {
+        // To handle having more than 25 options, just shuffle, slice, then sort again
+        const slicedPieceIds = shuffle(pieceIds).slice(0, 25).sort();
+        return slicedPieceIds.map(id => ({
+            label: this.getPieceName(id),
+            description: `Owned by ${this.getPieceOwnerString(id)}`,
+            value: id
+        }));
+    }
+
     override handleNonDecisionDM(userId: Snowflake, text: string): MessengerPayload[] {
         if (text.trim().toLowerCase() === 'inventory') {
             return [{
@@ -2169,6 +2252,10 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                     }]
                 }]
             }]
+        }
+        // TODO(2): Temp logic to see how peeking works. Peek at own pieces
+        if (text.trim().toLocaleLowerCase() === 'temppeektest') {
+            return this.getPieceIdsForUser(userId).map(pieceId => this.getPiecePeekString(pieceId));
         }
         return [];
     }
