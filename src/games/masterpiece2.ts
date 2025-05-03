@@ -2112,7 +2112,7 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                     if (!this.hasPieceWithId(pieceId)) {
                         throw new Error(`Woah! Piece with ID \`${pieceId}\` doesn't exist... (see admin)`);
                     }
-                    if (this.getPieceOwner(pieceId) !== userId) {
+                    if (this.getPieceOwner(pieceId) === userId) {
                         throw new Error(`You can't peek at _"${this.getPieceName(pieceId)}"_, that's your own piece!`);
                     }
                     // Update the state
