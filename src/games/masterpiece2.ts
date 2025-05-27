@@ -553,6 +553,10 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
         return this.getPiece(pieceId)?.value ?? 0;
     }
 
+    private isPieceSmudged(pieceId: string): boolean {
+        return this.getPiece(pieceId)?.smudged ?? false;
+    }
+
     private getPiecePeekString(pieceId: string): string {
         if (!this.hasPieceWithId(pieceId)) {
             return `Piece with ID \`${pieceId}\` doesn't exist (see admin)`;
@@ -622,11 +626,11 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
         return this.getPieceIdsForUser(userId).length > 0;
     }
 
-    private getPieceOwner(pieceId: Snowflake): string | boolean {
+    private getPieceOwner(pieceId: string): string | boolean {
         return this.getPiece(pieceId).owner;
     }
 
-    private getPieceOwnerString(pieceId: Snowflake): string {
+    private getPieceOwnerString(pieceId: string): string {
         const owner = this.getPieceOwner(pieceId);
         if (owner === false) {
             return 'the bank';
@@ -2092,8 +2096,25 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                             break;
                         }
                         case 'smudge': {
-                            // TODO(2): FINISH THIS!
-                            await interaction.editReply('This item hasn\'t been implemented yet. Hound the admin to finish the code!');
+                            // Validate that there are any pieces to smudge
+                            if (otherPieceIds.length === 0) {
+                                throw new Error('There are no pieces in play for you to smudge!');
+                            }
+                            // Respond with a select menu of all the pieces this user may smudge
+                            await interaction.editReply({
+                                content: 'Which piece would you like to smudge?',
+                                components: [{
+                                    type: ComponentType.ActionRow,
+                                    components: [{
+                                        type: ComponentType.StringSelect,
+                                        custom_id: 'game:smudgeSelect',
+                                        min_values: 1,
+                                        max_values: 1,
+                                        // TODO(2): This may be trimmed, but will a player ever have 25+ pieces?
+                                        options: this.getPieceSelectOptions(pieceIds)
+                                    }]
+                                }]
+                            });
                             break;
                         }
                         default: {
@@ -2179,6 +2200,30 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                     // Reply to the user confirming the forced auction
                     await interaction.editReply(`Confirmed! _"${this.getPieceName(pieceId)}"_ will be forced into a private auction on Saturday morning`);
                     void logger.log(`<@${userId}> has chosen to force **${this.getPieceOwnerString(pieceId)}'s** piece _"${this.getPieceName(pieceId)}"_ into a private auction`);
+                    break;
+                }
+                case 'game:smudgeSelect': {
+                    // Validate that the player can do this
+                    if (!this.hasItem(userId, 'smudge')) {
+                        throw new Error(`You don't have a **${ITEM_NAMES['smudge']}** to use!`);
+                    }
+                    // Validate and set up the smudging of this piece
+                    const pieceId = interaction.values[0];
+                    if (!this.hasPieceWithId(pieceId)) {
+                        throw new Error(`Woah! Piece with ID \`${pieceId}\` doesn't exist... (see admin)`);
+                    }
+                    if (this.getPieceOwner(pieceId) !== userId) {
+                        throw new Error(`You can't smudge _"${this.getPieceName(pieceId)}"_, that piece belongs to **${this.getPieceOwnerString(pieceId)}**`);
+                    }
+                    if (this.isPieceSmudged(pieceId)) {
+                        throw new Error(`You can't smudge _"${this.getPieceName(pieceId)}"_, it's already been smudged. Choose another piece`);
+                    }
+                    // Update the state
+                    this.getPiece(pieceId).smudged = true;
+                    this.incrementPlayerItem(userId, 'smudge', -1);
+                    // Reply to the user confirming the sale
+                    await interaction.editReply(`Confirmed! _"${this.getPieceName(pieceId)}"_ has been smudged. Anyone who peeks at it will see a random lesser value`);
+                    void logger.log(`<@${userId}> has chosen to smudge their piece _"${this.getPieceName(pieceId)}"_`);
                     break;
                 }
                 default: {
