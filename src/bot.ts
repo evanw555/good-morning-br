@@ -1727,8 +1727,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             if (nextEvent && nextEvent.type === DailyEventType.AnonymousSubmissions) {
                 await messenger.send(goodMorningChannel, `Reminder that tomorrow's submission prompt is _"${prompt}"_! I'm already accepting submissions`);
             } else {
-                await messenger.send(goodMorningChannel, 'Hear ye, hear ye! Have a little sneak peek at this Tuesday\'s submission prompt 👀 '
-                    + `you'll all be sending me a _${prompt}_! You can send it to me now if it's ready, otherwise start putting something together if you know what's best for you...`);
+                await messenger.send(goodMorningChannel, languageGenerator.generate('{anonymousSubmissions.promptSneakPeek}', { prompt }));
             }
         }
 
@@ -3193,6 +3192,27 @@ const processCommands = async (msg: Message): Promise<void> => {
         } else {
             await msg.reply(`Invalid timeout name \`${timeoutName || 'N/A'}\``);
         }
+        return;
+    }
+    // Priority command: force set next submission prompt
+    if (msg.content.startsWith('SET_PROMPT')) {
+        const prompt = msg.content.replace('SET_PROMPT', '').trim().toLowerCase();
+        if (state.hasAnonymousSubmissions()) {
+            await msg.reply(`Cannot set anonymous submissions prompt! The prompt is already _"${state.getAnonymousSubmissions().getPrompt()}"_`);
+            return;
+        }
+        // Set the prompt
+        state.setAnonymousSubmissions({
+            prompt,
+            phase: 'submissions',
+            submissions: {},
+            submissionOwnersByCode: {},
+            votes: {},
+            forfeiters: []
+        });
+        await dumpState();
+        // Notify the sungazers
+        await messenger.send(sungazersChannel, `A voice has spoken to me from beyond this realm... It decrees that the next submissions prompt shall be _"${prompt}"_, and thus it is so!`);
         return;
     }
     if (awaitingSubmission) {

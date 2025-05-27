@@ -467,5 +467,22 @@
             "Make haste!",
             "The clock is ticking!"
         ]
+    },
+    "anonymousSubmissions": {
+        "promptSneakPeek": "{anonymousSubmissions.pspIntro?} {anonymousSubmissions.pspUrging?}",
+        "pspIntro": [
+            "Hear ye, hear ye! Have a little sneak peek at this Tuesday's submission prompt 👀 you'll all be sending me a _{$prompt}_!",
+            "This Tuesday's submission prompt has already been determined: _\"{$prompt}\"_!",
+            "Hope you're all ready for this upcoming Tuesday's contest, for you'll be submitting a _{$prompt}_!",
+            "Get a head start on this upcoming Tuesday's contest, the prompt is _\"{$prompt}\"_!",
+            "_\"{$prompt}\"_. OOPS! Did I just reveal this Tuesday's contest prompt?"
+        ],
+        "pspUrging": [
+            "You can send it to me now if it's ready, otherwise start putting something together if you know what's best for you...",
+            "Send yours to me via DM if you've got one",
+            "You can start coming up with yours now and send it to me via DM!",
+            "I'm accepting submissions now, go ahead and submit yours as soon as it's ready",
+            "This is a high-effort contest, so get started on it now while you've still got time 🌞"
+        ]
     }
 }
