@@ -2953,10 +2953,8 @@ client.on('interactionCreate', async (interaction): Promise<void> => {
                 });
                 return;
             }
-            await interaction.reply({
-                ephemeral: true,
-                content: 'Invoking...'
-            });
+            await interaction.deferReply();
+            await interaction.deleteReply();
             await interaction.message?.delete();
             let timeoutArg = undefined;
             if (customIdSegments[2]) {

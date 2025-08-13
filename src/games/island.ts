@@ -1,6 +1,6 @@
-import { GuildMember, MessageFlags, Snowflake } from "discord.js";
+import { ActionRowData, ButtonStyle, ComponentType, GuildMember, Interaction, MessageActionRowComponentData, MessageFlags, Snowflake } from "discord.js";
 import canvas from 'canvas';
-import { DecisionProcessingResult, GamePlayerAddition, MessengerPayload, PrizeType } from "../types";
+import { DecisionProcessingResult, GamePlayerAddition, MessengerManifest, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 import { getMostSimilarByNormalizedEditDistance, naturalJoin, randChoice, shuffle, toFixed } from "evanw555.js";
 import { IslandGameState, IslandPlayerState } from "./types";
@@ -39,22 +39,35 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
         });
     }
 
-    getIntroductionText(): string[] {
+    override async getIntroductionMessages(): Promise<MessengerPayload[]> {
         return [
-            'My dear dogs... welcome to the Island of Mournful Mornings! This season, you are all castaways on my island 😼',
+            {
+                content: 'My dear dogs... welcome to the Island of Mournful Mornings! This season, you are all castaways on my island 😼',
+                files: [await this.renderStateAttachment()]
+            },
             'This game will be a true Battle Royale, and only those of you who have participated in the last week are eligible to win 🌞',
             'However, don\'t get too comfortable! Each week, some dogs will be voted off the island, killing their dreams of a sungazing victory ☠️',
             'Unlike other seasons, the points you earn each day are reset at the end of the week. Points are only used to determine how many votes you get, and to break ties in the weekly vote',
-            'By default, you get _one_ vote each week, but top point earners will be told via DM that they have more votes'
+            'By default, you get _one_ vote each week, but top point earners will be told via DM that they have more votes',
+            'We\'ve played this game before, so here are the differences from last time:'
+                + '\n- If someone votes for you and you survive, you get **2x** _retaliation_ votes against them the following week'
+                + '\n- If someone votes for you and you die, you get a permanent **+1** _revenge_ vote against them',
+            {
+                content: 'So let\'s get started, click here to cast your first vote!',
+                components: this.getDecisionActionRow()
+            }
         ];
     }
 
     getInstructionsText(): string {
-        return 'Send me a DM letting me know who should be voted off the island this week!';
+        if (this.getTurn() === 1) {
+            return 'Good luck!';
+        }
+        return 'Cast your votes!';
     }
 
     override getReminderText(): string {
-        return 'Reminder! You have until tomorrow morning to vote someone off the island. Send me a DM with the name of who should be voted off...';
+        return 'Reminder! You have until tomorrow morning to vote someone off the island';
     }
 
     getHelpText(): string {
@@ -69,6 +82,16 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
     getDebugString(): string {
         // TODO: Complete
         return '';
+    }
+
+    override async onDecisionPreNoon(): Promise<MessengerManifest> {
+        return {
+            public: [{
+                content: this.getReminderText(),
+                files: [await this.renderStateAttachment()],
+                components: this.getDecisionActionRow()
+            }]
+        };
     }
 
     getSeasonCompletion(): number {
@@ -274,6 +297,9 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
         context.font = `${TITLE_FONT_SIZE}px sans-serif`;
         drawTextWithShadow(`${this.state.numToBeEliminated} dog${this.state.numToBeEliminated === 1 ? '' : 's'} will be eliminated this week... But who?`, MARGIN, MARGIN + TITLE_FONT_SIZE);
 
+        // Determine if anyone has any votes to give out (to determine if all the votes have been wiped or not)
+        const doesAnyoneHaveVotes = this.getPlayers().some(id => this.getNumVotes(id) > 0);
+
         // Draw all players
         let playerY = ROSTER_Y;
         for (const userId of this.getRenderOrderedPlayers()) {
@@ -314,7 +340,8 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
                     playerX += AVATAR_HEIGHT + AVATAR_MARGIN;
                     context.drawImage(skullImage, playerX, playerY, AVATAR_HEIGHT, AVATAR_HEIGHT);
                 }
-                if (this.getNumVotes(userId) === 0) {
+                // Clown the player if they didn't get any votes this week (yet others did, in case all the votes have been wiped at the end of the turn)
+                if (this.getNumVotes(userId) === 0 && doesAnyoneHaveVotes) {
                     playerX += AVATAR_HEIGHT + AVATAR_MARGIN;
                     context.drawImage(clownIconImage, playerX, playerY, AVATAR_HEIGHT, AVATAR_HEIGHT);
                 }
@@ -507,7 +534,7 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
         this.state.players[userId].points = toFixed(this.getPoints(userId) + points);
     }
 
-    awardPrize(userId: string, type: PrizeType, intro: string): string[] {
+    awardPrize(userId: string, type: PrizeType, intro: string): MessengerPayload[] {
         // If player isn't in the game yet, do nothing
         if (!this.hasPlayer(userId)) {
             return [];
@@ -532,11 +559,38 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
                 this.state.players[userId].mayGrantImmunity = true;
                 // Return reply text catered to their elimination status
                 if (this.isPlayerEliminated(userId)) {
-                    return [`${intro}! If you so desire, you may choose one remaining player to grant immunity to (e.g. \`grant Robert\`)`];
+                    return [{
+                        content: `${intro}! If you so desire, you may choose one remaining player to grant immunity to`,
+                        components: [{
+                            type: ComponentType.ActionRow,
+                            components: [{
+                                type: ComponentType.Button,
+                                style: ButtonStyle.Secondary,
+                                label: 'Choose',
+                                custom_id: 'game:giveImmunity'
+                            }]
+                        }]
+                    }];
                 } else {
                     return [
                         `${intro}, you've been granted immunity this week! No one will be able to vote to eliminate you until next week`,
-                        'Alternatively, you can choose to grant someone else immunity by sending me a DM (e.g. `grant Robert`), but doing so is irreversible'
+                        {
+                            content: 'Alternatively, you can choose to give your immunity away to another player',
+                            components: [{
+                                type: ComponentType.ActionRow,
+                                components: [{
+                                    type: ComponentType.Button,
+                                    style: ButtonStyle.Secondary,
+                                    label: 'Keep',
+                                    custom_id: 'game:keepImmunity'
+                                }, {
+                                    type: ComponentType.Button,
+                                    style: ButtonStyle.Secondary,
+                                    label: 'Give',
+                                    custom_id: 'game:giveImmunity'
+                                }]
+                            }]
+                        }
                     ];
                 }
             default:
@@ -556,6 +610,22 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
     }
 
     override async addPlayerDecision(userId: string, text: string): Promise<MessengerPayload> {
+        const targetName = text;
+        if (targetName) {
+            const targetId = this.getClosestUserByName(targetName);
+            if (targetId) {
+                const replyText = this.setUserTarget(userId, targetId);
+                return replyText;
+            } else {
+                throw new Error('I have no idea who you\'re trying to peek at, could you please be more specific?');
+            }
+
+        } else {
+            throw new Error('You are you trying to vote for? For example, \`Dezryth\`');
+        }
+    }
+
+    private setUserTarget(userId: Snowflake, targetId: Snowflake): string {
         // Validate that they're not locked
         if (this.isPlayerLocked(userId)) {
             throw new Error('You joined the game too late to participate, sorry bud!');
@@ -565,28 +635,24 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
         if (votes < 1) {
             throw new Error('You don\'t have any votes to use this week, dummy!');
         }
-        const targetName  = text;
-        if (targetName) {
-            const targetId = this.getClosestUserByName(targetName);
-            if (targetId) {
-                // Validate the target user
-                if (userId === targetId) {
-                    throw new Error('Are you trying to vote for yourself? Get it together, man...');
-                }
-                if (this.isPlayerEliminated(targetId)) {
-                    throw new Error(`**${this.getName(targetId)}** has already been eliminated, choose someone else!`);
-                }
-                if (this.isPlayerImmune(targetId)) {
-                    throw new Error(`**${this.getName(targetId)}** has immunity this turn, choose someone else!`);
-                }
-                this.state.decisions[userId] = [targetId];
-                return `Ok, you will use your **${votes}** vote${votes === 1 ? '' : 's'} to eliminate **${this.getName(targetId)}** this week...`;
-            } else {
-                throw new Error('I have no idea who you\'re trying to peek at, could you please be more specific?');
-            }
-        } else {
-            throw new Error('You are you trying to vote for? For example, \`Robert\`');
+        // Validate the target user
+        if (userId === targetId) {
+            throw new Error('Are you trying to vote for yourself? Get it together, man...');
         }
+        if (this.isPlayerEliminated(targetId)) {
+            throw new Error(`**${this.getName(targetId)}** has already been eliminated, choose someone else!`);
+        }
+        if (!this.hasPlayer(targetId)) {
+            throw new Error('That user isn\'t even in the game this season, choose someone else!');
+        }
+        if (this.isPlayerImmune(targetId)) {
+            throw new Error(`**${this.getName(targetId)}** has immunity this turn, choose someone else!`);
+        }
+        // Set the target in the state
+        this.state.decisions[userId] = [targetId];
+        // Reply with an appropriate response
+        // TODO: Include info about multipliers and such once implemented
+        return `Ok, you will use your **${votes}** vote${votes === 1 ? '' : 's'} to eliminate **${this.getName(targetId)}** this week...`;
     }
 
     override async processPlayerDecisions(): Promise<DecisionProcessingResult> {
@@ -631,6 +697,122 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
         }
     }
 
+    override getDecisionActionRow(): ActionRowData<MessageActionRowComponentData>[] {
+        return [{
+            type: ComponentType.ActionRow,
+            components: [{
+                type: ComponentType.UserSelect,
+                customId: 'game:selectTargetUser',
+                placeholder: 'Click to vote someone off the island',
+                minValues: 1,
+                maxValues: 1
+            }]
+        }];
+    }
+
+    override async handleGameInteraction(interaction: Interaction): Promise<MessengerManifest | undefined> {
+        const userId = interaction.user.id;
+        if (interaction.isMessageComponent()) {
+            // TODO: Temp logging to see how this works
+            void logger.log(`<@${userId}> game interaction: \`${interaction.customId}\``);
+            const customId = interaction.customId;
+            switch (customId) {
+                case 'game:selectTargetUser': {
+                    if (!interaction.isUserSelectMenu()) {
+                        throw new Error('This should be a user select menu (see admin)');
+                    }
+                    const targetUserId = interaction.values[0];
+                    // Set the target and reply
+                    const replyText = this.setUserTarget(userId, targetUserId);
+                    await interaction.editReply(replyText);
+                    break;
+                }
+                case 'game:keepImmunity': {
+                    if (!this.mayPlayerGrantImmunity(userId)) {
+                        throw new Error('You\'re not eligible to grant immunity right now');
+                    }
+                    // They're choosing to keep immunity, so do nothing (just delete buttons)
+                    await interaction.deleteReply();
+                    await interaction.message.edit({ content: 'You have chosen to keep your immunity this week', components: [] });
+                    break;
+                }
+                case 'game:giveImmunity': {
+                    if (!this.mayPlayerGrantImmunity(userId)) {
+                        throw new Error('You\'re not eligible to grant immunity right now');
+                    }
+                    await interaction.editReply({
+                        content: 'Who would you like to grant immunity to?',
+                        components: [{
+                            type: ComponentType.ActionRow,
+                            components: [{
+                                type: ComponentType.UserSelect,
+                                customId: 'game:selectImmunityUser',
+                                placeholder: 'Click to grant immunity to someone',
+                                minValues: 1,
+                                maxValues: 1
+                            }]
+                        }]
+                    })
+                    break;
+                }
+                case 'game:selectImmunityUser': {
+                    // Validate the target
+                    if (!interaction.isUserSelectMenu()) {
+                        throw new Error('This should be a user select menu (see admin)');
+                    }
+                    const targetUserId = interaction.values[0];
+                    this.validateImmunityTarget(userId, targetUserId);
+                    // Set the pending receiver value so it can be confirmed
+                    this.pendingImmunityReceivers[userId] = targetUserId;
+                    await interaction.editReply({
+                        content: `You're granting immunity to <@${targetUserId}>, either confirm that choice to start over to choose someone else`,
+                        components: [{
+                            type: ComponentType.ActionRow,
+                            components: [{
+                                type: ComponentType.Button,
+                                style: ButtonStyle.Secondary,
+                                customId: 'game:confirmImmunity',
+                                label: 'Confirm'
+                            }]
+                        }]
+                    });
+                    break;
+                }
+                case 'game:confirmImmunity': {
+                    // Validate the pending target
+                    const pendingImmunityReceiver = this.pendingImmunityReceivers[userId];
+                    if (!pendingImmunityReceiver) {
+                        throw new Error('Before you can confirm, you need to select who you\'re granting immunity to');
+                    }
+                    this.validateImmunityTarget(userId, pendingImmunityReceiver);
+                    // TODO: What if this user doesn't exist? Can this happen?
+                    this.state.players[pendingImmunityReceiver].immunityGrantedBy = userId;
+                    // Clear the pending granter data to prevent further action
+                    delete this.state.players[userId].mayGrantImmunity;
+                    delete this.pendingImmunityReceivers[userId];
+                    interaction.editReply(`Confirmed! You've granted immunity to **${this.getName(pendingImmunityReceiver)}**`);
+                    break;
+                }
+            }
+        }
+        return undefined;
+    }
+
+    private validateImmunityTarget(userId: Snowflake, targetId: Snowflake) {
+        if (!this.mayPlayerGrantImmunity(userId)) {
+            throw new Error('You\'re not eligible to grant immunity right now');
+        }
+        if (!this.hasPlayer(targetId)) {
+            throw new Error(`<@${targetId}> isn\'t in the game, choose someone else!`);
+        }
+        if (this.isPlayerEliminated(targetId)) {
+            throw new Error(`<@${targetId}> has already been eliminated, you can't grant immunity to them. Try someone else!`);
+        }
+        if (this.isPlayerImmune(targetId)) {
+            throw new Error(`<@${targetId}> is already immune, what are the odds?`);
+        }
+    }
+
 
     private getClosestUserByName(input: string): Snowflake | undefined {
         const userIds: Snowflake[] = this.getPlayers();
@@ -642,41 +824,42 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
     }
 
     override handleNonDecisionDM(userId: Snowflake, text: string): MessengerPayload[] {
+        // TODO: Would we ever want to re-enable this? Can we refactor it in with the interaction logic?
         // If this user has the power to grant immunity...
-        if (this.mayPlayerGrantImmunity(userId)) {
-            // If the user is trying to confirm...
-            if (text.toLowerCase().trim() === 'confirm') {
-                void logger.log(`<@${userId}> is trying to confirm immunity: \`${text}\``);
-                // If there's someone to confirm then finalize the immunity granting
-                const pendingImmunityReceiver = this.pendingImmunityReceivers[userId];
-                if (pendingImmunityReceiver) {
-                    // TODO: What if this user doesn't exist? Can this happen?
-                    this.state.players[pendingImmunityReceiver].immunityGrantedBy = userId;
-                    // Clear the pending granter data to prevent further action
-                    delete this.state.players[userId].mayGrantImmunity;
-                    delete this.pendingImmunityReceivers[userId];
-                    return [`Confirmed! You've granted immunity to **${this.getName(pendingImmunityReceiver)}**`];
-                }
-                // Else, tell them to grant first
-                return ['Before you can confirm, you must choose who to grant immunity to by saying `grant [name]`'];
-            }
-            // If the user is trying to confirm a grant...
-            else if (text.toLowerCase().startsWith('grant')) {
-                void logger.log(`<@${userId}> is trying to grant immunity: \`${text}\``);
-                // Handle granting the immunity
-                const sanitizedText = text.toLowerCase().replace('grant', '').trim();
-                const targetId = this.getClosestUserByName(sanitizedText);
-                if (!targetId) {
-                    return ['I\'m not sure who you\'re trying to grant immunity to. Could you please try again?'];
-                } else if (this.isPlayerEliminated(targetId)) {
-                    return [`<@${targetId}> has already been eliminated, you can\'t grant immunity to them. Try someone else!`];
-                } else  {
-                    // Set the pending receiver value so it can be confirmed
-                    this.pendingImmunityReceivers[userId] = targetId;
-                    return [`You're granting immunity to <@${targetId}>, say \`confirm\` to confirm this or say \`grant [name]\` to choose someone else`];
-                }
-            }
-        }
+        // if (this.mayPlayerGrantImmunity(userId)) {
+        //     // If the user is trying to confirm...
+        //     if (text.toLowerCase().trim() === 'confirm') {
+        //         void logger.log(`<@${userId}> is trying to confirm immunity: \`${text}\``);
+        //         // If there's someone to confirm then finalize the immunity granting
+        //         const pendingImmunityReceiver = this.pendingImmunityReceivers[userId];
+        //         if (pendingImmunityReceiver) {
+        //             // TODO: What if this user doesn't exist? Can this happen?
+        //             this.state.players[pendingImmunityReceiver].immunityGrantedBy = userId;
+        //             // Clear the pending granter data to prevent further action
+        //             delete this.state.players[userId].mayGrantImmunity;
+        //             delete this.pendingImmunityReceivers[userId];
+        //             return [`Confirmed! You've granted immunity to **${this.getName(pendingImmunityReceiver)}**`];
+        //         }
+        //         // Else, tell them to grant first
+        //         return ['Before you can confirm, you must choose who to grant immunity to by saying `grant [name]`'];
+        //     }
+        //     // If the user is trying to confirm a grant...
+        //     else if (text.toLowerCase().startsWith('grant')) {
+        //         void logger.log(`<@${userId}> is trying to grant immunity: \`${text}\``);
+        //         // Handle granting the immunity
+        //         const sanitizedText = text.toLowerCase().replace('grant', '').trim();
+        //         const targetId = this.getClosestUserByName(sanitizedText);
+        //         if (!targetId) {
+        //             return ['I\'m not sure who you\'re trying to grant immunity to. Could you please try again?'];
+        //         } else if (this.isPlayerEliminated(targetId)) {
+        //             return [`<@${targetId}> has already been eliminated, you can\'t grant immunity to them. Try someone else!`];
+        //         } else  {
+        //             // Set the pending receiver value so it can be confirmed
+        //             this.pendingImmunityReceivers[userId] = targetId;
+        //             return [`You're granting immunity to <@${targetId}>, say \`confirm\` to confirm this or say \`grant [name]\` to choose someone else`];
+        //         }
+        //     }
+        // }
         return [];
     }
 }
