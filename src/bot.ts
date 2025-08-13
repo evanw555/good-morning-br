@@ -3046,7 +3046,12 @@ client.on('interactionCreate', async (interaction): Promise<void> => {
         if (rootCustomId === 'game') {
             if (state.hasGame()) {
                 // Defer now, since there's no guarantee how long game implementations will take to reply
-                await interaction.deferReply({ ephemeral: true });
+                // (Update ephemeral messages to avoid reply bloat)
+                if (interaction.isMessageComponent() && interaction.message.flags.has('Ephemeral')) {
+                    await interaction.deferUpdate();
+                } else {
+                    await interaction.deferReply({ ephemeral: true });
+                }
                 // Handle the game interaction in the game state
                 try {
                     const messengerManifest = await state.getGame().handleGameInteraction(interaction);

@@ -200,6 +200,7 @@ export function getScaledPoints(entries: { userId: Snowflake, rank: number }[], 
     return results;
 }
 
+// TODO: Move to common library
 export function drawBackground(context: NodeCanvasRenderingContext2D, image: Canvas | Image) {
     const widthRatio = context.canvas.width / image.width;
     const heightRatio = context.canvas.height / image.height;
