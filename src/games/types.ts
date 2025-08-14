@@ -67,15 +67,23 @@ export interface MazeGameState extends AbstractGameState<'MAZE'> {
 export interface IslandPlayerState {
     displayName: string,
     points: number,
-    revealedTarget?: Snowflake,
-    votes?: number,
+    /** Number of votes this player was given this turn, not including any bonuses. */
+    baseVotes?: number,
     incomingVotes?: number,
     eliminated?: true,
     locked?: true,
     finalRank?: number,
     mayGrantImmunity?: true,
+    /** Once populated, this player's vote is revealed in the render. */
+    revealedTarget?: Snowflake,
+    /** Number of actual votes to be shown in the render. */
+    revealedVotes?: number,
     // If the player granted immunity to themselves, this will be their own user ID
-    immunityGrantedBy?: Snowflake
+    immunityGrantedBy?: Snowflake,
+    /** List of players who voted for this player this turn. */
+    assailants?: Snowflake[],
+    /** List of players who voted for this player last turn. Once eliminated, this list is frozen. */
+    lastAssailants?: Snowflake[]
 }
 
 export interface IslandGameState extends AbstractGameState<'ISLAND'> {

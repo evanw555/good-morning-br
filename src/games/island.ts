@@ -232,12 +232,42 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
         return this.state.players[userId]?.mayGrantImmunity ?? false;
     }
 
-    private getNumVotes(userId: Snowflake): number {
-        return this.state.players[userId]?.votes ?? 0;
+    private getNumBaseVotes(userId: Snowflake): number {
+        return this.state.players[userId]?.baseVotes ?? 0;
+    }
+
+    private getNumActualVotes(userId: Snowflake, targetId: Snowflake): number {
+        const baseVotes = this.getNumBaseVotes(userId);
+        if (this.hasRetaliationVotesAgainst(userId, targetId)) {
+            return baseVotes * 2;
+        } else if (this.hasRevengeVotesAgainst(userId, targetId)) {
+            return baseVotes + 1;
+        }
+        return baseVotes;
     }
 
     private getNumIncomingVotes(userId: Snowflake): number {
         return this.state.players[userId]?.incomingVotes ?? 0;
+    }
+
+    private hasLastAssailants(userId: Snowflake): boolean {
+        return this.getLastAssailants(userId).length > 0;
+    }
+
+    private getLastAssailants(userId: Snowflake): Snowflake[] {
+        return this.state.players[userId]?.lastAssailants ?? [];
+    }
+
+    private isLastAssailantOf(userId: Snowflake, otherId: Snowflake): boolean {
+        return (this.state.players[otherId]?.lastAssailants ?? []).includes(userId);
+    }
+
+    private hasRetaliationVotesAgainst(userId: Snowflake, targetId: Snowflake): boolean {
+        return !this.isPlayerEliminated(userId) && this.isLastAssailantOf(targetId, userId);
+    }
+
+    private hasRevengeVotesAgainst(userId: Snowflake, targetId: Snowflake): boolean {
+        return this.isPlayerEliminated(userId) && this.isLastAssailantOf(targetId, userId);
     }
 
     private getFinalRank(userId: Snowflake): number {
@@ -298,7 +328,7 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
         drawTextWithShadow(`${this.state.numToBeEliminated} dog${this.state.numToBeEliminated === 1 ? '' : 's'} will be eliminated this week... But who?`, MARGIN, MARGIN + TITLE_FONT_SIZE);
 
         // Determine if anyone has any votes to give out (to determine if all the votes have been wiped or not)
-        const doesAnyoneHaveVotes = this.getPlayers().some(id => this.getNumVotes(id) > 0);
+        const doesAnyoneHaveVotes = this.getPlayers().some(id => this.getNumBaseVotes(id) > 0);
 
         // Draw all players
         let playerY = ROSTER_Y;
@@ -321,7 +351,8 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
             for (const voterId of voters) {
                 const voterAvatar = await imageLoader.loadAvatar(voterId, 32);
                 // Draw one avatar for each vote
-                for (let i = 0; i < this.getNumVotes(voterId); i++) {
+                const numActualVotes = this.getNumActualVotes(voterId, userId);
+                for (let i = 0; i < numActualVotes; i++) {
                     voterOffsetX += AVATAR_HEIGHT + AVATAR_MARGIN;
                     context.drawImage(voterAvatar, playerX - voterOffsetX, playerY, AVATAR_HEIGHT, AVATAR_HEIGHT);
                 }
@@ -341,7 +372,7 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
                     context.drawImage(skullImage, playerX, playerY, AVATAR_HEIGHT, AVATAR_HEIGHT);
                 }
                 // Clown the player if they didn't get any votes this week (yet others did, in case all the votes have been wiped at the end of the turn)
-                if (this.getNumVotes(userId) === 0 && doesAnyoneHaveVotes) {
+                if (this.getNumBaseVotes(userId) === 0 && doesAnyoneHaveVotes) {
                     playerX += AVATAR_HEIGHT + AVATAR_MARGIN;
                     context.drawImage(clownIconImage, playerX, playerY, AVATAR_HEIGHT, AVATAR_HEIGHT);
                 }
@@ -361,7 +392,7 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
             let nameText = this.getName(userId);
             // If viewing via the admin console, show more info
             if (options?.admin) {
-                nameText += ` (${this.getNumVotes(userId)}v, ${this.getNumIncomingVotes(userId)}iv)`;
+                nameText += ` (${this.getNumBaseVotes(userId)}v, ${this.getNumIncomingVotes(userId)}iv)`;
             }
             drawTextWithShadow(nameText, playerX, playerY + AVATAR_HEIGHT * 0.75, widthLimit);
             // context.strokeText(`${player.pointSnapshot}pts ${this.getNumVotes(userId)} votes, ${this.getNumIncomingVotes(userId)} incoming, ${this.isPlayerEliminated(userId) ? '☠️' : ''}`,
@@ -428,15 +459,15 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
             // Dole out votes to each player
             if (this.getPoints(userId) > 0) {
                 if (this.isPlayerEliminated(userId)) {
-                    player.votes = Math.max(deadVotes--, 1);
+                    player.baseVotes = Math.max(deadVotes--, 1);
                 } else {
-                    player.votes = Math.max(aliveVotes--, 1);
+                    player.baseVotes = Math.max(aliveVotes--, 1);
                 }
                 // TODO: Temp logic for testing
                 // this.state.decisions[userId] = [randChoice(...this.getRemainingPlayers())];
             } else {
                 // Points are not net-positive, so this player can't vote
-                player.votes = 0;
+                player.baseVotes = 0;
                 votelessPlayers.push(userId);
             }
         }
@@ -505,10 +536,20 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
             delete player.immunityGrantedBy;
             delete player.mayGrantImmunity;
             // Clear num votes for all players
-            delete player.votes;
+            delete player.baseVotes;
             delete player.incomingVotes;
             // Clear other metadata
             delete player.revealedTarget;
+            // If there is a current assailants list, move it over to their last assailants list
+            if (player.assailants) {
+                player.lastAssailants = player.assailants;
+                delete player.assailants;
+            }
+            // If no assailants yet they're still alive, clear the last list
+            else if (!this.isPlayerEliminated(userId)) {
+                delete player.assailants;
+                delete player.lastAssailants;
+            }
         }
 
         // Clear the weekly pending immunity granter data
@@ -601,9 +642,15 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
     getWeeklyDecisionDMs(): Record<string, string> {
         const result: Record<Snowflake, string> = {};
         for (const userId of this.getPlayers()) {
-            const numVotes = this.getNumVotes(userId);
+            const numVotes = this.getNumBaseVotes(userId);
+            // Let players know if they have multiple votes at their disposal
             if (numVotes > 1) {
-                result[userId] = `Due your relative performance against other _${this.isPlayerEliminated(userId) ? 'eliminated' : 'remaining'}_ players this week, you have **${numVotes}** votes at your disposal 🌞`;
+                result[userId] = `Due your relative performance against other _${this.isPlayerEliminated(userId) ? 'eliminated' : 'remaining'}_ players this week, you have **${numVotes}** votes at your disposal 🌞`
+                    + (this.hasLastAssailants(userId) ? ` (plus even more if you vote for ${this.getJoinedNames(this.getLastAssailants(userId))})` : '');
+            }
+            // Else, still let them know if they have retaliation votes
+            else if (!this.isPlayerEliminated(userId) && this.hasLastAssailants(userId)) {
+                result[userId] = `${this.getJoinedNames(this.getLastAssailants(userId))} voted against you last week, so you have **2x** _retaliation_ votes against them this week`;
             }
         }
         return result;
@@ -631,8 +678,8 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
             throw new Error('You joined the game too late to participate, sorry bud!');
         }
         // Validate that the player has votes
-        const votes = this.getNumVotes(userId);
-        if (votes < 1) {
+        const baseVotes = this.getNumBaseVotes(userId);
+        if (baseVotes < 1) {
             throw new Error('You don\'t have any votes to use this week, dummy!');
         }
         // Validate the target user
@@ -652,7 +699,14 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
         this.state.decisions[userId] = [targetId];
         // Reply with an appropriate response
         // TODO: Include info about multipliers and such once implemented
-        return `Ok, you will use your **${votes}** vote${votes === 1 ? '' : 's'} to eliminate **${this.getName(targetId)}** this week...`;
+        const actualVotes = this.getNumActualVotes(userId, targetId);
+        let replyText = `Ok, you will use your **${actualVotes}** vote${actualVotes === 1 ? '' : 's'} to eliminate **${this.getName(targetId)}** this week...`;
+        if (this.hasRetaliationVotesAgainst(userId, targetId)) {
+            replyText += ' (**2x** _retaliation_ votes against this player)';
+        } else if (this.hasRevengeVotesAgainst(userId, targetId)) {
+            replyText += ' (**+1** _vote_ against this player)';
+        }
+        return replyText;
     }
 
     override async processPlayerDecisions(): Promise<DecisionProcessingResult> {
@@ -664,8 +718,8 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
         const userId = randChoice(...remainingDecisionPlayers);
 
         // Count their votes
-        const numVotes = this.getNumVotes(userId);
         const targetId = this.state.decisions[userId][0];
+        const numVotes = this.getNumActualVotes(userId, targetId);
         delete this.state.decisions[userId];
 
         // Validate that the target is valid
@@ -679,9 +733,23 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
             summary = `**${this.getName(userId)}** tried to vote for **${this.getName(targetId)}** without any votes...`;
         } else {
             // Target is valid, so add incoming votes
-            this.state.players[targetId].incomingVotes = (this.state.players[targetId].incomingVotes ?? 0) + numVotes;
+            const targetPlayer = this.state.players[targetId];
+            targetPlayer.incomingVotes = (targetPlayer.incomingVotes ?? 0) + numVotes;
             this.state.players[userId].revealedTarget = targetId;
+            // Add user to the list of the target's assailants (this should never happen if eliminated, but check just in case...)
+            if (!this.isPlayerEliminated(targetId)) {
+                if (!targetPlayer.assailants) {
+                    targetPlayer.assailants = [];
+                }
+                targetPlayer.assailants.push(userId);
+            }
             summary = `**${this.getName(userId)}** cast **${numVotes}** vote${numVotes === 1 ? '' : 's'} for **${this.getName(targetId)}**`;
+            // Add extra text if extra votes
+            if (this.hasRetaliationVotesAgainst(targetId, userId)) {
+                summary += ' (**x2** _retaliation_ votes)';
+            } else if (this.hasRevengeVotesAgainst(userId, targetId)) {
+                summary += ' (**+1** _revenge_ vote)';
+            }
         }
 
         // End the turn if there are no decisions left
