@@ -164,6 +164,10 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
         return this.getEliminatedPlayers().length;
     }
 
+    private getNumUnlockedPlayers(): number {
+        return this.getOrderedPlayers().filter(id => !this.isPlayerLocked(id)).length;
+    }
+
     hasPlayer(userId: string): boolean {
         return userId in this.state.players;
     }
@@ -332,8 +336,12 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
 
         // Draw all players
         let playerY = ROSTER_Y;
+        let eliminatedIndex = 0;
         for (const userId of this.getRenderOrderedPlayers()) {
-            const player = this.state.players[userId];
+            // First and foremost, if this player is locked then skip them altogether
+            if (this.isPlayerLocked(userId)) {
+                continue;
+            }
             let playerX = islandImage.width + AVATAR_HEIGHT + MARGIN * 2;
             // Draw avatar
             const avatar = await imageLoader.loadAvatar(userId, 32);
@@ -363,8 +371,9 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
             }
             // Draw modifier images after the avatar...
             if (this.isPlayerLocked(userId)) {
-                playerX += AVATAR_HEIGHT + AVATAR_MARGIN;
-                context.drawImage(slashIconImage, playerX, playerY, AVATAR_HEIGHT, AVATAR_HEIGHT);
+                // TODO: This will never happen since locked players are skipped, but keep it here in case we want it again
+                // playerX += AVATAR_HEIGHT + AVATAR_MARGIN;
+                // context.drawImage(slashIconImage, playerX, playerY, AVATAR_HEIGHT, AVATAR_HEIGHT);
             } else {
                 // The following should only be drawn if the player is NOT locked (since it's redundant)
                 if (this.isPlayerEliminated(userId)) {
@@ -388,7 +397,8 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
             // const textX = playerX + 3 * (AVATAR_HEIGHT + AVATAR_MARGIN) + MARGIN;
             const widthLimit = WIDTH - playerX - MARGIN;
             context.font = `${AVATAR_HEIGHT * 0.6}px BOLD SERIF`;
-            context.fillStyle = this.isPlayerEliminated(userId) ? 'red' : 'white';
+            // The "red" for eliminated players will get darker and darker
+            context.fillStyle = this.isPlayerEliminated(userId) ? `hsl(0,100%,${Math.round(50 - (50 * (eliminatedIndex / this.getNumUnlockedPlayers())))}%)` : 'white';
             let nameText = this.getName(userId);
             // If viewing via the admin console, show more info
             if (options?.admin) {
@@ -398,6 +408,11 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
             // context.strokeText(`${player.pointSnapshot}pts ${this.getNumVotes(userId)} votes, ${this.getNumIncomingVotes(userId)} incoming, ${this.isPlayerEliminated(userId) ? '☠️' : ''}`,
             //     playerX + AVATAR_HEIGHT * 2 + MARGIN * 3,
             //     playerY + AVATAR_HEIGHT);
+            if (this.isPlayerEliminated(userId)) {
+                eliminatedIndex++;
+                // Slowly make it look like their rows are lost in the water
+                context.globalAlpha = 1 - (eliminatedIndex / this.getNumUnlockedPlayers());
+            }
             playerY += AVATAR_MARGIN + AVATAR_HEIGHT;
         }
 
@@ -505,7 +520,7 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
         const votedOff = mostVotedForPlayers
             .filter(id => !this.isPlayerImmune(id))
             .slice(0, this.state.numToBeEliminated);
-        text.push(`${this.getJoinedNames(votedOff)} ${this.state.numToBeEliminated === 1 ? 'has' : 'have'} been voted off the island`);
+        text.push(`${this.getJoinedNames(votedOff)} ${this.state.numToBeEliminated === 1 ? 'has' : 'have'} been voted off the island 🪦`);
         for (const userId of votedOff) {
             const rank = this.getNumRemainingPlayers();
             this.state.players[userId].eliminated = true;
@@ -554,9 +569,6 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
 
         // Clear the weekly pending immunity granter data
         this.pendingImmunityReceivers = {};
-
-        // Add the universal turn-end message and state render
-        text.push(...await super.endTurn());
 
         return text;
     }
