@@ -745,7 +745,7 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
             }
             summary = `**${this.getName(userId)}** cast **${numVotes}** vote${numVotes === 1 ? '' : 's'} for **${this.getName(targetId)}**`;
             // Add extra text if extra votes
-            if (this.hasRetaliationVotesAgainst(targetId, userId)) {
+            if (this.hasRetaliationVotesAgainst(userId, targetId)) {
                 summary += ' (**x2** _retaliation_ votes)';
             } else if (this.hasRevengeVotesAgainst(userId, targetId)) {
                 summary += ' (**+1** _revenge_ vote)';
