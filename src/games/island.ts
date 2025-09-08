@@ -302,7 +302,7 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
         // The total canvas height is the greater of...
         const HEIGHT = Math.max(
             // The bottom of the roster
-            ROSTER_Y + this.getNumPlayers() * (AVATAR_HEIGHT + AVATAR_MARGIN),
+            ROSTER_Y + this.getNumUnlockedPlayers() * (AVATAR_HEIGHT + AVATAR_MARGIN),
             // The bottom of the island
             ISLAND_Y + islandImage.height + MARGIN);
         const c = canvas.createCanvas(WIDTH, HEIGHT);
