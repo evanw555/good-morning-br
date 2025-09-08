@@ -2,7 +2,7 @@ import { ActionRowData, ButtonStyle, ComponentType, GuildMember, Interaction, Me
 import canvas from 'canvas';
 import { DecisionProcessingResult, GamePlayerAddition, MessengerManifest, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
-import { getMostSimilarByNormalizedEditDistance, naturalJoin, randChoice, shuffle, toFixed } from "evanw555.js";
+import { getMaxKey, getMostSimilarByNormalizedEditDistance, getObjectSize, isObjectEmpty, naturalJoin, randChoice, shuffle, toFixed } from "evanw555.js";
 import { IslandGameState, IslandPlayerState } from "./types";
 
 import imageLoader from "../image-loader";
@@ -33,6 +33,7 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
             season,
             winners: [],
             decisions: {},
+            lockedVotes: {},
             turn: 0,
             players,
             numToBeEliminated: 1
@@ -293,6 +294,7 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
         const sunIconImage = await imageLoader.loadImage('assets/sunicon.png');
         const clownIconImage = await imageLoader.loadImage('assets/clownicon.png');
         const slashIconImage = await imageLoader.loadImage('assets/slashicon.png');
+        const audiencePickIconImage = await imageLoader.loadImage('assets/ranklast.png');
 
         const ROSTER_Y = 2 * MARGIN + HEADER_HEIGHT;
         const HORIZON_Y = ROSTER_Y + this.getNumRemainingPlayers() * (AVATAR_HEIGHT + AVATAR_MARGIN) - 0.5 * AVATAR_MARGIN;
@@ -346,28 +348,32 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
             // Draw avatar
             const avatar = await imageLoader.loadAvatar(userId, 32);
             context.drawImage(avatar, playerX, playerY, AVATAR_HEIGHT, AVATAR_HEIGHT);
-            // If the player has incoming votes, draw the black background for the voter avatars
+            // If the player has incoming votes...
             const numIncomingVotes = Math.round(this.getNumIncomingVotes(userId));
             if (numIncomingVotes > 0) {
+                // Draw the black background for the incoming voter avatars
                 context.fillStyle = 'black';
                 const boxWidth = numIncomingVotes * (AVATAR_HEIGHT + AVATAR_MARGIN) + AVATAR_MARGIN;
                 context.fillRect(playerX - boxWidth - (AVATAR_HEIGHT + AVATAR_MARGIN), playerY - AVATAR_MARGIN, boxWidth, AVATAR_HEIGHT + 2 * AVATAR_MARGIN);
-            }
-            // Draw who's voted for this player so far
-            const voters = this.getPlayers().filter(id => this.state.players[id]?.revealedTarget === userId);
-            let voterOffsetX = AVATAR_HEIGHT + AVATAR_MARGIN;
-            for (const voterId of voters) {
-                const voterAvatar = await imageLoader.loadAvatar(voterId, 32);
-                // Draw one avatar for each vote
-                const numActualVotes = this.getNumActualVotes(voterId, userId);
-                for (let i = 0; i < numActualVotes; i++) {
-                    voterOffsetX += AVATAR_HEIGHT + AVATAR_MARGIN;
-                    context.drawImage(voterAvatar, playerX - voterOffsetX, playerY, AVATAR_HEIGHT, AVATAR_HEIGHT);
-                }
-            }
-            // If anyone's voted for this player, draw the arrow
-            if (voters.length > 0) {
+                // Draw the arrow from the voter box to their avatar
                 context.drawImage(rightArrowImage, playerX - (AVATAR_HEIGHT + AVATAR_MARGIN), playerY, AVATAR_HEIGHT, AVATAR_HEIGHT);
+                // Draw who's voted for this player so far
+                const voters = this.getPlayers().filter(id => this.state.players[id]?.revealedTarget === userId);
+                let voterOffsetX = AVATAR_HEIGHT + AVATAR_MARGIN;
+                for (const voterId of voters) {
+                    const voterAvatar = await imageLoader.loadAvatar(voterId, 32);
+                    // Draw one avatar for each vote
+                    const numActualVotes = this.getNumActualVotes(voterId, userId);
+                    for (let i = 0; i < numActualVotes; i++) {
+                        voterOffsetX += AVATAR_HEIGHT + AVATAR_MARGIN;
+                        context.drawImage(voterAvatar, playerX - voterOffsetX, playerY, AVATAR_HEIGHT, AVATAR_HEIGHT);
+                    }
+                }
+                // If this player was picked by the audience, draw that
+                if (this.state.revealedAudiencePick === userId) {
+                    voterOffsetX += AVATAR_HEIGHT + AVATAR_MARGIN;
+                    context.drawImage(audiencePickIconImage, playerX - voterOffsetX, playerY, AVATAR_HEIGHT, AVATAR_HEIGHT);
+                }
             }
             // Draw modifier images after the avatar...
             if (this.isPlayerLocked(userId)) {
@@ -441,6 +447,9 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
         // Increment the turn counter
         this.state.turn++;
 
+        // Clear the locked votes map
+        this.state.lockedVotes = {};
+
         // For each immunity granter who still hasn't chosen anyone...
         for (const userId of this.getOrderedPlayers()) {
             if (this.mayPlayerGrantImmunity(userId)) {
@@ -466,7 +475,8 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
         for (const userId of this.getOrderedPlayers()) {
             const player = this.state.players[userId];
             // Add fractional votes based on points to handle ties
-            player.incomingVotes = i++ * 0.01;
+            // NOTE: If there are 500 or more players, this fractional value may be rounded upward... which is bad
+            player.incomingVotes = i++ * 0.001;
             // If this player is locked, skip them
             if (this.isPlayerLocked(userId)) {
                 continue;
@@ -685,15 +695,6 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
     }
 
     private setUserTarget(userId: Snowflake, targetId: Snowflake): string {
-        // Validate that they're not locked
-        if (this.isPlayerLocked(userId)) {
-            throw new Error('You joined the game too late to participate, sorry bud!');
-        }
-        // Validate that the player has votes
-        const baseVotes = this.getNumBaseVotes(userId);
-        if (baseVotes < 1) {
-            throw new Error('You don\'t have any votes to use this week, dummy!');
-        }
         // Validate the target user
         if (userId === targetId) {
             throw new Error('Are you trying to vote for yourself? Get it together, man...');
@@ -706,6 +707,17 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
         }
         if (this.isPlayerImmune(targetId)) {
             throw new Error(`**${this.getName(targetId)}** has immunity this turn, choose someone else!`);
+        }
+        // If the user is locked, allow them to participate in the audience vote
+        if (this.isPlayerLocked(userId)) {
+            // Set the target in the locked votes map
+            this.state.lockedVotes[userId] = targetId;
+            return `Since you joined the game late, your vote against **${this.getName(targetId)}** will be used for the collective audience vote`;
+        }
+        // Validate that the player has votes
+        const baseVotes = this.getNumBaseVotes(userId);
+        if (baseVotes < 1) {
+            throw new Error('You don\'t have any votes to use this week, dummy!');
         }
         // Set the target in the state
         this.state.decisions[userId] = [targetId];
@@ -723,6 +735,37 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
 
     override async processPlayerDecisions(): Promise<DecisionProcessingResult> {
         let summary = '';
+
+        // If all the regular decisions have been processed, process the collective audience vote
+        if (isObjectEmpty(this.state.decisions) && !isObjectEmpty(this.state.lockedVotes)) {
+            // Compute who the audience is voting for
+            const pickers = Object.keys(this.state.lockedVotes);
+            const numAudiencePicks = getObjectSize(this.state.lockedVotes);
+            const pickQuantities: Record<Snowflake, number> = {};
+            for (const userId of Object.values(this.state.lockedVotes)) {
+                // Ensure this player can actually be voted for
+                if (this.hasPlayer(userId) && !this.isPlayerEliminated(userId) && !this.isPlayerImmune(userId)) {
+                    pickQuantities[userId] = (pickQuantities[userId] ?? 0) + 1;
+                }
+            }
+            // Pick the highest, treat ties as whatever since no one knows how this works under the hood
+            // TODO: Can we break ties by looking at the rank of the target players?
+            const pickedUserId = getMaxKey(Object.keys(pickQuantities), id => pickQuantities[id] ?? 0);
+            // Add incoming vote
+            const pickedPlayer = this.state.players[pickedUserId];
+            pickedPlayer.incomingVotes = (pickedPlayer.incomingVotes ?? 0) + 1;
+            this.state.revealedAudiencePick = pickedUserId;
+            // Clear the locked vote map
+            this.state.lockedVotes = {};
+            return {
+                summary: {
+                    content: `${this.getJoinedNames(pickers)} (from the audience realm) ${numAudiencePicks === 1 ? '' : 'collectively '}cast a vote for **${this.getName(pickedUserId)}**`,
+                    files: [await this.renderStateAttachment()],
+                    flags: MessageFlags.SuppressNotifications
+                },
+                continueProcessing: false
+            };
+        }
 
         // Pick a random player, process their decision
         const remainingDecisionPlayers = Object.keys(this.state.decisions);
@@ -765,7 +808,7 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
         }
 
         // End the turn if there are no decisions left
-        const endTurn = Object.keys(this.state.decisions).length === 0;
+        const endTurn = isObjectEmpty(this.state.decisions) && isObjectEmpty(this.state.lockedVotes);
 
         return {
             summary: {

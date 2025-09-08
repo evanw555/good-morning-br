@@ -88,7 +88,11 @@ export interface IslandPlayerState {
 
 export interface IslandGameState extends AbstractGameState<'ISLAND'> {
     numToBeEliminated: number,
-    players: Record<Snowflake, IslandPlayerState>
+    players: Record<Snowflake, IslandPlayerState>,
+    /** Mapping from locked user ID to the ID of the user they're voting for. This is used for the collective audience vote. */
+    lockedVotes: Record<Snowflake, Snowflake>
+    /** ID of the player that the audience collectively picked. */
+    revealedAudiencePick?: Snowflake
 }
 
 export interface ArenaGameState extends AbstractGameState<'ARENA'> {

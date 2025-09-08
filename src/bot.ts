@@ -1605,8 +1605,8 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
     },
     [TimeoutType.NextMidMorning]: async (): Promise<void> => {
         // TODO: Patch notes go here
-        if (getTodayDateString() === '1/15/25') {
-            await messenger.send(goodMorningChannel, '**GMBR Patch Notes 1/15/25:**\n- Everyone who votes in Tuesday submission contests (even those who didn\'t submit anything) will receive daily participation credit, letting them keep their streaks more easily');
+        if (getTodayDateString() === '9/13/25') {
+            await messenger.send(goodMorningChannel, '**GMBR Patch Notes 9/13/25:**\n- Players who joined _The Island_ late can now vote (gets combined into one collective audience vote a la JackBox)');
         }
         // If a mid-morning message override is specified, send it now
         const calendarDate: CalendarDate = toCalendarDate(new Date());
