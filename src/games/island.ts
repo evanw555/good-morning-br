@@ -203,6 +203,32 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
     removePlayer(userId: string): void {
         delete this.state.decisions[userId];
         delete this.state.players[userId];
+        // TODO: Can remove this if-check once the map is for sure populated
+        if (this.state.lockedVotes) {
+            delete this.state.lockedVotes[userId];
+        }
+        if (this.state.revealedAudiencePick === userId) {
+            delete this.state.revealedAudiencePick;
+        }
+        // Remove references to this player from other players' states
+        for (const player of Object.values(this.state.players)) {
+            if (player.revealedTarget === userId) {
+                delete player.revealedTarget;
+            }
+            if (player.immunityGrantedBy === userId) {
+                delete player.immunityGrantedBy;
+            }
+            // Remove from assailants list
+            // TODO: Refactor list remove to common util
+            if (player.assailants && player.assailants.includes(userId)) {
+                player.assailants.splice(player.assailants.indexOf(userId), 1);
+            }
+            // Remove from last assailants list
+            // TODO: Refactor list remove to common util
+            if (player.lastAssailants && player.lastAssailants.includes(userId)) {
+                player.lastAssailants.splice(player.lastAssailants.indexOf(userId), 1);
+            }
+        }
     }
 
     private getName(userId: Snowflake): string {
