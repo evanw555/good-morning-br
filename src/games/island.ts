@@ -488,9 +488,28 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
             }
         }
 
-        // Determine how many will be eliminated this turn
+        // Determine how many will be eliminated this turn.
+        // Use randomness in the middle of the "pathway pyramid" to ensure an equal chance of going down the 4-3-2-1 and 5-3-2-1 paths,
+        // while still guaranteeing a deterministic number of turns from a given starting count (e.g. 16 will always take 6 turns).
         const numRemaining = this.getNumRemainingPlayers();
-        const numToBeEliminated = numRemaining > 10 ? 3 : (numRemaining > 4 ? 2 : 1);
+        let numToBeEliminated: number;
+        if (numRemaining > 16) {
+            numToBeEliminated = 5;
+        } else if (numRemaining > 13) {
+            numToBeEliminated = randChoice(4, 5);
+        } else if (numRemaining > 11) {
+            numToBeEliminated = 4;
+        } else if (numRemaining > 9) {
+            numToBeEliminated = randChoice(3, 4);
+        } else if (numRemaining > 7) {
+            numToBeEliminated = 3;
+        } else if (numRemaining > 6) {
+            numToBeEliminated = randChoice(2, 3);
+        } else if (numRemaining > 4) {
+            numToBeEliminated = 2;
+        } else {
+            numToBeEliminated = 1;
+        }
         this.state.numToBeEliminated = numToBeEliminated;
         text.push(`This week, **${numToBeEliminated}** player${numToBeEliminated === 1 ? '' : 's'} will be voted off the island`);
 
