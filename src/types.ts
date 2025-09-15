@@ -142,7 +142,7 @@ export enum DailyEventType {
     GrumpyMorning = 'GRUMPY_MORNING',
     EarlyMorning = 'EARLY_MORNING',
     SleepyMorning = 'SLEEPY_MORNING',
-    CasualInteractionMorning = 'CASUAL_INTERACTION_MORNING',
+    CasualInteraction = 'CASUAL_INTERACTION',
     WritersBlock = 'WRITERS_BLOCK',
     Nightmare = 'NIGHTMARE',
     EarlyEnd = 'EARLY_END',

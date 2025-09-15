@@ -573,14 +573,14 @@ const chooseEvent = async (date: Date): Promise<DailyEvent | undefined> => {
                 type: DailyEventType.SleepyMorning
             }
         ];
-        // Do the grump morning event with a small likelihood
+        // Do the grumpy morning event with a small likelihood
         if (chance(0.5)) {
             potentialEvents.push({
                 type: DailyEventType.GrumpyMorning
             });
         }
         // Do the early end event with a smaller likelihood
-        if (chance(0.66)) {
+        if (chance(0.7)) {
             potentialEvents.push({
                 type: DailyEventType.EarlyEnd,
                 minutesEarly: randChoice(1, 2, 5, 10, 15, randInt(3, 20))
@@ -602,15 +602,15 @@ const chooseEvent = async (date: Date): Promise<DailyEvent | undefined> => {
         }
         // If someone can be interacted with, add casual interaction as a potential event
         const potentialInteractees = state.queryOrderedPlayers({ minActivityStreak: 3 });
-        if (potentialInteractees.length > 0) {
+        if (chance(0.99) && potentialInteractees.length > 0) {
             potentialEvents.push({
-                type: DailyEventType.CasualInteractionMorning,
+                type: DailyEventType.CasualInteraction,
                 user: randChoice(...potentialInteractees)
             });
         }
         // If someone should be beckoned, add beckoning as a potential event
         const potentialBeckonees: Snowflake[] = state.getLeastRecentPlayers(6);
-        if (potentialBeckonees.length > 0) {
+        if (chance(0.9) && potentialBeckonees.length > 0) {
             potentialEvents.push({
                 type: DailyEventType.Beckoning,
                 user: randChoice(...potentialBeckonees)
@@ -618,7 +618,7 @@ const chooseEvent = async (date: Date): Promise<DailyEvent | undefined> => {
         }
         // If anyone is qualified to be a guest reveiller, add guest reveille as a potential event
         const potentialReveillers: Snowflake[] = state.getPotentialReveillers();
-        if (potentialReveillers.length > 0) {
+        if (chance(0.8) && potentialReveillers.length > 0) {
             const guestReveiller: Snowflake = randChoice(...potentialReveillers);
             potentialEvents.push({
                 type: DailyEventType.GuestReveille,
@@ -627,7 +627,7 @@ const chooseEvent = async (date: Date): Promise<DailyEvent | undefined> => {
         }
         // If anyone has a full activity streak, add an event for one of those players to provide tomorrow's GM message
         const potentialWriters: Snowflake[] = state.getFullActivityStreakPlayers();
-        if (potentialWriters.length > 0) {
+        if (chance(0.4) && potentialWriters.length > 0) {
             const guestWriter: Snowflake = randChoice(...potentialWriters);
             potentialEvents.push({
                 type: DailyEventType.WritersBlock,
@@ -1626,7 +1626,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             await messenger.send(goodMorningChannel, languageGenerator.generate(midMorningMessage));
         }
         // If today is a casual interaction event
-        if (state.getEventType() === DailyEventType.CasualInteractionMorning) {
+        if (state.getEventType() === DailyEventType.CasualInteraction) {
             const event = state.getEvent();
             const userId = event.user;
             if (userId) {

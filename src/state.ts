@@ -876,7 +876,7 @@ export default class GoodMorningState {
             return false;
         }
         const event = this.getEvent();
-        return event.type === DailyEventType.CasualInteractionMorning
+        return event.type === DailyEventType.CasualInteraction
             && event.user !== undefined
             && event.user === userId;
     }
