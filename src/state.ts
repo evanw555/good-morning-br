@@ -855,6 +855,19 @@ export default class GoodMorningState {
             || this.getEventType() === DailyEventType.AnonymousSubmissions;
     }
 
+    /**
+     * @returns True if the current event is a guest reveille and the specified player is chosen as the reveiller
+     */
+    isPlayerChosenReveiller(userId: Snowflake): boolean {
+        if (!this.hasEvent()) {
+            return false;
+        }
+        const event = this.getEvent();
+        return event.type === DailyEventType.GuestReveille
+            && event.user !== undefined
+            && event.user === userId;
+    }
+
     hasAnonymousSubmissions(): boolean {
         return this.data.anonymousSubmissions !== undefined;
     }

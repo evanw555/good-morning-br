@@ -1877,8 +1877,13 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         // If the season is still going... (before dumping state)
         if (!state.isSeasonGoalReached()) {
             // Revoke access for all players who should be muted (based on their track record / penalty history)
-            // Must be done before dumping the state because it sets player mute properties
-            await revokeGMChannelAccess(state.getDelinquentPlayers());
+            // Must be done before dumping the state because it sets player mute properties.
+            // Don't do this for reverse good mornings because players are expected to say GM before the morning starts.
+            if (state.getEventType() !== DailyEventType.ReverseGoodMorning) {
+                // Mute all delinquent players (except reveillers since they are expected to say GM before the morning starts)
+                const playersToMute = state.getDelinquentPlayers().filter(id => !state.isPlayerChosenReveiller(id));
+                await revokeGMChannelAccess(playersToMute);
+            }
         }
 
         // Dump state and R9K hashes
@@ -4272,8 +4277,13 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             }
             // If this deduction makes a player delinquent, mute them immediately (hopefully this prevents abuse...)
             if (!state.isPlayerMuted(userId) && state.isPlayerDelinquent(userId)) {
-                await revokeGMChannelAccess([userId]);
-                await logger.log(`Revoked GM channel access for **${msg.member?.displayName ?? msg.author.id}**`);
+                // Only mute if this player is not the guest reveiller
+                if (state.isPlayerChosenReveiller(userId)) {
+                    await logger.log(`Refusing to revoke GM channel access for reveiller **${msg.member?.displayName ?? msg.author.id}**`);
+                } else {
+                    await revokeGMChannelAccess([userId]);
+                    await logger.log(`Revoked GM channel access for **${msg.member?.displayName ?? msg.author.id}**`);
+                }
             }
             // If someone baited (ignore self-bait), award and notify via DM
             const bait: Bait | undefined = state.getMostRecentBait();
