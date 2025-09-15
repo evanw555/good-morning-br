@@ -567,31 +567,34 @@ const chooseEvent = async (date: Date): Promise<DailyEvent | undefined> => {
         // Compile a list of potential events (include default events)
         const potentialEvents: DailyEvent[] = [
             {
-                type: DailyEventType.GrumpyMorning
-            },
-            {
                 type: DailyEventType.EarlyMorning
             },
             {
                 type: DailyEventType.SleepyMorning
             }
         ];
+        // Do the grump morning event with a small likelihood
+        if (chance(0.5)) {
+            potentialEvents.push({
+                type: DailyEventType.GrumpyMorning
+            });
+        }
         // Do the early end event with a smaller likelihood
-        if (chance(0.75)) {
+        if (chance(0.66)) {
             potentialEvents.push({
                 type: DailyEventType.EarlyEnd,
                 minutesEarly: randChoice(1, 2, 5, 10, 15, randInt(3, 20))
             });
         }
         // Do the reverse GM event with a smaller likelihood
-        if (chance(0.5)) {
+        if (chance(0.25)) {
             potentialEvents.push({
                 type: DailyEventType.ReverseGoodMorning,
                 reverseGMRanks: {}
             });
         }
         // Do the nightmare event with a smaller likelihood
-        if (chance(0.5)) {
+        if (chance(0.25)) {
             potentialEvents.push({
                 type: DailyEventType.Nightmare,
                 disabled: true
