@@ -868,6 +868,19 @@ export default class GoodMorningState {
             && event.user === userId;
     }
 
+    /**
+     * @returns True if the current event is a casual interaction and the specified player is chosen as the interactee
+     */
+    isPlayerChosenCasualInteractee(userId: Snowflake): boolean {
+        if (!this.hasEvent()) {
+            return false;
+        }
+        const event = this.getEvent();
+        return event.type === DailyEventType.CasualInteractionMorning
+            && event.user !== undefined
+            && event.user === userId;
+    }
+
     hasAnonymousSubmissions(): boolean {
         return this.data.anonymousSubmissions !== undefined;
     }

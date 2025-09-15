@@ -600,6 +600,14 @@ const chooseEvent = async (date: Date): Promise<DailyEvent | undefined> => {
                 disabled: true
             });
         }
+        // If someone can be interacted with, add casual interaction as a potential event
+        const potentialInteractees = state.queryOrderedPlayers({ minActivityStreak: 3 });
+        if (potentialInteractees.length > 0) {
+            potentialEvents.push({
+                type: DailyEventType.CasualInteractionMorning,
+                user: randChoice(...potentialInteractees)
+            });
+        }
         // If someone should be beckoned, add beckoning as a potential event
         const potentialBeckonees: Snowflake[] = state.getLeastRecentPlayers(6);
         if (potentialBeckonees.length > 0) {
@@ -1616,6 +1624,21 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         const midMorningMessage: string | undefined = config.midMorningMessageOverrides[calendarDate];
         if (midMorningMessage) {
             await messenger.send(goodMorningChannel, languageGenerator.generate(midMorningMessage));
+        }
+        // If today is a casual interaction event
+        if (state.getEventType() === DailyEventType.CasualInteractionMorning) {
+            const event = state.getEvent();
+            const userId = event.user;
+            if (userId) {
+                // If the player has already said GM, re-engage with them
+                if (state.hasDailyRank(userId)) {
+                    await messenger.send(goodMorningChannel, languageGenerator.generate('{casualInteraction.active?}', { player: `<@${userId}>` }));
+                }
+                // Else, ask a question about them
+                else {
+                    await messenger.send(goodMorningChannel, languageGenerator.generate('{casualInteraction.inactive?}', { player: `<@${userId}>` }));
+                }
+            }
         }
     },
     [TimeoutType.NextPreNoon]: async (): Promise<void> => {
@@ -4179,6 +4202,12 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 }
                 // If this post is NOT a Monkey Friday post, reply as normal (this is to avoid double replies on Monkey Friday)
                 else if (!triggerMonkeyFriday) {
+                    // This player may be given a normal GM reply if their daily rank is good enough...
+                    const mayReplyNormally = rank <= config.goodMorningReplyCount
+                        // Or if they're the previous submission winner...
+                        || state.isLastSubmissionWinner(userId)
+                        // Or if they're chosen for today's casual interaction...
+                        || state.isPlayerChosenCasualInteractee(userId);
                     // If the game has started and the user is just now joining, greet them specially
                     if (isPlayerNew && state.hasGame()) {
                         messenger.reply(msg, languageGenerator.generate('{goodMorningReply.new?}'));
@@ -4203,8 +4232,8 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     else if (state.getPlayerDaysSinceLGM(userId) > 7) {
                         messenger.reply(msg, languageGenerator.generate('{goodMorningReply.absent?}'));
                     }
-                    // If this player is one of the first to say GM (or was the last submission winner), reply (or react) specially
-                    else if (rank <= config.goodMorningReplyCount || state.isLastSubmissionWinner(userId)) {
+                    // If this player may receive a normal GM reply, then reply now
+                    else if (mayReplyNormally) {
                         if (chance(config.replyViaReactionProbability)) {
                             reactToMessage(msg, state.getGoodMorningEmoji());
                         } else if (isQuestion) {

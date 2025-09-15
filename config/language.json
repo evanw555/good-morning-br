@@ -55,6 +55,18 @@
             "swagger-laden sweetheart",
             "sweet pup",
             "{!precious|prodigal} pup"
+        ],
+        "patronizingTitle": [
+            "bud",
+            "buddy",
+            "pal",
+            "boss",
+            "friendo",
+            "big guy",
+            "buddy ol' pal",
+            "mister",
+            "dear sir",
+            "big dog"
         ]
     },
     "adjectives": {
@@ -68,6 +80,18 @@
             "pleasant",
             "unforgettable",
             "wonderful"
+        ],
+        "cool": [
+            "cool",
+            "swell",
+            "swag",
+            "swagalicious",
+            "dashing",
+            "awesome",
+            "rad",
+            "tubular",
+            "mondo",
+            "badass"
         ],
         "novel": [
             "original",
@@ -419,6 +443,26 @@
             "I'd like {$player} to take my place tomorrow morning. Please send a {!truly|wonderfully} {adjectives.novel?} good morning message to the server to kick off the day! Don't wait for me",
             "I'd like to call on {$player} to say Good Morning tomorrow in my place",
             "I hereby {!invite|summon} {$player} to start us off tomorrow"
+        ]
+    },
+    "casualInteraction": {
+        "active": [
+            "How's your morning going so far, {$player}?",
+            "Would love to hear more about {$player}'s day today. What have you been up to?",
+            "Just wanted to say that I {!appreciated|liked} hearing from {$player} today, you always make my days {!better|shine brighter|more lovely}",
+            "Hope this morning's been {adjectives.positive?} for everyone, but I'm thinking about {$player} in particular. I bet {!you look|your presence is} {adjectives.beautiful?} today",
+            "Today was a {!rough|tiring} one, but thanks again {$player} for wishing me a {!good morning|GM}. You really {!lifted me up|helped me out today|lifted my spirits}",
+            "{$player} my {!dog|dawg|dawgggg}, wyd?",
+            "{$player} just wanted you to know I think you're a real {adjectives.cool?} guy"
+        ],
+        "inactive": [
+            "I can't wait to hear from {$player} today",
+            "Waiting patiently for my {!good morning|GM|well wishes} from {$player}... where are you, {nouns.patronizingTitle?}?",
+            "{$player} you {adjectives.negative?} dog, where's my GM??",
+            "What are your guys' thoughts on the {$player} situation?",
+            "The {$player} situation is crazy.",
+            "The {phrases.passing?} and {$player} is keeping me waiting for my sweet, sweet {!GM|good morning message}",
+            "Thoughts on {$player}? I've heard a few things..."
         ]
     },
     "bait": {
