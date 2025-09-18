@@ -64,11 +64,13 @@ const client = new Client({
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.GuildMessageTyping,
         GatewayIntentBits.GuildMessageReactions,
+        GatewayIntentBits.GuildPresences,
         GatewayIntentBits.DirectMessages,
         GatewayIntentBits.MessageContent
     ],
     partials: [
-        Partials.Channel // Required to receive DMs
+        Partials.Channel, // Required to receive DMs
+        Partials.GuildMember // Required to see all member remove events
     ]
 });
 
@@ -2912,6 +2914,22 @@ client.on('ready', async (): Promise<void> => {
         await timeoutManager.cancelTimeoutsWithType(TimeoutType.GameDecisionPhase);
         await timeoutManager.cancelTimeoutsWithType(TimeoutType.ProcessGameDecisions);
         await wakeUp(true);
+    }
+});
+
+client.on('guildMemberAdd', async (member) => {
+    // If this user is a returning sungazer, re-grant them the role
+    const userId = member.id;
+    if (history.sungazers[userId]) {
+        // Re-grant the role
+        // TODO: Can this be refactored with updateSungazer?
+        try {
+            await member.roles.add(config.sungazers.role);
+            // Send a message to the chat
+            await messenger.send(sungazersChannel, `Welcome back, <@${userId}> ${config.defaultGoodMorningEmoji}`);
+        } catch (err) {
+            await logger.log(`Failed to add sungazer role \`${config.sungazers.role}\` for returning user <@${userId}>: \`${err}\``);
+        }
     }
 });
 
