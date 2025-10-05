@@ -3,8 +3,8 @@ import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discor
 import { DailyEvent, DailyEventType, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, SubmissionPromptHistory, ReplyToMessageData, MessengerPayload, AnonymousSubmission, GamePlayerAddition, DecisionProcessingResult, FinalizeSungazerPollData, SpecialSungazerTermAward, MEDAL_TYPES } from './types';
 import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, getScaledPoints, getSimpleScaledPoints, text } from './util';
 import GoodMorningState from './state';
-import { canonicalizeText, chance, DiscordTimestampFormat, FileStorage, forEachMessage, generateKMeansClusters, getClockTime, getDateBetween, getJoinedMentions, getRandomDateBetween,
-    getRankString, getRelativeDateTimeString, getSelectedNode, getTodayDateString, getTomorrow, getWordRepetitionScore, LanguageGenerator, loadJson, Messenger,
+import { canonicalizeText, chance, DiscordTimestampFormat, FileStorage, forEachMessage, generateKMeansClusters, getClockTime, getDateBetween, getJoinedMentions, getMaxKey, getRandomDateBetween,
+    getRankString, getRelativeDateTimeString, getSelectedNode, getSortedKeys, getTodayDateString, getTomorrow, getWordRepetitionScore, LanguageGenerator, loadJson, Messenger,
     naturalJoin, PastTimeoutStrategy, prettyPrint, R9KTextBank, randChoice, randInt, shuffle, sleep, TimeoutManager, TimeoutOptions, toCalendarDate, toDiscordTimestamp, toFixed, toLetterId } from 'evanw555.js';
 import { AnonymousSubmissionsState } from './submissions';
 import ActivityTracker from './activity-tracker';
@@ -502,6 +502,23 @@ const advanceSeason = async (): Promise<{ gold?: Snowflake, silver?: Snowflake, 
     return winners;
 };
 
+const getPlayerWithMostGolds = (): Snowflake | undefined => {
+    const users = Object.keys(history.medals);
+    if (users.length === 0) {
+        return undefined;
+    }
+    // Sort by golds first, but break ties with silvers then bronzes
+    const sortedUsers = getSortedKeys(users, [
+        id => -(history.medals[id].gold ?? 0),
+        id => -(history.medals[id].silver ?? 0),
+        id => -(history.medals[id].bronze ?? 0)
+    ]);
+    if (sortedUsers.length === 0) {
+        return undefined;
+    }
+    return sortedUsers[0];
+};
+
 const chooseEvent = async (date: Date): Promise<DailyEvent | undefined> => {
     // If we're testing locally, alternate between game decision and update
     if (config.testing && !state.isCasualSeason()) {
@@ -947,6 +964,17 @@ const sendSeasonEndMessages = async (channel: TextBasedChannel, previousState: G
     // await messenger.send(channel, ' ⭐ Ability to set a special "good morning" emoji that everyone in the server can use');
     // await messenger.send(channel, ' ⭐ Honorary Robert status, with the ability to post in **#robertism**');
     // await messenger.send(channel, ' ⭐ Other secret perks...');
+    // Wait a bit, then mention the user with the most wins
+    const mostGoldsUser = getPlayerWithMostGolds();
+    if (mostGoldsUser) {
+        await sleep(15000);
+        const mostGoldsUserNum = history.medals[mostGoldsUser].gold ?? 0;
+        if (mostGoldsUser === previousState.getTopPlayer()) {
+            await messenger.send(goodMorningChannel, `<@${mostGoldsUser}> maintains their crown as the player with the most season victories, racking up **${mostGoldsUserNum}** 1st place win${mostGoldsUserNum === 1 ? '' : 's'}`);
+        } else {
+            await messenger.send(goodMorningChannel, `Although they didn't win this season, <@${mostGoldsUser}> is still the player with the most season victories, having **${mostGoldsUserNum}** 1st place win${mostGoldsUserNum === 1 ? '' : 's'}`);
+        }
+    }
     // Wait, then send info about the next season
     await sleep(30000);
     await messenger.send(channel, 'Now that this season is over, I\'ll be taking a vacation for several days. Feel free to post whatever whenever until I return 🌞');
