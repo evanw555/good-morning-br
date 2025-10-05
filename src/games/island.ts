@@ -622,6 +622,9 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
             }
         }
 
+        // Clear the revealed audience pick
+        delete this.state.revealedAudiencePick;
+
         // Clear the weekly pending immunity granter data
         this.pendingImmunityReceivers = {};
 
