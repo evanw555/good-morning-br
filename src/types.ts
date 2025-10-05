@@ -251,6 +251,21 @@ export interface RawGoodMorningState {
     birthdayBoys?: Snowflake[]
 }
 
+export interface SpecialSungazerTermAward {
+    /** ID of the user to be awarded special sungazer terms. */
+    userId: Snowflake,
+    /** Number of terms to be awarded. May be fractional. */
+    terms: number,
+    /** Description that will be used in the context "earned X terms for ___", so e.g. "being the top eliminated player" */
+    description: string
+}
+
+export interface SeasonEndResults {
+    winners: Snowflake[],
+    /** If present, award sungazer terms to the "special winners". */
+    specialWinners?: SpecialSungazerTermAward[]
+}
+
 export interface Season {
     season: number,
     gameType?: GameType,
@@ -258,6 +273,10 @@ export interface Season {
     finishedOn: FullDate,
     winners: Snowflake[]
 }
+
+export type MedalType = 'gold' | 'silver' | 'bronze';
+
+export const MEDAL_TYPES: MedalType[] = ['gold', 'silver', 'bronze'];
 
 export interface Medals {
     gold?: number,
@@ -269,7 +288,10 @@ export interface Medals {
 export interface GoodMorningHistory {
     seasons: Season[],
     medals: Record<Snowflake, Medals>,
-    // Keyed by UserId of sungazer councilmembers, value is the number of seasons they have remaining in their term
+    /**
+     * Keyed by UserId of sungazer councilmembers, value is the number of seasons they have remaining in their term.
+     * May be fractional. If less than 1.0, then term will end while the season is ongoing.
+     */
     sungazers: Record<Snowflake, number>,
     robertism?: {
         // UserId of the current "Honorary Robert"

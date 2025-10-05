@@ -5,7 +5,7 @@ import AbstractGame from "./games/abstract-game";
 import ClassicGame from "./games/classic";
 import MazeGame from "./games/maze";
 import logger from "./logger";
-import { Bait, Combo, DailyEvent, DailyEventType, DailyPlayerState, FullDate, PlayerState, RawAnonymousSubmissionsState, RawGoodMorningState, Season } from "./types";
+import { Bait, Combo, DailyEvent, DailyEventType, DailyPlayerState, FullDate, PlayerState, RawAnonymousSubmissionsState, RawGoodMorningState, Season, SeasonEndResults } from "./types";
 import IslandGame from "./games/island";
 import { AnonymousSubmissionsState } from "./submissions";
 import ArenaGame from "./games/arena";
@@ -240,6 +240,14 @@ export default class GoodMorningState {
 
     getPlayerPoints(userId: Snowflake): number {
         return this.getPlayer(userId)?.cumulativePoints ?? 0;
+    }
+
+    getAllPlayerPoints(): Record<Snowflake, number> {
+        const result: Record<Snowflake, number> = {};
+        for (const userId of this.getPlayers()) {
+            result[userId] = this.getPlayerPoints(userId);
+        }
+        return result;
     }
 
     getPlayerActivity(userId: Snowflake): ActivityTracker {
@@ -566,6 +574,17 @@ export default class GoodMorningState {
             return this.getGame().getWinners();
         }
         return [];
+    }
+
+    getSeasonEndResults(): SeasonEndResults {
+        if (this.isCasualSeason()) {
+            return {
+                winners: this.getWinners()
+            };
+        } else if (this.hasGame()) {
+            return this.getGame().getSeasonEndResults(this.getAllPlayerPoints());
+        }
+        return { winners: [] };
     }
 
     /**

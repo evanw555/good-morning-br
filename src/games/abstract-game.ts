@@ -1,5 +1,5 @@
 import { ActionRowData, AttachmentBuilder, GuildMember, Interaction, MessageActionRowComponentData, Snowflake } from "discord.js";
-import { DecisionProcessingResult, GamePlayerAddition, MessengerManifest, MessengerPayload, PrizeType } from "../types";
+import { DecisionProcessingResult, GamePlayerAddition, MessengerManifest, MessengerPayload, PrizeType, SeasonEndResults } from "../types";
 import { text } from "../util";
 import { getJoinedMentions } from "evanw555.js";
 import { GameState } from "./types";
@@ -347,5 +347,11 @@ export default abstract class AbstractGame<T extends GameState> {
 
     protected hasWinner(userId: Snowflake): boolean {
         return this.state.winners.includes(userId);
+    }
+
+    getSeasonEndResults(cumulativePoints?: Record<Snowflake, number>): SeasonEndResults {
+        return {
+            winners: this.getWinners()
+        };
     }
 }

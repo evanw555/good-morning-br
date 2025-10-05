@@ -1,6 +1,6 @@
 import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, BaseMessageOptions, ButtonStyle, Client, ComponentType, DMChannel, GatewayIntentBits, MessageFlags, PartialMessage, Partials, TextChannel, TextInputStyle, User } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discord.js';
-import { DailyEvent, DailyEventType, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, SubmissionPromptHistory, ReplyToMessageData, MessengerPayload, AnonymousSubmission, GamePlayerAddition, DecisionProcessingResult, FinalizeSungazerPollData } from './types';
+import { DailyEvent, DailyEventType, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, SubmissionPromptHistory, ReplyToMessageData, MessengerPayload, AnonymousSubmission, GamePlayerAddition, DecisionProcessingResult, FinalizeSungazerPollData, SpecialSungazerTermAward, MEDAL_TYPES } from './types';
 import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, getScaledPoints, getSimpleScaledPoints, text } from './util';
 import GoodMorningState from './state';
 import { canonicalizeText, chance, DiscordTimestampFormat, FileStorage, forEachMessage, generateKMeansClusters, getClockTime, getDateBetween, getJoinedMentions, getRandomDateBetween,
@@ -280,7 +280,7 @@ const updateSungazer = async (userId: Snowflake, terms: number): Promise<void> =
     }
 }
 
-const updateSungazers = async (winners: { gold?: Snowflake, silver?: Snowflake, bronze?: Snowflake }): Promise<void> => {
+const updateSungazers = async (winners: { gold?: Snowflake, silver?: Snowflake, bronze?: Snowflake, special?: SpecialSungazerTermAward[] }): Promise<void> => {
     // Get the sungazer channel
     const sungazerChannel: TextBasedChannel = (await guild.channels.fetch(config.sungazers.channel)) as TextBasedChannel;
     const newGoldGazer = winners.gold !== undefined && history.sungazers[winners.gold] === undefined;
@@ -323,13 +323,22 @@ const updateSungazers = async (winners: { gold?: Snowflake, silver?: Snowflake, 
             await messenger.send(sungazerChannel, text(`And sweet {!old|young|little} <@${winners.bronze}> has gained **1** more term`));
         }
     }
+    // Add any special terms
+    if (winners.special) {
+        for (const { userId, terms, description } of winners.special) {
+            // TODO: Make these more dynamic based on if they're already on the council or not
+            await updateSungazer(userId, terms);
+            // TODO: Use nice fraction text
+            await messenger.send(sungazerChannel, `For ${description}, <@${userId}> has been awarded **${terms}** special terms on the council`);
+        }
+    }
     // Finally, remove any sungazer who's reached the end of their term
-    const expirees: Snowflake[] = Object.keys(history.sungazers).filter(userId => history.sungazers[userId] === 0);
+    const expirees: Snowflake[] = Object.keys(history.sungazers).filter(userId => history.sungazers[userId] <= 0);
     if (expirees.length > 0) {
         await sleep(10000);
         await messenger.send(sungazerChannel, `The time has come, though, to say goodbye to some now-former sungazers... ${getJoinedMentions(expirees)}, farewell!`);
         await sleep(60000);
-        for (let userId of expirees) {
+        for (const userId of expirees) {
             delete history.sungazers[userId];
             // TODO: Can this be refactored with the role addition logic?
             try {
@@ -343,6 +352,7 @@ const updateSungazers = async (winners: { gold?: Snowflake, silver?: Snowflake, 
     const soonToBeExpirees: Snowflake[] = Object.keys(history.sungazers).filter(userId => history.sungazers[userId] === 1);
     if (soonToBeExpirees.length > 0) {
         await sleep(10000);
+        // TODO: This should be different if the user just earned their first term and if they have a fractional term
         await messenger.send(sungazerChannel, `As for ${getJoinedMentions(soonToBeExpirees)}, I advise that you stay spooked! For this is your final term on the council`);
     }
     logger.log(`\`${JSON.stringify(history.sungazers)}\``);
@@ -436,7 +446,7 @@ const shiftHonoraryRoberts = async () => {
     await logger.log(logStatement);
 }
 
-const advanceSeason = async (): Promise<{ gold?: Snowflake, silver?: Snowflake, bronze?: Snowflake }> => {
+const advanceSeason = async (): Promise<{ gold?: Snowflake, silver?: Snowflake, bronze?: Snowflake, special?: SpecialSungazerTermAward[] }> => {
     // Send the final state/history to the guild owner one last time before wiping it
     if (guildOwnerDmChannel) {
         await logger.log(`Sending final state of season **${state.getSeasonNumber()}** (and a history backup) before it's wiped...`);
@@ -447,26 +457,28 @@ const advanceSeason = async (): Promise<{ gold?: Snowflake, silver?: Snowflake, 
     const newHistoryEntry: Season = state.toHistorySeasonEntry();
     history.seasons.push(newHistoryEntry);
     // Compute medals
-    const winnersList: Snowflake[] = state.getWinners();
+    const seasonEndResults = state.getSeasonEndResults();
     const winners = {
-        gold: winnersList[0],
-        silver: winnersList[1],
-        bronze: winnersList[2]
+        gold: seasonEndResults.winners[0],
+        silver: seasonEndResults.winners[1],
+        bronze: seasonEndResults.winners[2],
         // TODO: Give out the skull award once penalties are counted
         // skull: orderedUserIds[orderedUserIds.length - 1]
+        special: seasonEndResults.specialWinners
     };
     // Increment medals counts (initialize missing objects if needed)
     if (history.medals === undefined) {
         history.medals = {};
     }
-    Object.entries(winners).forEach(([medal, userId]) => {
+    for (const medal of MEDAL_TYPES) {
+        const userId = winners[medal];
         if (userId) {
             if (history.medals[userId] === undefined) {
                 history.medals[userId] = {};
             }
             history.medals[userId][medal] = (history.medals[userId][medal] ?? 0) + 1;
         }
-    });
+    }
     // Reset the state
     const nextSeason: number = state.getSeasonNumber() + 1;
     state = new GoodMorningState({
@@ -2041,11 +2053,11 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         // If the game is over, then proceed to the next season
         if (state.isSeasonGoalReached()) {
             const previousState: GoodMorningState = state;
-            const winners = await advanceSeason();
+            const seasonEndResult = await advanceSeason();
             await sendSeasonEndMessages(goodMorningChannel, previousState);
-            await updateSungazers(winners);
-            if (winners.gold) {
-                await updateRobertism(winners.gold);
+            await updateSungazers(seasonEndResult);
+            if (seasonEndResult.gold) {
+                await updateRobertism(seasonEndResult.gold);
             }
             // Register the next GM timeout for 3 Mondays from now (if it's Sunday, do 4 Mondays from now)
             const nextSeasonStart: Date = new Date();
@@ -2058,6 +2070,8 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                 await messenger.send(sungazersChannel, `BTW gazers: looks like this week's submissions prompt _"${state.getAnonymousSubmissions().getPrompt()}"_ will be postponed until the first week of next season...`);
             }
         }
+
+        // TODO: If season goal is not reached, check if any fractional sungazer terms have lapsed and remove roles accordingly
 
         // Update the bot's status
         await setStatus(false);

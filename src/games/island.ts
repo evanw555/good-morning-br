@@ -1,6 +1,6 @@
 import { ActionRowData, ButtonStyle, ComponentType, GuildMember, Interaction, MessageActionRowComponentData, MessageFlags, Snowflake } from "discord.js";
 import canvas from 'canvas';
-import { DecisionProcessingResult, GamePlayerAddition, MessengerManifest, MessengerPayload, PrizeType } from "../types";
+import { DecisionProcessingResult, GamePlayerAddition, MessengerManifest, MessengerPayload, PrizeType, SeasonEndResults } from "../types";
 import AbstractGame from "./abstract-game";
 import { getMaxKey, getMostSimilarByNormalizedEditDistance, getObjectSize, isObjectEmpty, naturalJoin, randChoice, shuffle, toFixed } from "evanw555.js";
 import { IslandGameState, IslandPlayerState } from "./types";
@@ -1029,5 +1029,34 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
         //     }
         // }
         return [];
+    }
+
+    override getSeasonEndResults(cumulativePoints?: Record<Snowflake, number>): SeasonEndResults {
+        if (cumulativePoints) {
+            // TODO: Use sort-by-key from common library
+            const cumulativeOrderedUsers = Object.keys(cumulativePoints).sort((x, y) => (cumulativeOrderedUsers[y] ?? 0) - (cumulativeOrderedUsers[x] ?? 0))
+                // Filter out users who are actually winners
+                // TODO: Is there any guarantee that there are only 3?
+                .filter(id => !this.hasWinner(id));
+            const topEliminatedUser = cumulativeOrderedUsers[0];
+            if (topEliminatedUser) {
+                return {
+                    winners: this.getWinners(),
+                    specialWinners: [{
+                        userId: topEliminatedUser,
+                        terms: 0.5,
+                        description: 'being the top eliminated player by sheer number of participation points'
+                    }]
+                };
+            } else {
+                // TODO: Temp logging to make sure this works
+                void logger.log('ERROR: Cannot identify top eliminated user!');
+            }
+        } else {
+            // TODO: Temp logging to make sure this works
+            void logger.log('ERROR: Cannot get Island season end results, no cumulative points provided!');
+        }
+
+        return super.getSeasonEndResults();
     }
 }
