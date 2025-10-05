@@ -1034,7 +1034,7 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
     override getSeasonEndResults(cumulativePoints?: Record<Snowflake, number>): SeasonEndResults {
         if (cumulativePoints) {
             // TODO: Use sort-by-key from common library
-            const cumulativeOrderedUsers = Object.keys(cumulativePoints).sort((x, y) => (cumulativeOrderedUsers[y] ?? 0) - (cumulativeOrderedUsers[x] ?? 0))
+            const cumulativeOrderedUsers = Object.keys(cumulativePoints).sort((x, y) => (cumulativePoints[y] ?? 0) - (cumulativePoints[x] ?? 0))
                 // Filter out users who are actually winners
                 // TODO: Is there any guarantee that there are only 3?
                 .filter(id => !this.hasWinner(id));
