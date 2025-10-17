@@ -970,9 +970,9 @@ const sendSeasonEndMessages = async (channel: TextBasedChannel, previousState: G
         await sleep(15000);
         const mostGoldsUserNum = history.medals[mostGoldsUser].gold ?? 0;
         if (mostGoldsUser === previousState.getTopPlayer()) {
-            await messenger.send(goodMorningChannel, `<@${mostGoldsUser}> maintains their crown as the player with the most season victories, racking up **${mostGoldsUserNum}** 1st place win${mostGoldsUserNum === 1 ? '' : 's'}`);
+            await messenger.send(goodMorningChannel, `<@${mostGoldsUser}> maintains their crown as the player with the most season victories, racking up **${mostGoldsUserNum}** first place win${mostGoldsUserNum === 1 ? '' : 's'}`);
         } else {
-            await messenger.send(goodMorningChannel, `Although they didn't win this season, <@${mostGoldsUser}> is still the player with the most season victories, having **${mostGoldsUserNum}** 1st place win${mostGoldsUserNum === 1 ? '' : 's'}`);
+            await messenger.send(goodMorningChannel, `Although they didn't win this season, <@${mostGoldsUser}> is still the player with the most season victories, having **${mostGoldsUserNum}** first place win${mostGoldsUserNum === 1 ? '' : 's'}`);
         }
     }
     // Wait, then send info about the next season
@@ -2078,6 +2078,25 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             }
         }
 
+        // TODO: If season goal is not reached, check if any fractional sungazer terms have lapsed and remove roles accordingly
+        if (!state.isSeasonGoalReached()) {
+            // For any sungazer whose remaining term is smaller than this season's current completion...
+            for (const [userId, term] of Object.entries(history.sungazers)) {
+                // Ensure it's fractional, in case a game has faulty completion logic that returns a value greater than 1
+                // TODO: Could we validate this in the state getter itself?
+                if (term < 1) {
+                    // If this term is expired, remove them from the gazers
+                    if (term < state.getSeasonCompletion()) {
+                        // TODO: Actually implement this
+                        await logger.log(`<@${userId}>'s **${term}** gazer term is expired`);
+                    } else {
+                        // TODO: Temp logging to see how this works (remove soon)
+                        await logger.log(`<@${userId}>'s **${term}** gazer term is still active, season is at **${state.getSeasonCompletion()}** completion`);
+                    }
+                }
+            }
+        }
+
         // If the game is over, then proceed to the next season
         if (state.isSeasonGoalReached()) {
             const previousState: GoodMorningState = state;
@@ -2098,8 +2117,6 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                 await messenger.send(sungazersChannel, `BTW gazers: looks like this week's submissions prompt _"${state.getAnonymousSubmissions().getPrompt()}"_ will be postponed until the first week of next season...`);
             }
         }
-
-        // TODO: If season goal is not reached, check if any fractional sungazer terms have lapsed and remove roles accordingly
 
         // Update the bot's status
         await setStatus(false);
