@@ -1682,6 +1682,11 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                 }
             }
         }
+        // Send birthday follow-up message if any birthday boys have been active today
+        const activeBirthdayBoys = state.getBirthdayBoys().filter(id => state.hasDailyRank(id));
+        if (activeBirthdayBoys.length > 0) {
+            await messenger.send(goodMorningChannel, `Well ${getJoinedMentions(activeBirthdayBoys)}, are you enjoying your birthday so far?`);
+        }
     },
     [TimeoutType.NextPreNoon]: async (): Promise<void> => {
         // If attempting to invoke this while already asleep, warn the admin and abort
