@@ -1818,6 +1818,10 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                     + 'The last ones to say it before I wake up will be the most appreciated 🙂';
                 await messenger.send(goodMorningChannel, text);
             }
+            // If the game starts tomorrow, give players one last warning about being included
+            if (!state.hasGame() && nextEvent.type === DailyEventType.GameDecision) {
+                await messenger.send(goodMorningChannel, 'This season\'s game begins tomorrow morning! Speak now (if you haven\'t already) to secure a spot on the roster');
+            }
         }
 
         // If there's a pre-determined submissions prompt, notify the players
