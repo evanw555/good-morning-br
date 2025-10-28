@@ -1522,7 +1522,11 @@ const finalizeAnonymousSubmissions = async () => {
                 const margin = runnersUp[0].margin;
                 // First, add the headline
                 if (margin >= 5) {
+                    headerText += `In ${getRankString(rank)} with a massive lead over ${getRankString(rank + 1)}`;
+                } else if (margin >= 3) {
                     headerText += `In ${getRankString(rank)} with a heavy lead over ${getRankString(rank + 1)}`;
+                } else if (margin > 0 && margin < 0.1) {
+                    headerText += `In ${getRankString(rank)} by a microscopic margin over ${getRankString(rank + 1)}`;
                 } else if (margin > 0 && margin < 1) {
                     headerText += `In ${getRankString(rank)} by a thin margin over ${getRankString(rank + 1)}`;
                 } else {
@@ -1567,20 +1571,22 @@ const finalizeAnonymousSubmissions = async () => {
     if (winners.length > 0) {
         await sleep(15000);
         if (winners.length === 1) {
-            const winner = winners[0];
-            if (winner.margin >= 10) {
+            const margin = winners[0].margin;
+            if (margin >= 10) {
                 await messenger.send(goodMorningChannel, 'And stealing first place with a massive, unprecedented victory...');
-            } else if (winner.margin >= 5) {
+            } else if (margin >= 5) {
                 await messenger.send(goodMorningChannel, 'And absolutely crushing the competition for first place...');
-            } else if (winner.margin > 0 && winner.margin < 0.25) {
+            } else if (margin >= 3) {
+                await messenger.send(goodMorningChannel, 'And securing first place with a solid lead...');
+            } else if (margin > 0 && margin < 0.1) {
                 await messenger.send(goodMorningChannel, 'And snagging first place by a razor-thin margin...');
-            } else if (winner.margin > 0 && winner.margin < 1) {
+            } else if (margin > 0 && margin < 1) {
                 await messenger.send(goodMorningChannel, 'And barely scraping by for first place...');
             } else {
                 await messenger.send(goodMorningChannel, 'And in first place...');
             }
         } else {
-            await messenger.send(goodMorningChannel, `And tying for first place...`);
+            await messenger.send(goodMorningChannel, 'And tying for first place...');
         }
         // Just use the breakdown for the first player, even if the breakdowns are technically different (is this possible?)
         await sleep(6000);
