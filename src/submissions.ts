@@ -277,12 +277,13 @@ export class AnonymousSubmissionsState {
             margin: 0,
         }));
 
-        // Update entries with relative info
+        // Update tied flag for each entry
         for (let i = 1; i < results.length; i++) {
+            // In this context, the previously visited entry is the one above it
             const current = results[i];
             const previous = results[i - 1];
             // Compute the score for the previous submission
-            previous.margin = previous.score - current.score;
+            previous.margin = toFixed(previous.score - current.score, 3);
             // If the score is the same, count these as a tie and assign the same rank
             if (current.score === previous.score) {
                 current.rank = previous.rank;
@@ -290,6 +291,21 @@ export class AnonymousSubmissionsState {
                 previous.tied = true;
                 // Also copy over the margin, since tied submissions should have the same margin value
                 current.margin = previous.margin;
+            }
+        }
+
+        // Update margin value for each entry
+        for (let i = results.length - 2; i >= 0; i--) {
+            // In this context, the previously visited entry is the one below it
+            const current = results[i];
+            const previous = results[i + 1];
+            // If this entry is tied with the one below it, copy over its margin
+            if (current.rank === previous.rank) {
+                current.margin = previous.margin;
+            }
+            // Else, compute the margin against the next entry
+            else {
+                current.margin = toFixed(current.score - previous.score, 3);
             }
         }
 
