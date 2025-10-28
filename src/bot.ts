@@ -1522,13 +1522,13 @@ const finalizeAnonymousSubmissions = async () => {
                 const margin = runnersUp[0].margin;
                 // First, add the headline
                 if (margin >= 5) {
-                    headerText += `In ${getRankString(rank)} with a massive lead over ${getRankString(rank + 1)}`;
+                    headerText += text(`In ${getRankString(rank)} with a {!massive|huge|very strong|powerful} lead over ${getRankString(rank + 1)}`);
                 } else if (margin >= 3) {
-                    headerText += `In ${getRankString(rank)} with a heavy lead over ${getRankString(rank + 1)}`;
+                    headerText += text(`In ${getRankString(rank)} with a {!solid|good|breezy} lead over ${getRankString(rank + 1)}`);
                 } else if (margin > 0 && margin < 0.1) {
-                    headerText += `In ${getRankString(rank)} by a microscopic margin over ${getRankString(rank + 1)}`;
+                    headerText += text(`In ${getRankString(rank)} by a {!microscopic|razor-thin|very tiny} margin over ${getRankString(rank + 1)}`);
                 } else if (margin > 0 && margin < 1) {
-                    headerText += `In ${getRankString(rank)} by a thin margin over ${getRankString(rank + 1)}`;
+                    headerText += text(`In ${getRankString(rank)} by a {!thin|small} margin over ${getRankString(rank + 1)}`);
                 } else {
                     headerText += `In ${getRankString(rank)}`;
                 }
@@ -1573,20 +1573,25 @@ const finalizeAnonymousSubmissions = async () => {
         if (winners.length === 1) {
             const margin = winners[0].margin;
             if (margin >= 10) {
-                await messenger.send(goodMorningChannel, 'And stealing first place with a massive, unprecedented victory...');
+                await messenger.send(goodMorningChannel, text('And {!stealing|running away with} first place {!with|in} a {!massive|huge|humongous}, {!unprecedented|rarely-seen} victory...'));
             } else if (margin >= 5) {
-                await messenger.send(goodMorningChannel, 'And absolutely crushing the competition for first place...');
+                await messenger.send(goodMorningChannel, text('And {!absolutely|truly} {!crushing|smashing|killing} the competition for first place...'));
             } else if (margin >= 3) {
-                await messenger.send(goodMorningChannel, 'And securing first place with a solid lead...');
+                await messenger.send(goodMorningChannel, text('And {!securing|earning} first place with a {!solid|pretty good|good|nice|respectable} lead...'));
             } else if (margin > 0 && margin < 0.1) {
-                await messenger.send(goodMorningChannel, 'And snagging first place by a razor-thin margin...');
+                await messenger.send(goodMorningChannel, text('And snagging {!first place|the crown|the title of first place} by a {!razor-thin|scarily thin|very very tiny} margin...'));
             } else if (margin > 0 && margin < 1) {
-                await messenger.send(goodMorningChannel, 'And barely scraping by for first place...');
+                await messenger.send(goodMorningChannel, text('And barely {!scraping by|making the cut} for first place...'));
             } else {
                 await messenger.send(goodMorningChannel, 'And in first place...');
             }
+        } else if (winners.length === 2) {
+            await messenger.send(goodMorningChannel, randChoice('And tying for first place...', 'And in a heartwarming turn of events, tying for first place...', 'And in a surprise outcome, tying for first place...'));
+        } else if (winners.length === 3) {
+            // Don't use "and" here, as there would not be a second or third place finish to report
+            await messenger.send(goodMorningChannel, 'In a _ménage à trois_ of sorts for the crown...');
         } else {
-            await messenger.send(goodMorningChannel, 'And tying for first place...');
+            await messenger.send(goodMorningChannel, `Coming in a ${winners.length}-way tie for first place...`);
         }
         // Just use the breakdown for the first player, even if the breakdowns are technically different (is this possible?)
         await sleep(6000);
