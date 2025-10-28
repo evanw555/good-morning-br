@@ -1519,8 +1519,15 @@ const finalizeAnonymousSubmissions = async () => {
                 // If there's only one runner-up
                 const userId = runnersUp[0].userId;
                 const code = runnersUp[0].code;
+                const margin = runnersUp[0].margin;
                 // First, add the headline
-                headerText += `In ${getRankString(rank)}`;
+                if (margin >= 5) {
+                    headerText += `In ${getRankString(rank)} with a heavy lead over ${getRankString(rank + 1)}`;
+                } else if (margin > 0 && margin < 1) {
+                    headerText += `In ${getRankString(rank)} by a thin margin over ${getRankString(rank + 1)}`;
+                } else {
+                    headerText += `In ${getRankString(rank)}`;
+                }
                 // If this one runner-up forfeited, mention it here
                 if (anonymousSubmissions.hasUserForfeited(userId)) {
                     headerText += ' yet only receiving participation points';
@@ -1560,10 +1567,22 @@ const finalizeAnonymousSubmissions = async () => {
     if (winners.length > 0) {
         await sleep(15000);
         if (winners.length === 1) {
-            await messenger.send(goodMorningChannel, `And in first place, with submission **${winners[0].code}**...`);
+            const winner = winners[0];
+            if (winner.margin >= 10) {
+                await messenger.send(goodMorningChannel, 'And stealing first place with a massive, unprecedented victory...');
+            } else if (winner.margin >= 5) {
+                await messenger.send(goodMorningChannel, 'And absolutely crushing the competition for first place...');
+            } else if (winner.margin > 0 && winner.margin < 0.25) {
+                await messenger.send(goodMorningChannel, 'And snagging first place by a razor-thin margin...');
+            } else if (winner.margin > 0 && winner.margin < 1) {
+                await messenger.send(goodMorningChannel, 'And barely scraping by for first place...');
+            } else {
+                await messenger.send(goodMorningChannel, 'And in first place...');
+            }
         } else {
-            await messenger.send(goodMorningChannel, `And tying for first place, with submissions ${naturalJoin(winners.map(w => w.code), { bold: true })}...`);
+            await messenger.send(goodMorningChannel, `And tying for first place...`);
         }
+        // Just use the breakdown for the first player, even if the breakdowns are technically different (is this possible?)
         await sleep(6000);
         await messenger.send(goodMorningChannel, `Receiving ${winners[0].breakdownString}...`);
         // If only one person won and they forfeited, mention it beforehand
@@ -1573,10 +1592,17 @@ const finalizeAnonymousSubmissions = async () => {
         }
         // Do the grand reveal
         await sleep(6000);
-        await messenger.send(goodMorningChannel, {
-            content: `We have our winner${winners.length === 1 ? '' : 's'}, ${getJoinedMentions(winners.map(w => w.userId))}! Congrats!`,
-            embeds: winners.map(w => toSubmissionEmbed(w.submission))
-        });
+        if (winners.length === 1) {
+            await messenger.send(goodMorningChannel, {
+                content: `We have our winner, <@${winners[0].userId}> with submission **${winners[0].code}**! Congrats!`,
+                embeds: [toSubmissionEmbed(winners[0].submission)]
+            });
+        } else {
+            await messenger.send(goodMorningChannel, {
+                content: `We have our winners, ${getJoinedMentions(winners.map(w => w.userId))} with submissions ${naturalJoin(winners.map(w => w.code), { bold: true })}! Congrats!`,
+                embeds: winners.map(w => toSubmissionEmbed(w.submission))
+            });
+        }
         // If more than one person won and any forfeited, mention it after the fact
         if (winners.length > 1) {
             const forfeiters = winners.filter(w => w.forfeited);

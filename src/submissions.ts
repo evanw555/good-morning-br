@@ -11,7 +11,14 @@ declare interface AnonymousSubmissionVotingResult {
     breakdown: number[],
     breakdownString: string,
     medalsString: string,
+    /** Raw score of this submission, as determined by the number and tiers of votes for it. */
     score: number,
+    /**
+     * Difference in score between this submission and the one ranked below it.
+     * If tied, the margins of all the tied submissions should be the same, compared against the one ranked below them.
+     * The lowest ranked submission should have a margin of zero.
+     */
+    margin: number,
     noVotes: boolean,
     disqualified: boolean,
     forfeited: boolean
@@ -256,7 +263,6 @@ export class AnonymousSubmissionsState {
         const results = allCodesSorted.map((code, i) => ({
             code,
             rank: i + 1,
-            tied: false,
             userId: this.getOwnerOfSubmission(code),
             submission: this.getSubmissionForUser(this.getOwnerOfSubmission(code)),
             breakdown: breakdown[code],
@@ -265,18 +271,25 @@ export class AnonymousSubmissionsState {
             score: scores[code],
             noVotes: !gotVotes.has(code),
             disqualified: this.isCodeDisqualified(code),
-            forfeited: this.hasUserForfeited(this.getOwnerOfSubmission(code))
+            forfeited: this.hasUserForfeited(this.getOwnerOfSubmission(code)),
+            // Placeholder values filled in next loops, since they're relative
+            tied: false,
+            margin: 0,
         }));
 
-        // Update entries that are tied
+        // Update entries with relative info
         for (let i = 1; i < results.length; i++) {
             const current = results[i];
             const previous = results[i - 1];
+            // Compute the score for the previous submission
+            previous.margin = previous.score - current.score;
             // If the score is the same, count these as a tie and assign the same rank
             if (current.score === previous.score) {
                 current.rank = previous.rank;
                 current.tied = true;
                 previous.tied = true;
+                // Also copy over the margin, since tied submissions should have the same margin value
+                current.margin = previous.margin;
             }
         }
 
@@ -288,12 +301,13 @@ export class AnonymousSubmissionsState {
         return results.map((r) => {
             const userId = r.userId;
             const code = r.code;
+            // TODO: Including margin for now to ensure it works properly. Remove after testing this out
             if (r.disqualified) {
-                return `**DQ**: ${code} ~~<@${userId}>~~ \`${r.medalsString}=${r.score}\``;
+                return `**DQ**: ${code} ~~<@${userId}>~~ \`${r.medalsString}=${r.score} (Δ${r.margin})\``;
             } else if (r.forfeited) {
-                return `**${getRankString(r.rank)}(F)**: ${code} ~~<@${userId}>~~ \`${r.medalsString}=${r.score}\``;
+                return `**${getRankString(r.rank)}(F)**: ${code} ~~<@${userId}>~~ \`${r.medalsString}=${r.score} (Δ${r.margin})\``;
             } else {
-                return `**${getRankString(r.rank)}**: ${code} <@${userId}> \`${r.medalsString}=${r.score}\``;
+                return `**${getRankString(r.rank)}**: ${code} <@${userId}> \`${r.medalsString}=${r.score} (Δ${r.margin})\``;
             }
         }).join('\n');
     }
