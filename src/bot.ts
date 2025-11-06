@@ -4299,8 +4299,8 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     const rankedPoints: number = config.awardsByRank[rank] ?? config.defaultAward;
                     const activityPoints: number = config.defaultAward + state.getPlayerActivity(userId).getRating();
                     if (state.doesPlayerNeedNerf(userId)) {
-                        state.awardPoints(userId, Math.min(rankedPoints, activityPoints));
-                        logStory += `and was awarded \`min(${rankedPoints}, ${activityPoints})\` with leader nerf`;
+                        state.awardPoints(userId, toFixed((rankedPoints + activityPoints) / 2));
+                        logStory += `and was awarded \`avg(${rankedPoints}, ${activityPoints})\` with leader nerf`;
                     } else if (state.isCasualSeason() && state.doesPlayerNeedHandicap(userId)) {
                         // TODO: Can we do this in non-casual seasons? Is there some way to guarantee it would be safe?
                         state.awardPoints(userId, 2 * Math.max(rankedPoints, activityPoints));
