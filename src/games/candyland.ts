@@ -2,7 +2,7 @@ import { ActionRowData, APIButtonComponent, AttachmentBuilder, ButtonStyle, Comp
 import { GamePlayerAddition, MessengerPayload, PrizeType, DecisionProcessingResult, MessengerManifest } from "../types";
 import AbstractGame from "./abstract-game";
 import { CandyLandColor, CandyLandGameState, CandyLandPlayerState } from "./types";
-import { chance, getRankString, naturalJoin, randChoice, randInt, shuffle, toFixed } from "evanw555.js";
+import { chance, FileStorage, getRankString, naturalJoin, randChoice, randInt, shuffle, toFixed } from "evanw555.js";
 import { cropAroundPoints, toCircle, withDropShadow } from "node-canvas-utils";
 import { Canvas, ImageData, createCanvas } from "canvas";
 import { generateRandomNonsequentialSequence, renderArrow, withAn } from "../util";
@@ -416,6 +416,23 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         // TODO: Should there be a background too?
         context.drawImage(cardImage, 0, 0);
 
+        // If the card is shiny, draw the shiny graphic on top
+        // TODO: Enable this once implemented
+        if (chance(0.5)) {
+            const shiny = await imageLoader.loadImage('assets/candyland/shiny.png');
+            context.drawImage(shiny, 0, 0);
+        }
+
+        // If the card is negative, invert then rotate the hue back to the original
+        // TODO: Enable this once implemented
+        if (chance(0.5)) {
+            // This isn't implemented in node-canvas yet...
+            // context.filter = 'invert(1) hue-rotate(180deg)';
+            context.globalCompositeOperation = 'difference';
+            context.fillStyle = 'white';
+            context.fillRect(0, 0, canvas.width, canvas.height);
+        }
+
         return canvas;
     }
 
@@ -436,7 +453,7 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
                 continue;
             }
             // Adjust the color for this space
-            this.floodColor(spaceImageData, coordinates, CandyLandGame.config.colorMap[color]);
+            CandyLandGame.floodColor(spaceImageData, coordinates, CandyLandGame.config.colorMap[color]);
         }
         // await logger.log('Putting board spaces image data...');
         spaceContext.putImageData(spaceImageData, 0, 0);
@@ -449,6 +466,25 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         return new AttachmentBuilder((await this.renderSpaces()).toBuffer()).setName('candy-land-spaces.png');
     }
 
+    private async renderSpace(location: number): Promise<Canvas> {
+        const color = this.state.spaces[location];
+        const actualColor = CandyLandGame.config.colorMap[color];
+        const spaceImage = await imageLoader.loadImage(`assets/candyland/spaces/${location}.png`);
+
+        const coloredCanvas = createCanvas(spaceImage.width, spaceImage.height);
+        const context = coloredCanvas.getContext('2d');
+
+        // Draw in hue
+        context.fillStyle = `rgb(${actualColor.r},${actualColor.g},${actualColor.b})`;
+        context.fillRect(0, 0, coloredCanvas.width, coloredCanvas.height);
+
+        // Draw in original image
+        context.globalCompositeOperation = 'destination-in';
+        context.drawImage(spaceImage, 0, 0);
+
+        return coloredCanvas;
+    }
+
     async renderBoard(options?: { from?: number, to?: number, card?: { card: CandyLandColor, variant: number } }): Promise<Buffer> {
         const boardBase = await imageLoader.loadImage('assets/candyland/board_base.png');
 
@@ -458,10 +494,18 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         context.drawImage(boardBase, 0, 0);
 
         // Draw the dynamically colored spaces
+        for (let i = 0; i < this.getNumSpaces(); i++) {
+            const color = this.state.spaces[i];
+            if (color === 'START' || color === 'END') {
+                continue;
+            }
+            const coloredSpace = await this.renderSpace(i);
+            context.drawImage(coloredSpace, 0, 0);
+        }
         // context.drawImage(await this.renderSpaces(), 0, 0);
         // TODO: Temporarily coloring the spaces manually until the problem is fixed
-        const season14Spaces = await imageLoader.loadImage('assets/candyland/board_spaces_season14.png');
-        context.drawImage(season14Spaces, 0, 0);
+        // const season14Spaces = await imageLoader.loadImage('assets/candyland/board_spaces_season14.png');
+        // context.drawImage(season14Spaces, 0, 0);
 
         // For each space, draw all players on that space
         // await logger.log('Loading avatars...');
@@ -499,7 +543,7 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         return await this.renderBoard();
     }
 
-    private getPixelColor(imageData: ImageData, point: Coordinates): PixelColor {
+    private static getPixelColor(imageData: ImageData, point: Coordinates): PixelColor {
         const index = 4 * (point.y * imageData.width + point.x);
         const pixelData = imageData.data.slice(index, index + 4);
         return {
@@ -511,14 +555,23 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
     }
 
     // Doesn't set alpha
-    private setPixelColor(imageData: ImageData, point: Coordinates, color: PixelColor) {
+    private static setPixelColor(imageData: ImageData, point: Coordinates, color: PixelColor) {
         const index = 4 * (point.y * imageData.width + point.x);
         imageData.data[index] = color.r;
         imageData.data[index + 1] = color.g;
         imageData.data[index + 2] = color.b;
     }
 
-    private getAllContiguousPixelsWithPredicate(imageData: ImageData, source: Coordinates, predicate: (pixel: Coordinates) => boolean): Coordinates[] {
+    private static copyPixel(toImageData: ImageData, fromImageData: ImageData, point: Coordinates) {
+        const index = 4 * (point.y * fromImageData.width + point.x);
+        toImageData.data[index] = fromImageData.data[index];
+        toImageData.data[index + 1] = fromImageData.data[index + 1];
+        toImageData.data[index + 2] = fromImageData.data[index + 2];
+        toImageData.data[index + 3] = fromImageData.data[index + 3];
+        // console.log(`Copying pixel ${point.x},${point.y} rgba(${fromImageData.data[index]},${fromImageData.data[index + 1]},${fromImageData.data[index + 2]},${fromImageData.data[index + 3]})`)
+    }
+
+    private static getAllContiguousPixelsWithPredicate(imageData: ImageData, source: Coordinates, predicate: (pixel: Coordinates) => boolean): Coordinates[] {
         const result: Coordinates[] = [];
 
         const check = (pixel: Coordinates) => {
@@ -547,7 +600,7 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         return result;
     }
 
-    private getAllContiguousNonTranslucentPixels(imageData: ImageData, source: Coordinates): Coordinates[] {
+    private static getAllContiguousNonTranslucentPixels(imageData: ImageData, source: Coordinates): Coordinates[] {
         return this.getAllContiguousPixelsWithPredicate(imageData, source, (pixel: Coordinates) => {
             // If non-translucent
             const pixelColor = this.getPixelColor(imageData, pixel);
@@ -556,7 +609,7 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
 
     }
 
-    private getAllContiguousPixelsOfSameColor(imageData: ImageData, source: Coordinates): Coordinates[] {
+    private static getAllContiguousPixelsOfSameColor(imageData: ImageData, source: Coordinates): Coordinates[] {
         const sourceColor = this.getPixelColor(imageData, source);
         return this.getAllContiguousPixelsWithPredicate(imageData, source, (pixel: Coordinates) => {
             // If same color (ignoring alpha, but not opaque)
@@ -565,10 +618,36 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         });
     }
 
-    private floodColor(imageData: ImageData, point: Coordinates, color: PixelColor) {
+    private static floodColor(imageData: ImageData, point: Coordinates, color: PixelColor) {
         const pixelsToAlter = this.getAllContiguousNonTranslucentPixels(imageData, point);
         for (const pixel of pixelsToAlter) {
             this.setPixelColor(imageData, pixel, color);
+        }
+    }
+
+    // TEMP: Utility function for splitting entire board sheet into individual spaces.
+    static async writeNewBoardSpaces() {
+        const storage = new FileStorage('./assets/candyland/spaces/');
+        const boardSpaces = await imageLoader.loadImage('assets/candyland/board_spaces.png');
+        const spaceCanvas = createCanvas(boardSpaces.width, boardSpaces.height);
+        const spaceContext = spaceCanvas.getContext('2d');
+        spaceContext.drawImage(boardSpaces, 0, 0);
+        // await logger.log('Getting board spaces image data...');
+        const spaceImageData = spaceContext.getImageData(0, 0, spaceCanvas.width, spaceCanvas.height);
+        for (let i = 0; i < CandyLandGame.config.spaces.length; i++) {
+            const coordinates = CandyLandGame.config.spaces[i];
+            // Create new canvas for this space and draw the pixels manually
+            const newCanvas = createCanvas(boardSpaces.width, boardSpaces.height);
+            const newContext = newCanvas.getContext('2d');
+            const pixelsToCopy = this.getAllContiguousNonTranslucentPixels(spaceImageData, coordinates);
+            console.log(`Writing space ${i}/${CandyLandGame.config.spaces.length}... (${pixelsToCopy.length} pixels)`);
+            const newImageData = newContext.getImageData(0, 0, newCanvas.width, newCanvas.height);
+            for (const pixel of pixelsToCopy) {
+                this.copyPixel(newImageData, spaceImageData, pixel);
+            }
+            newContext.putImageData(newImageData, 0, 0);
+            // Write the new canvas to file
+            await storage.writeBlob(`${i}.png`, newCanvas.toBuffer());
         }
     }
 
