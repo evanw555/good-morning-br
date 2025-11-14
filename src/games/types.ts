@@ -277,8 +277,9 @@ export interface RiskGameState extends AbstractGameState<'RISK'> {
     currentConflict?: RiskConflictState
 }
 
-export type CandyLandColor = 'R' | 'O' | 'Y' | 'G' | 'B' | 'P' | 'K' | 'W' | 'START' | 'END';
-
+export type CandyLandBasicColor = 'R' | 'O' | 'Y' | 'G' | 'B' | 'P' | 'K' | 'W';
+export type CandyLandCardColor = CandyLandBasicColor | 'L' | 'D' | 'X';
+export type CandyLandSpaceColor = CandyLandBasicColor | 'L' | 'START' | 'END';
 
 export interface CandyLandPlayerState {
     displayName: string,
@@ -289,9 +290,17 @@ export interface CandyLandPlayerState {
     location: number
 }
 
-export interface CandyLandWeeklyCard {
-    card: CandyLandColor,
+export interface CandyLandCardData {
+    color: CandyLandCardColor,
     variant: number,
+    /** If true, this card is shiny. */
+    shiny?: true,
+    /** If true, this card is a negative. */
+    negative?: true
+}
+
+export interface CandyLandWeeklyCard {
+    card: CandyLandCardData,
     log: string[],
     trade?: Snowflake
 }
@@ -300,7 +309,7 @@ export interface CandyLandGameState extends AbstractGameState<'CANDYLAND'> {
     readonly players: Record<Snowflake, CandyLandPlayerState>,
     // Turn-specific info
     cards: Record<Snowflake, CandyLandWeeklyCard>,
-    spaces: CandyLandColor[]
+    spaces: CandyLandSpaceColor[]
 }
 
 export interface ClassicGameState extends AbstractGameState<'CLASSIC'> {

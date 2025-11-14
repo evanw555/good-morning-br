@@ -3220,7 +3220,11 @@ client.on('interactionCreate', async (interaction): Promise<void> => {
                         }
                     }
                 } catch (err) {
-                    await interaction.editReply(err.toString());
+                    await interaction.editReply({
+                        content: err.toString(),
+                        files: [],
+                        components: []
+                    });
                 }
                 await dumpState();
                 // If not replied to, send an error reply
