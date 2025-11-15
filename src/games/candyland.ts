@@ -5,7 +5,7 @@ import { CandyLandCardColor, CandyLandCardData, CandyLandBasicColor, CandyLandGa
 import { chance, FileStorage, getRankString, getSortedKeys, naturalJoin, randChoice, randInt, shuffle, toFixed } from "evanw555.js";
 import { cropAroundPoints, toCircle, withDropShadow } from "node-canvas-utils";
 import { Canvas, ImageData, createCanvas } from "canvas";
-import { generateRandomNonsequentialSequence, renderArrow, withAn } from "../util";
+import { generateRandomNonsequentialSequence, renderArrow, text, withAn } from "../util";
 
 import imageLoader from "../image-loader";
 import logger from "../logger";
@@ -78,7 +78,7 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         },
         spaces: [
             // 0
-            { "x": 98, "y": 820 }, // Start
+            { "x": 119, "y": 830 }, // Start
             { "x": 243, "y": 815 },
             { "x": 297, "y": 836 },
             { "x": 347, "y": 859 },
@@ -419,8 +419,9 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         return this.state.cards[userId].log.push(text);
     }
 
-    private getTokenCoordinates(coordinates: Coordinates, n: number, options?: { spacing?: number }): Coordinates[] {
-        const spacing = options?.spacing ?? 16;
+    private getTokenCoordinates(coordinates: Coordinates, n: number, options?: { horizontalSpacing?: number, verticalSpacing?: number }): Coordinates[] {
+        const horizontalSpacing = options?.horizontalSpacing ?? 16;
+        const verticalSpacing = options?.verticalSpacing ?? 16;
         if (n === 0) {
             return [];
         } else if (n === 1) {
@@ -433,8 +434,8 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
                     // Add 45 degrees just to shift it diagonally
                     + (Math.PI / 4);
                 result.push({
-                    x: coordinates.x + Math.round(spacing * Math.cos(angle)),
-                    y: coordinates.y + Math.round(spacing * Math.sin(angle))
+                    x: coordinates.x + Math.round(horizontalSpacing * Math.cos(angle)),
+                    y: coordinates.y + Math.round(verticalSpacing * Math.sin(angle))
                 });
             }
             // void logger.log(`Drawing ${n} concentric tokens at space: \`${JSON.stringify(result)}\``);
@@ -444,8 +445,8 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
             const result: Coordinates[] = [];
             for (let i = 0; i < n; i++) {
                 result.push({
-                    x: randInt(coordinates.x - spacing * 2, coordinates.x + spacing * 2),
-                    y: randInt(coordinates.y - spacing * 2, coordinates.y + spacing * 2)
+                    x: randInt(coordinates.x - horizontalSpacing * 2, coordinates.x + horizontalSpacing * 2),
+                    y: randInt(coordinates.y - verticalSpacing * 2, coordinates.y + verticalSpacing * 2)
                 });
             }
             // void logger.log(`Drawing ${n} haphazard tokens at space: \`${JSON.stringify(result)}\``);
@@ -554,10 +555,11 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         // For each space, draw all players on that space
         // await logger.log('Loading avatars...');
         for (let i = 0; i < this.getNumSpaces(); i++) {
+            const isStart = this.getSpaceColor(i) === 'START';
             const coordinates = this.getSpaceCoordinates(i);
             const playersHere = this.getPlayersAtLocation(i);
             // Show all player tokens on this space
-            const tokenCoordinates = this.getTokenCoordinates(coordinates, playersHere.length, { spacing: 14 });
+            const tokenCoordinates = this.getTokenCoordinates(coordinates, playersHere.length, { horizontalSpacing: isStart ? 48 : 14, verticalSpacing: isStart ? 40 : 14 });
             for (let j = 0; j < playersHere.length; j++) {
                 const userId = playersHere[j];
                 const { x, y } = tokenCoordinates[j];
@@ -857,10 +859,13 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
             }
         }
 
+        const movementText = steps === 0
+            ? randChoice('going nowhere', 'going absolutely nowhere', 'moving no spaces at all', 'staying totally put')
+            : `${diff < 0 ? 'backtracking' : 'moving'} **${steps}** space${steps === 1 ? '' : 's'}`;
         return {
             continueProcessing: this.getNumPlayerCards() > 0,
             summary: {
-                content: `**${this.getPlayerDisplayName(userId)}** ${naturalJoin(log, { conjunction: 'then' })}, ${diff < 0 ? 'backtracking' : 'moving'} **${steps}** space${steps === 1 ? '' : 's'}!`,
+                content: `**${this.getPlayerDisplayName(userId)}** ${naturalJoin(log, { conjunction: 'then' })}, ${movementText}!`,
                 files: [new AttachmentBuilder(await this.renderBoard({ from: currentLocation, to: nextLocation, card })).setName(`game-week${this.getTurn()}.png`)]
             }
         };
@@ -907,7 +912,7 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
                 // Validate that this user's card state is acceptable
                 const userCard = this.state.cards[userId];
                 if (!userCard) {
-                    throw new Error(`Can't ${decision} trade offer from **${this.getPlayerDisplayName(offererId)}**, as you don't have a card to trade!`);
+                    throw new Error(`You don't have a card to trade. Go to the GM channel and draw a card, then come back to ${decision} the offer from **${this.getPlayerDisplayName(offererId)}**`);
                 }
                 if (userCard.trade) {
                     throw new Error(`Can't ${decision} trade offer from **${this.getPlayerDisplayName(offererId)}**, as you're offering your card to someone else!`);
@@ -934,6 +939,7 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
                         content: `Accepted trade offer from **${this.getPlayerDisplayName(offererId)}**. You traded ${userCardDescriptor} for ${offererCardDescriptor}!`,
                         files: [new AttachmentBuilder((await this.renderCardDraw(offererCard.card)).toBuffer()).setName('trade.png')]
                     });
+                    await logger.log(`**${this.getPlayerDisplayName(userId)}** accepted trade offer from **${this.getPlayerDisplayName(offererId)}**`);
                     return {
                         dms: {
                             [offererId]: [{
@@ -947,6 +953,7 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
                     delete offererCard.trade;
                     // Notify both users
                     await interaction.editReply(`Declined trade offer from **${this.getPlayerDisplayName(offererId)}**, they have been notified.`);
+                    await logger.log(`**${this.getPlayerDisplayName(userId)}** declined trade offer from **${this.getPlayerDisplayName(offererId)}**`);
                     return {
                         dms: {
                             [offererId]: [`**${this.getPlayerDisplayName(userId)}** has declined your trade offer...`]
@@ -1008,6 +1015,7 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
                             components: buttons
                         }] : undefined
                     });
+                    await logger.log(`**${this.getPlayerDisplayName(userId)}** drew a card`);
                     break;
                 }
                 case 'game:redraw': {
@@ -1058,6 +1066,7 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
                             components: buttons
                         }] : undefined
                     });
+                    await logger.log(`**${this.getPlayerDisplayName(userId)}** re-drew a card`);
                     break;
                 }
                 case 'game:trade': {
@@ -1106,16 +1115,14 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
                     if (this.isPlayerAtEnd(targetUserId)) {
                         throw new Error(`**${this.getPlayerDisplayName(targetUserId)}** has already reached the end`);
                     }
-                    if (!this.hasPlayerCard(targetUserId)) {
-                        throw new Error(`**${this.getPlayerDisplayName(targetUserId)}** hasn't drawn a card yet, try again once they've done so`);
-                    }
-                    if (this.state.cards[targetUserId].trade) {
+                    if (this.state.cards[targetUserId]?.trade) {
                         throw new Error(`**${this.getPlayerDisplayName(targetUserId)}** is currently offering their card to someone else...`);
                     }
                     // Set the trade target in the state
                     this.state.cards[userId].trade = targetUserId;
                     // Extend the trade offer
                     await interaction.editReply(`Your trade offer has been sent to **${this.getPlayerDisplayName(targetUserId)}**!`);
+                    await logger.log(`**${this.getPlayerDisplayName(userId)}** proposed a trade with **${this.getPlayerDisplayName(targetUserId)}**`);
                     // TODO: Instruct them how to accept
                     // TODO: If this offer overrides another offer, send the other user a DM saying that the previous offer has been cancelled
                     return {
