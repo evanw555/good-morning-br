@@ -4447,9 +4447,9 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
             // If someone baited (ignore self-bait), award and notify via DM
             const bait: Bait | undefined = state.getMostRecentBait();
             if (bait && userId !== bait.userId) {
-                const baitReward = state.doesPlayerNeedNerf(userId)
+                const baitReward = state.doesPlayerNeedNerf(bait.userId)
                     ? (config.defaultAward / 8)
-                    : (state.doesPlayerNeedHandicap(userId) ? config.defaultAward : (config.defaultAward / 2));
+                    : (state.doesPlayerNeedHandicap(bait.userId) ? config.defaultAward : (config.defaultAward / 2));
                 state.awardPoints(bait.userId, baitReward);
                 await logger.log(`Awarded **${toFixed(baitReward)}** to **${state.getPlayerDisplayName(bait.userId)}** for baiting successfully.`);
                 await messenger.dm(bait.userId, 'Bait successful.', { immediate: true });
