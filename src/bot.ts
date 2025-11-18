@@ -332,7 +332,7 @@ const updateSungazers = async (winners: { gold?: Snowflake, silver?: Snowflake, 
             await messenger.send(sungazerChannel, `For ${description}, <@${userId}> has been awarded **${terms}** special terms on the council`);
         }
     }
-    // Finally, remove any sungazer who's reached the end of their term
+    // Finally, remove any sungazer who's reached the end of their term (use less-than-or-equals just in case a fractional term slipped through the cracks)
     const expirees: Snowflake[] = Object.keys(history.sungazers).filter(userId => history.sungazers[userId] <= 0);
     if (expirees.length > 0) {
         await sleep(10000);
@@ -354,6 +354,35 @@ const updateSungazers = async (winners: { gold?: Snowflake, silver?: Snowflake, 
         await sleep(10000);
         // TODO: This should be different if the user just earned their first term and if they have a fractional term
         await messenger.send(sungazerChannel, `As for ${getJoinedMentions(soonToBeExpirees)}, I advise that you stay spooked! For this is your final term on the council`);
+    }
+    logger.log(`\`${JSON.stringify(history.sungazers)}\``);
+    await dumpHistory();
+}
+
+const updateFractionalSungazers = async () => {
+    // Get sungazers whose remaining term is smaller than this season's current completion...
+    const fractionalExpirees = Object.entries(history.sungazers)
+        .filter(([userId, term]) => term < 1 && term < state.getSeasonCompletion())
+        .map(([userId, term]) => userId);
+    // If there are no fractional expirees, abort...
+    if (fractionalExpirees.length === 0) {
+        return;
+    }
+    // Get the sungazer channel
+    const sungazerChannel: TextBasedChannel = (await guild.channels.fetch(config.sungazers.channel)) as TextBasedChannel;
+    // Remove these sungazers
+    // TODO: Make this message dynamic based on size of fractional term (e.g. halfway, quarter, near end)
+    await messenger.send(sungazerChannel, `${getJoinedMentions(fractionalExpirees)}... we're glad you joined us through this portion of the season, but we've reached your stop. Farewell for now!`);
+    await sleep(60000);
+    for (const userId of fractionalExpirees) {
+        delete history.sungazers[userId];
+        // TODO: Can this be refactored with the role addition logic?
+        try {
+            const member: GuildMember = await guild.members.fetch(userId);
+            await member.roles.remove(config.sungazers.role);
+        } catch (err) {
+            await logger.log(`Failed to remove sungazer role \`${config.sungazers.role}\` for user <@${userId}>: \`${err}\``);
+        }
     }
     logger.log(`\`${JSON.stringify(history.sungazers)}\``);
     await dumpHistory();
@@ -2126,21 +2155,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
 
         // TODO: If season goal is not reached, check if any fractional sungazer terms have lapsed and remove roles accordingly
         if (!state.isSeasonGoalReached()) {
-            // For any sungazer whose remaining term is smaller than this season's current completion...
-            for (const [userId, term] of Object.entries(history.sungazers)) {
-                // Ensure it's fractional, in case a game has faulty completion logic that returns a value greater than 1
-                // TODO: Could we validate this in the state getter itself?
-                if (term < 1) {
-                    // If this term is expired, remove them from the gazers
-                    if (term < state.getSeasonCompletion()) {
-                        // TODO: Actually implement this
-                        await logger.log(`<@${userId}>'s **${term}** gazer term is expired`);
-                    } else {
-                        // TODO: Temp logging to see how this works (remove soon)
-                        await logger.log(`<@${userId}>'s **${term}** gazer term is still active, season is at **${state.getSeasonCompletion()}** completion`);
-                    }
-                }
-            }
+            updateFractionalSungazers();
         }
 
         // If the game is over, then proceed to the next season
