@@ -2152,10 +2152,10 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             if (seasonEndResult.gold) {
                 await updateRobertism(seasonEndResult.gold);
             }
-            // Register the next GM timeout for 3 Mondays from now (if it's Sunday, do 4 Mondays from now)
+            // Register the next GM timeout for 2 Mondays from now
             const nextSeasonStart: Date = new Date();
             nextSeasonStart.setHours(8, 0, 0, 0);
-            nextSeasonStart.setDate(nextSeasonStart.getDate() + 22 - nextSeasonStart.getDay());
+            nextSeasonStart.setDate(nextSeasonStart.getDate() + 15 - nextSeasonStart.getDay());
             await registerTimeout(TimeoutType.NextGoodMorning, nextSeasonStart, { pastStrategy: PastTimeoutStrategy.IncrementDay });
             await logger.log(`Registered next season's first GM for **${getRelativeDateTimeString(nextSeasonStart)}**`);
             // If the submissions prompt was held over, notify the sungazers
