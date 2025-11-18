@@ -22,7 +22,8 @@ export enum TimeoutType {
     // Utilities
     ReplyToMessage = 'REPLY_TO_MESSAGE',
     RobertismShiftFallback = 'ROBERTISM_SHIFT_FALLBACK',
-    FinalizeSungazerPoll = 'FINALIZE_SUNGAZER_POLL'
+    FinalizeSungazerPoll = 'FINALIZE_SUNGAZER_POLL',
+    SungazerRemovalFallback = 'SUNGAZER_REMOVAL_FALLBACK'
 }
 
 /**

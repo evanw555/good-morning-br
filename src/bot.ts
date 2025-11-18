@@ -3,7 +3,7 @@ import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discor
 import { DailyEvent, DailyEventType, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, SubmissionPromptHistory, ReplyToMessageData, MessengerPayload, AnonymousSubmission, GamePlayerAddition, DecisionProcessingResult, FinalizeSungazerPollData, SpecialSungazerTermAward, MEDAL_TYPES } from './types';
 import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, getScaledPoints, getSimpleScaledPoints, text } from './util';
 import GoodMorningState from './state';
-import { canonicalizeText, chance, DiscordTimestampFormat, FileStorage, forEachMessage, generateKMeansClusters, getClockTime, getDateBetween, getJoinedMentions, getMaxKey, getRandomDateBetween,
+import { addReactsSync, canonicalizeText, chance, DiscordTimestampFormat, FileStorage, forEachMessage, generateKMeansClusters, getClockTime, getDateBetween, getJoinedMentions, getMaxKey, getRandomDateBetween,
     getRankString, getRelativeDateTimeString, getSelectedNode, getSortedKeys, getTodayDateString, getTomorrow, getWordRepetitionScore, LanguageGenerator, loadJson, Messenger,
     naturalJoin, PastTimeoutStrategy, prettyPrint, R9KTextBank, randChoice, randInt, shuffle, sleep, TimeoutManager, TimeoutOptions, toCalendarDate, toDiscordTimestamp, toFixed, toLetterId } from 'evanw555.js';
 import { AnonymousSubmissionsState } from './submissions';
@@ -90,6 +90,9 @@ let dailyVolatileLog: [Date, String][] = [];
 // Volatile list containing the content of messages that correctly said the magic word
 // TODO: Can we make this non-volatile? Does it matter that much?
 let magicWordSourceTexts: string[] = [];
+
+// Volatile set containing users who are currently in the process of having their sungazer role revoked (to avoid double processing)
+const sungazerRemovalUsers: Set<Snowflake> = new Set();
 
 // TODO(testing): Use this during testing to directly trigger subsequent timeouts
 const showTimeoutTriggerButton = async (type: TimeoutType, arg?: any) => {
@@ -280,6 +283,16 @@ const updateSungazer = async (userId: Snowflake, terms: number): Promise<void> =
     }
 }
 
+const removeSungazer = async (userId: Snowflake) => {
+    // TODO: Can this be refactored with the role addition logic?
+    try {
+        const member: GuildMember = await guild.members.fetch(userId);
+        await member.roles.remove(config.sungazers.role);
+    } catch (err) {
+        await logger.log(`Failed to remove sungazer role \`${config.sungazers.role}\` for user <@${userId}>: \`${err}\``);
+    }
+}
+
 const updateSungazers = async (winners: { gold?: Snowflake, silver?: Snowflake, bronze?: Snowflake, special?: SpecialSungazerTermAward[] }): Promise<void> => {
     // Get the sungazer channel
     const sungazerChannel: TextBasedChannel = (await guild.channels.fetch(config.sungazers.channel)) as TextBasedChannel;
@@ -337,16 +350,13 @@ const updateSungazers = async (winners: { gold?: Snowflake, silver?: Snowflake, 
     if (expirees.length > 0) {
         await sleep(10000);
         await messenger.send(sungazerChannel, `The time has come, though, to say goodbye to some now-former sungazers... ${getJoinedMentions(expirees)}, farewell!`);
-        await sleep(60000);
         for (const userId of expirees) {
+            // Remove from state, when they post without being in the state, it will remove them
             delete history.sungazers[userId];
-            // TODO: Can this be refactored with the role addition logic?
-            try {
-                const member: GuildMember = await guild.members.fetch(userId);
-                await member.roles.remove(config.sungazers.role);
-            } catch (err) {
-                await logger.log(`Failed to remove sungazer role \`${config.sungazers.role}\` for user <@${userId}>: \`${err}\``);
-            }
+            // Schedule a fallback for their role to be removed
+            const tonight = new Date();
+            tonight.setHours(23, randInt(45, 55), 0);
+            await timeoutManager.registerTimeout(TimeoutType.SungazerRemovalFallback, tonight, { arg: userId, pastStrategy: PastTimeoutStrategy.Invoke });
         }
     }
     const soonToBeExpirees: Snowflake[] = Object.keys(history.sungazers).filter(userId => history.sungazers[userId] === 1);
@@ -373,16 +383,13 @@ const updateFractionalSungazers = async () => {
     // Remove these sungazers
     // TODO: Make this message dynamic based on size of fractional term (e.g. halfway, quarter, near end)
     await messenger.send(sungazerChannel, `${getJoinedMentions(fractionalExpirees)}... we're glad you joined us through this portion of the season, but we've reached your stop. Farewell for now!`);
-    await sleep(60000);
     for (const userId of fractionalExpirees) {
+        // Remove from state, when they post without being in the state, it will remove them
         delete history.sungazers[userId];
-        // TODO: Can this be refactored with the role addition logic?
-        try {
-            const member: GuildMember = await guild.members.fetch(userId);
-            await member.roles.remove(config.sungazers.role);
-        } catch (err) {
-            await logger.log(`Failed to remove sungazer role \`${config.sungazers.role}\` for user <@${userId}>: \`${err}\``);
-        }
+        // Schedule a fallback for their role to be removed
+        const tonight = new Date();
+        tonight.setHours(23, randInt(45, 55), 0);
+        await timeoutManager.registerTimeout(TimeoutType.SungazerRemovalFallback, tonight, { arg: userId, pastStrategy: PastTimeoutStrategy.Invoke });
     }
     logger.log(`\`${JSON.stringify(history.sungazers)}\``);
     await dumpHistory();
@@ -2756,6 +2763,26 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             }
         }
 
+    },
+    [TimeoutType.SungazerRemovalFallback]: async (arg) => {
+        if (!arg) {
+            await logger.log('Aborting sungazer removal fallback, as no arg was provided...');
+            return;
+        }
+        const userId = arg as Snowflake;
+        // Validate that the user is not still a sungazer
+        if (history.sungazers[userId]) {
+            await logger.log(`Aborting sungazer removal fallback, as <@${userId}> still has **${history.sungazers[userId]}** term(s)...`);
+            return;
+        }
+        // Abort if this user is already being processed
+        if (sungazerRemovalUsers.has(userId)) {
+            return;
+        }
+        sungazerRemovalUsers.add(userId);
+        // Remove roles
+        await removeSungazer(userId);
+        sungazerRemovalUsers.delete(userId);
     }
 };
 
@@ -4592,6 +4619,31 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
     }
     // Handle sungazer channel messages
     if (msg.channelId === config.sungazers.channel) {
+        // If this is a departing sungazer saying farewell, remove their roles
+        if (history.sungazers[userId] === undefined) {
+            // Abort if this is the admin (would be triggered all the time otherwise)
+            if (userId === guildOwner.id) {
+                return;
+            }
+            // Abort if this user is already being processed
+            if (sungazerRemovalUsers.has(userId)) {
+                return;
+            }
+            sungazerRemovalUsers.add(userId);
+            // Cancel whatever fallbacks may exist for this user
+            const timeoutIds = timeoutManager.getTimeoutIdsWithArg(TimeoutType.SungazerRemovalFallback, arg => arg === userId);
+            for (const timeoutId of timeoutIds) {
+                await timeoutManager.cancelTimeout(timeoutId);
+                await logger.log(`Cancelled sungazer removal fallback for <@${userId}> with ID \`${timeoutId}\``);
+            }
+            // Wave to them, confirming that they'll be removed soon
+            await reactToMessage(msg, '👋');
+            // Give them 60 seconds
+            await sleep(60_000);
+            // Remove their role
+            await removeSungazer(userId);
+            sungazerRemovalUsers.delete(userId);
+        }
         // If replying to a message while prompts are being suggested...
         if (timeoutManager.hasTimeoutWithType(TimeoutType.AnonymousSubmissionTypePollStart) && msg.reference) {
             // If replying to the bot user...
@@ -4601,7 +4653,11 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                 // If the suggested prompt uses improper grammar, urge the user to edit their message
                 const sanitized = msg.content.trim().toLowerCase();
                 if (sanitized.startsWith('a ') || sanitized.startsWith('an ') || sanitized.startsWith('the ')) {
-                    await messenger.reply(msg, 'Please edit your suggestion to remove the unnecessary leading article 🤓', { ttl: 60_000 });
+                    if (chance(0.5)) {
+                        await messenger.reply(msg, 'Do not start your prompts with "a", "an", or "the". Please edit and remove it.', { ttl: 60_000 });
+                    } else {
+                        await messenger.reply(msg, 'Please edit your suggestion to remove the unnecessary leading article 🤓', { ttl: 60_000 });
+                    }
                 }
                 if (sanitized && sanitized.split(' ')[0].endsWith('s')) {
                     await messenger.reply(msg, languageGenerator.generate('Stop pluralizing your {!prompts|suggestions|suggested prompts} {!please|you dunce} 😡'), { ttl: 60_000 });
