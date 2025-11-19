@@ -750,7 +750,6 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         return [];
     }
 
-    // TODO: Make this part of the module interface so that all games can be simulated
     override autoFillPlayerDecisions() {
         for (const userId of this.getPlayers()) {
             const card = this.drawRandomCard();

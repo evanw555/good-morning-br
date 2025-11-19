@@ -2262,51 +2262,6 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             delete this.state.players[userId].weeklyPrize;
         }
 
-        // If there are NPCs, choose actions for them
-        for (const userId of this.getPlayers()) {
-            if (userId.startsWith('npc')) {
-                // Choose additions (even if eliminated, player can still add to territories owned by team)
-                const possibleAdditionTerritories = this.getTerritoriesForPlayerTeam(userId);
-                if (this.state.addDecisions && possibleAdditionTerritories.length > 0) {
-                    const additions: string[] = [];
-                    for (let i = 0; i < this.getPlayerNewTroops(userId); i++) {
-                        additions.push(randChoice(...possibleAdditionTerritories));
-                    }
-                    this.state.addDecisions[userId] = additions;
-                }
-                // Choose attacks
-                const possibleAttackTerritories = this.getValidAttackSourceTerritoriesForPlayer(userId);
-                if (this.state.attackDecisions && possibleAttackTerritories.length > 0) {
-                    const attacks: RiskMovementData[] = [];
-                    for (const from of possibleAttackTerritories) {
-                        const targets = this.getTerritoryConnections(from).filter(otherId => this.getTerritoryOwner(otherId) !== userId);
-                        const to = getMinKey(shuffle(targets), (territoryId) => this.getTerritoryTroops(territoryId));
-                        const p = 0.5 * this.getTerritoryTroops(from) / this.getTerritoryTroops(to);
-                        if (chance(p)) {
-                            attacks.push({
-                                from,
-                                to,
-                                quantity: randInt(1, this.getPromisedTerritoryTroops(from))
-                            });
-                        }
-                    }
-                    this.state.attackDecisions[userId] = attacks;
-                }
-                // Choose movements
-                const possibleMovementTerritories = this.getValidMovementSourceTerritoriesForPlayer(userId);
-                if (this.state.moveDecisions && possibleMovementTerritories.length > 0) {
-                    const from = getMinKey(shuffle(possibleMovementTerritories), (territoryId) => this.getNumHostileTerritoryConnections(territoryId));
-                    const possibleDestinations = this.getTerritoryConnections(from).filter(otherId => this.getTerritoryOwner(otherId) === userId);
-                    const to = getMaxKey(shuffle(possibleDestinations), (territoryId) => this.getNumHostileTerritoryConnections(territoryId));
-                    this.state.moveDecisions[userId] = {
-                        from,
-                        to,
-                        quantity: randInt(1, this.getTerritoryTroops(from))
-                    };
-                }
-            }
-        }
-
         // Show a chart indicating how many troops were awarded this week
         messengerPayloads.push({
             files: [await this.renderWeeklyPoints(weeklyPointOrderedPlayers.map(userId => ({
@@ -2319,6 +2274,50 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         });
 
         return messengerPayloads;
+    }
+
+    override autoFillPlayerDecisions(): void {
+        for (const userId of this.getPlayers()) {
+            // Choose additions (even if eliminated, player can still add to territories owned by team)
+            const possibleAdditionTerritories = this.getTerritoriesForPlayerTeam(userId);
+            if (this.state.addDecisions && possibleAdditionTerritories.length > 0) {
+                const additions: string[] = [];
+                for (let i = 0; i < this.getPlayerNewTroops(userId); i++) {
+                    additions.push(randChoice(...possibleAdditionTerritories));
+                }
+                this.state.addDecisions[userId] = additions;
+            }
+            // Choose attacks
+            const possibleAttackTerritories = this.getValidAttackSourceTerritoriesForPlayer(userId);
+            if (this.state.attackDecisions && possibleAttackTerritories.length > 0) {
+                const attacks: RiskMovementData[] = [];
+                for (const from of possibleAttackTerritories) {
+                    const targets = this.getTerritoryConnections(from).filter(otherId => this.getTerritoryOwner(otherId) !== userId);
+                    const to = getMinKey(shuffle(targets), (territoryId) => this.getTerritoryTroops(territoryId));
+                    const p = 0.5 * this.getTerritoryTroops(from) / this.getTerritoryTroops(to);
+                    if (chance(p)) {
+                        attacks.push({
+                            from,
+                            to,
+                            quantity: randInt(1, this.getPromisedTerritoryTroops(from))
+                        });
+                    }
+                }
+                this.state.attackDecisions[userId] = attacks;
+            }
+            // Choose movements
+            const possibleMovementTerritories = this.getValidMovementSourceTerritoriesForPlayer(userId);
+            if (this.state.moveDecisions && possibleMovementTerritories.length > 0) {
+                const from = getMinKey(shuffle(possibleMovementTerritories), (territoryId) => this.getNumHostileTerritoryConnections(territoryId));
+                const possibleDestinations = this.getTerritoryConnections(from).filter(otherId => this.getTerritoryOwner(otherId) === userId);
+                const to = getMaxKey(shuffle(possibleDestinations), (territoryId) => this.getNumHostileTerritoryConnections(territoryId));
+                this.state.moveDecisions[userId] = {
+                    from,
+                    to,
+                    quantity: randInt(1, this.getTerritoryTroops(from))
+                };
+            }
+        }
     }
 
     override async endTurn(): Promise<MessengerPayload[]> {

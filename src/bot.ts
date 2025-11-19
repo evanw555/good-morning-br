@@ -3708,7 +3708,8 @@ const processCommands = async (msg: Message): Promise<void> => {
         // Simulate the rate at which completion progresses in each game
         else if (sanitizedText.includes('simulate_completion')) {
             const members = await fetchSampleMembers();
-            // TODO: Make this for-each game, but just simulate two for now
+            // TODO: Make this for-each game, but just simulate three for now
+            // TODO: Can't add Risk, since all the custom decision phase logic and draft stuff messes it up
             const GAMES: GameType[] = ['ISLAND', 'CANDYLAND'];
             for (const gameType of GAMES) {
                 const tempGame = GAME_FACTORIES[gameType](members, 99);
@@ -3735,7 +3736,10 @@ const processCommands = async (msg: Message): Promise<void> => {
                     }
                     await tempGame.endTurn();
                     completionByTurn.push(tempGame.getSeasonCompletion());
-                    await statusMessage.edit(_refreshText());
+                    await statusMessage.edit({
+                        content: _refreshText(),
+                        files: [new AttachmentBuilder(await tempGame.renderState()).setName('state.png')]
+                    });
                 }
                 const graph = await createBarGraph(completionByTurn.map((c, i) => ({ name: `Turn ${i}`, value: c })), { title: `${GAME_TYPE_NAMES[gameType]} by Week`, decimalPrecision: 2 });
                 await msg.channel.send({ files: [new AttachmentBuilder(graph.toBuffer()).setName('completion.png')] });
