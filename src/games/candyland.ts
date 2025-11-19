@@ -322,7 +322,7 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         // Season completion is defined as the average of the top 3 players' board completion.
         // This way, completion reaches 100% only once the top 3 players have finished.
         // (Use average so the value is a little more fluid)
-        return this.getAveragePodiumLocation() / this.getNumSpaces();
+        return this.getAveragePodiumLocation() / (this.getNumSpaces() - 1);
     }
 
     getPlayers(): string[] {
