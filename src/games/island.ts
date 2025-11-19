@@ -101,7 +101,9 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
         if (this.getNumUnlockedPlayers() < 2) {
             return 1;
         }
-        return this.getNumEliminatedUnlockedPlayers() / (this.getNumUnlockedPlayers() - 1);
+        const rawCompletion = this.getNumEliminatedUnlockedPlayers() / (this.getNumUnlockedPlayers() - 1);
+        // Make this plateauing curve more linear by hitting it with a power (0 -> 0, 0.5 -> 0.35, 1 -> 1)
+        return Math.pow(rawCompletion, 1.5);
     }
 
     getPlayers(): string[] {
