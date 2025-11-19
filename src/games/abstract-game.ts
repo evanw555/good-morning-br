@@ -7,10 +7,12 @@ import { GameState } from "./types";
 export default abstract class AbstractGame<T extends GameState> {
     protected readonly state: T;
     private testing: boolean;
+    private skipRendering: boolean;
 
     constructor(state: T) {
         this.state = state;
         this.testing = false;
+        this.skipRendering = false;
     }
 
     isTesting(): boolean {
@@ -19,6 +21,14 @@ export default abstract class AbstractGame<T extends GameState> {
 
     setTesting(testing: boolean) {
         this.testing = testing;
+    }
+
+    shouldSkipRendering(): boolean {
+        return this.skipRendering;
+    }
+
+    setSkipRendering(skipRendering: boolean) {
+        this.skipRendering = skipRendering;
     }
 
     /**
@@ -218,6 +228,13 @@ export default abstract class AbstractGame<T extends GameState> {
     }
 
     abstract beginTurn(): Promise<MessengerPayload[]>
+
+    /**
+     * Hook that games should use to auto-fill decisions, primarily for simulation.
+     */
+    autoFillPlayerDecisions() {
+
+    }
 
     /**
      * @returns List of messages to send before any game decisions are processed

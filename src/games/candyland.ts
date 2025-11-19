@@ -751,7 +751,7 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
     }
 
     // TODO: Make this part of the module interface so that all games can be simulated
-    autoFillPlayerDecisions() {
+    override autoFillPlayerDecisions() {
         for (const userId of this.getPlayers()) {
             const card = this.drawRandomCard();
             this.state.cards[userId] = {
@@ -894,7 +894,7 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
             continueProcessing: this.getNumPlayerCards() > 0,
             summary: {
                 content: `**${this.getPlayerDisplayName(userId)}** ${naturalJoin(log, { conjunction: 'then' })}, ${movementText}!`,
-                files: [new AttachmentBuilder(await this.renderBoard({ from: currentLocation, to: nextLocation, card })).setName(`game-week${this.getTurn()}.png`)]
+                files: this.shouldSkipRendering() ? undefined : [new AttachmentBuilder(await this.renderBoard({ from: currentLocation, to: nextLocation, card })).setName(`game-week${this.getTurn()}.png`)]
             }
         };
     }

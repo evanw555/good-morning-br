@@ -567,6 +567,12 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
         return text;
     }
 
+    override autoFillPlayerDecisions(): void {
+        for (const userId of this.getRemainingPlayers()) {
+            this.state.decisions[userId] = [randChoice(...this.getRemainingPlayers().filter(id => id !== userId))];
+        }
+    }
+
     override async endTurn(): Promise<MessengerPayload[]> {
         const text: MessengerPayload[] = [];
         // Eliminate players! Order matters, the most voted-for players are eliminated first (and thus end with a worse final rank)
@@ -808,7 +814,7 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
             return {
                 summary: {
                     content: `${this.getJoinedNames(pickers)} (from the audience realm) ${numAudiencePicks === 1 ? '' : 'collectively '}cast a vote for **${this.getName(pickedUserId)}**`,
-                    files: [await this.renderStateAttachment()],
+                    files: this.shouldSkipRendering() ? undefined : [await this.renderStateAttachment()],
                     flags: MessageFlags.SuppressNotifications
                 },
                 continueProcessing: false

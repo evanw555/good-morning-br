@@ -3708,26 +3708,28 @@ const processCommands = async (msg: Message): Promise<void> => {
         // Simulate the rate at which completion progresses in each game
         else if (sanitizedText.includes('simulate_completion')) {
             const members = await fetchSampleMembers();
-            // TODO: Make this for-each game, but just simulate one for now
-            const GAMES: GameType[] = ['CANDYLAND'];
+            // TODO: Make this for-each game, but just simulate two for now
+            const GAMES: GameType[] = ['ISLAND', 'CANDYLAND'];
             for (const gameType of GAMES) {
                 const tempGame = GAME_FACTORIES[gameType](members, 99);
+                tempGame.setSkipRendering(true);
                 let action = 0;
-                const _refreshText = () => `Simulating _${GAME_TYPE_NAMES[gameType]}_... (turn ${tempGame.getTurn()}, Action ${action}, ${tempGame.getSeasonCompletion()}%)`;
+                const _refreshText = () => `Simulating _${GAME_TYPE_NAMES[gameType]}_... (turn ${tempGame.getTurn()}, Action ${action}, ${(100 * tempGame.getSeasonCompletion()).toFixed(2)}%)`;
                 const statusMessage = await msg.channel.send(_refreshText());
                 const completionByTurn: number[] = [tempGame.getSeasonCompletion()];
                 while (!tempGame.isSeasonComplete()) {
                     await tempGame.beginTurn();
-                    // TODO: This method should exist for all games
-                    (tempGame as CandyLandGame).autoFillPlayerDecisions();
+                    tempGame.autoFillPlayerDecisions();
                     let continueProcessing = true;
                     action = 0;
                     while (continueProcessing) {
                         const r = await tempGame.processPlayerDecisions();
                         continueProcessing = r.continueProcessing;
                         action++;
-                        await statusMessage.edit(_refreshText());
-                        await sleep(500);
+                        if (action % 3 === 0) {
+                            await statusMessage.edit(_refreshText());
+                            await sleep(500);
+                        }
                     }
                     await tempGame.endTurn();
                     completionByTurn.push(tempGame.getSeasonCompletion());
