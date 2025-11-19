@@ -3714,6 +3714,7 @@ const processCommands = async (msg: Message): Promise<void> => {
                 const tempGame = GAME_FACTORIES[gameType](members, 99);
                 tempGame.setSkipRendering(true);
                 let action = 0;
+                let lastEditAt = new Date().getTime();
                 const _refreshText = () => `Simulating _${GAME_TYPE_NAMES[gameType]}_... (turn ${tempGame.getTurn()}, Action ${action}, ${(100 * tempGame.getSeasonCompletion()).toFixed(2)}%)`;
                 const statusMessage = await msg.channel.send(_refreshText());
                 const completionByTurn: number[] = [tempGame.getSeasonCompletion()];
@@ -3726,9 +3727,10 @@ const processCommands = async (msg: Message): Promise<void> => {
                         const r = await tempGame.processPlayerDecisions();
                         continueProcessing = r.continueProcessing;
                         action++;
-                        if (action % 3 === 0) {
+                        const now = new Date().getTime();
+                        if (now - lastEditAt > 5000) {
                             await statusMessage.edit(_refreshText());
-                            await sleep(500);
+                            lastEditAt = now;
                         }
                     }
                     await tempGame.endTurn();

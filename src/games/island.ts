@@ -98,7 +98,10 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
     getSeasonCompletion(): number {
         // Completion is defined as the proportion of eliminated players
         // TODO: More are eliminated in the beginning, so this will be skewed. Can we improve this?
-        return (this.getNumEliminatedUnlockedPlayers() + 1) / this.getNumUnlockedPlayers();
+        if (this.getNumUnlockedPlayers() < 2) {
+            return 1;
+        }
+        return this.getNumEliminatedUnlockedPlayers() / (this.getNumUnlockedPlayers() - 1);
     }
 
     getPlayers(): string[] {
