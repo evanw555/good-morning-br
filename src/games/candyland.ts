@@ -319,7 +319,10 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
     }
 
     getSeasonCompletion(): number {
-        return this.getMaxPlayerLocation() / this.getNumSpaces();
+        // Season completion is defined as the average of the top 3 players' board completion.
+        // This way, completion reaches 100% only once the top 3 players have finished.
+        // (Use average so the value is a little more fluid)
+        return this.getAveragePodiumLocation() / this.getNumSpaces();
     }
 
     getPlayers(): string[] {
@@ -385,6 +388,20 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
 
     private getMaxPlayerLocation(): number {
         return Math.max(...this.getAllPlayerLocations());
+    }
+
+    /**
+     * @returns The average of the top 3 players' locations
+     */
+    private getAveragePodiumLocation(): number {
+        const podiumUsers = this.getOrderedPlayers().slice(0, 3);
+        if (podiumUsers.length === 0) {
+            return 0;
+        }
+        const sumLocation = podiumUsers
+            .map(userId => this.getPlayerLocation(userId))
+            .reduce((x, y) => x + y);
+        return sumLocation / podiumUsers.length;
     }
 
     private getMinPlayerLocation(): number {

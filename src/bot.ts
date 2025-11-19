@@ -3,7 +3,7 @@ import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discor
 import { DailyEvent, DailyEventType, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, SubmissionPromptHistory, ReplyToMessageData, MessengerPayload, AnonymousSubmission, GamePlayerAddition, DecisionProcessingResult, FinalizeSungazerPollData, SpecialSungazerTermAward, MEDAL_TYPES } from './types';
 import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, getScaledPoints, getSimpleScaledPoints, text } from './util';
 import GoodMorningState from './state';
-import { addReactsSync, canonicalizeText, chance, DiscordTimestampFormat, FileStorage, forEachMessage, generateKMeansClusters, getClockTime, getDateBetween, getJoinedMentions, getMaxKey, getRandomDateBetween,
+import { canonicalizeText, chance, DiscordTimestampFormat, FileStorage, forEachMessage, generateKMeansClusters, getClockTime, getDateBetween, getJoinedMentions, getRandomDateBetween,
     getRankString, getRelativeDateTimeString, getSelectedNode, getSortedKeys, getTodayDateString, getTomorrow, getWordRepetitionScore, LanguageGenerator, loadJson, Messenger,
     naturalJoin, PastTimeoutStrategy, prettyPrint, R9KTextBank, randChoice, randInt, shuffle, sleep, TimeoutManager, TimeoutOptions, toCalendarDate, toDiscordTimestamp, toFixed, toLetterId } from 'evanw555.js';
 import { AnonymousSubmissionsState } from './submissions';
@@ -21,6 +21,7 @@ import MasterpieceGame from './games/masterpiece';
 import IslandGame from './games/island';
 import RiskGame from './games/risk';
 import CandyLandGame from './games/candyland';
+import { createBarGraph } from 'node-canvas-utils';
 
 import logger from './logger';
 import imageLoader from './image-loader';
@@ -29,7 +30,7 @@ import controller from './controller';
 
 // TODO: Remove the renaming in a later commit
 import { CONFIG as config, AUTH as auth } from './constants';
-import { GAME_FACTORIES, GAME_TYPE_NAMES, GAME_TYPES } from './games/constants';
+import { GAME_FACTORIES, GAME_TYPE_NAMES, PLAYABLE_GAME_TYPES } from './games/constants';
 
 const storage = new FileStorage('./data/');
 const sharedStorage = new FileStorage('/home/pi/.mcmp/');
@@ -355,7 +356,7 @@ const updateSungazers = async (winners: { gold?: Snowflake, silver?: Snowflake, 
             delete history.sungazers[userId];
             // Schedule a fallback for their role to be removed
             const tonight = new Date();
-            tonight.setHours(23, randInt(45, 55), 0);
+            tonight.setHours(randInt(21, 24), randInt(10, 55), 0);
             await timeoutManager.registerTimeout(TimeoutType.SungazerRemovalFallback, tonight, { arg: userId, pastStrategy: PastTimeoutStrategy.Invoke });
         }
     }
@@ -388,7 +389,7 @@ const updateFractionalSungazers = async () => {
         delete history.sungazers[userId];
         // Schedule a fallback for their role to be removed
         const tonight = new Date();
-        tonight.setHours(23, randInt(45, 55), 0);
+        tonight.setHours(randInt(21, 24), randInt(10, 55), 0);
         await timeoutManager.registerTimeout(TimeoutType.SungazerRemovalFallback, tonight, { arg: userId, pastStrategy: PastTimeoutStrategy.Invoke });
     }
     logger.log(`\`${JSON.stringify(history.sungazers)}\``);
@@ -1129,7 +1130,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
                 }
             }
             // Attempt to read the selected game type from the state, else fall back onto a random game type
-            const selectedGameType = state.getSelectedGameType() ?? randChoice(...GAME_TYPES);
+            const selectedGameType = state.getSelectedGameType() ?? randChoice(...PLAYABLE_GAME_TYPES);
             state.clearSelectedGameType();
             // Create the game using these initial members
             const newGame = GAME_FACTORIES[selectedGameType](members, state.getSeasonNumber());
@@ -2118,7 +2119,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                     const recentTypes = history.seasons.filter(s => s.gameType)
                         .slice(-2)
                         .map(s => s.gameType) as GameType[];
-                    const validTypes = GAME_TYPES.filter(t => !recentTypes.includes(t));
+                    const validTypes = PLAYABLE_GAME_TYPES.filter(t => !recentTypes.includes(t));
                     shuffle(validTypes);
 
                     // Determine the poll end time
@@ -3397,6 +3398,17 @@ const processCommands = async (msg: Message): Promise<void> => {
         }
         return;
     }
+    // Define a utility function
+    const fetchSampleMembers = async () => {
+        const members = shuffle((await guild.members.list({ limit: 75 })).toJSON()).slice(0, randInt(10, 20));
+        // Sort by display name just so it's easy to figure out what the ordering is supposed to be
+        members.sort((x, y) => x.displayName.localeCompare(y.displayName));
+        // Add self if not already in the fetched members list
+        if (members.every(m => m.id !== msg.author.id)) {
+            members.push(await guild.members.fetch(msg.author.id));
+        }
+        return members;
+    };
     // Priority command: force set next submission prompt
     if (msg.content.startsWith('SET_PROMPT')) {
         const prompt = msg.content.replace('SET_PROMPT', '').trim().toLowerCase();
@@ -3693,6 +3705,29 @@ const processCommands = async (msg: Message): Promise<void> => {
                 await messenger.sendLargeMonospaced(msg.channel, state.toSpecialJson());
             }
         }
+        // Simulate the rate at which completion progresses in each game
+        else if (sanitizedText.includes('simulate_completion')) {
+            const members = await fetchSampleMembers();
+            // TODO: Make this for-each game, but just simulate one for now
+            const GAMES: GameType[] = ['CANDYLAND'];
+            for (const gameType of GAMES) {
+                await msg.channel.send(`Simulating _${GAME_TYPE_NAMES[gameType]}_...`);
+                const tempGame = GAME_FACTORIES[gameType](members, 99);
+                const completionByTurn: number[] = [tempGame.getSeasonCompletion()];
+                while (!tempGame.isSeasonComplete()) {
+                    await tempGame.beginTurn();
+                    let continueProcessing = true;
+                    while (continueProcessing) {
+                        const r = await tempGame.processPlayerDecisions();
+                        continueProcessing = r.continueProcessing;
+                    }
+                    completionByTurn.push(tempGame.getSeasonCompletion());
+                }
+                const graph = await createBarGraph(completionByTurn.map((c, i) => ({ name: `Turn ${i}`, value: c })), { title: `${GAME_TYPE_NAMES[gameType]} by Week`, decimalPrecision: 2 });
+                await msg.channel.send({ files: [new AttachmentBuilder(graph.toBuffer()).setName('completion.png')] });
+            }
+            await msg.channel.send('All games have been simulated.');
+        }
         // Log the state backup
         else if (sanitizedText.includes('backup')) {
             await logJsonAsFile('GMBR state', state.toCompactJson());
@@ -3824,13 +3859,7 @@ const processCommands = async (msg: Message): Promise<void> => {
             }
         } else if (sanitizedText.includes('temp')) {
             await msg.reply('Populating members...');
-            const members = shuffle((await guild.members.list({ limit: 75 })).toJSON()).slice(0, randInt(10, 20));
-            // Sort by display name just so it's easy to figure out what the ordering is supposed to be
-            members.sort((x, y) => x.displayName.localeCompare(y.displayName));
-            // Add self if not already in the fetched members list
-            if (members.every(m => m.id !== msg.author.id)) {
-                members.push(await guild.members.fetch(msg.author.id));
-            }
+            const members = await fetchSampleMembers();
             const useBetaFeatures = sanitizedText.includes('beta');
             await msg.reply(`Generating new game with **${members.length}** player(s)...` + (useBetaFeatures ? ' (with beta features enabled)' : ''));
             awaitingGameCommands = true;

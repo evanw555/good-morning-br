@@ -581,8 +581,8 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
             const pieceImage = await imageLoader.loadImage(`assets/masterpiece/pieces/${pieceId.toLowerCase()}.png`);
             context.drawImage(pieceImage, baseX + 154, 59);
             // Draw text below the piece
-            context.drawImage(withDropShadow(getTextLabel(this.getPieceName(pieceId), 250, 40, { font: 'italic 30px serif', style: 'white' }), { expandCanvas: true }), baseX + 157, 369);
-            context.drawImage(withDropShadow(getTextLabel(`$${this.getPieceValue(pieceId)}`, 250, 40, { font: '30px serif',  style: 'white' }), { expandCanvas: true }), baseX + 157, 405);
+            context.drawImage(withDropShadow(getTextLabel(this.getPieceName(pieceId), { width: 250, height: 40, font: 'italic 30px serif', style: 'white' }), { expandCanvas: true }), baseX + 157, 369);
+            context.drawImage(withDropShadow(getTextLabel(`$${this.getPieceValue(pieceId)}`, { width: 250, height: 40, font: '30px serif',  style: 'white' }), { expandCanvas: true }), baseX + 157, 405);
             // If enabled, draw the owner's avatar
             if (options?.showAvatars) {
                 const ownerId = this.getPieceOwner(pieceId);

@@ -544,6 +544,7 @@ export default class GoodMorningState {
      */
     getSeasonCompletion(): number {
         if (this.isCasualSeason()) {
+            // We use max points, since the season ends when ANY player reaches the goal (second and third need not finish)
             // TODO: Make casual goal configurable
             return Math.min(this.getMaxPoints() / 100, 1);
         } else {

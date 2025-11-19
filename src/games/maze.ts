@@ -556,7 +556,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
     }
 
     private getTileLabel(text: string, font: string, style: string): Canvas {
-        return getTextLabel(text, MazeGame.TILE_SIZE, MazeGame.TILE_SIZE, { font, style }); 
+        return getTextLabel(text, { width: MazeGame.TILE_SIZE, height: MazeGame.TILE_SIZE, font, style }); 
     }
 
     private drawImageOnTile(context: CanvasRenderingContext2D, image: Canvas, r: number, c: number): void {

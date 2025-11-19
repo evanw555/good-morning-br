@@ -32,6 +32,9 @@ export const GAME_DESCRIPTIONS: Record<GameType, string> = {
     ARENA: 'DO NOT RESEARCH'
 };
 
+// These games should NOT be played (and thus should not be an option when voting)
+const RETIRED_GAMES: GameType[] = ['MASTERPIECE', 'ARENA'];
+
 export const GAME_FACTORIES: Record<GameType, (members: GuildMember[], season: number) => AbstractGame<GameState>> = {
     CLASSIC: (members, season) => {
         const month = new Date().getMonth();
@@ -61,3 +64,4 @@ export const GAME_FACTORIES: Record<GameType, (members: GuildMember[], season: n
 };
 
 export const GAME_TYPES: GameType[] = Object.keys(GAME_TYPE_NAMES) as GameType[];
+export const PLAYABLE_GAME_TYPES: GameType[] = GAME_TYPES.filter(t => !RETIRED_GAMES.includes(t));

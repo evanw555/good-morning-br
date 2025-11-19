@@ -560,7 +560,7 @@ export class WheelOfFortuneFocusGame extends AbstractFocusHandler {
                         || round.usedLetters.includes(letter)
                         || (round.tossUp && round.tossUp.revealedIndices.includes(letterIndex));
                     if (isRevealed) {
-                        const letterImage = getTextLabel(letter, TILE_WIDTH, TILE_HEIGHT, { align: 'center', style: 'black', font: `bold ${TILE_HEIGHT * 0.75}px sans-serif` });
+                        const letterImage = getTextLabel(letter, { width: TILE_WIDTH, height: TILE_HEIGHT, align: 'center', style: 'black', font: `bold ${TILE_HEIGHT * 0.75}px sans-serif` });
                         context.drawImage(letterImage, baseX, baseY);
                     }
                     if (isLetter) {
@@ -574,7 +574,7 @@ export class WheelOfFortuneFocusGame extends AbstractFocusHandler {
 
         // Add the category and grid to list of rows to join
         const renderRows: Canvas[] = [
-            getTextLabel(round.category, WIDTH, TILE_HEIGHT * 0.75, { style: 'white' }),
+            getTextLabel(round.category, { width: WIDTH, height: TILE_HEIGHT * 0.75, style: 'white' }),
             canvas
         ];
 
@@ -584,7 +584,7 @@ export class WheelOfFortuneFocusGame extends AbstractFocusHandler {
             const letterLabels: Canvas[] = [];
             for (let i = 65; i <= 90; i++) {
                 const letter = String.fromCharCode(i);
-                const label = getTextLabel(letter, TILE_WIDTH / 2, TILE_HEIGHT / 2, { alpha: round.usedLetters.includes(letter) ? 0.15 : 1});
+                const label = getTextLabel(letter, { width: TILE_WIDTH / 2, height: TILE_HEIGHT / 2, alpha: round.usedLetters.includes(letter) ? 0.15 : 1});
                 letterLabels.push(label);
             }
             // Push at the end

@@ -1,4 +1,4 @@
-import { APIActionRowComponent, APIMessageActionRowComponent, APISelectMenuOption, ActionRowData, AttachmentBuilder, ButtonStyle, ComponentType, GuildMember, Interaction, InteractionReplyOptions, MessageActionRowComponentData, MessageFlags, Snowflake } from "discord.js";
+import { APIActionRowComponent, APIMessageActionRowComponent, APISelectMenuOption, ActionRowData, AttachmentBuilder, ButtonStyle, ComponentType, GuildMember, Interaction, InteractionReplyOptions, MessageActionRowComponentData, MessageFlags, Snowflake, heading } from "discord.js";
 import { DecisionProcessingResult, GamePlayerAddition, MessengerManifest, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 import { Canvas, Image, createCanvas } from "canvas";
@@ -1250,7 +1250,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             const context = canvas.getContext('2d');
             const avatarImage = await this.getAvatar(userId, { colorOverride: color });
             context.drawImage(avatarImage, MARGIN, MARGIN, ROW_HEIGHT, ROW_HEIGHT);
-            const textLabel = getTextLabel(RiskGame.config.colors[color], ROW_HEIGHT * 3, ROW_HEIGHT, { style: color });
+            const textLabel = getTextLabel(RiskGame.config.colors[color], { width: ROW_HEIGHT * 3, height: ROW_HEIGHT, style: color });
             context.drawImage(textLabel, ROW_HEIGHT + 2 * MARGIN, MARGIN);
             panels[panels.length - 1].push(canvas);
         }
@@ -1283,7 +1283,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             const context = canvas.getContext('2d');
             const troopIconImage = await this.getSpecificTroopImage(troopIcon);
             context.drawImage(troopIconImage, MARGIN, MARGIN, ROW_HEIGHT, ROW_HEIGHT);
-            const textLabel = getTextLabel(troopIcon, ROW_HEIGHT * 2, ROW_HEIGHT);
+            const textLabel = getTextLabel(troopIcon, { width: ROW_HEIGHT * 2, height: ROW_HEIGHT });
             context.drawImage(textLabel, ROW_HEIGHT + 2 * MARGIN, MARGIN);
             panels[panels.length - 1].push(canvas);
         }
@@ -1317,8 +1317,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         const LABEL_HEIGHT = Math.round(AVATAR_WIDTH / 4);
         const font = `bold ${Math.round(0.75 * LABEL_HEIGHT)}px serif`;
         const finalRankString = this.getPlayerFinalRankString(eliminatedUserId);
-        rows.push(getTextLabel(finalRankString, AVATAR_WIDTH, LABEL_HEIGHT, { font }));
-        rows.push(getTextLabel(this.getPlayerDisplayName(eliminatedUserId), 2 * AVATAR_WIDTH, LABEL_HEIGHT, { font }));
+        rows.push(getTextLabel(finalRankString, { width: AVATAR_WIDTH, height: LABEL_HEIGHT, font }));
+        rows.push(getTextLabel(this.getPlayerDisplayName(eliminatedUserId), { width: 2 * AVATAR_WIDTH, height: LABEL_HEIGHT, font }));
 
         // Create a row for inherited vassals
         const elements: (Canvas | Image)[] = [];
@@ -1587,7 +1587,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             // If this is a queued attacker, write their troop counts
             if (i > 0) {
                 const counts = `${queuedAttacker.troops}/${queuedAttacker.initialTroops}`;
-                const countsLabel = getTextLabel(counts, actualAvatarWidth, 0.75 * actualAvatarWidth);
+                const countsLabel = getTextLabel(counts, { width: actualAvatarWidth, height: 0.75 * actualAvatarWidth });
                 context.drawImage(countsLabel, baseAttackerAvatarX, AVATAR_MARGIN + actualAvatarWidth);
             }
             baseAttackerAvatarX += actualAvatarWidth + AVATAR_MARGIN;
@@ -1603,7 +1603,9 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         }
 
         // Draw the title
-        const titleImage = getTextLabel(`Battle for ${this.getTerritoryName(to)}`, WIDTH * (5 / 8), HEIGHT / 8, {
+        const titleImage = getTextLabel(`Battle for ${this.getTerritoryName(to)}`, {
+            width: WIDTH * (5 / 8),
+            height: HEIGHT / 8,
             font: `italic bold ${HEIGHT / 12}px serif`
         });
         context.drawImage(titleImage, WIDTH * (3 / 16), (HEIGHT / 6) - (HEIGHT / 16));
@@ -1611,9 +1613,9 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         // Draw the names of both participants
         const NAME_HEIGHT = HEIGHT / 16;
         const NAME_WIDTH = WIDTH / 3;
-        const attackerNameLabel = getTextLabel(this.getPlayerDisplayName(attacker.userId), NAME_WIDTH, NAME_HEIGHT, { align: 'left' });
+        const attackerNameLabel = getTextLabel(this.getPlayerDisplayName(attacker.userId), { width: NAME_WIDTH, height: NAME_HEIGHT, align: 'left' });
         context.drawImage(attackerNameLabel, Math.round(AVATAR_MARGIN), Math.round(HEIGHT - NAME_HEIGHT - AVATAR_MARGIN));
-        const defenderNameLabel = getTextLabel(this.getPlayerDisplayName(defender.userId), NAME_WIDTH, NAME_HEIGHT, { align: 'right' });
+        const defenderNameLabel = getTextLabel(this.getPlayerDisplayName(defender.userId), { width: NAME_WIDTH, height: NAME_HEIGHT, align: 'right' });
         context.drawImage(defenderNameLabel, Math.round(WIDTH - NAME_WIDTH - AVATAR_MARGIN), Math.round(HEIGHT - NAME_HEIGHT - AVATAR_MARGIN));
 
         // Repost the entire canvas with a drop shadow on everything
@@ -1731,13 +1733,13 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         const HEIGHT = ROW_HEIGHT;
         const headerCanvas = createCanvas(WIDTH, 1.5 * HEIGHT);
         const headerContext = headerCanvas.getContext('2d');
-        headerContext.drawImage(getTextLabel(`Week ${this.getTurn()} Reinforcements`, WIDTH, 1.5 * ROW_HEIGHT), 0, 0);
+        headerContext.drawImage(getTextLabel(`Week ${this.getTurn()} Reinforcements`, { width: WIDTH, height: 1.5 * ROW_HEIGHT }), 0, 0);
         renders.push(headerCanvas);
 
         // Render the column headers
         renders.push(joinCanvasesHorizontal([
             this.renderSpacer(ROW_HEIGHT, ROW_HEIGHT),
-            getTextLabel('Weekly Points', MAX_BAR_WIDTH, ROW_HEIGHT),
+            getTextLabel('Weekly Points', { width: MAX_BAR_WIDTH, height: ROW_HEIGHT }),
             await imageLoader.loadImage('assets/risk/icons/sun.png'),
             await imageLoader.loadImage('assets/risk/icons/flag.png'),
             await imageLoader.loadImage('assets/risk/icons/redtroop.png'),
@@ -1753,13 +1755,13 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             // Add the bar
             row.push(this.renderBar(MAX_BAR_WIDTH, ROW_HEIGHT, points / maxPoints, this.getPlayerTeamColor(userId)));
             // Add the troop number label
-            row.push(getTextLabel(troops.toString(), ROW_HEIGHT, ROW_HEIGHT, { alpha: (troops === 0) ? 0.15 : 1 }));
+            row.push(getTextLabel(troops.toString(), { width: ROW_HEIGHT, height: ROW_HEIGHT, alpha: (troops === 0) ? 0.15 : 1 }));
             // Add the territory bonus number label
-            row.push(getTextLabel(territoryBonus.toString(), ROW_HEIGHT, ROW_HEIGHT, { alpha: (territoryBonus === 0) ? 0.15 : 1 }));
+            row.push(getTextLabel(territoryBonus.toString(), { width: ROW_HEIGHT, height: ROW_HEIGHT, alpha: (territoryBonus === 0) ? 0.15 : 1 }));
             // Add the capture bonus number label
-            row.push(getTextLabel(captureBonus.toString(), ROW_HEIGHT, ROW_HEIGHT, { alpha: (captureBonus === 0) ? 0.15 : 1 }));
+            row.push(getTextLabel(captureBonus.toString(), { width: ROW_HEIGHT, height: ROW_HEIGHT, alpha: (captureBonus === 0) ? 0.15 : 1 }));
             // Add the prize bonus number label
-            row.push(getTextLabel(prizeBonus.toString(), ROW_HEIGHT, ROW_HEIGHT, { alpha: (prizeBonus === 0) ? 0.15 : 1 }));
+            row.push(getTextLabel(prizeBonus.toString(), { width: ROW_HEIGHT, height: ROW_HEIGHT, alpha: (prizeBonus === 0) ? 0.15 : 1 }));
             // Join and push the row
             renders.push(joinCanvasesHorizontal(row, { align: 'center', spacing: SPACER_WIDTH }));
         }
@@ -1767,19 +1769,19 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         // Finally, render the legend rows at the bottom
         renders.push(joinCanvasesHorizontal([
             await imageLoader.loadImage('assets/risk/icons/sun.png'),
-            getTextLabel('Points (3 if top ¼, 2 if top ½, 1 if any)', Math.floor(0.75 * WIDTH), 0.66 * ROW_HEIGHT, { align: 'left' })
+            getTextLabel('Points (3 if top ¼, 2 if top ½, 1 if any)', { width: Math.floor(0.75 * WIDTH), height: 0.66 * ROW_HEIGHT, align: 'left' })
         ], { align: 'resize-to-shortest', spacing: SPACER_WIDTH }));
         renders.push(joinCanvasesHorizontal([
             await imageLoader.loadImage('assets/risk/icons/flag.png'),
-            getTextLabel('Territory bonus (1 per 3)', Math.floor(0.75 * WIDTH), 0.66 * ROW_HEIGHT, { align: 'left' })
+            getTextLabel('Territory bonus (1 per 3)', { width: Math.floor(0.75 * WIDTH), height: 0.66 * ROW_HEIGHT, align: 'left' })
         ], { align: 'resize-to-shortest', spacing: SPACER_WIDTH }));
         renders.push(joinCanvasesHorizontal([
             await imageLoader.loadImage('assets/risk/icons/redtroop.png'),
-            getTextLabel('Successful attack bonus (max 1)', Math.floor(0.75 * WIDTH), 0.66 * ROW_HEIGHT, { align: 'left' })
+            getTextLabel('Successful attack bonus (max 1)', { width: Math.floor(0.75 * WIDTH), height: 0.66 * ROW_HEIGHT, align: 'left' })
         ], { align: 'resize-to-shortest', spacing: SPACER_WIDTH }));
         renders.push(joinCanvasesHorizontal([
             await imageLoader.loadImage('assets/risk/icons/medal.png'),
-            getTextLabel('Tuesday contest bonus (1 if podiumed)', Math.floor(0.75 * WIDTH), 0.66 * ROW_HEIGHT, { align: 'left' })
+            getTextLabel('Tuesday contest bonus (1 if podiumed)', { width: Math.floor(0.75 * WIDTH), height: 0.66 * ROW_HEIGHT, align: 'left' })
         ], { align: 'resize-to-shortest', spacing: SPACER_WIDTH }));
 
         return new AttachmentBuilder(fillBackground(joinCanvasesVertical(renders, { align: 'center', spacing: SPACER_WIDTH }), { background: 'black' }).toBuffer()).setName('risk-weekly.png');
@@ -1803,7 +1805,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         const avatarImage = await this.getAvatar(userId);
         context.drawImage(avatarImage, 0, MARGIN_WIDTH, BASE_HEIGHT, BASE_HEIGHT);
 
-        const nameLabel = getTextLabel(this.getPlayerDisplayName(userId), 0.75 * WIDTH, BASE_HEIGHT);
+        const nameLabel = getTextLabel(this.getPlayerDisplayName(userId), { width: 0.75 * WIDTH, height: BASE_HEIGHT });
         context.drawImage(nameLabel, 0.25 * WIDTH, MARGIN_WIDTH, 0.75 * WIDTH, BASE_HEIGHT);
 
         return canvas;
@@ -1823,24 +1825,24 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             context.drawImage(avatarImage, (WIDTH / 8) - (HEIGHT / 2), 0, HEIGHT, HEIGHT);
         } else {
             // Num territories
-            context.drawImage(getTextLabel(this.getNumTerritoriesForPlayer(userId).toString(), ICON_WIDTH, HEIGHT), 0, 0, ICON_WIDTH, HEIGHT);
+            context.drawImage(getTextLabel(this.getNumTerritoriesForPlayer(userId).toString(), { width: ICON_WIDTH, height: HEIGHT }), 0, 0, ICON_WIDTH, HEIGHT);
             // Num troops
-            context.drawImage(getTextLabel(this.getTroopsForPlayer(userId).toString(), ICON_WIDTH, HEIGHT), ICON_WIDTH, 0, ICON_WIDTH, HEIGHT);
+            context.drawImage(getTextLabel(this.getTroopsForPlayer(userId).toString(), { width: ICON_WIDTH, height: HEIGHT }), ICON_WIDTH, 0, ICON_WIDTH, HEIGHT);
         }
 
         // Num new troops (show as faded if zero)
         const newTroops = this.getPlayerNewTroops(userId);
         context.save();
         context.globalAlpha = newTroops === 0 ? 0.25 : 1;
-        context.drawImage(getTextLabel(newTroops.toString(), ICON_WIDTH, HEIGHT), 2 * ICON_WIDTH, 0, ICON_WIDTH, HEIGHT);
+        context.drawImage(getTextLabel(newTroops.toString(), { width: ICON_WIDTH, height: HEIGHT }), 2 * ICON_WIDTH, 0, ICON_WIDTH, HEIGHT);
         context.restore();
 
         if (this.isPlayerEliminated(userId)) {
             // Final rank instead of K/D
-            context.drawImage(getTextLabel(this.getPlayerFinalRankString(userId), ICON_WIDTH, HEIGHT), 3 * ICON_WIDTH, 0, ICON_WIDTH, HEIGHT);
+            context.drawImage(getTextLabel(this.getPlayerFinalRankString(userId), { width: ICON_WIDTH, height: HEIGHT }), 3 * ICON_WIDTH, 0, ICON_WIDTH, HEIGHT);
         } else {
             // K/D
-            context.drawImage(getTextLabel(`${this.getPlayerKills(userId)}/${this.getPlayerDeaths(userId)}`, ICON_WIDTH, HEIGHT), 3 * ICON_WIDTH, 0, ICON_WIDTH, HEIGHT);
+            context.drawImage(getTextLabel(`${this.getPlayerKills(userId)}/${this.getPlayerDeaths(userId)}`, { width: ICON_WIDTH, height: HEIGHT }), 3 * ICON_WIDTH, 0, ICON_WIDTH, HEIGHT);
         }
 
         return canvas;
@@ -1916,7 +1918,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         if (options?.casualtyHeatMap) {
             for (const territoryId of this.getTerritories()) {
                 const { x, y } = RiskGame.config.territories[territoryId].center;
-                const label = withDropShadow(getTextLabel(this.getTerritoryDeaths(territoryId).toString(), 64, 48), { expandCanvas: true });
+                const label = withDropShadow(getTextLabel(this.getTerritoryDeaths(territoryId).toString(), { width: 64, height: 48 }), { expandCanvas: true });
                 context.drawImage(label, x - Math.floor(label.width / 2), y - Math.floor(label.height / 2));
             }
         }
@@ -2023,9 +2025,9 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
 
         if (options?.showRoster) {
             // Draw the title on the map
-            const titleLabel = getTextLabel(`Season ${this.getSeasonNumber()} - Week ${this.getTurn()}`,
-                RiskGame.config.map.title.width,
-                RiskGame.config.map.title.height, {
+            const titleLabel = getTextLabel(`Season ${this.getSeasonNumber()} - Week ${this.getTurn()}`, {
+                    width: RiskGame.config.map.title.width,
+                    height: RiskGame.config.map.title.height,
                     font: `bold ${RiskGame.config.map.title.height * 0.75}px serif`
                 });
             context.drawImage(withDropShadow(titleLabel, { expandCanvas: true }),
@@ -2036,9 +2038,9 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         }
         // Else, render a casualty-specific title
         else if (options?.casualtyHeatMap) {
-            const titleLabel = getTextLabel(`Season ${this.getSeasonNumber()} - Casualties`,
-                RiskGame.config.map.title.width,
-                RiskGame.config.map.title.height, {
+            const titleLabel = getTextLabel(`Season ${this.getSeasonNumber()} - Casualties`, {
+                    width: RiskGame.config.map.title.width,
+                    height: RiskGame.config.map.title.height,
                     font: `bold ${RiskGame.config.map.title.height * 0.75}px serif`
                 });
             context.drawImage(withDropShadow(titleLabel, { expandCanvas: true }),

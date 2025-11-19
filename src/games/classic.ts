@@ -101,7 +101,13 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
     }
 
     getSeasonCompletion(): number {
-        return Math.max(...Object.values(this.state.points)) / this.state.goal;
+        // Completion is defined as the minimum of the top 3 players' completion.
+        // This way, completion reaches 100% only once the top 3 players have finished.
+        const podiumUsers = this.getOrderedPlayers().slice(0, 3);
+        if (podiumUsers.length === 0) {
+            return 0;
+        }
+        return Math.min(...podiumUsers.map(userId => this.getPoints(userId)));
     }
 
     getPlayers(): string[] {
