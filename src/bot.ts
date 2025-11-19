@@ -3711,17 +3711,22 @@ const processCommands = async (msg: Message): Promise<void> => {
             // TODO: Make this for-each game, but just simulate one for now
             const GAMES: GameType[] = ['CANDYLAND'];
             for (const gameType of GAMES) {
-                await msg.channel.send(`Simulating _${GAME_TYPE_NAMES[gameType]}_...`);
                 const tempGame = GAME_FACTORIES[gameType](members, 99);
+                const _refreshText = () => `Simulating _${GAME_TYPE_NAMES[gameType]}_... (turn ${tempGame.getTurn()}, ${tempGame.getSeasonCompletion()}%)`;
+                const statusMessage = await msg.channel.send(_refreshText());
                 const completionByTurn: number[] = [tempGame.getSeasonCompletion()];
                 while (!tempGame.isSeasonComplete()) {
                     await tempGame.beginTurn();
+                    // TODO: This method should exist for all games
+                    (tempGame as CandyLandGame).autoFillPlayerDecisions();
                     let continueProcessing = true;
                     while (continueProcessing) {
                         const r = await tempGame.processPlayerDecisions();
                         continueProcessing = r.continueProcessing;
                     }
+                    await tempGame.endTurn();
                     completionByTurn.push(tempGame.getSeasonCompletion());
+                    await statusMessage.edit(_refreshText());
                 }
                 const graph = await createBarGraph(completionByTurn.map((c, i) => ({ name: `Turn ${i}`, value: c })), { title: `${GAME_TYPE_NAMES[gameType]} by Week`, decimalPrecision: 2 });
                 await msg.channel.send({ files: [new AttachmentBuilder(graph.toBuffer()).setName('completion.png')] });
