@@ -708,6 +708,11 @@ const chooseEvent = async (date: Date): Promise<DailyEvent | undefined> => {
 };
 
 const awardPrize = async (userId: Snowflake, type: PrizeType, intro: string): Promise<void> => {
+    // Abort silently if it's a casual season
+    if (state.isCasualSeason()) {
+        return;
+    }
+    // Abort with warning if the game hasn't started or the player isn't in the game
     if (!state.hasGame()) {
         await logger.log(`Aborting _${type}_ prize award for **${state.getPlayerDisplayName(userId)}**, as the game hasn't started!`);
         return;
