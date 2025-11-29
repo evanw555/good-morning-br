@@ -2893,9 +2893,8 @@ const dumpHistory = async (): Promise<void> => {
 
 const loadR9KHashes = async (): Promise<void> => {
     try {
-        // TODO: Temporarily disabling to see if this is causing memory issues
-        // const existingR9KHashes: string[] = await storage.readJson('r9k.json');
-        // r9k.addRawHashes(existingR9KHashes);
+        const existingR9KHashes: string[] = await storage.readJson('r9k.json');
+        r9k.addRawHashes(existingR9KHashes);
     } catch (err) {
         // Specifically check for file-not-found errors to make sure we don't overwrite anything
         if (err.code === 'ENOENT') {
@@ -2908,8 +2907,7 @@ const loadR9KHashes = async (): Promise<void> => {
 }
 
 const dumpR9KHashes = async (): Promise<void> => {
-    // TODO: Temporarily disabling to see if this is causing memory issues
-    // await storage.write('r9k.json', JSON.stringify(r9k.getAllEntries(), null, 2));
+    await storage.write('r9k.json', JSON.stringify(r9k.getAllEntries(), null, 2));
 };
 
 const loadBaitR9KHashes = async (): Promise<void> => {
