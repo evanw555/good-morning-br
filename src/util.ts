@@ -365,3 +365,12 @@ export function withAn(input: string): string {
     }
     return `a ${input}`;
 }
+
+// TODO: Move to common library
+export function getRelativeDotwCalendarDate(date: Date): string {
+    const dotm = date.getDate();
+    const n = Math.floor((dotm - 1) / 7) + 1;
+    const dotws: string[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+    // e.g. 3rd Thursday of November is "11/thu3"
+    return `${date.getMonth() + 1}/${dotws[date.getDay()]}${n}`
+}

@@ -1,7 +1,7 @@
 import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, BaseMessageOptions, ButtonStyle, Client, ComponentType, DMChannel, GatewayIntentBits, MessageFlags, PartialMessage, Partials, TextChannel, TextInputStyle, User } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discord.js';
 import { DailyEvent, DailyEventType, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, SubmissionPromptHistory, ReplyToMessageData, MessengerPayload, AnonymousSubmission, GamePlayerAddition, DecisionProcessingResult, FinalizeSungazerPollData, SpecialSungazerTermAward, MEDAL_TYPES } from './types';
-import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, getScaledPoints, getSimpleScaledPoints, text } from './util';
+import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, getScaledPoints, getSimpleScaledPoints, text, getRelativeDotwCalendarDate } from './util';
 import GoodMorningState from './state';
 import { canonicalizeText, chance, DiscordTimestampFormat, FileStorage, forEachMessage, generateKMeansClusters, getClockTime, getDateBetween, getJoinedMentions, getRandomDateBetween,
     getRankString, getRelativeDateTimeString, getSelectedNode, getSortedKeys, getTodayDateString, getTomorrow, getWordRepetitionScore, LanguageGenerator, loadJson, Messenger,
@@ -592,7 +592,8 @@ const chooseEvent = async (date: Date): Promise<DailyEvent | undefined> => {
     }
     // If this date has a calendar date message override, then just do a standard GM (this means date overrides will take precedent over the below events)
     const calendarDate: CalendarDate = toCalendarDate(date); // e.g. "12/25" for xmas
-    if (calendarDate in config.goodMorningMessageOverrides) {
+    const relativeCalendarDate = getRelativeDotwCalendarDate(date); // e.g. "11/thu4" for 4th Thursday of November
+    if (calendarDate in config.goodMorningMessageOverrides || relativeCalendarDate in config.goodMorningMessageOverrides) {
         return undefined;
     }
     // The following events are only done on non-casual seasons
@@ -815,7 +816,8 @@ const sendGoodMorningMessage = async (): Promise<void> => {
     // Get the overridden message for today, if it exists (some events may use this instead)
     // TODO: need a cleaner way to handle this, but these potential conflicts need to be handled somehow...
     const calendarDate: CalendarDate = toCalendarDate(new Date());
-    const overriddenMessage: string | undefined = config.goodMorningMessageOverrides[calendarDate];
+    const relativeCalendarDate = getRelativeDotwCalendarDate(new Date());
+    const overriddenMessage: string | undefined = config.goodMorningMessageOverrides[calendarDate] ?? config.goodMorningMessageOverrides[relativeCalendarDate];
     // Now, actually send out the message
     if (goodMorningChannel) {
         switch (state.getEventType()) {
@@ -1207,7 +1209,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     state.incrementAllLGMs();
 
     // Set today's positive react emoji
-    state.setGoodMorningEmoji(config.goodMorningEmojiOverrides[toCalendarDate(new Date())] ?? config.defaultGoodMorningEmoji);
+    state.setGoodMorningEmoji(config.goodMorningEmojiOverrides[toCalendarDate(new Date())] ?? config.goodMorningEmojiOverrides[getRelativeDotwCalendarDate(new Date())] ?? config.defaultGoodMorningEmoji);
 
     // Set today's birthday boys
     try {
@@ -1742,7 +1744,8 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         }
         // If a mid-morning message override is specified, send it now
         const calendarDate: CalendarDate = toCalendarDate(new Date());
-        const midMorningMessage: string | undefined = config.midMorningMessageOverrides[calendarDate];
+        const relativeCalendarDate: CalendarDate = getRelativeDotwCalendarDate(new Date());
+        const midMorningMessage: string | undefined = config.midMorningMessageOverrides[calendarDate] ?? config.midMorningMessageOverrides[relativeCalendarDate];
         if (midMorningMessage) {
             await messenger.send(goodMorningChannel, languageGenerator.generate(midMorningMessage));
         }

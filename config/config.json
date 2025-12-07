@@ -20,25 +20,32 @@
     "goodMorningMessageOverrides": {
         "1/1": "Happy New Year! As we turn the page from last year to this year, recall your most cherished memories and take time to appreciate your friends and loved ones who made these moments possible.",
         "2/14": "Happy Valentine's Day! This morning, please take a moment to appreciate your loved ones... {!❤️|🖤|🩶|🤍|💙|🩵|💜|🩷|🧡|💛}",
+        "2/mon3": "Happy Presidents' Day! Being the president of a nation is a massive responsibility, but not as massive as our obligation to keep mornings cheerful and full of {nouns.positive?}",
         "3/17": "Happy St. Patrick's Day! {phrases.wellWish?} {!🍀|☘️}",
         "4/1": "Bad morning everyone, I hope you all suffer! ....APRIL FOOLS!!! May your day be pleasant and wonderful 🌞",
         "4/2": "{phrases.morningIntro?}, for today is _Autistic Pride Day_! This is a very special day for most people in this server, so let's come together and show our pride 🧩",
         "4/9": "Wake up, wake up! For today is truly a special one! Special, that is, for one of our dearest dogs. Please wish him a happy anniversary 🌞",
         "5/5": "Happy Cinco de Mayo! {phrases.wellWish?}",
         "7/4": "Good morning on this pleasant July 4th! {phrases.wellWish?} {!🎆|🎇|🇺🇸}",
+        "9/mon1": "Happy Labor Day! {phrases.wellWish?}",
+        "10/mon2": "Happy Columbus Day! {phrases.wellWish?}",
         "10/31": "Happy Halloween! I hope your morning is as spooky as it is delightful.",
         "11/4": "Happy _National Candy Day_! To all {!those|you|my dogs} saying good morning today, you are as _sweet_ as you are {adjectives.positive?}!",
         "11/11": "{phrases.morningIntro?}! Today is **11/11**, may all your wishes come true 🌠",
+        "11/thu4": "Happy Thanksgiving! Today we count our blessings, for you _all_ are a blessing to me 🌞",
         "12/24": "Good morning, for today is Christmas Eve! Please refrain from rustling about, sneaking, and peeking tonight, for Santa is on his way... 🎅",
         "12/25": "Merry Christmas! I hope Santa brought you all not only the finest toys, but also the brightest of smiles! {!🎄|🌟|🕯️}"
     },
     "midMorningMessageOverrides": {
         "1/1": "Only a few hours into this brand new year and I'm already feeling {adjectives.positive?}!",
+        "2/2": "If any of my dear dogs touch grass today before morning's end, we'll have six more weeks of winter...",
         "2/14": "Love {!you all|my dogs} 💋",
         "3/17": "To any of you who have plucked the elusive four-leaf clover today, I implore you to go out and buy as many {!scratchers|lottery tickets} as possible!",
         "4/20": "{!Wow|Damn}... that {!hubba bubba|ganja|reefer|halflings' leaf|eldritch bluntweed|aged goatweed|grimy guam leaf} got {!me|a bot} {!yiiked|fugged} up...",
+        "6/sat2": "Today is Saturday",
         "9/29": "I may have gone a bit overboard for _National Laxative Day_... I'll be seeing the bathroom now",
-        "12/25": "Well, did Santa bring you guys anything good? Who got the best haul?"
+        "12/25": "Well, did Santa bring you guys anything good? Who got the best haul?",
+        "1/fri3": "Today is Saturday"
     },
     "defaultGoodMorningEmoji": "🌞",
     "goodMorningEmojiOverrides": {
@@ -47,11 +54,13 @@
         "3/17": ["☘️", "☘️", "☘️", "☘️", "🍀"],
         "4/2": ["🧩"],
         "4/9": ["❤️"],
+        "4/22": ["🌎", "🌍", "🌏"],
         "7/4": ["🇺🇸"],
         "7/14": ["🌞", "🇫🇷"],
         "10/1": ["🌞", "🇨🇳"],
         "10/31": ["🎃"],
         "11/4": ["🍭", "🍫", "🍬"],
+        "11/thu4": ["🦃"],
         "12/24": ["🎄"],
         "12/25": ["🎄", "🎁"],
         "12/31": ["🌞", "🍾", "🎉"]
