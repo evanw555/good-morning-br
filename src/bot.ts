@@ -2021,7 +2021,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
 
         // Set tomorrow's magic words (if it's not an abnormal event tomorrow)
         state.clearMagicWords();
-        const magicWords = await controller.chooseMagicWords(randInt(2, 8));
+        const magicWords = await controller.chooseMagicWords(randInt(4, 10));
         if (magicWords.length > 0 && !state.isEventAbnormal()) {
             state.setMagicWords(magicWords);
         }
