@@ -198,7 +198,7 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
 
     private getReplacementCost(): number {
         // TODO: Make this dynamic?
-        return 10;
+        return 6;
     }
 
     private getCardDescriptor(card: CandyLandCardData): string {
@@ -283,7 +283,8 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
             // TODO: Add the possibility of drawing black
             color: this.drawRandomCardColor(),
             variant: this.getRandomCardVariant(),
-            shiny: chance(0.08) ? true : undefined,
+            // TODO: Enable this once we've determined what it does
+            shiny: undefined, // chance(0.08) ? true : undefined,
             negative: chance(0.08) ? true : undefined
         }
     }
@@ -292,10 +293,20 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         return [{
             content: 'Welcome to _Cute Scott\'s Candy Kingdom_!',
             files: [await this.renderStateAttachment()]
-        }, 'The goal is hop merrily from space to space along the winding rainbow trail until you reach Cute Scott\'s Candy Keep!', {
-            content: 'Each week, you\'ll be able to draw a random card that dictates how far you shall go. When you draw a card of a given color, '
-                + 'you will hop to the next space of that color. You can use your hard-earned GMBR points to re-draw if your card is crud. '
-                + 'Also, card trading will be supported in 2 weeks, so you can anticipate that...',
+        },
+        'The goal is hop merrily from space to space along the winding rainbow trail until you reach Cute Scott\'s Candy Keep!',
+        'Each week, you\'ll be able to draw a random card that dictates how far you shall go. When you draw a card of a given color, '
+            + 'you will hop to the next space of that color. You can use your hard-earned GMBR points to re-draw if your card is crud, '
+            + 'or offer it to another player in a blind trade...',
+        {
+            content: 'Take note! For new features have been added this season:'
+                + '\n- You can trade your drawn card with another player (the card is only shown once the trade is finalized...)'
+                + '\n- Added _dunce_ as a new card color which results in no movement'
+                + '\n- Added _rainbow_ as a new card color which sends you to the farthest color possible'
+                + '\n- Cards may be _negative_, meaning that they\'ll send you backwards (this even applies to rainbows...)',
+            files: [await this.renderRules()]
+        }, {
+            content: 'So what are you waiting for? Click here to draw your first card!',
             components: this.getDecisionActionRow()
         }];
     }
@@ -309,6 +320,19 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
     }
 
     override async onDecisionPreNoon(): Promise<MessengerManifest> {
+        // On the first week, show the rules again
+        if (this.getTurn() === 1) {
+            return {
+                public: [{
+                    content: 'Good luck this season, here are the rules once again as decreed by the King of the Candy Kingdom, King Cute Scott 🍭👑',
+                    files: [await this.renderRules()]
+                }, {
+                    content: 'Make sure to draw a card before tomorrow morning!',
+                    components: this.getDecisionActionRow()
+                }]
+            };
+        }
+        // Otherwise, show state and generic reminder with draw button
         return {
             public: [{
                 content: this.getReminderText(),
@@ -521,6 +545,10 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         spaceContext.putImageData(spaceImageData, 0, 0);
         // await logger.log('Drawing altered image data onto main context...');
         return spaceCanvas;
+    }
+
+    private async renderRules(): Promise<AttachmentBuilder> {
+        return new AttachmentBuilder('assets/candyland/rules.png').setName('candyland-rules.png');
     }
 
     // TODO: This should be private (public for testing)
