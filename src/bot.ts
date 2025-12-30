@@ -1739,8 +1739,8 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
     },
     [TimeoutType.NextMidMorning]: async (): Promise<void> => {
         // TODO: Patch notes go here
-        if (getTodayDateString() === '9/13/25') {
-            await messenger.send(goodMorningChannel, '**GMBR Patch Notes 9/13/25:**\n- Players who joined _The Island_ late can now vote (gets combined into one collective audience vote a la JackBox)');
+        if (getTodayDateString() === '1/3/26') {
+            await messenger.send(goodMorningChannel, '**GMBR Patch Notes 1/3/26:**\n- _Candyland_ now features shiny cards, which let you hop to the next free space after moving your piece.');
         }
         // If a mid-morning message override is specified, send it now
         const calendarDate: CalendarDate = toCalendarDate(new Date());
@@ -2634,7 +2634,11 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                 // Else, schedule the next update using a random delay (shorter if it's later in the day)
                 let baseDelayMinutes: number = 1;
                 if (new Date().getHours() >= 11) {
-                    baseDelayMinutes = randInt(1, 5);
+                    if (new Date().getMinutes() >= 30) {
+                        baseDelayMinutes = randInt(1, 5) / 3;
+                    } else {
+                        baseDelayMinutes = randInt(1, 5);
+                    }
                 } else if (new Date().getHours() >= 10) {
                     baseDelayMinutes = randInt(5, 15);
                 } else if (new Date().getHours() >= 9) {

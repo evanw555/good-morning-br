@@ -3,7 +3,7 @@ import { GamePlayerAddition, MessengerPayload, PrizeType, DecisionProcessingResu
 import AbstractGame from "./abstract-game";
 import { CandyLandCardColor, CandyLandCardData, CandyLandBasicColor, CandyLandGameState, CandyLandPlayerState, CandyLandSpaceColor } from "./types";
 import { chance, FileStorage, getRankString, getSortedKeys, naturalJoin, randChoice, randInt, shuffle, toFixed } from "evanw555.js";
-import { cropAroundPoints, toCircle, withDropShadow } from "node-canvas-utils";
+import { cropAroundPoints, resize, toCircle, withDropShadow } from "node-canvas-utils";
 import { Canvas, ImageData, createCanvas } from "canvas";
 import { generateRandomNonsequentialSequence, renderArrow, text, withAn } from "../util";
 
@@ -198,7 +198,7 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
 
     private getReplacementCost(): number {
         // TODO: Make this dynamic?
-        return 6;
+        return 5;
     }
 
     private getCardDescriptor(card: CandyLandCardData): string {
@@ -283,8 +283,7 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
             // TODO: Add the possibility of drawing black
             color: this.drawRandomCardColor(),
             variant: this.getRandomCardVariant(),
-            // TODO: Enable this once we've determined what it does
-            shiny: undefined, // chance(0.08) ? true : undefined,
+            shiny: chance(0.5) ? true : undefined,
             negative: chance(0.08) ? true : undefined
         }
     }
@@ -436,6 +435,14 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         return this.getPlayers().filter(userId => this.getPlayerLocation(userId) === location);
     }
 
+    private getNumPlayersAtLocation(location: number): number {
+        return this.getPlayersAtLocation(location).length;
+    }
+
+    private isSpaceOccupied(location: number): boolean {
+        return this.getNumPlayersAtLocation(location) > 0;
+    }
+
     private isPlayerAtEnd(userId: Snowflake): boolean {
         return this.getSpaceColor(this.getPlayerLocation(userId)) === 'END';
     }
@@ -467,7 +474,7 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
             return [];
         } else if (n === 1) {
             return [{ ...coordinates }];
-        } else if (n < 7) {
+        } else if (n < 12) {
             // Get a series of locations around the target coordinates
             const result: Coordinates[] = [];
             for (let i = 0; i < n; i++) {
@@ -575,7 +582,7 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         return coloredCanvas;
     }
 
-    async renderBoard(options?: { from?: number, to?: number, card?: CandyLandCardData }): Promise<Buffer> {
+    async renderBoard(options?: { from?: number, to?: number, intermediate?: number, card?: CandyLandCardData }): Promise<Buffer> {
         const boardBase = await imageLoader.loadImage('assets/candyland/board_base.png');
 
         const canvas = createCanvas(boardBase.width, boardBase.height);
@@ -609,7 +616,7 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
                 const userId = playersHere[j];
                 const { x, y } = tokenCoordinates[j];
                 // TODO: Temporarily disabling to see if avatar loading is causing the crashes
-                const avatar = await this.getAvatarBall(userId);
+                const avatar = withDropShadow(await this.getAvatarBall(userId), { expandCanvas: true });
                 // const avatar = await imageLoader.loadAvatar(userId, 128);
                 context.drawImage(avatar, x - 21, y - 21, 42, 42);
             }
@@ -617,14 +624,44 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
 
         // If to/from are specified, crop to all the spaces traversed
         if (options?.from !== undefined && options?.to !== undefined && options?.card !== undefined) {
-            const { center } = renderArrow(context, this.getSpaceCoordinates(options.from), this.getSpaceCoordinates(options.to), { fillStyle: this.getColorStyle(this.getSpaceColor(options.to)), thickness: 14, tailPadding: 14, tipPadding: 14 });
-            // Show the card if specified
-            const cardImage = withDropShadow(await this.renderCardDraw(options.card), { expandCanvas: true });
-            // Show the card on the center of the arrow
-            context.drawImage(cardImage, center.x - (cardImage.width * 0.175), center.y - (cardImage.height * 0.175), cardImage.width * 0.35, cardImage.height * 0.35);
-            // Crop around all the spaces touched by this user (crop bigger if not moving at all, since that's only one point)
             const movedAnySpaces = options.to !== options.from;
-            const cropped = cropAroundPoints(canvas, this.getStretchCoordinates(options.from, options.to), { margin: movedAnySpaces ? 50 : 80 });
+            const stretchCoordinates = this.getStretchCoordinates(options.from, options.to);
+            let arrowCenter: Coordinates;
+            let arrowLength: number;
+            // If there's an intermediate space different than the final location, draw 2 arrows
+            if (options?.intermediate !== undefined && options.intermediate !== options.to) {
+                const arrow = renderArrow(context, this.getSpaceCoordinates(options.from), this.getSpaceCoordinates(options.intermediate), { fillStyle: this.getColorStyle(this.getSpaceColor(options.intermediate)), thickness: 14, tailPadding: 12, tipPadding: 12 });
+                arrowCenter = arrow.center;
+                arrowLength = Math.sqrt(Math.pow(arrow.head.x - arrow.tail.x, 2) + Math.pow(arrow.head.y - arrow.tail.y, 2));
+                renderArrow(context, this.getSpaceCoordinates(options.intermediate), this.getSpaceCoordinates(options.to), { fillStyle: this.getColorStyle(this.getSpaceColor(options.to)), thickness: 14, tailPadding: 12, tipPadding: 12 });
+            }
+            // Otherwise, just draw one if they moved any spaces at all
+            else if (movedAnySpaces) {
+                const arrow = renderArrow(context, this.getSpaceCoordinates(options.from), this.getSpaceCoordinates(options.to), { fillStyle: this.getColorStyle(this.getSpaceColor(options.to)), thickness: 14, tailPadding: 12, tipPadding: 12 });
+                arrowCenter = arrow.center;
+                arrowLength = Math.sqrt(Math.pow(arrow.head.x - arrow.tail.x, 2) + Math.pow(arrow.head.y - arrow.tail.y, 2));
+            }
+            // TODO: We should instead handle this by fixing the renderArrow util to do nothing (and return the correct metadata) if to and from are equivalent
+            else {
+                arrowCenter = stretchCoordinates[0];
+                arrowLength = 0;
+            }
+            // Show the card if specified
+            const cardImage = withDropShadow(resize(await this.renderCardDraw(options.card), { width: 75 }), { expandCanvas: true });
+            // If the stretch is long enough, draw the card on the arrow
+            const longArrow = arrowLength > 150;
+            if (longArrow) {
+                context.drawImage(cardImage, arrowCenter.x - (cardImage.width * 0.5), arrowCenter.y - (cardImage.height * 0.5), cardImage.width, cardImage.height);
+            }
+            // Otherwise, draw it above and add a new stretch point
+            else {
+                const cardX = arrowCenter.x;
+                const cardY = Math.min(...stretchCoordinates.map(c => c.y)) - 80;
+                stretchCoordinates.push({ x: cardX, y: cardY });
+                context.drawImage(cardImage, cardX - (cardImage.width * 0.5), cardY - (cardImage.height * 0.5), cardImage.width, cardImage.height);
+            }
+            // Crop around all the spaces touched by this user (crop bigger if the card is being rendered above)
+            const cropped = cropAroundPoints(canvas, stretchCoordinates, { margin: longArrow ? 45 : 70 });
             return cropped.toBuffer();
         }
 
@@ -807,31 +844,59 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         return [];
     }
 
-    private getNextLocationWithCard(location: number, card: CandyLandCardData): number {
+    private getNextLocationWithCard(location: number, card: CandyLandCardData): { intermediateLocation: number, finalLocation: number } {
+        let intermediateLocation: number;
         // If rainbow, get farthest possible space
         if (card.color === 'X') {
             // If negative, get min of other possibilities
             if (card.negative) {
-                return Math.min(...ALL_BASIC_COLORS.map(c => this.getPreviousLocationWithColor(location, c)));
+                intermediateLocation = Math.min(...ALL_BASIC_COLORS.map(c => this.getPreviousLocationWithColor(location, c)));
             }
             // Otherwise, get max of all other possibilities
-            return Math.max(...ALL_BASIC_COLORS.map(c => this.getNextLocationWithColor(location, c)));
+            else {
+                intermediateLocation = Math.max(...ALL_BASIC_COLORS.map(c => this.getNextLocationWithColor(location, c)));
+            }
         }
         // If dunce, do nothing
-        if (card.color === 'D') {
-            return location;
+        else if (card.color === 'D') {
+            intermediateLocation = location;
         }
         // If black... Idk
         // TODO: What should black actually do?
-        if (card.color === 'L') {
-            return location;
+        else if (card.color === 'L') {
+            intermediateLocation = location;
         }
-        // If negative, get previous space with color
-        if (card.negative) {
-            return this.getPreviousLocationWithColor(location, card.color);
+        // Otherwise, it's a normal color
+        else {
+            // If negative, get previous space with color
+            if (card.negative) {
+                intermediateLocation = this.getPreviousLocationWithColor(location, card.color);
+            }
+            // Otherwise, get next space with color
+            else {
+                intermediateLocation = this.getNextLocationWithColor(location, card.color);
+            }
         }
-        // Otherwise, get next space with color
-        return this.getNextLocationWithColor(location, card.color);
+        // Next, determine the final location by applying any shiny skips
+        let finalLocation: number = intermediateLocation;
+        if (card.shiny) {
+            // Ensure that the player is either at a new location, or there are multiple players on their space (prevents self-skipping)
+            if (location !== finalLocation || this.getNumPlayersAtLocation(finalLocation) > 1) {
+                // If negative, hop backwards until a free space is found
+                if (card.negative) {
+                    while (this.isSpaceOccupied(finalLocation) && finalLocation > 0) {
+                        finalLocation--;
+                    }
+                }
+                // Otherwise, hop forward
+                else {
+                    while (this.isSpaceOccupied(finalLocation) && finalLocation < this.getNumSpaces() - 1) {
+                        finalLocation++;
+                    }
+                }
+            }
+        }
+        return { intermediateLocation, finalLocation };
     }
 
     private getNextLocationWithColor(location: number, color: CandyLandSpaceColor): number {
@@ -901,9 +966,10 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         delete this.state.cards[userId];
 
         const currentLocation = this.getPlayerLocation(userId);
-        const nextLocation = this.getNextLocationWithCard(currentLocation, card);
+        const { intermediateLocation, finalLocation: nextLocation } = this.getNextLocationWithCard(currentLocation, card);
         const diff = nextLocation - currentLocation;
         const steps = Math.abs(diff);
+        const shinyHops = Math.abs(nextLocation - intermediateLocation);
         this.state.players[userId].location = nextLocation;
 
         // If this player reached the end, add them as a winner
@@ -914,15 +980,17 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
             }
         }
 
-        const movementText = steps === 0
+        const movementText = (steps === 0
             ? randChoice('going nowhere', 'going absolutely nowhere', 'moving no spaces at all', 'staying totally put')
-            : `${diff < 0 ? 'backtracking' : 'moving'} **${steps}** space${steps === 1 ? '' : 's'}`;
+            : `${diff < 0 ? 'backtracking' : 'moving'} **${steps}** space${steps === 1 ? '' : 's'}`)
+                + (shinyHops === 0 ? '' : ` (shiny-hopped over **${shinyHops}** player${shinyHops === 1 ? '' : 's'})`);
         return {
             continueProcessing: this.getNumPlayerCards() > 0,
             summary: {
                 content: `**${this.getPlayerDisplayName(userId)}** ${naturalJoin(log, { conjunction: 'then' })}, ${movementText}!`,
-                files: this.shouldSkipRendering() ? undefined : [new AttachmentBuilder(await this.renderBoard({ from: currentLocation, to: nextLocation, card })).setName(`game-week${this.getTurn()}.png`)]
-            }
+                files: this.shouldSkipRendering() ? undefined : [new AttachmentBuilder(await this.renderBoard({ from: currentLocation, to: nextLocation, intermediate: intermediateLocation, card })).setName(`game-week${this.getTurn()}.png`)]
+            },
+            delayMultiplier: 1.5
         };
     }
 
