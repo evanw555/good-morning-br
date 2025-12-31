@@ -45,7 +45,7 @@ const ALL_BASIC_COLORS: CandyLandBasicColor[] = Object.keys(BASIC_COLOR_MAP) as 
 export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
     private static config: CandyLandConfig = {
         colorMap: {
-            START: { r: 0, g: 0, b: 0, a: 255 },
+            START: { r: 128, g: 128, b: 128, a: 255 },
             R: { r: 196, g: 26, b: 26, a: 255 },
             O: { r: 230, g: 106, b: 18, a: 255 },
             Y: { r: 242, g: 190, b: 48, a: 255 },
@@ -54,8 +54,8 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
             P: { r: 89, g: 40, b: 148, a: 255 },
             K: { r: 222, g: 84, b: 206, a: 255 },
             W: { r: 245, g: 245, b: 245, a: 255 },
-            L: { r: 240, g: 240, b: 240, a: 255 },
-            END: { r: 0, g: 0, b: 0, a: 255 },
+            L: { r: 30, g: 30, b: 30, a: 255 },
+            END: { r: 128, g: 128, b: 128, a: 255 },
         },
         colorNames: {
             R: 'Red',
@@ -229,6 +229,26 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         return this.getCardDescriptor(weeklyCard.card);
     }
 
+    private getCardTips(card: CandyLandCardData): string[] {
+        const tips: string[] = [];
+        if (card.shiny) {
+            tips.push('"Shiny": Sends you to the next empty space if you land on another player.');
+        }
+        if (card.negative) {
+            tips.push('"Negative": Inverts a card\'s actions (VERY BAD).');
+        }
+        if (card.color === 'X') {
+            tips.push('"Rainbow": Sends you to the farthest non-black color.');
+        }
+        if (card.color === 'D') {
+            tips.push('"Dunce": Takes you nowhere.');
+        }
+        if (card.color === 'L') {
+            tips.push('"Black": Recolors your space to black, sends you to the next black space (if one exists).');
+        }
+        return tips;
+    }
+
     private getColorStyle(color: CandyLandSpaceColor): string {
         const map = CandyLandGame.config.colorMap[color];
         return `rgb(${map.r}, ${map.g}, ${map.b})`;
@@ -240,6 +260,21 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
 
     private getSpaceColor(location: number): CandyLandSpaceColor {
         return this.state.spaces[location];
+    }
+
+    /**
+     * Given some space and a distance parameter, return the list of colors of the given space and all the spaces within the specified distance.
+     * @param location Some location on the board
+     * @param distance Distance beyond and before the specified location
+     */
+    private getSpaceColorsAround(location: number, distance: number): CandyLandSpaceColor[] {
+        const colors: CandyLandSpaceColor[] = [];
+        for (let i = location - distance; i < location + distance; i++) {
+            if (i >= 0 && i < this.getNumSpaces()) {
+                colors.push(this.getSpaceColor(i));
+            }
+        }
+        return colors;
     }
 
     private getSpaceCoordinates(location: number): Coordinates {
@@ -257,11 +292,22 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
     }
 
     private drawRandomCardColor(): CandyLandCardColor {
-        if (chance(0.125)) {
-            if (chance(0.6)) {
-                return 'D';
-            } else {
+        // Rainbows and blacks only appear starting on the second round of draws
+        if (this.getTurn() >= 2) {
+            // 5.5%
+            if (chance(0.055)) {
                 return 'X';
+            }
+            // 6.6%
+            if (chance(0.07)) {
+                return 'L';
+            }
+        }
+        // Dunces only appear starting on the third round of draws
+        if (this.getTurn() >= 3) {
+            // 7%
+            if (chance(0.08)) {
+                return 'D';
             }
         }
         return randChoice(...ALL_BASIC_COLORS);
@@ -283,8 +329,10 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
             // TODO: Add the possibility of drawing black
             color: this.drawRandomCardColor(),
             variant: this.getRandomCardVariant(),
-            shiny: chance(0.5) ? true : undefined,
-            negative: chance(0.08) ? true : undefined
+            // Shinies only appear starting on the second round of draws
+            shiny: (this.getTurn() >= 2 && chance(0.08)) ? true : undefined, // this.isTesting() ? 0.25 : 
+            // Negatives only appear starting on the third round of draws
+            negative: (this.getTurn() >= 3 && chance(0.08)) ? true : undefined // (this.isTesting() && this.getMaxPlayerLocation() > 20) ? 0.5 : 
         }
     }
 
@@ -451,6 +499,10 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         return this.state.cards[userId] !== undefined;
     }
 
+    private getPlayerCard(userId: Snowflake): CandyLandCardData {
+        return this.state.cards[userId].card;
+    }
+
     private getPlayerCardColor(userId: Snowflake): string {
         return this.state.cards[userId].card.color;
     }
@@ -474,7 +526,7 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
             return [];
         } else if (n === 1) {
             return [{ ...coordinates }];
-        } else if (n < 12) {
+        } else if (n < 13) {
             // Get a series of locations around the target coordinates
             const result: Coordinates[] = [];
             for (let i = 0; i < n; i++) {
@@ -493,8 +545,8 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
             const result: Coordinates[] = [];
             for (let i = 0; i < n; i++) {
                 result.push({
-                    x: randInt(coordinates.x - horizontalSpacing * 2, coordinates.x + horizontalSpacing * 2),
-                    y: randInt(coordinates.y - verticalSpacing * 2, coordinates.y + verticalSpacing * 2)
+                    x: randInt(coordinates.x - horizontalSpacing * 1.5, coordinates.x + horizontalSpacing * 1.5),
+                    y: randInt(coordinates.y - verticalSpacing * 1.5, coordinates.y + verticalSpacing * 1.5)
                 });
             }
             // void logger.log(`Drawing ${n} haphazard tokens at space: \`${JSON.stringify(result)}\``);
@@ -611,7 +663,7 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
             const coordinates = this.getSpaceCoordinates(i);
             const playersHere = this.getPlayersAtLocation(i);
             // Show all player tokens on this space
-            const tokenCoordinates = this.getTokenCoordinates(coordinates, playersHere.length, { horizontalSpacing: isStart ? 48 : 14, verticalSpacing: isStart ? 40 : 14 });
+            const tokenCoordinates = this.getTokenCoordinates(coordinates, playersHere.length, { horizontalSpacing: isStart ? 54 : 14, verticalSpacing: isStart ? 42 : 14 });
             for (let j = 0; j < playersHere.length; j++) {
                 const userId = playersHere[j];
                 const { x, y } = tokenCoordinates[j];
@@ -624,30 +676,29 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
 
         // If to/from are specified, crop to all the spaces traversed
         if (options?.from !== undefined && options?.to !== undefined && options?.card !== undefined) {
-            const movedAnySpaces = options.to !== options.from;
             const stretchCoordinates = this.getStretchCoordinates(options.from, options.to);
             let arrowCenter: Coordinates;
             let arrowLength: number;
             // If there's an intermediate space different than the final location, draw 2 arrows
             if (options?.intermediate !== undefined && options.intermediate !== options.to) {
                 const arrow = renderArrow(context, this.getSpaceCoordinates(options.from), this.getSpaceCoordinates(options.intermediate), { fillStyle: this.getColorStyle(this.getSpaceColor(options.intermediate)), thickness: 14, tailPadding: 12, tipPadding: 12 });
-                arrowCenter = arrow.center;
-                arrowLength = Math.sqrt(Math.pow(arrow.head.x - arrow.tail.x, 2) + Math.pow(arrow.head.y - arrow.tail.y, 2));
-                renderArrow(context, this.getSpaceCoordinates(options.intermediate), this.getSpaceCoordinates(options.to), { fillStyle: this.getColorStyle(this.getSpaceColor(options.to)), thickness: 14, tailPadding: 12, tipPadding: 12 });
+                const arrow2 = renderArrow(context, this.getSpaceCoordinates(options.intermediate), this.getSpaceCoordinates(options.to), { fillStyle: this.getColorStyle(this.getSpaceColor(options.to)), thickness: 14, tailPadding: 12, tipPadding: 12 });
+                if (arrow.length > arrow2.length) {
+                    arrowCenter = arrow.center;
+                    arrowLength = arrow.length;
+                } else {
+                    arrowCenter = arrow2.center;
+                    arrowLength = arrow2.length;
+                }
             }
-            // Otherwise, just draw one if they moved any spaces at all
-            else if (movedAnySpaces) {
+            // Otherwise, just draw one
+            else {
                 const arrow = renderArrow(context, this.getSpaceCoordinates(options.from), this.getSpaceCoordinates(options.to), { fillStyle: this.getColorStyle(this.getSpaceColor(options.to)), thickness: 14, tailPadding: 12, tipPadding: 12 });
                 arrowCenter = arrow.center;
-                arrowLength = Math.sqrt(Math.pow(arrow.head.x - arrow.tail.x, 2) + Math.pow(arrow.head.y - arrow.tail.y, 2));
-            }
-            // TODO: We should instead handle this by fixing the renderArrow util to do nothing (and return the correct metadata) if to and from are equivalent
-            else {
-                arrowCenter = stretchCoordinates[0];
-                arrowLength = 0;
+                arrowLength = arrow.length;
             }
             // Show the card if specified
-            const cardImage = withDropShadow(resize(await this.renderCardDraw(options.card), { width: 75 }), { expandCanvas: true });
+            const cardImage = withDropShadow(resize(await this.renderCardDraw(options.card), { width: 80 }), { expandCanvas: true });
             // If the stretch is long enough, draw the card on the arrow
             const longArrow = arrowLength > 150;
             if (longArrow) {
@@ -656,12 +707,15 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
             // Otherwise, draw it above and add a new stretch point
             else {
                 const cardX = arrowCenter.x;
-                const cardY = Math.min(...stretchCoordinates.map(c => c.y)) - 80;
+                // Add the arrow center to ensure that at least one point is compared against for the next operation
+                stretchCoordinates.push(arrowCenter);
+                // Place the card right above the highest point (in horizontal proximity of it)
+                const cardY = Math.min(...stretchCoordinates.filter(p => Math.abs(p.x - cardX) < 65).map(c => c.y)) - 80;
                 stretchCoordinates.push({ x: cardX, y: cardY });
                 context.drawImage(cardImage, cardX - (cardImage.width * 0.5), cardY - (cardImage.height * 0.5), cardImage.width, cardImage.height);
             }
             // Crop around all the spaces touched by this user (crop bigger if the card is being rendered above)
-            const cropped = cropAroundPoints(canvas, stretchCoordinates, { margin: longArrow ? 45 : 70 });
+            const cropped = cropAroundPoints(canvas, stretchCoordinates, { margin: longArrow ? 55 : 70 });
             return cropped.toBuffer();
         }
 
@@ -812,6 +866,13 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
             }
         }
 
+        // Notify players about new cards in the rotation
+        if (this.getTurn() === 2) {
+            return ['Starting this week, _rainbow_ cards, _shiny_ cards, and _black_ cards can be drawn']
+        } else if (this.getTurn() === 3) {
+            return ['Starting this week, _dunce_ cards and _negative_ cards can be drawn. BEWARE!']
+        }
+
         return [];
     }
 
@@ -861,11 +922,6 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         else if (card.color === 'D') {
             intermediateLocation = location;
         }
-        // If black... Idk
-        // TODO: What should black actually do?
-        else if (card.color === 'L') {
-            intermediateLocation = location;
-        }
         // Otherwise, it's a normal color
         else {
             // If negative, get previous space with color
@@ -875,6 +931,12 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
             // Otherwise, get next space with color
             else {
                 intermediateLocation = this.getNextLocationWithColor(location, card.color);
+            }
+        }
+        // If the card was black, reset the intermediate location if it's not ACTUALLY black
+        if (card.color === 'L') {
+            if (this.getSpaceColor(intermediateLocation) !== 'L') {
+                intermediateLocation = location;
             }
         }
         // Next, determine the final location by applying any shiny skips
@@ -980,10 +1042,41 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
             }
         }
 
-        const movementText = (steps === 0
+        let movementText = steps === 0
             ? randChoice('going nowhere', 'going absolutely nowhere', 'moving no spaces at all', 'staying totally put')
-            : `${diff < 0 ? 'backtracking' : 'moving'} **${steps}** space${steps === 1 ? '' : 's'}`)
-                + (shinyHops === 0 ? '' : ` (shiny-hopped over **${shinyHops}** player${shinyHops === 1 ? '' : 's'})`);
+            : `${diff < 0 ? 'backtracking' : 'moving'} **${steps}** space${steps === 1 ? '' : 's'}`;
+
+        // If the card was black, handle color modifications
+        if (card.color === 'L' && this.getSpaceColor(currentLocation) !== 'START' && this.getSpaceColor(currentLocation) !== 'END') {
+            // If the card is negative, invert the effect
+            if (card.negative) {
+                // If the space was originally black, recolor it back to a basic color
+                if (this.getSpaceColor(currentLocation) === 'L') {
+                    const nearbyColors = this.getSpaceColorsAround(currentLocation, 2);
+                    const newColor = randChoice(...ALL_BASIC_COLORS.filter(c => !nearbyColors.includes(c)));
+                    this.state.spaces[currentLocation] = newColor;
+                    movementText += ` and de-blackening their space to **${CandyLandGame.config.colorNames[newColor]}**`;
+                }
+            }
+            // Else, recolor the space to black
+            else {
+                // Only add text if the space wasn't already black
+                if (this.getSpaceColor(currentLocation) !== 'L') {
+                    if (steps === 0) {
+                        movementText += ' and enblackening the ground beneath their feet';
+                    } else {
+                        movementText += ' and enblackening the space as they step off it';
+                    }
+                }
+                // Re-color the space
+                this.state.spaces[currentLocation] = 'L';
+            }
+        }
+
+        if (shinyHops > 0) {
+            movementText += ` (shiny-hopped over **${shinyHops}** player${shinyHops === 1 ? '' : 's'})`;
+        }
+
         return {
             continueProcessing: this.getNumPlayerCards() > 0,
             summary: {
@@ -1130,6 +1223,10 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
                     } else {
                         content += `You only have **${this.getPoints(userId)}** points, so you're stuck with this card`; // `either keep your card or trade it with someone else`;
                     }
+                    // Add modifier tips
+                    if (this.hasPlayerCard(userId)) {
+                        content += '\n' + this.getCardTips(this.getPlayerCard(userId)).map(t => `- ${t}`).join('\n');
+                    }
                     await interaction.editReply({
                         content,
                         files,
@@ -1180,6 +1277,8 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
                     } else {
                         content += `You only have **${this.getPoints(userId)}** points, so you're stuck with this card`; // `either keep your card or trade it with someone else`;
                     }
+                    // Add modifier tips
+                    content += '\n' + this.getCardTips(card).map(t => `- ${t}`).join('\n');
                     // TODO: Merge logic once a default trade button is added
                     await interaction.editReply({
                         content,

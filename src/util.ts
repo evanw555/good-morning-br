@@ -219,7 +219,8 @@ export function drawBackground(context: NodeCanvasRenderingContext2D, image: Can
 export function renderArrow(context: CanvasRenderingContext2D, from: Coordinates, to: Coordinates, options?: { thickness?: number, tipLength?: number, fillStyle?: string, tailPadding?: number, tipPadding?: number }): {
     tail: Coordinates,
     center: Coordinates,
-    head: Coordinates
+    head: Coordinates,
+    length: number
 } {
     const getPointRelative = (point: Coordinates, distance: number, angle: number): Coordinates => {
         const { x, y } = point;
@@ -238,6 +239,19 @@ export function renderArrow(context: CanvasRenderingContext2D, from: Coordinates
     const l = distance(from, to) - tailPadding - tipPadding;
     const tl = options?.tipLength ?? t;
     const tt = t * 2;
+
+    // Handle the special case of a zero-length arrow
+    if (l <= 0) {
+        return {
+            tail: from,
+            head: to,
+            length: distance(from, to),
+            center: {
+                x: Math.round((from.x + to.x) / 2),
+                y: Math.round((from.y + to.y) / 2)
+            }
+        };
+    }
 
     const theta = Math.atan2(to.y - from.y, to.x - from.x);
     const hpi = Math.PI / 2;
@@ -276,7 +290,8 @@ export function renderArrow(context: CanvasRenderingContext2D, from: Coordinates
             x: Math.round((trueFrom.x + trueTo.x) / 2),
             y: Math.round((trueFrom.y + trueTo.y) / 2)
         },
-        head: trueTo
+        head: trueTo,
+        length: distance(trueFrom, trueTo)
     };
 }
 

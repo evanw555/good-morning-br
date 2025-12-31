@@ -1295,7 +1295,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     // Schedule the mid-morning for some time around halfway between now and the pre-noon
     const midMorningToday = getDateBetween(new Date(), preNoonToday, randInt(400, 600, 2) / 1000);
     // We register this with the "Delete" strategy since it has no subsequent timeouts registered in series with it
-    await registerTimeout(TimeoutType.NextMidMorning, midMorningToday, { pastStrategy: PastTimeoutStrategy.Delete });
+    await registerTimeout(TimeoutType.NextMidMorning, midMorningToday, { pastStrategy: PastTimeoutStrategy.Delete }, { testingSeconds: 1 });
 
     // Update the bot's status to active
     await setStatus(true);
@@ -1740,7 +1740,10 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
     [TimeoutType.NextMidMorning]: async (): Promise<void> => {
         // TODO: Patch notes go here
         if (getTodayDateString() === '1/3/26') {
-            await messenger.send(goodMorningChannel, '**GMBR Patch Notes 1/3/26:**\n- _Candyland_ now features shiny cards, which let you hop to the next free space after moving your piece.');
+            await messenger.send(goodMorningChannel, '**GMBR Patch Notes 1/3/26:**'
+                + '\n- _Candyland_ now features shiny cards, which let you hop to the next free space after moving your piece.'
+                + '\n- _Candyland_ now features black cards, which recolor your space to black and take you to the next black space only if one exists.'
+                + '\n- Rainbow, shiny, and black cards may only be drawn starting week 2. Dunce and negative cards may only be drawn starting week 3.');
         }
         // If a mid-morning message override is specified, send it now
         const calendarDate: CalendarDate = toCalendarDate(new Date());
@@ -1783,13 +1786,13 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         noonToday.setHours(12, 0, 0, 0);
         noonToday.setMinutes(noonToday.getMinutes() - minutesEarly);
         // We register this with the "Increment Hour" strategy since its subsequent timeout (GoodMorning) is registered in series
-        await registerTimeout(TimeoutType.NextNoon, noonToday, { pastStrategy: PastTimeoutStrategy.IncrementHour }, { testingSeconds: 5 });
+        await registerTimeout(TimeoutType.NextNoon, noonToday, { pastStrategy: PastTimeoutStrategy.IncrementHour }, { testingSeconds: 3 });
         // Set timeout for when baiting starts
         const baitingStartTime: Date = new Date();
         baitingStartTime.setHours(11, 59, 0, 0);
         baitingStartTime.setMinutes(baitingStartTime.getMinutes() - minutesEarly);
         // We register this with the "Delete" strategy since it doesn't schedule any events and it's non-critical
-        await registerTimeout(TimeoutType.BaitingStart, baitingStartTime, { pastStrategy: PastTimeoutStrategy.Delete }, { testingSeconds: 4 });
+        await registerTimeout(TimeoutType.BaitingStart, baitingStartTime, { pastStrategy: PastTimeoutStrategy.Delete }, { testingSeconds: 2 });
 
         // Check the results of anonymous submissions
         if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
@@ -3054,6 +3057,7 @@ client.on('ready', async (): Promise<void> => {
         // First, create a new state altogether
         state = new GoodMorningState(await storage.readJson('test-state.json'));
         if (state.hasGame()) {
+            state.getGame().setTesting(true);
             state.getGame().addNPCs();
         }
         await dumpState();
