@@ -21,7 +21,7 @@ import MasterpieceGame from './games/masterpiece';
 import IslandGame from './games/island';
 import RiskGame from './games/risk';
 import CandyLandGame from './games/candyland';
-import { createBarGraph } from 'node-canvas-utils';
+import { createBarGraph, cropToSquare } from 'node-canvas-utils';
 
 import logger from './logger';
 import imageLoader from './image-loader';
@@ -31,6 +31,7 @@ import controller from './controller';
 // TODO: Remove the renaming in a later commit
 import { CONFIG as config, AUTH as auth } from './constants';
 import { GAME_FACTORIES, GAME_TYPE_NAMES, PLAYABLE_GAME_TYPES } from './games/constants';
+import { loadImage } from 'canvas';
 
 const storage = new FileStorage('./data/');
 const sharedStorage = new FileStorage('/home/pi/.mcmp/');
@@ -2311,8 +2312,20 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                 embeds: [ toSubmissionEmbed(submission) ],
                 flags: MessageFlags.SuppressNotifications
             });
+
+            // If an image is attached, save it to the shared misc blob collection
+            if (submission.url) {
+                try {
+                    // Crop to square to force it into a Canvas so the buffer can be accessed
+                    const downloadedImage = cropToSquare(await loadImage(submission.url));
+                    await sharedStorage.writeBlob(`blobs/misc/${new Date().getTime()}.png`, downloadedImage.toBuffer());
+                } catch (err) {
+                    await logger.log(`Failed to save anonymous submission to shared misc blobs: \`${err}\``);
+                }
+            }
+
             // Take a long pause
-            await sleep(40000);
+            await sleep(40_000);
         }
 
         // Register the vote command
