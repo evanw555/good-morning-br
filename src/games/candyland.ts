@@ -292,24 +292,20 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
     }
 
     private drawRandomCardColor(): CandyLandCardColor {
+        const availableSpecialColors: CandyLandCardColor[] = [];
         // Rainbows and blacks only appear starting on the second round of draws
         if (this.getTurn() >= 2) {
-            // 5.5%
-            if (chance(0.055)) {
-                return 'X';
-            }
-            // 6.6%
-            if (chance(0.07)) {
-                return 'L';
-            }
+            availableSpecialColors.push('X', 'L');
         }
         // Dunces only appear starting on the third round of draws
         if (this.getTurn() >= 3) {
-            // 7%
-            if (chance(0.08)) {
-                return 'D';
-            }
+            availableSpecialColors.push('D');
         }
+        // With a small random chance (8%), return a special color
+        if (availableSpecialColors.length > 0 && chance(0.08)) {
+            return randChoice(...availableSpecialColors);
+        }
+        // Otherwise, return a standard color
         return randChoice(...ALL_BASIC_COLORS);
     }
 
@@ -330,9 +326,9 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
             color: this.drawRandomCardColor(),
             variant: this.getRandomCardVariant(),
             // Shinies only appear starting on the second round of draws
-            shiny: (this.getTurn() >= 2 && chance(0.08)) ? true : undefined, // this.isTesting() ? 0.25 : 
+            shiny: (this.getTurn() >= 2 && chance(0.09)) ? true : undefined, // this.isTesting() ? 0.25 : 
             // Negatives only appear starting on the third round of draws
-            negative: (this.getTurn() >= 3 && chance(0.08)) ? true : undefined // (this.isTesting() && this.getMaxPlayerLocation() > 20) ? 0.5 : 
+            negative: (this.getTurn() >= 3 && chance(0.07)) ? true : undefined // (this.isTesting() && this.getMaxPlayerLocation() > 20) ? 0.5 : 
         }
     }
 
