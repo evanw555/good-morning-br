@@ -1736,8 +1736,8 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         if (getTodayDateString() === '2/4/26') {
             await messenger.send(goodMorningChannel, `**GMBR Patch Notes ${getTodayDateString()}:**`
                 + '\n- There is once again only one magic word of the day, but the word list has been simplified.'
-                + '\n- The magic word no longer needs to be in your first message of the day to be rewarded.'
-                + '\n- As more users say the magic word, the reward decreases.');
+                + '\n- The magic word no longer needs to be in your first message of the day for it to count.'
+                + '\n- As more players say the magic word, the reward decreases.');
         }
         // If a mid-morning message override is specified, send it now
         const calendarDate: CalendarDate = toCalendarDate(new Date());
