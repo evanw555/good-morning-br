@@ -1733,11 +1733,11 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
     },
     [TimeoutType.NextMidMorning]: async (): Promise<void> => {
         // TODO: Patch notes go here
-        if (getTodayDateString() === '1/3/26') {
-            await messenger.send(goodMorningChannel, '**GMBR Patch Notes 1/3/26:**'
-                + '\n- _Candyland_ now features shiny cards, which let you hop to the next free space after moving your piece.'
-                + '\n- _Candyland_ now features black cards, which recolor your space to black and take you to the next black space only if one exists.'
-                + '\n- Rainbow, shiny, and black cards may only be drawn starting week 2. Dunce and negative cards may only be drawn starting week 3.');
+        if (getTodayDateString() === '2/4/26') {
+            await messenger.send(goodMorningChannel, `**GMBR Patch Notes ${getTodayDateString()}:**`
+                + '\n- There is once again only one magic word of the day, but the word list has been simplified.'
+                + '\n- The magic word no longer needs to be in your first message of the day to be rewarded.'
+                + '\n- As more users say the magic word, the reward decreases.');
         }
         // If a mid-morning message override is specified, send it now
         const calendarDate: CalendarDate = toCalendarDate(new Date());
@@ -4310,37 +4310,6 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     }
                 }
 
-                // If the player said a magic word, reward them and let them know privately
-                if (extractedMagicWord) {
-                    // TODO: Temp logging to see how the word repitition score is working
-                    if (magicWordSourceTexts.length > 0) {
-                        await logger.log(`**${state.getPlayerDisplayName(userId)}** magic word source repetition scores: ${magicWordSourceTexts.map(t => getWordRepetitionScore(msg.content, t).toFixed(2))}`);
-                    }
-                    // If the user straight up copied another magic word message, penalize them
-                    // TODO: Sanitize the text
-                    if (magicWordSourceTexts.some(t => canonicalizeText(msg.content).includes(canonicalizeText(t)))) {
-                        state.deductPoints(userId, config.defaultAward);
-                        await messenger.reply(msg, 'You think you\'re slick?! 🤬');
-                    }
-                    // If most words in another magic word message were repeated here, don't award anything
-                    else if (magicWordSourceTexts.some(t => getWordRepetitionScore(msg.content, t) > 0.5)) {
-                        await messenger.reply(msg, randChoice('You\'re gonna have to be a little more clever than that...', 'You thought I wouldn\'t notice what you did there?'));
-                    }
-                    // Else, reward them
-                    else {
-                        state.awardPoints(userId, config.bonusAward);
-                        await messenger.dm(userId, `You said _"${extractedMagicWord}"_, today's magic word! Nice 😉`);
-                        logStory += `said the magic word "${extractedMagicWord}", `;
-                        // If the message had 4+ words, try to stop users from plagiarizing it
-                        if (msg.content.split(' ').length >= 4) {
-                            magicWordSourceTexts.push(msg.content);
-                        } else {
-                            await logger.log(`Magic word message by **${state.getPlayerDisplayName(userId)}** has too few words for later plagiarism detection`);
-                        }
-                        await logger.log(`**${state.getPlayerDisplayName(userId)}** just said the magic word _"${extractedMagicWord}"_! (**${magicWordSourceTexts.length}** source text${magicWordSourceTexts.length === 1 ? '' : 's'})`);
-                    }
-                }
-
                 // If today is wishful wednesday, cut the generic logic off here
                 if (state.getEventType() === DailyEventType.WishfulWednesday) {
                     const wishesReceived = state.getEvent().wishesReceived;
@@ -4487,15 +4456,47 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                         reactToMessage(msg, state.getGoodMorningEmoji());
                     }
                 }
-            } else if (extractedMagicWord) {
-                // If this isn't the user's GM message yet they still said a magic word, let them know...
-                if (userId !== guildOwner.id) {
-                    await logger.log(`**${state.getPlayerDisplayName(userId)}** just said a magic word _"${extractedMagicWord}"_, though too late...`);
-                }
-                await messenger.dm(userId, languageGenerator.generate(`You {!said|just said} one of today's {!magic words|secret words}, {!yet|but|though} {!you're a little too late|it wasn't in your GM message} so it doesn't count...`), { immediate: true });
             }
 
-            // Regardless of whether it's their first message or not, react to the magic word with a small probability
+            // If the player said today's magic word for the first time, reward them and let them know privately (even if it's not their first message)
+            if (extractedMagicWord && !state.hasDailyMagicWordRank(userId)) {
+                // Assign them a rank to prevent them from saying it again, regardless of whether they're rewarded
+                const magicWordRank = state.getNextDailyMagicWordRank();
+                state.setDailyMagicWordRank(userId, magicWordRank);
+                // TODO: Temp logging to see how the word repitition score is working
+                if (magicWordSourceTexts.length > 0) {
+                    await logger.log(`**${state.getPlayerDisplayName(userId)}** magic word source repetition scores: ${magicWordSourceTexts.map(t => getWordRepetitionScore(msg.content, t).toFixed(2))}`);
+                }
+                // If the user straight up copied another magic word message, penalize them
+                // TODO: Sanitize the text
+                if (magicWordSourceTexts.some(t => canonicalizeText(msg.content).includes(canonicalizeText(t)))) {
+                    state.deductPoints(userId, config.defaultAward);
+                    await messenger.reply(msg, 'You think you\'re slick?! 🤬');
+                }
+                // If most words in another magic word message were repeated here, don't award anything
+                else if (magicWordSourceTexts.some(t => getWordRepetitionScore(msg.content, t) > 0.5)) {
+                    await messenger.reply(msg, randChoice('You\'re gonna have to be a little more clever than that...', 'You thought I wouldn\'t notice what you did there?'));
+                }
+                // Else, reward them
+                else {
+                    // Reward scales down as more players say it
+                    const magicWordReward = toFixed(config.bonusAward / magicWordRank);
+                    state.awardPoints(userId, magicWordReward);
+                    await dumpState();
+                    // Notify them via DM
+                    await messenger.dm(userId, `You were the ${getRankString(magicWordRank)} person to say _"${extractedMagicWord}"_, today's magic word! Nice 😉`);
+                    dailyVolatileLog.push([new Date(), `<@${userId}> (${getRankString(magicWordRank)}) said the magic word "${extractedMagicWord}"`]);
+                    // If the message had 4+ words, try to stop users from plagiarizing it
+                    if (msg.content.split(' ').length >= 4) {
+                        magicWordSourceTexts.push(msg.content);
+                    } else {
+                        await logger.log(`Magic word message by **${state.getPlayerDisplayName(userId)}** has too few words for later plagiarism detection`);
+                    }
+                    await logger.log(`**${state.getPlayerDisplayName(userId)}** was ${getRankString(magicWordRank)} to say the magic word _"${extractedMagicWord}"_ and earned \`${magicWordReward}\`! (**${magicWordSourceTexts.length}** source text${magicWordSourceTexts.length === 1 ? '' : 's'})`);
+                }
+            }
+
+            // Always react to the magic word with a small probability
             if (extractedMagicWord && chance(config.magicWordReactionProbability)) {
                 await reactToMessage(msg, ['😉', '😏', '😜', '😛']);
             }

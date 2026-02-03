@@ -106,6 +106,8 @@ export interface FinalizeSungazerPollData {
 export interface DailyPlayerState {
     rank?: number,
     bonusRank?: number,
+    /** The rank for this user in terms of saying the magic word. */
+    magicWordRank?: number,
     pointsLost?: number,
     saidHappyBirthday?: boolean,
     pointsEarned: number

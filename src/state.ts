@@ -693,12 +693,24 @@ export default class GoodMorningState {
         return this.getDailyStatus(userId)?.bonusRank !== undefined;
     }
 
-    setDailyBonusRank(userId: Snowflake, videoRank: number): void {
-        this.getOrCreateDailyStatus(userId).bonusRank = videoRank;
+    setDailyBonusRank(userId: Snowflake, bonusRank: number): void {
+        this.getOrCreateDailyStatus(userId).bonusRank = bonusRank;
     }
 
     doesAnyoneHaveDailyBonusRank(): boolean {
         return this.getPlayers().some(userId => this.hasDailyBonusRank(userId));
+    }
+
+    getNextDailyMagicWordRank(): number {
+        return Math.max(0, ...Object.values(this.data.dailyStatus).map(status => status.magicWordRank ?? 0)) + 1;
+    }
+
+    hasDailyMagicWordRank(userId: Snowflake): boolean {
+        return this.getDailyStatus(userId)?.magicWordRank !== undefined;
+    }
+
+    setDailyMagicWordRank(userId: Snowflake, magicWordRank: number): void {
+        this.getOrCreateDailyStatus(userId).magicWordRank = magicWordRank;
     }
 
     hasSaidHappyBirthday(userId: Snowflake): boolean {
