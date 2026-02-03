@@ -326,9 +326,9 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
             color: this.drawRandomCardColor(),
             variant: this.getRandomCardVariant(),
             // Shinies only appear starting on the second round of draws
-            shiny: (this.getTurn() >= 2 && chance(0.09)) ? true : undefined, // this.isTesting() ? 0.25 : 
+            shiny: (this.getTurn() >= 2 && chance(0.125)) ? true : undefined, // this.isTesting() ? 0.25 : 
             // Negatives only appear starting on the third round of draws
-            negative: (this.getTurn() >= 3 && chance(0.07)) ? true : undefined // (this.isTesting() && this.getMaxPlayerLocation() > 20) ? 0.5 : 
+            negative: (this.getTurn() >= 3 && chance(0.075)) ? true : undefined // (this.isTesting() && this.getMaxPlayerLocation() > 20) ? 0.5 : 
         }
     }
 
