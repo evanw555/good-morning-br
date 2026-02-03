@@ -1225,28 +1225,20 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         state.setBirthdayBoys([]);
     }
 
-    // Give hints for today's magic words
-    if (state.hasMagicWords()) {
+    // Give hint for today's magic word
+    if (state.hasMagicWord()) {
         // Get list of all suitable recipients of the magic word (this is a balancing mechanic, so pick players who are behind yet active)
         const potentialMagicWordRecipients: Snowflake[] = state.getPotentialMagicWordRecipients();
         // Determine if we should give out the hints
         const shouldGiveHint: boolean = potentialMagicWordRecipients.length > 0
             && state.getEventType() !== DailyEventType.BeginHomeStretch;
-        // If yes, then give out the hints to random suitable recipients
+        // If yes, then give out the hints to one random suitable recipient
         if (shouldGiveHint) {
             // Give out as many hints as possible so long as each recipient receives a different magic word
-            const magicWords = state.getMagicWords();
-            const numHints = Math.min(magicWords.length, potentialMagicWordRecipients.length);
-            // Shuffle the recipients so the recipients are random in case it's limited
-            shuffle(potentialMagicWordRecipients);
-            // For each recipient/word pair, send out the hint via DM
-            for (let i = 0; i < numHints; i++) {
-                const singleMagicWord = magicWords[i];
-                const singleRecipient: Snowflake = potentialMagicWordRecipients[i];
-                await messenger.dm(singleRecipient, `Psssst.... a magic word of the day is _"${singleMagicWord}"_`);
-                if (singleRecipient !== guildOwner.id) {
-                    await logger.log(`Magic word _"${singleMagicWord}"_ was sent to **${state.getPlayerDisplayName(singleRecipient)}** (all: ${naturalJoin(magicWords, { bold: true })})`);
-                }
+            const recipient = randChoice(...potentialMagicWordRecipients);
+            await messenger.dm(recipient, `Psssst.... the magic word of the day is _"${state.getMagicWord()}"_`);
+            if (recipient !== guildOwner.id) {
+                await logger.log(`Magic word _"${state.getMagicWord()}"_ was sent to **${state.getPlayerDisplayName(recipient)}**`);
             }
         }
     }
@@ -2024,11 +2016,11 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             await goodMorningChannel.send(`Sent prize offers to ${getJoinedMentions([randomUser1, randomUser2, randomUser3])}`);
         }
 
-        // Set tomorrow's magic words (if it's not an abnormal event tomorrow)
-        state.clearMagicWords();
-        const magicWords = await controller.chooseMagicWords(randInt(4, 10));
+        // Set tomorrow's magic word (if it's not an abnormal event tomorrow)
+        state.clearMagicWord();
+        const magicWords = await controller.chooseMagicWords(1);
         if (magicWords.length > 0 && !state.isEventAbnormal()) {
-            state.setMagicWords(magicWords);
+            state.setMagicWord(magicWords[0]);
         }
 
         // Invoke the daily noon game endpoint, which may subsequently result in the season being over.
@@ -4068,10 +4060,10 @@ const safeProcessCommands = async (msg: Message): Promise<void> => {
 };
 
 const extractMagicWord = (message: Message): string | undefined => {
-    const magicWords = state.getMagicWords();
-    for (const word of magicWords) {
-        if (message.content.toLowerCase().includes(word.toLowerCase())) {
-            return word;
+    const magicWord = state.getMagicWord();
+    if (magicWord) {
+        if (message.content.toLowerCase().includes(magicWord.toLowerCase())) {
+            return magicWord;
         }
     }
 };
@@ -4337,15 +4329,15 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     // Else, reward them
                     else {
                         state.awardPoints(userId, config.bonusAward);
-                        await messenger.dm(userId, `You said _"${extractedMagicWord}"_, one of today's magic words! Nice 😉`);
-                        logStory += `said a magic word "${extractedMagicWord}", `;
+                        await messenger.dm(userId, `You said _"${extractedMagicWord}"_, today's magic word! Nice 😉`);
+                        logStory += `said the magic word "${extractedMagicWord}", `;
                         // If the message had 4+ words, try to stop users from plagiarizing it
                         if (msg.content.split(' ').length >= 4) {
                             magicWordSourceTexts.push(msg.content);
                         } else {
                             await logger.log(`Magic word message by **${state.getPlayerDisplayName(userId)}** has too few words for later plagiarism detection`);
                         }
-                        await logger.log(`**${state.getPlayerDisplayName(userId)}** just said a magic word _"${extractedMagicWord}"_! (**${magicWordSourceTexts.length}** source text${magicWordSourceTexts.length === 1 ? '' : 's'})`);
+                        await logger.log(`**${state.getPlayerDisplayName(userId)}** just said the magic word _"${extractedMagicWord}"_! (**${magicWordSourceTexts.length}** source text${magicWordSourceTexts.length === 1 ? '' : 's'})`);
                     }
                 }
 
