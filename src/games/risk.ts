@@ -2,7 +2,7 @@ import { APIActionRowComponent, APIMessageActionRowComponent, APISelectMenuOptio
 import { DecisionProcessingResult, GamePlayerAddition, MessengerManifest, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 import { Canvas, Image, createCanvas } from "canvas";
-import { DiscordTimestampFormat, chance, findCycle, getDateBetween, getEvenlyShortened, getJoinedMentions, getMaxKey, getMinKey, getRankString, naturalJoin, randChoice, randInt, shuffle, shuffleWithDependencies, toDiscordTimestamp, toFixed } from "evanw555.js";
+import { DiscordTimestampFormat, chance, findCycle, getDateBetween, getEvenlyShortened, getJoinedMentions, getMaxKey, getMinKey, getRankString, naturalJoin, randChoice, randInt, shuffle, shuffleWithDependencies, sum, toDiscordTimestamp, toFixed } from "evanw555.js";
 import { fillBackground, getTextLabel, joinCanvasesHorizontal, joinCanvasesVertical, resize, superimpose, toCircle, withDropShadow } from "node-canvas-utils";
 import { drawBackground, quantify, renderArrow, distance } from "../util";
 import { RiskGameState, RiskMovementData, RiskTerritoryState, RiskPlayerState, RiskConflictState, RiskPlannedAttack, RiskConflictAgentData } from "./types";
@@ -803,9 +803,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
      * Gets the total number of troops in all territories.
      */
     private getTotalTroops(): number {
-        return this.getTerritories()
-            .map(territoryId => this.getTerritoryTroops(territoryId))
-            .reduce((x, y) => x + y, 0);
+        return sum(this.getTerritories()
+            .map(territoryId => this.getTerritoryTroops(territoryId)));
     }
 
     /**
@@ -862,18 +861,16 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
     }
 
     private getTotalDeaths(): number {
-        return Object.values(this.state.territories)
-            .map(t => t.deaths ?? 0)
-            .reduce((x, y) => x + y, 0);
+        return sum(Object.values(this.state.territories)
+            .map(t => t.deaths ?? 0));
     }
 
     /**
      * For a given player, gets the total number of troops on the board in territories they own.
      */
     private getTroopsForPlayer(userId: Snowflake): number {
-        return this.getTerritoriesForPlayer(userId)
-            .map(territoryId => this.getTerritoryTroops(territoryId))
-            .reduce((a, b) => a + b, 0);
+        return sum(this.getTerritoriesForPlayer(userId)
+            .map(territoryId => this.getTerritoryTroops(territoryId)));
     }
 
     private getPlayerDisplayName(userId: Snowflake | undefined): string {

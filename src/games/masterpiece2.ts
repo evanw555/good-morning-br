@@ -2,7 +2,7 @@ import canvas, { Canvas, CanvasRenderingContext2D } from 'canvas';
 import { ActionRowData, APIActionRowComponent, APIButtonComponent, APISelectMenuOption, AttachmentBuilder, ButtonInteraction, ButtonStyle, ComponentType, GuildMember, Interaction, MessageActionRowComponentData, MessageFlags, Snowflake } from "discord.js";
 import { DecisionProcessingResult, GamePlayerAddition, MessengerManifest, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
-import { getObjectSize, getRandomlyDistributedAssignments, groupByProperty, incrementProperty, isObjectEmpty, naturalJoin, randChoice, s, shuffle, toFixed, toLetterId, } from "evanw555.js";
+import { getObjectSize, getRandomlyDistributedAssignments, groupByProperty, incrementProperty, isObjectEmpty, naturalJoin, randChoice, s, shuffle, sum, toFixed, toLetterId, } from "evanw555.js";
 import { cropToSquare, getTextLabel, joinCanvasesHorizontal, toCircle, withDropShadow } from "node-canvas-utils";
 import { text } from '../util';
 import { Masterpiece2PlayerState, Masterpiece2PieceState, Masterpiece2GameState, Masterpiece2AuctionType, Masterpiece2ItemType, Masterpiece2AuctionState } from './types';
@@ -653,14 +653,14 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
      * @returns The sum value of all pieces in the game, regardless of piece status/owner
      */
     private getSumValueOfPieces(): number {
-        return this.getPieces().map(p => p.value).reduce((a, b) => a + b, 0);
+        return sum(this.getPieces().map(p => p.value));
     }
 
     /**
      * @returns The sum value of all unsold pieces in the game
      */
     private getSumValueOfUnsoldPieces(): number {
-        return this.getUnsoldPieceIds().map(id => this.getPieceValue(id)).reduce((a, b) => a + b, 0);
+        return sum(this.getUnsoldPieceIds().map(id => this.getPieceValue(id)));
     }
 
     /**
@@ -727,9 +727,8 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
     private getTruePlayerWealth(userId: Snowflake): number {
         return this.getPoints(userId)
             // Sum up the true value of this player's pieces
-            + this.getPieceIdsForUser(userId)
-                .map(pieceId => this.getPieceValue(pieceId))
-                .reduce((a, b) => a + b, 0);
+            + sum(this.getPieceIdsForUser(userId)
+                .map(pieceId => this.getPieceValue(pieceId)));
     }
 
     /**
@@ -737,10 +736,9 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
      * @returns The amount this player is currently committing to spend in all existing auctions
      */
     private getPlayerBidLiability(userId: Snowflake): number {
-        return Object.values(this.state.auctions)
+        return sum(Object.values(this.state.auctions)
             .filter(a => a.bidder === userId)
-            .map(a => a.bid)
-            .reduce((a, b) => a + b, 0);
+            .map(a => a.bid));
     }
 
     private getAuctions(): Masterpiece2AuctionState[] {

@@ -1,6 +1,6 @@
 import canvas, {  } from 'canvas';
 import { ActionRowData, ButtonStyle, ComponentType, GuildMember, MessageActionRowComponentData, MessageFlags, Snowflake } from "discord.js";
-import { DiscordTimestampFormat, getMostSimilarByNormalizedEditDistance, getRankString, getTodayDateString, naturalJoin, randChoice, getNumberOfDaysUntil, toDiscordTimestamp, toFixed, toDateString } from 'evanw555.js';
+import { DiscordTimestampFormat, getMostSimilarByNormalizedEditDistance, getRankString, getTodayDateString, naturalJoin, randChoice, getNumberOfDaysUntil, toDiscordTimestamp, toFixed, toDateString, sum } from 'evanw555.js';
 import { DecisionProcessingResult, GamePlayerAddition, Medals, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 import { text } from '../util';
@@ -682,7 +682,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
 
             // Draw medals for this user
             if (medals && medals[userId]) {
-                const numMedals = Object.values(medals[userId]).reduce((x, y) => x + y);
+                const numMedals = sum(Object.values(medals[userId]))
 
                 const imageWidth = BAR_HEIGHT - 2 * BAR_PADDING - 2;
                 const IMAGE_WIDTH = imageWidth + BAR_PADDING;

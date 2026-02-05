@@ -2,7 +2,7 @@ import { ActionRowData, APIButtonComponent, AttachmentBuilder, ButtonStyle, Comp
 import { GamePlayerAddition, MessengerPayload, PrizeType, DecisionProcessingResult, MessengerManifest } from "../types";
 import AbstractGame from "./abstract-game";
 import { CandyLandCardColor, CandyLandCardData, CandyLandBasicColor, CandyLandGameState, CandyLandPlayerState, CandyLandSpaceColor } from "./types";
-import { chance, FileStorage, getRankString, getSortedKeys, naturalJoin, randChoice, randInt, s, shuffle, toFixed } from "evanw555.js";
+import { chance, FileStorage, getRankString, getSortedKeys, mean, naturalJoin, randChoice, randInt, s, shuffle, toFixed } from "evanw555.js";
 import { cropAroundPoints, resize, toCircle, withDropShadow } from "node-canvas-utils";
 import { Canvas, ImageData, createCanvas } from "canvas";
 import { generateRandomNonsequentialSequence, renderArrow, text, withAn } from "../util";
@@ -465,10 +465,7 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         if (podiumUsers.length === 0) {
             return 0;
         }
-        const sumLocation = podiumUsers
-            .map(userId => this.getPlayerLocation(userId))
-            .reduce((x, y) => x + y);
-        return sumLocation / podiumUsers.length;
+        return mean(podiumUsers.map(userId => this.getPlayerLocation(userId)));
     }
 
     private getMinPlayerLocation(): number {
