@@ -1286,10 +1286,14 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     // We register this with the "Increment Hour" strategy since its subsequent timeout (Noon) is registered in series
     await registerTimeout(TimeoutType.NextPreNoon, preNoonToday, { pastStrategy: PastTimeoutStrategy.IncrementHour });
 
-    // Schedule the mid-morning for some time around halfway between now and the pre-noon
-    const midMorningToday = getDateBetween(new Date(), preNoonToday, randFloat(0.4, 0.6, 2));
+    // Schedule the mid-morning timeouts for times between halfway and pre-noon
+    const midMorningA = getDateBetween(new Date(), preNoonToday, randFloat(0.4, 0.6, 2));
+    const midMorningB = getDateBetween(new Date(), preNoonToday, randFloat(0.6, 0.75, 2));
+    const midMorningC = getDateBetween(new Date(), preNoonToday, randFloat(0.75, 0.9, 2));
     // We register this with the "Delete" strategy since it has no subsequent timeouts registered in series with it
-    await registerTimeout(TimeoutType.NextMidMorning, midMorningToday, { pastStrategy: PastTimeoutStrategy.Delete }, { testingSeconds: 1 });
+    await registerTimeout(TimeoutType.NextMidMorningA, midMorningA, { pastStrategy: PastTimeoutStrategy.Delete }, { testingSeconds: 1 });
+    await registerTimeout(TimeoutType.NextMidMorningB, midMorningB, { pastStrategy: PastTimeoutStrategy.Delete }, { testingSeconds: 1.5 });
+    await registerTimeout(TimeoutType.NextMidMorningC, midMorningC, { pastStrategy: PastTimeoutStrategy.Delete }, { testingSeconds: 2 });
 
     // Update the bot's status to active
     await setStatus(true);
@@ -1731,14 +1735,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
     [TimeoutType.NextGoodMorning]: async (): Promise<void> => {
         await wakeUp(true);
     },
-    [TimeoutType.NextMidMorning]: async (): Promise<void> => {
-        // TODO: Patch notes go here
-        if (getTodayDateString() === '2/4/26') {
-            await messenger.send(goodMorningChannel, `**GMBR Patch Notes ${getTodayDateString()}:**`
-                + '\n- There is once again only one magic word of the day, but the word list has been simplified.'
-                + '\n- The magic word no longer needs to be in your first message of the day for it to count.'
-                + '\n- As more players say the magic word, the reward decreases.');
-        }
+    [TimeoutType.NextMidMorningA]: async (): Promise<void> => {
         // If a mid-morning message override is specified, send it now
         const calendarDate: CalendarDate = toCalendarDate(new Date());
         const relativeCalendarDate: CalendarDate = getRelativeDotwCalendarDate(new Date());
@@ -1746,6 +1743,8 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         if (midMorningMessage) {
             await messenger.send(goodMorningChannel, languageGenerator.generate(midMorningMessage));
         }
+    },
+    [TimeoutType.NextMidMorningB]: async (): Promise<void> => {
         // If today is a casual interaction event
         if (state.getEventType() === DailyEventType.CasualInteraction) {
             const event = state.getEvent();
@@ -1760,6 +1759,15 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                     await messenger.send(goodMorningChannel, languageGenerator.generate('{casualInteraction.inactive?}', { player: `<@${userId}>` }));
                 }
             }
+        }
+    },
+    [TimeoutType.NextMidMorningC]: async (): Promise<void> => {
+        // TODO: Patch notes go here
+        if (getTodayDateString() === '2/4/26') {
+            await messenger.send(goodMorningChannel, `**GMBR Patch Notes ${getTodayDateString()}:**`
+                + '\n- There is once again only one magic word of the day, but the word list has been simplified.'
+                + '\n- The magic word no longer needs to be in your first message of the day for it to count.'
+                + '\n- As more players say the magic word, the reward decreases.');
         }
         // Send birthday follow-up message if any birthday boys have been active today
         const activeBirthdayBoys = state.getBirthdayBoys().filter(id => state.hasDailyRank(id));
