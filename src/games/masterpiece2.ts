@@ -2,7 +2,7 @@ import canvas, { Canvas, CanvasRenderingContext2D } from 'canvas';
 import { ActionRowData, APIActionRowComponent, APIButtonComponent, APISelectMenuOption, AttachmentBuilder, ButtonInteraction, ButtonStyle, ComponentType, GuildMember, Interaction, MessageActionRowComponentData, MessageFlags, Snowflake } from "discord.js";
 import { DecisionProcessingResult, GamePlayerAddition, MessengerManifest, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
-import { getObjectSize, getRandomlyDistributedAssignments, groupByProperty, incrementProperty, isObjectEmpty, naturalJoin, randChoice, shuffle, toFixed, toLetterId, } from "evanw555.js";
+import { getObjectSize, getRandomlyDistributedAssignments, groupByProperty, incrementProperty, isObjectEmpty, naturalJoin, randChoice, s, shuffle, toFixed, toLetterId, } from "evanw555.js";
 import { cropToSquare, getTextLabel, joinCanvasesHorizontal, toCircle, withDropShadow } from "node-canvas-utils";
 import { text } from '../util';
 import { Masterpiece2PlayerState, Masterpiece2PieceState, Masterpiece2GameState, Masterpiece2AuctionType, Masterpiece2ItemType, Masterpiece2AuctionState } from './types';
@@ -2270,7 +2270,7 @@ export default class Masterpiece2Game extends AbstractGame<Masterpiece2GameState
                             await interaction.editReply(
                                 `You've selected _${this.getPieceName(pieceId)}_ as your **${VOTE_RANK_NAMES[rank]}** piece. `
                                     + replacedText
-                                    + (remainingRanks.length === 0 ? 'You\'re all done, enjoy your voting participation bonus!' : `Please finish up by selecting your ${naturalJoin(remainingRanks.map(r => VOTE_RANK_NAMES[r]), { bold: true })} piece${remainingRanks.length === 1 ? '' : 's'}.`)
+                                    + (remainingRanks.length === 0 ? 'You\'re all done, enjoy your voting participation bonus!' : `Please finish up by selecting your ${naturalJoin(remainingRanks.map(r => VOTE_RANK_NAMES[r]), { bold: true })} piece${s(remainingRanks.length)}.`)
                             );
                             if (remainingRanks.length === 0) {
                                 await logger.log(`<@${userId}> finished voting (**${this.getNumCompleteVoters()}** complete, **${this.getNumRemainingVoters()}** remaining)`);

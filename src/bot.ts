@@ -5,7 +5,7 @@ import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissio
 import GoodMorningState from './state';
 import { canonicalizeText, chance, DiscordTimestampFormat, FileStorage, forEachMessage, generateKMeansClusters, getClockTime, getDateBetween, getJoinedMentions, getRandomDateBetween,
     getRankString, getRelativeDateTimeString, getSelectedNode, getSortedKeys, getTodayDateString, getTomorrow, getWordRepetitionScore, LanguageGenerator, loadJson, Messenger,
-    naturalJoin, PastTimeoutStrategy, prettyPrint, R9KTextBank, randChoice, randInt, shuffle, sleep, TimeoutManager, TimeoutOptions, toCalendarDate, toDiscordTimestamp, toFixed, toLetterId } from 'evanw555.js';
+    naturalJoin, PastTimeoutStrategy, prettyPrint, R9KTextBank, randChoice, randFloat, randInt, s, shuffle, sleep, TimeoutManager, TimeoutOptions, toCalendarDate, toDiscordTimestamp, toFixed, toLetterId } from 'evanw555.js';
 import { AnonymousSubmissionsState } from './submissions';
 import ActivityTracker from './activity-tracker';
 import { getFocusHandler, getNewWheelOfFortuneRound, getRandomFocusGame } from './focus/util';
@@ -650,7 +650,7 @@ const chooseEvent = async (date: Date): Promise<DailyEvent | undefined> => {
             });
         }
         // Do the early end event with a smaller likelihood
-        if (chance(0.7)) {
+        if (chance(0.6)) {
             potentialEvents.push({
                 type: DailyEventType.EarlyEnd,
                 minutesEarly: randChoice(1, 2, 5, 10, 15, randInt(3, 20))
@@ -1015,9 +1015,9 @@ const sendSeasonEndMessages = async (channel: TextBasedChannel, previousState: G
         await sleep(15000);
         const mostGoldsUserNum = history.medals[mostGoldsUser].gold ?? 0;
         if (mostGoldsUser === previousState.getTopPlayer()) {
-            await messenger.send(goodMorningChannel, `<@${mostGoldsUser}> maintains their crown as the player with the most season victories, racking up **${mostGoldsUserNum}** first place win${mostGoldsUserNum === 1 ? '' : 's'}`);
+            await messenger.send(goodMorningChannel, `<@${mostGoldsUser}> maintains their crown as the player with the most season victories, racking up **${mostGoldsUserNum}** first place win${s(mostGoldsUserNum)}`);
         } else {
-            await messenger.send(goodMorningChannel, `Although they didn't win this season, <@${mostGoldsUser}> is still the player with the most season victories, having **${mostGoldsUserNum}** first place win${mostGoldsUserNum === 1 ? '' : 's'}`);
+            await messenger.send(goodMorningChannel, `Although they didn't win this season, <@${mostGoldsUser}> is still the player with the most season victories, having **${mostGoldsUserNum}** first place win${s(mostGoldsUserNum)}`);
         }
     }
     // Wait, then send info about the next season
@@ -1287,7 +1287,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     await registerTimeout(TimeoutType.NextPreNoon, preNoonToday, { pastStrategy: PastTimeoutStrategy.IncrementHour });
 
     // Schedule the mid-morning for some time around halfway between now and the pre-noon
-    const midMorningToday = getDateBetween(new Date(), preNoonToday, randInt(400, 600, 2) / 1000);
+    const midMorningToday = getDateBetween(new Date(), preNoonToday, randFloat(0.4, 0.6, 2));
     // We register this with the "Delete" strategy since it has no subsequent timeouts registered in series with it
     await registerTimeout(TimeoutType.NextMidMorning, midMorningToday, { pastStrategy: PastTimeoutStrategy.Delete }, { testingSeconds: 1 });
 
@@ -1414,7 +1414,7 @@ const processSubmissionVote = async (userId: Snowflake, submissionCodes: string[
     if (submissionCodes.length === 0) {
         await callback(`I don\'t understand, please tell me which submissions you\'re voting for. Choose from ${naturalJoin([...anonymousSubmissions.getSubmissionCodes()])}.`);
     } else if (submissionCodes.length < minRequiredVotes) {
-        await callback(`You must vote for at least **${minRequiredVotes}** submission${minRequiredVotes === 1 ? '' : 's'}!`);
+        await callback(`You must vote for at least **${minRequiredVotes}** submission${s(minRequiredVotes)}!`);
     } else if (submissionCodes.length > maxRequiredVotes) {
         await callback(`You cannot vote for more than **${maxRequiredVotes}** submissions!`);
     } else if (submissionCodeSet.size !== submissionCodes.length) {
@@ -2644,16 +2644,16 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                 let baseDelayMinutes: number = 1;
                 if (new Date().getHours() >= 11) {
                     if (new Date().getMinutes() >= 30) {
-                        baseDelayMinutes = randInt(1, 5) / 3;
+                        baseDelayMinutes = randFloat(0.33, 1.66);
                     } else {
-                        baseDelayMinutes = randInt(1, 5);
+                        baseDelayMinutes = randFloat(1, 5);
                     }
                 } else if (new Date().getHours() >= 10) {
-                    baseDelayMinutes = randInt(5, 15);
+                    baseDelayMinutes = randFloat(5, 15);
                 } else if (new Date().getHours() >= 9) {
-                    baseDelayMinutes = randInt(10, 25);
+                    baseDelayMinutes = randFloat(10, 25);
                 } else {
-                    baseDelayMinutes = randInt(20, 35);
+                    baseDelayMinutes = randFloat(20, 35);
                 }
                 // Apply a multiplier at the granularity of seconds
                 const delaySeconds = Math.floor((baseDelayMinutes * 60) * (processingResult.delayMultiplier ?? 1));
@@ -3718,7 +3718,7 @@ const processCommands = async (msg: Message): Promise<void> => {
             // e.g. "+state? users.123123.balance"
             const selector: string = msg.content.replace(/\s*\+?\s*state\s*\??\s*/i, '').trim() || '';
             if (selector) {
-                const selectedState: any = getSelectedNode(state.getRawState(), selector);
+                const selectedState: any = getSelectedNode(state.getRawState(), selector, { ignoreCase: true });
                 await messenger.sendLargeMonospaced(msg.channel, prettyPrint(selectedState));
             } else {
                 // Collapse all primitive lists into one line
@@ -4492,7 +4492,7 @@ client.on('messageCreate', async (msg: Message): Promise<void> => {
                     } else {
                         await logger.log(`Magic word message by **${state.getPlayerDisplayName(userId)}** has too few words for later plagiarism detection`);
                     }
-                    await logger.log(`**${state.getPlayerDisplayName(userId)}** was ${getRankString(magicWordRank)} to say the magic word _"${extractedMagicWord}"_ and earned \`${magicWordReward}\`! (**${magicWordSourceTexts.length}** source text${magicWordSourceTexts.length === 1 ? '' : 's'})`);
+                    await logger.log(`**${state.getPlayerDisplayName(userId)}** was ${getRankString(magicWordRank)} to say the magic word _"${extractedMagicWord}"_ and earned \`${magicWordReward}\`! (**${magicWordSourceTexts.length}** source text${s(magicWordSourceTexts.length)})`);
                 }
             }
 

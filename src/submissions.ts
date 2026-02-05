@@ -1,6 +1,6 @@
 import { Snowflake } from "discord.js";
 import { AnonymousSubmission, AnonymousSubmissionsPhase, RawAnonymousSubmissionsState } from "./types";
-import { getRankString, naturalJoin, toFixed } from "evanw555.js";
+import { getRankString, naturalJoin, s, toFixed } from "evanw555.js";
 
 declare interface AnonymousSubmissionVotingResult {
     code: string,
@@ -334,7 +334,7 @@ export class AnonymousSubmissionsState {
         for (let i = 0; i < 3; i++) {
             const n = breakdown[i];
             if (n) {
-                items.push(`**${n}** ${types[i]} vote` + (n === 1 ? '' : 's'));
+                items.push(`**${n}** ${types[i]} vote${s(n)}`);
             }
         }
         return naturalJoin(items) || 'no votes';

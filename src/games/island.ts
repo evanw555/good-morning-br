@@ -2,7 +2,7 @@ import { ActionRowData, ButtonStyle, ComponentType, GuildMember, Interaction, Me
 import canvas from 'canvas';
 import { DecisionProcessingResult, GamePlayerAddition, MessengerManifest, MessengerPayload, PrizeType, SeasonEndResults } from "../types";
 import AbstractGame from "./abstract-game";
-import { getMaxKey, getMostSimilarByNormalizedEditDistance, getObjectSize, isObjectEmpty, naturalJoin, randChoice, shuffle, toFixed } from "evanw555.js";
+import { getMaxKey, getMostSimilarByNormalizedEditDistance, getObjectSize, isObjectEmpty, naturalJoin, randChoice, s, shuffle, toFixed } from "evanw555.js";
 import { IslandGameState, IslandPlayerState } from "./types";
 
 import imageLoader from "../image-loader";
@@ -368,7 +368,7 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
         context.fillStyle = 'rgb(221,231,239)';
         const TITLE_FONT_SIZE = Math.floor(HEADER_HEIGHT * 0.6);
         context.font = `${TITLE_FONT_SIZE}px sans-serif`;
-        drawTextWithShadow(`${this.state.numToBeEliminated} dog${this.state.numToBeEliminated === 1 ? '' : 's'} will be eliminated this week... But who?`, MARGIN, MARGIN + TITLE_FONT_SIZE);
+        drawTextWithShadow(`${this.state.numToBeEliminated} dog${s(this.state.numToBeEliminated)} will be eliminated this week... But who?`, MARGIN, MARGIN + TITLE_FONT_SIZE);
 
         // Determine if anyone has any votes to give out (to determine if all the votes have been wiped or not)
         const doesAnyoneHaveVotes = this.getPlayers().some(id => this.getNumBaseVotes(id) > 0);
@@ -522,7 +522,7 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
             numToBeEliminated = 1;
         }
         this.state.numToBeEliminated = numToBeEliminated;
-        text.push(`This week, **${numToBeEliminated}** player${numToBeEliminated === 1 ? '' : 's'} will be voted off the island`);
+        text.push(`This week, **${numToBeEliminated}** player${s(numToBeEliminated)} will be voted off the island`);
 
         let aliveVotes = 3;
         let deadVotes = 3;
@@ -789,7 +789,7 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
         // Reply with an appropriate response
         // TODO: Include info about multipliers and such once implemented
         const actualVotes = this.getNumActualVotes(userId, targetId);
-        let replyText = `Ok, you will use your **${actualVotes}** vote${actualVotes === 1 ? '' : 's'} to eliminate **${this.getName(targetId)}** this week...`;
+        let replyText = `Ok, you will use your **${actualVotes}** vote${s(actualVotes)} to eliminate **${this.getName(targetId)}** this week...`;
         if (this.hasRetaliationVotesAgainst(userId, targetId)) {
             replyText += ' (**2x** _retaliation_ votes against this player)';
         } else if (this.hasRevengeVotesAgainst(userId, targetId)) {
@@ -863,7 +863,7 @@ export default class IslandGame extends AbstractGame<IslandGameState> {
                 }
                 targetPlayer.assailants.push(userId);
             }
-            summary = `**${this.getName(userId)}** cast **${numVotes}** vote${numVotes === 1 ? '' : 's'} for **${this.getName(targetId)}**`;
+            summary = `**${this.getName(userId)}** cast **${numVotes}** vote${s(numVotes)} for **${this.getName(targetId)}**`;
             // Add extra text if extra votes
             if (this.hasRetaliationVotesAgainst(userId, targetId)) {
                 summary += ' (**x2** _retaliation_ votes)';

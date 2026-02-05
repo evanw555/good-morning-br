@@ -1,6 +1,6 @@
 import canvas, { Canvas, CanvasRenderingContext2D } from 'canvas';
 import { AttachmentBuilder, GuildMember, MessageFlags, Snowflake } from 'discord.js';
-import { getRankString, getNumberBetween, naturalJoin, randInt, shuffle, toLetterId, fromLetterId, AStarPathFinder, shuffleWithDependencies, toFixed, collapseRedundantStrings, chance, randChoice, findCycle } from 'evanw555.js';
+import { getRankString, getNumberBetween, naturalJoin, randInt, shuffle, toLetterId, fromLetterId, AStarPathFinder, shuffleWithDependencies, toFixed, collapseRedundantStrings, chance, randChoice, findCycle, s } from 'evanw555.js';
 import { getTextLabel, toCircle } from "node-canvas-utils";
 import { DecisionProcessingResult, GamePlayerAddition, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
@@ -2464,7 +2464,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                         const trampledPlayers: Snowflake[] = [];
                         let spacesMoved = 0;
                         const getChargeText = (slammedIntoWall: boolean): string => {
-                            let text = `**${player.displayName}** charged like a ${slammedIntoWall ? 'dumbass' : 'madman'} **${spacesMoved}** space${spacesMoved === 1 ? '' : 's'} ${direction}ward`;
+                            let text = `**${player.displayName}** charged like a ${slammedIntoWall ? 'dumbass' : 'madman'} **${spacesMoved}** space${s(spacesMoved)} ${direction}ward`;
                             if (slammedIntoWall) {
                                 text += ' (slamming into a wall and knocking himself out)';
                             }

@@ -2,7 +2,7 @@ import { ActionRowData, APIButtonComponent, AttachmentBuilder, ButtonStyle, Comp
 import { GamePlayerAddition, MessengerPayload, PrizeType, DecisionProcessingResult, MessengerManifest } from "../types";
 import AbstractGame from "./abstract-game";
 import { CandyLandCardColor, CandyLandCardData, CandyLandBasicColor, CandyLandGameState, CandyLandPlayerState, CandyLandSpaceColor } from "./types";
-import { chance, FileStorage, getRankString, getSortedKeys, naturalJoin, randChoice, randInt, shuffle, toFixed } from "evanw555.js";
+import { chance, FileStorage, getRankString, getSortedKeys, naturalJoin, randChoice, randInt, s, shuffle, toFixed } from "evanw555.js";
 import { cropAroundPoints, resize, toCircle, withDropShadow } from "node-canvas-utils";
 import { Canvas, ImageData, createCanvas } from "canvas";
 import { generateRandomNonsequentialSequence, renderArrow, text, withAn } from "../util";
@@ -1040,7 +1040,7 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
 
         let movementText = steps === 0
             ? randChoice('going nowhere', 'going absolutely nowhere', 'moving no spaces at all', 'staying totally put')
-            : `${diff < 0 ? 'backtracking' : 'moving'} **${steps}** space${steps === 1 ? '' : 's'}`;
+            : `${diff < 0 ? 'backtracking' : 'moving'} **${steps}** space${s(steps)}`;
 
         // If the card was black, handle color modifications
         if (card.color === 'L' && this.getSpaceColor(currentLocation) !== 'START' && this.getSpaceColor(currentLocation) !== 'END') {
@@ -1070,7 +1070,7 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         }
 
         if (shinyHops > 0) {
-            movementText += ` (shiny-hopped over **${shinyHops}** player${shinyHops === 1 ? '' : 's'})`;
+            movementText += ` (shiny-hopped over **${shinyHops}** player${s(shinyHops)})`;
         }
 
         return {

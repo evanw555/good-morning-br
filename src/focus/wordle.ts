@@ -2,7 +2,7 @@ import canvas from 'canvas';
 import { AttachmentBuilder, Message, MessageFlags, Snowflake } from 'discord.js';
 import { WordlePuzzle } from './types';
 import AbstractFocusHandler from './abstract-focus';
-import { randChoice, randInt, PastTimeoutStrategy, getRankString } from 'evanw555.js';
+import { randChoice, randInt, PastTimeoutStrategy, getRankString, s } from 'evanw555.js';
 import { TimeoutType, MessengerPayload } from '../types';
 import { getSimpleScaledPoints } from '../util';
 
@@ -98,7 +98,7 @@ export class WordleFocusGame extends AbstractFocusHandler {
                 wordle.scores[userId] = Math.max(wordle.scores[userId] ?? 0, score);
                 // Reply letting them know how many letter they've revealed (suppress notifications to reduce spam)
                 await messenger.reply(message, {
-                    content: progress ? `You've revealed ${progress} new letter${progress === 1 ? '' : 's'}!` : 'Hmmmmm...',
+                    content: progress ? `You've revealed ${progress} new letter${s(progress)}!` : 'Hmmmmm...',
                     files: [new AttachmentBuilder(await WordleFocusGame.renderWordleState(puzzle)).setName('wordle.png')],
                     flags: MessageFlags.SuppressNotifications
                 });

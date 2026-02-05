@@ -1,6 +1,6 @@
 import { Canvas, createCanvas } from "canvas";
 import { drawBackground, getSimpleScaledPoints, reactToMessage } from "../util";
-import { PastTimeoutStrategy, canonicalizeText, chance, getRankString, randChoice, randInt, shuffle, sleep } from "evanw555.js";
+import { PastTimeoutStrategy, canonicalizeText, chance, getRankString, randChoice, randInt, s, shuffle, sleep } from "evanw555.js";
 import { crop, getRotated, getTextLabel, joinCanvasesHorizontal, joinCanvasesVertical, setHue, withDropShadow, withMargin } from "node-canvas-utils";
 import { AttachmentBuilder, Message, MessageFlags, Snowflake } from "discord.js";
 import { WheelOfFortune, WheelOfFortuneRound } from "./types";
@@ -385,7 +385,7 @@ export class WheelOfFortuneFocusGame extends AbstractFocusHandler {
                         await this.resetWOFShotClock();
                         // Reply with a message and the updated render
                         await messenger.reply(message, {
-                            content: `We've got ${numOccurrences} **${guess}**${numOccurrences === 1 ? '' : 's'}! You've earned **$${guessAward}** for a total of **$${newScore}**. `
+                            content: `We've got ${numOccurrences} **${guess}**${s(numOccurrences)}! You've earned **$${guessAward}** for a total of **$${newScore}**. `
                                 + 'Go ahead - spin, buy a vowel, solve the puzzle, or pass!',
                             files: [await WheelOfFortuneFocusGame.renderWheelOfFortuneState(round)],
                             flags: MessageFlags.SuppressNotifications
