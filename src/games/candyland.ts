@@ -397,8 +397,11 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
     }
 
     getOrderedPlayers(): string[] {
-        // TODO: Handle tie-breakers
-        return this.getPlayers().sort((x, y) => this.getPlayerLocation(y) - this.getPlayerLocation(x));
+        // Sort by location (desc), then points (desc)
+        return getSortedKeys(this.getPlayers(), [
+            (id) => -this.getPlayerLocation(id),
+            (id) => -this.getPoints(id)
+        ]);
     }
 
     hasPlayer(userId: string): boolean {
@@ -445,7 +448,7 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         // If the game is more than 20% done and this player is in the bottom half of players
         return this.hasPlayer(userId)
             && this.getSeasonCompletion() > 0.2
-            && this.getOrderedPlayers().indexOf(userId) > (this.getNumPlayers() * 0.5);
+            && this.getOrderedPlayers().indexOf(userId) >= (this.getNumPlayers() * 0.5);
     }
 
     override doesPlayerNeedNerf(userId: Snowflake): boolean {
