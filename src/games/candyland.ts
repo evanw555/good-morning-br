@@ -441,6 +441,19 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         // }
     }
 
+    override doesPlayerNeedHandicap(userId: Snowflake): boolean {
+        // If the game is more than 20% done and this player is in the bottom half of players
+        return this.hasPlayer(userId)
+            && this.getSeasonCompletion() > 0.2
+            && this.getOrderedPlayers().indexOf(userId) > (this.getNumPlayers() * 0.5);
+    }
+
+    override doesPlayerNeedNerf(userId: Snowflake): boolean {
+        // If the game is more than 50% done and this player is past the average podium location
+        return this.getSeasonCompletion() > 0.5
+            && this.getPlayerLocation(userId) > this.getAveragePodiumLocation();
+    }
+
     private getPlayerDisplayName(userId: Snowflake): string {
         return this.state.players[userId]?.displayName ?? `<@${userId}>`;
     }
