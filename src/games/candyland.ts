@@ -669,10 +669,13 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
         // await logger.log('Loading avatars...');
         for (let i = 0; i < this.getNumSpaces(); i++) {
             const isStart = this.getSpaceColor(i) === 'START';
+            const isEnd = this.getSpaceColor(i) === 'END';
             const coordinates = this.getSpaceCoordinates(i);
             const playersHere = this.getPlayersAtLocation(i);
             // Show all player tokens on this space
-            const tokenCoordinates = this.getTokenCoordinates(coordinates, playersHere.length, { horizontalSpacing: isStart ? 54 : 14, verticalSpacing: isStart ? 42 : 14 });
+            const horizontalSpacing = isStart ? 54 : (isEnd ? 28 : 14);
+            const verticalSpacing = isStart ? 42 : (isEnd ? 28 : 14);
+            const tokenCoordinates = this.getTokenCoordinates(coordinates, playersHere.length, { horizontalSpacing, verticalSpacing });
             for (let j = 0; j < playersHere.length; j++) {
                 const userId = playersHere[j];
                 const { x, y } = tokenCoordinates[j];
