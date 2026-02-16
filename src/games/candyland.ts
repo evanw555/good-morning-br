@@ -1,5 +1,5 @@
 import { ActionRowData, APIButtonComponent, AttachmentBuilder, ButtonStyle, ComponentType, GuildMember, Interaction, MessageActionRowComponentData, Snowflake } from "discord.js";
-import { GamePlayerAddition, MessengerPayload, PrizeType, DecisionProcessingResult, MessengerManifest } from "../types";
+import { GamePlayerAddition, MessengerPayload, PrizeType, DecisionProcessingResult, MessengerManifest, SeasonEndResults } from "../types";
 import AbstractGame from "./abstract-game";
 import { CandyLandCardColor, CandyLandCardData, CandyLandBasicColor, CandyLandGameState, CandyLandPlayerState, CandyLandSpaceColor } from "./types";
 import { chance, FileStorage, getRankString, getSortedKeys, mean, naturalJoin, randChoice, randInt, s, shuffle, toFixed } from "evanw555.js";
@@ -1381,5 +1381,23 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
             }
         }
         return;
+    }
+
+    override getSeasonEndResults(cumulativePoints?: Record<Snowflake, number>): SeasonEndResults {
+        // First, determine the special winners
+        const winners = this.getWinners();
+        const specialWinners = this.getNonPodiumWinners();
+        // Now, award partial terms proportional to relative placement
+        const n = specialWinners.length;
+        return {
+            winners,
+            specialWinners: specialWinners.map((userId, i) => ({
+                userId,
+                terms: toFixed((n - i) / (n + 1), 3),
+                description: i === 0
+                    ? 'reaching Cute Scott\'s Candy Keep just moments too late to podium'
+                    : `finishing in _${getRankString(i + 4)}_ on the final turn`
+            }))
+        };
     }
 }

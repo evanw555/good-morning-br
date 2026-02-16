@@ -342,8 +342,18 @@ export default abstract class AbstractGame<T extends GameState> {
         ];
     }
 
+    /**
+     * @returns The top 3 players on the winnners list
+     */
     getWinners(): Snowflake[] {
         return this.state.winners.slice(0, 3);
+    }
+
+    /**
+     * @returns Players on the winners list beyond the top 3 ranks.
+     */
+    protected getNonPodiumWinners(): Snowflake[] {
+        return this.state.winners.slice(3);
     }
 
     getNumWinners(): number {
