@@ -376,9 +376,15 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
             };
         }
         // Otherwise, show state and generic reminder with draw button
+        const isLastChance = this.getNumWinners() > 0;
         return {
             public: [{
-                content: this.getReminderText(),
+                content: isLastChance
+                    ? 'Only one draw left this season, make sure to click here! Remember:'
+                        + '\n- Rarer cards go first, and players with the same card rarity go in point-order.'
+                        + '\n- Yes, you can shiny-hop to the finish line.'
+                        + '\n- If you make it without placing in the top 3, you will still get a pity prize ;)'
+                    : this.getReminderText(),
                 files: [await this.renderStateAttachment()],
                 components: this.getDecisionActionRow()
             }]
