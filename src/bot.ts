@@ -1044,7 +1044,8 @@ const sendSeasonEndMessages = async (channel: TextBasedChannel, previousState: G
     if (mostGoldsUser) {
         await sleep(15000);
         const mostGoldsUserNum = history.medals[mostGoldsUser].gold ?? 0;
-        if (mostGoldsUser === previousState.getTopPlayer()) {
+        const previousWinner = previousState.getWinners()[0];
+        if (mostGoldsUser === previousWinner) {
             await messenger.send(goodMorningChannel, `<@${mostGoldsUser}> maintains their crown as the player with the most season victories, racking up **${mostGoldsUserNum}** first place win${s(mostGoldsUserNum)}`);
         } else {
             await messenger.send(goodMorningChannel, `Although they didn't win this season, <@${mostGoldsUser}> is still the player with the most season victories, having **${mostGoldsUserNum}** first place win${s(mostGoldsUserNum)}`);
