@@ -5,7 +5,7 @@ import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissio
 import GoodMorningState from './state';
 import { canonicalizeText, chance, DiscordTimestampFormat, FileStorage, forEachMessage, generateKMeansClusters, getClockTime, getDateBetween, getJoinedMentions, getRandomDateBetween,
     getRankString, getRelativeDateTimeString, getSelectedNode, getSortedKeys, getTodayDateString, getTomorrow, getWordRepetitionScore, LanguageGenerator, loadJson, Messenger,
-    naturalJoin, PastTimeoutStrategy, prettyPrint, R9KTextBank, randChoice, randFloat, randInt, s, shuffle, sleep, TimeoutManager, TimeoutOptions, toCalendarDate, toDiscordTimestamp, toFixed, toLetterId } from 'evanw555.js';
+    naturalJoin, PastTimeoutStrategy, prettyPrint, R9KTextBank, randChoice, randFloat, randInt, s, shuffle, sleep, TimeoutManager, TimeoutOptions, toCalendarDate, toDiscordTimestamp, toFixed, toLetterId} from 'evanw555.js';
 import { AnonymousSubmissionsState } from './submissions';
 import ActivityTracker from './activity-tracker';
 import { getFocusHandler, getNewWheelOfFortuneRound, getRandomFocusGame } from './focus/util';
@@ -298,13 +298,30 @@ const removeSungazer = async (userId: Snowflake) => {
 const updateSungazers = async (winners: { gold?: Snowflake, silver?: Snowflake, bronze?: Snowflake, special?: SpecialSungazerTermAward[] }): Promise<void> => {
     // Get the sungazer channel
     const sungazerChannel: TextBasedChannel = (await guild.channels.fetch(config.sungazers.channel)) as TextBasedChannel;
-    const newGoldGazer = winners.gold !== undefined && history.sungazers[winners.gold] === undefined;
-    const newSilverGazer = winners.silver !== undefined && history.sungazers[winners.silver] === undefined;
-    const newBronzeGazer = winners.bronze !== undefined && history.sungazers[winners.bronze] === undefined;
-    if (newGoldGazer || newSilverGazer || newBronzeGazer) {
+    // First, determine the full set of winners
+    const winnerSet: Set<Snowflake> = new Set();
+    for (const userId of [winners.gold, winners.silver, winners.bronze]) {
+        if (userId) {
+            winnerSet.add(userId);
+        }
+    }
+    if (winners.special) {
+        for (const { userId } of winners.special) {
+            winnerSet.add(userId);
+        }
+    }
+    const allWinners = Array.from(winnerSet);
+    const nonWinners = Object.keys(history.sungazers).filter(id => !winnerSet.has(id));
+    // Determine how many of these winners are new additions
+    const additions = allWinners.filter(id => history.sungazers[id] === undefined);
+    const numAdditions = additions.length;
+    // Send an intro message indicating how many additions there are
+    if (numAdditions > 2) {
+        await messenger.send(sungazerChannel, 'I hold each of you near and dear to my solar heart, but it\'s time to welcome quite a few bright, new faces to the Council!');
+    } else if (numAdditions > 0) {
         await messenger.send(sungazerChannel, 'As the sun fades into the horizon on yet another sunny season, let us welcome the new Sungazers to the Council!');
     } else {
-        await messenger.send(sungazerChannel, 'Well, my dear dogs... it appears there are no new additions to the council this season. Cheers to our continued hegemony!');
+        await messenger.send(sungazerChannel, 'Well, my dear dogs... it appears there are no new additions to the Council this season. Cheers to our continued hegemony!');
     }
     await sleep(10000);
     // First, decrement the term counters of each existing sungazers
@@ -314,23 +331,25 @@ const updateSungazers = async (winners: { gold?: Snowflake, silver?: Snowflake, 
     // Then, add terms for each winner (and add roles if necessary)
     if (winners.gold) {
         await updateSungazer(winners.gold, 3);
-        if (newGoldGazer) {
+        if (history.sungazers[winners.gold] === undefined) {
             await messenger.send(sungazerChannel, text(`Our {!newest|latest} champion {$tag} has earned **3** terms on the council!`, { tag: `<@${winners.gold}>` }));
         } else {
             await messenger.send(sungazerChannel, `Returning sungazer <@${winners.gold}> has been crowned champion of this season, gaining **3** more terms on the council!`);
         }
+        await sleep(2000);
     }
     if (winners.silver) {
         await updateSungazer(winners.silver, 2);
-        if (newSilverGazer) {
+        if (history.sungazers[winners.silver] === undefined) {
             await messenger.send(sungazerChannel, `The runner-up <@${winners.silver}> joins the council, earning **2** terms`);
         } else {
             await messenger.send(sungazerChannel, `The runner-up <@${winners.silver}> has gained **2** more terms`);
         }
+        await sleep(2000);
     }
     if (winners.bronze) {
         await updateSungazer(winners.bronze, 1);
-        if (newBronzeGazer) {
+        if (history.sungazers[winners.bronze] === undefined) {
             await messenger.send(sungazerChannel, text(`And sweet {!old|young|little} <@${winners.bronze}> scrapes by, earning **1** sneak-peek term on the council`));
         } else if (history.sungazers[winners.bronze] === 1) {
             await messenger.send(sungazerChannel, text(`And sweet {!old|young|little} <@${winners.bronze}> holds on for dear life, gaining **1** more term`));
@@ -341,8 +360,9 @@ const updateSungazers = async (winners: { gold?: Snowflake, silver?: Snowflake, 
     // Add any special terms
     if (winners.special) {
         for (const { userId, terms, description } of winners.special) {
-            // TODO: Make these more dynamic based on if they're already on the council or not
             await updateSungazer(userId, terms);
+            await sleep(2000);
+            // TODO: Make these more dynamic based on if they're already on the council or not
             // TODO: Use nice fraction text
             await messenger.send(sungazerChannel, `For ${description}, <@${userId}> has been awarded **${terms}** special terms on the council`);
         }
@@ -361,11 +381,21 @@ const updateSungazers = async (winners: { gold?: Snowflake, silver?: Snowflake, 
             await timeoutManager.registerTimeout(TimeoutType.SungazerRemovalFallback, tonight, { arg: userId, pastStrategy: PastTimeoutStrategy.Invoke });
         }
     }
-    const soonToBeExpirees: Snowflake[] = Object.keys(history.sungazers).filter(userId => history.sungazers[userId] === 1);
+    // Warn pre-existing non-winning gazers who have 1 (or less) terms remaining
+    const soonToBeExpirees: Snowflake[] = nonWinners.filter(userId => history.sungazers[userId] > 0 && history.sungazers[userId] <= 1);
     if (soonToBeExpirees.length > 0) {
-        await sleep(10000);
-        // TODO: This should be different if the user just earned their first term and if they have a fractional term
-        await messenger.send(sungazerChannel, `As for ${getJoinedMentions(soonToBeExpirees)}, I advise that you stay spooked! For this is your final term on the council`);
+        // Notify whole-term soon-to-be expirees separately
+        const whole = soonToBeExpirees.filter(id => history.sungazers[id] === 1);
+        if (whole.length > 0) {
+            await sleep(10000);
+            await messenger.send(sungazerChannel, `As for ${getJoinedMentions(whole)}, I advise that you stay spooked! For this is your final term on the council`);
+        }
+        // Notify partial-term soon-to-be expirees separately
+        const partial = soonToBeExpirees.filter(id => history.sungazers[id] < 1);
+        if (partial.length > 0) {
+            await sleep(10000);
+            await messenger.send(sungazerChannel, `And by the way ${getJoinedMentions(partial)}, you have only a partial term remaining. You'll be hopping off the Sungazer train partway through next season...`);
+        }
     }
     logger.log(`\`${JSON.stringify(history.sungazers)}\``);
     await dumpHistory();
