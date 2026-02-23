@@ -1,13 +1,13 @@
-import { TextBasedChannel } from "discord.js";
+import { SendableChannels, TextBasedChannel } from "discord.js";
 
 /**
  * Unified logger for logging both to console and to the designated text channel, if it exists.
  */
 class Logger {
-    private channel?: TextBasedChannel;
+    private channel?: SendableChannels;
     private pendingMessages: string[];
 
-    setChannel(channel: TextBasedChannel): void {
+    setChannel(channel: SendableChannels): void {
         this.channel = channel;
         this.pendingMessages = [];
     }

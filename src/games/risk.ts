@@ -1,4 +1,4 @@
-import { APIActionRowComponent, APIMessageActionRowComponent, APISelectMenuOption, ActionRowData, AttachmentBuilder, ButtonStyle, ComponentType, GuildMember, Interaction, InteractionReplyOptions, MessageActionRowComponentData, MessageFlags, Snowflake, heading } from "discord.js";
+import { APIActionRowComponent, APIMessageTopLevelComponent, APISelectMenuOption, ActionRowData, AttachmentBuilder, ButtonStyle, ComponentType, GuildMember, Interaction, InteractionEditReplyOptions, InteractionReplyOptions, MessageActionRowComponentData, MessageFlags, ModalBuilder, Snowflake, heading } from "discord.js";
 import { DecisionProcessingResult, GamePlayerAddition, MessengerManifest, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 import { Canvas, Image, createCanvas } from "canvas";
@@ -3112,487 +3112,490 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
 
     override async handleGameInteraction(interaction: Interaction): Promise<MessengerManifest | undefined> {
         const userId = interaction.user.id;
-        if (interaction.isButton()) {
-            const customId = interaction.customId;
-            switch (customId) {
-                case 'game:pickStartingLocation': {
-                    // Do basic validation before processing
-                    const draft = this.state.draft;
-                    if (!draft) {
-                        throw new Error('The draft has already ended, why are you clicking this?');
-                    }
-                    const playerDraftInfo = draft[userId];
-                    if (!playerDraftInfo) {
-                        throw new Error('You\'re not in the game... yet?');
-                    }
-                    if (!playerDraftInfo.available) {
-                        throw new Error('It\'s not your turn to draft, silly!');
-                    }
-                    // Respond with a prompt for the user to pick a color first
+        if (!interaction.isButton() && !interaction.isAnySelectMenu() && !interaction.isModalSubmit()) {
+            return;
+        }
+        // Get string select menu values now to avoid validation later
+        const selectedValues: string[] = [];
+        if (interaction.isStringSelectMenu()) {
+            selectedValues.push(...interaction.values);
+        }
+        const [gameKeyword, actionId, arg] = interaction.customId.split(':');
+        switch (actionId) {
+            case 'pickStartingLocation': {
+                // Do basic validation before processing
+                const draft = this.state.draft;
+                if (!draft) {
+                    throw new Error('The draft has already ended, why are you clicking this?');
+                }
+                const playerDraftInfo = draft[userId];
+                if (!playerDraftInfo) {
+                    throw new Error('You\'re not in the game... yet?');
+                }
+                if (!playerDraftInfo.available) {
+                    throw new Error('It\'s not your turn to draft, silly!');
+                }
+                // Respond with a prompt for the user to pick a color first
+                await interaction.editReply({
+                    content: 'First, choose a color:',
+                    files: [await this.renderAvailableColors(userId)],
+                    components: [{
+                        type: ComponentType.ActionRow,
+                        components: [{
+                            type: ComponentType.StringSelect,
+                            custom_id: 'game:selectColor',
+                            min_values: 1,
+                            max_values: 1,
+                            options: this.getAvailableColorSelectOptions()
+                        }]
+                    }]
+                });
+                break;
+            }
+            case 'add': {
+                // First, validate that add decisions are being accepted
+                if (!this.state.addDecisions) {
+                    throw new Error('I\'m not accepting any decisions related to _adding troops_ right now...');
+                }
+                // Reply with a prompt for them to make decisions
+                await interaction.editReply(this.getAddDecisionReply(userId));
+                break;
+            }
+            case 'attack': {
+                // First, validate that attack decisions are being accepted
+                if (!this.state.attackDecisions) {
+                    throw new Error('I\'m not accepting any decisions related to _attacking_ right now...');
+                }
+                // Validate that the user is not eliminated
+                if (this.isPlayerEliminated(userId)) {
+                    throw new Error(`You can\'t attack, you\'ve been eliminated! You can only _add_ troops to **${this.getPlayerDisplayName(this.getPlayerTeam(userId))}'s** territories...`);
+                }
+                // Reply with a prompt for them to make decisions
+                await interaction.editReply(this.getAttackDecisionReply(userId));
+                break;
+            }
+            case 'move': {
+                // First, validate that move decisions are being accepted
+                if (!this.state.moveDecisions) {
+                    throw new Error('I\'m not accepting any decisions related to _moving troops_ right now...');
+                }
+                // Validate that the user is not eliminated
+                if (this.isPlayerEliminated(userId)) {
+                    throw new Error(`You can\'t move troops, you\'ve been eliminated! You can only _add_ troops to **${this.getPlayerDisplayName(this.getPlayerTeam(userId))}'s** territories...`);
+                }
+                // Reply with a prompt for them to make decisions
+                await interaction.editReply(this.getMoveDecisionReply(userId));
+                break;
+            }
+            case 'clearAdd': {
+                // First, validate that add decisions are being accepted
+                if (!this.state.addDecisions) {
+                    throw new Error('I\'m not accepting any decisions related to _adding troops_ right now...');
+                }
+                // Clear this player's add decisions
+                delete this.state.addDecisions[userId];
+                // Reply with a prompt for them to make new decisions
+                await interaction.editReply(this.getAddDecisionReply(userId));
+                break;
+            }
+            case 'clearMove': {
+                // First, validate that move decisions are being accepted
+                if (!this.state.moveDecisions) {
+                    throw new Error('I\'m not accepting any decisions related to _moving troops_ right now...');
+                }
+                // Clear this player's move decisions
+                delete this.pendingMoveDecisions[userId];
+                delete this.state.moveDecisions[userId];
+                // Reply with a prompt for them to make new decisions
+                await interaction.editReply(this.getMoveDecisionReply(userId));
+                break;
+            }
+            case 'clearAttack': {
+                // First, validate that attack decisions are being accepted
+                if (!this.state.attackDecisions) {
+                    throw new Error('I\'m not accepting any decisions related to _attacking_ right now...');
+                }
+                // Clear this player's attack decisions
+                delete this.pendingAttackDecisions[userId];
+                delete this.state.attackDecisions[userId];
+                // Reply with a prompt for them to make new decisions
+                await interaction.editReply(this.getAttackDecisionReply(userId));
+                break;
+            }
+            case 'clearAll': {
+                // First, validate that any decisions are being accepted
+                if (!this.state.addDecisions || !this.state.attackDecisions || !this.state.moveDecisions) {
+                    throw new Error('I\'m not accepting any decisions right now...');
+                }
+                // Clear this player's decisions
+                delete this.pendingAttackDecisions[userId];
+                delete this.pendingMoveDecisions[userId];
+                delete this.state.addDecisions[userId];
+                delete this.state.attackDecisions[userId];
+                delete this.state.moveDecisions[userId];
+                // Reply with a confirmation
+                await interaction.editReply('All your decisions have been erased! Use the buttons in the channel to arrange some new ones...');
+                break;
+            }
+            case 'reviewDecisions': {
+                const allDecisionStrings = [...this.getAddDecisionStrings(userId), ...this.getAttackDecisionStrings(userId), ...this.getMoveDecisionStrings(userId)];
+                if (allDecisionStrings.length > 0) {
                     await interaction.editReply({
-                        content: 'First, choose a color:',
-                        files: [await this.renderAvailableColors(userId)],
+                        content: 'You\'ve made the following decisions:\n'
+                            + allDecisionStrings.join('\n')
+                            + '\nYou can use the "Start Over" button to delete all of these and start over.',
                         components: [{
                             type: ComponentType.ActionRow,
                             components: [{
-                                type: ComponentType.StringSelect,
-                                custom_id: 'game:selectColor',
-                                min_values: 1,
-                                max_values: 1,
-                                options: this.getAvailableColorSelectOptions()
+                                type: ComponentType.Button,
+                                label: 'Start Over',
+                                style: ButtonStyle.Danger,
+                                custom_id: 'game:clearAll'
                             }]
                         }]
                     });
-                    break;
+                } else {
+                    await interaction.editReply('You don\'t have any actions lined up! Use the buttons in the channel to arrange some actions...');
                 }
-                case 'game:add': {
-                    // First, validate that add decisions are being accepted
-                    if (!this.state.addDecisions) {
-                        throw new Error('I\'m not accepting any decisions related to _adding troops_ right now...');
-                    }
-                    // Reply with a prompt for them to make decisions
-                    await interaction.editReply(this.getAddDecisionReply(userId));
-                    break;
+                break;
+            }
+            case 'chooseTroopIcon': {
+                // Validate that the user is allowed to pick a custom icon
+                if (this.hasCustomTroopIcon(userId)) {
+                    throw new Error(`You already have a custom troop icon! You picked the **${this.getPlayerTroopIcon(userId)}**`);
                 }
-                case 'game:attack': {
-                    // First, validate that attack decisions are being accepted
-                    if (!this.state.attackDecisions) {
-                        throw new Error('I\'m not accepting any decisions related to _attacking_ right now...');
-                    }
-                    // Validate that the user is not eliminated
+                if (!this.state.players[userId]?.maySelectCustomTroopIcon) {
+                    throw new Error('You don\'t have the privilege of picking a custom troop icon... how did you click this button?');
+                }
+                // Reply with a menu of all available troop icons
+                await interaction.editReply({
+                    content: 'Please select from the following options (the selection is confirmed once you click the option in the drop-down, so be careful)',
+                    files: [await this.renderAvailableTroopIcons()],
+                    components: [{
+                        type: ComponentType.ActionRow,
+                        components: [{
+                            type: ComponentType.StringSelect,
+                            custom_id: 'game:selectTroopIcon',
+                            min_values: 1,
+                            max_values: 1,
+                            options: this.getAvailableTroopIconSelectOptions()
+                        }]
+                    }]
+                });
+                break;
+            }
+            case 'help': {
+                await interaction.editReply({
+                    content: 'What would you like help with?',
+                    components: this.getHelpOptionsActionRow()
+                });
+                break;
+            }
+            case 'selectColor': {
+                // Do basic validation before processing
+                const draft = this.state.draft;
+                if (!draft) {
+                    throw new Error('The draft has already ended, why are you clicking this?');
+                }
+                const playerDraftInfo = draft[userId];
+                if (!playerDraftInfo) {
+                    throw new Error('You\'re not in the game... yet?');
+                }
+                if (!playerDraftInfo.available) {
+                    throw new Error('It\'s not your turn to draft, silly!');
+                }
+                // Validate the player's selected color
+                const color = selectedValues[0];
+                if (!color) {
+                    throw new Error('You were supposed to choose a color! (see admin)');
+                }
+                if (this.isColorClaimed(color)) {
+                    throw new Error(`**${RiskGame.config.colors[color] ?? 'That color'}** has already been claimed. Pick another color!`);
+                }
+                // Save the color as a pending color decision
+                this.pendingColorSelections[userId] = color;
+                // Now, prompt for them to choose a starting location
+                await interaction.editReply({
+                    content: `You've selected **${RiskGame.config.colors[color] ?? color}**. Now, where would you like to start?`,
+                    components: [{
+                        type: ComponentType.ActionRow,
+                        components: [{
+                            type: ComponentType.StringSelect,
+                            custom_id: 'game:selectStartingLocation',
+                            min_values: 1,
+                            max_values: 1,
+                            options: this.getTerritorySelectOptions(this.getOwnerlessTerritories())
+                        }]
+                    }],
+                    files: []
+                });
+                break;
+            }
+            case 'selectStartingLocation': {
+                // Do basic validation before processing
+                const draft = this.state.draft;
+                if (!draft) {
+                    throw new Error('The draft has already ended, why are you clicking this?');
+                }
+                const playerDraftInfo = draft[userId];
+                if (!playerDraftInfo) {
+                    throw new Error('You\'re not in the game... yet?');
+                }
+                if (!playerDraftInfo.available) {
+                    throw new Error('It\'s not your turn to draft, silly!');
+                }
+                // Validate the player's selected location
+                const territoryId = selectedValues[0];
+                if (!territoryId) {
+                    throw new Error('Ummmmm... you were supposed to select a territory...');
+                }
+                const existingOwnerId = this.getTerritoryOwner(territoryId);
+                if (existingOwnerId) {
+                    throw new Error(`You can't select _${this.getTerritoryName(territoryId)}_, it's already been claimed by ${this.getPlayerDisplayName(existingOwnerId)}!`);
+                }
+                // Validate the pending selected color too, since it may have been claimed since the last interaction
+                const color = this.pendingColorSelections[userId];
+                if (!color) {
+                    throw new Error('You were supposed to choose a color! (see admin)');
+                }
+                if (this.isColorClaimed(color)) {
+                    throw new Error(`**${RiskGame.config.colors[color] ?? 'That color'}** has already been claimed. Go back and pick another color!`);
+                }
+                // Confirm the selected color and location
+                this.state.players[userId].color = color;
+                this.state.territories[territoryId].owner = userId;
+                this.state.territories[territoryId].troops = 1;
+                // Delete the pending color selection and mark this player as draft-complete
+                delete this.pendingColorSelections[userId];
+                delete draft[userId].available;
+                // Reply to the interaction
+                await interaction.editReply(`You have selected _${this.getTerritoryName(territoryId)}_!`);
+                // Reply for the entire channel to see
+                const selectionPhrase = randChoice('has set up camp at', 'has selected', 'has posted up at', 'has set up shop at', 'chose', 'has chosen', 'is starting at');
+                return {
+                    public: [{
+                        content: `<@${userId}> ${selectionPhrase} _${this.getTerritoryName(territoryId)}_!`,
+                        files: [await this.renderBasicMap()]
+                    }]
+                };
+            }
+            case 'selectAdd': {
+                // First, validate that add decisions are being accepted
+                if (!this.state.addDecisions) {
+                    throw new Error('I\'m not accepting any decisions related to _adding troops_ right now...');
+                }
+                // Validate that the selected territory belong's to this user's team
+                const selectedTerritoryId = selectedValues[0];
+                if (this.getTerritoryOwner(selectedTerritoryId) !== this.getPlayerTeam(userId)) {
                     if (this.isPlayerEliminated(userId)) {
-                        throw new Error(`You can\'t attack, you\'ve been eliminated! You can only _add_ troops to **${this.getPlayerDisplayName(this.getPlayerTeam(userId))}'s** territories...`);
-                    }
-                    // Reply with a prompt for them to make decisions
-                    await interaction.editReply(this.getAttackDecisionReply(userId));
-                    break;
-                }
-                case 'game:move': {
-                    // First, validate that move decisions are being accepted
-                    if (!this.state.moveDecisions) {
-                        throw new Error('I\'m not accepting any decisions related to _moving troops_ right now...');
-                    }
-                    // Validate that the user is not eliminated
-                    if (this.isPlayerEliminated(userId)) {
-                        throw new Error(`You can\'t move troops, you\'ve been eliminated! You can only _add_ troops to **${this.getPlayerDisplayName(this.getPlayerTeam(userId))}'s** territories...`);
-                    }
-                    // Reply with a prompt for them to make decisions
-                    await interaction.editReply(this.getMoveDecisionReply(userId));
-                    break;
-                }
-                case 'game:clearAdd': {
-                    // First, validate that add decisions are being accepted
-                    if (!this.state.addDecisions) {
-                        throw new Error('I\'m not accepting any decisions related to _adding troops_ right now...');
-                    }
-                    // Clear this player's add decisions
-                    delete this.state.addDecisions[userId];
-                    // Reply with a prompt for them to make new decisions
-                    await interaction.editReply(this.getAddDecisionReply(userId));
-                    break;
-                }
-                case 'game:clearMove': {
-                    // First, validate that move decisions are being accepted
-                    if (!this.state.moveDecisions) {
-                        throw new Error('I\'m not accepting any decisions related to _moving troops_ right now...');
-                    }
-                    // Clear this player's move decisions
-                    delete this.pendingMoveDecisions[userId];
-                    delete this.state.moveDecisions[userId];
-                    // Reply with a prompt for them to make new decisions
-                    await interaction.editReply(this.getMoveDecisionReply(userId));
-                    break;
-                }
-                case 'game:clearAttack': {
-                    // First, validate that attack decisions are being accepted
-                    if (!this.state.attackDecisions) {
-                        throw new Error('I\'m not accepting any decisions related to _attacking_ right now...');
-                    }
-                    // Clear this player's attack decisions
-                    delete this.pendingAttackDecisions[userId];
-                    delete this.state.attackDecisions[userId];
-                    // Reply with a prompt for them to make new decisions
-                    await interaction.editReply(this.getAttackDecisionReply(userId));
-                    break;
-                }
-                case 'game:clearAll': {
-                    // First, validate that any decisions are being accepted
-                    if (!this.state.addDecisions || !this.state.attackDecisions || !this.state.moveDecisions) {
-                        throw new Error('I\'m not accepting any decisions right now...');
-                    }
-                    // Clear this player's decisions
-                    delete this.pendingAttackDecisions[userId];
-                    delete this.pendingMoveDecisions[userId];
-                    delete this.state.addDecisions[userId];
-                    delete this.state.attackDecisions[userId];
-                    delete this.state.moveDecisions[userId];
-                    // Reply with a confirmation
-                    await interaction.editReply('All your decisions have been erased! Use the buttons in the channel to arrange some new ones...');
-                    break;
-                }
-                case 'game:reviewDecisions': {
-                    const allDecisionStrings = [...this.getAddDecisionStrings(userId), ...this.getAttackDecisionStrings(userId), ...this.getMoveDecisionStrings(userId)];
-                    if (allDecisionStrings.length > 0) {
-                        await interaction.editReply({
-                            content: 'You\'ve made the following decisions:\n'
-                                + allDecisionStrings.join('\n')
-                                + '\nYou can use the "Start Over" button to delete all of these and start over.',
-                            components: [{
-                                type: ComponentType.ActionRow,
-                                components: [{
-                                    type: ComponentType.Button,
-                                    label: 'Start Over',
-                                    style: ButtonStyle.Danger,
-                                    custom_id: 'game:clearAll'
-                                }]
-                            }]
-                        });
+                        throw new Error(`Your team doesn't own _${this.getTerritoryName(selectedTerritoryId)}_!`);
                     } else {
-                        await interaction.editReply('You don\'t have any actions lined up! Use the buttons in the channel to arrange some actions...');
+                        throw new Error(`You don't own _${this.getTerritoryName(selectedTerritoryId)}_!`);
                     }
-                    break;
                 }
-                case 'game:chooseTroopIcon': {
-                    // Validate that the user is allowed to pick a custom icon
-                    if (this.hasCustomTroopIcon(userId)) {
-                        throw new Error(`You already have a custom troop icon! You picked the **${this.getPlayerTroopIcon(userId)}**`);
-                    }
-                    if (!this.state.players[userId]?.maySelectCustomTroopIcon) {
-                        throw new Error('You don\'t have the privilege of picking a custom troop icon... how did you click this button?');
-                    }
-                    // Reply with a menu of all available troop icons
-                    await interaction.editReply({
-                        content: 'Please select from the following options (the selection is confirmed once you click the option in the drop-down, so be careful)',
-                        files: [await this.renderAvailableTroopIcons()],
-                        components: [{
-                            type: ComponentType.ActionRow,
-                            components: [{
-                                type: ComponentType.StringSelect,
-                                custom_id: 'game:selectTroopIcon',
-                                min_values: 1,
-                                max_values: 1,
-                                options: this.getAvailableTroopIconSelectOptions()
-                            }]
-                        }]
-                    });
-                    break;
+                // Validate the pending decision
+                const additionsRemaining = this.getPlayerNewTroops(userId) - this.getPlayerNumPendingAdditions(userId);
+                if (additionsRemaining <= 0) {
+                    throw new Error('You\'ve already spent this week\'s troop allowance! Click "Start Over" to clear your decisions');
                 }
-                case 'game:help': {
+                // Add the pending decision
+                if (!this.state.addDecisions[userId]) {
+                    this.state.addDecisions[userId] = [];
+                }
+                const pendingAdditions = this.state.addDecisions[userId];
+                pendingAdditions.push(selectedTerritoryId);
+                // Repond with a prompt to do more
+                await interaction.editReply(this.getAddDecisionReply(userId));
+                break;
+            }
+            case 'selectMoveFrom': {
+                // First, validate that move decisions are being accepted
+                if (!this.state.moveDecisions) {
+                    throw new Error('I\'m not accepting any decisions related to _moving troops_ right now...');
+                }
+                // Instantiate the pending move if it's missing
+                if (!this.pendingMoveDecisions[userId]) {
+                    this.pendingMoveDecisions[userId] = {};
+                }
+                // Validate the selected source territory
+                // TODO: Validate that the player can move any troops from this territory
+                const territoryId = selectedValues[0];
+                if (this.getTerritoryOwner(territoryId) !== userId) {
+                    throw new Error(`You can't move troops from _${this.getTerritoryName(territoryId)}_, you don't own that territory!`);
+                }
+                // Add to the pending decision
+                const pendingMove = this.pendingMoveDecisions[userId];
+                pendingMove.from = territoryId;
+                // Delete the subsequent 2 properties to ensure it's not filled in backward
+                delete pendingMove.to;
+                delete pendingMove.quantity;
+                // Respond with a prompt to do more
+                await interaction.editReply(this.getMoveDecisionReply(userId));
+                break;
+            }
+            case 'selectMoveTo': {
+                // First, validate that move decisions are being accepted
+                if (!this.state.moveDecisions) {
+                    throw new Error('I\'m not accepting any decisions related to _moving troops_ right now...');
+                }
+                // Instantiate the pending move if it's missing
+                if (!this.pendingMoveDecisions[userId]) {
+                    this.pendingMoveDecisions[userId] = {};
+                }
+                // Validate the selected destination territory
+                const territoryId = selectedValues[0];
+                if (this.getTerritoryOwner(territoryId) !== userId) {
+                    throw new Error(`You can't move troops to _${this.getTerritoryName(territoryId)}_, you don't own that territory!`);
+                }
+                // Add to the pending decision
+                const pendingMove = this.pendingMoveDecisions[userId];
+                pendingMove.to = territoryId;
+                // Delete the subsequent property to ensure it's not filled in backward
+                delete pendingMove.quantity;
+                // Respond with a prompt to do more
+                await interaction.editReply(this.getMoveDecisionReply(userId));
+                break;
+            }
+            case 'selectMoveQuantity': {
+                // First, validate that move decisions are being accepted
+                if (!this.state.moveDecisions) {
+                    throw new Error('I\'m not accepting any decisions related to _moving troops_ right now...');
+                }
+                // Instantiate the pending move if it's missing
+                if (!this.pendingMoveDecisions[userId]) {
+                    this.pendingMoveDecisions[userId] = {};
+                }
+                // Validate the selected quantity
+                // TODO: Validate that the quantity is possible with the selected source territory
+                const quantity = parseInt(selectedValues[0]);
+                if (isNaN(quantity) || quantity < 1) {
+                    throw new Error(`\`${quantity}\` is an invalid quantity of troops!`);
+                }
+                // Add to the pending decision
+                const pendingMove = this.pendingMoveDecisions[userId];
+                pendingMove.quantity = quantity;
+                // Respond with a prompt to do more
+                await interaction.editReply(this.getMoveDecisionReply(userId));
+                break;
+            }
+            case 'selectAttackFrom': {
+                // First, validate that attack decisions are being accepted
+                if (!this.state.attackDecisions) {
+                    throw new Error('I\'m not accepting any decisions related to _attacking_ right now...');
+                }
+                // Instantiate the pending attack if it's missing
+                if (!this.pendingAttackDecisions[userId]) {
+                    this.pendingAttackDecisions[userId] = {};
+                }
+                // Validate the selected source territory
+                // TODO: Validate that the player can use any troops from this territory to attack
+                const territoryId = selectedValues[0];
+                if (this.getTerritoryOwner(territoryId) !== userId) {
+                    throw new Error(`You can't use troops from _${this.getTerritoryName(territoryId)}_ to attack, you don't own that territory!`);
+                }
+                // Add to the pending decision
+                const pendingAttack = this.pendingAttackDecisions[userId];
+                pendingAttack.from = territoryId;
+                // Delete the subsequent 2 properties to ensure it's not filled in backward
+                delete pendingAttack.to;
+                delete pendingAttack.quantity;
+                // Respond with a prompt to do more
+                await interaction.editReply(this.getAttackDecisionReply(userId));
+                break;
+            }
+            case 'selectAttackTo': {
+                // First, validate that attack decisions are being accepted
+                if (!this.state.attackDecisions) {
+                    throw new Error('I\'m not accepting any decisions related to _attacking_ right now...');
+                }
+                // Instantiate the pending attack if it's missing
+                if (!this.pendingAttackDecisions[userId]) {
+                    this.pendingAttackDecisions[userId] = {};
+                }
+                // Validate the selected target territory
+                const territoryId = selectedValues[0];
+                if (this.getTerritoryOwner(territoryId) === userId) {
+                    throw new Error(`You can't attack _${this.getTerritoryName(territoryId)}_, that's your own territory!`);
+                }
+                const pendingAttack = this.pendingAttackDecisions[userId];
+                if (pendingAttack.from && this.hasAttackDecision(pendingAttack.from, territoryId)) {
+                    // Delete the pending decision to avoid softlocking
+                    delete this.pendingAttackDecisions[userId];
+                    throw new Error(`You can't attack _${this.getTerritoryName(territoryId)}_ from _${this.getTerritoryName(pendingAttack.from)}_, such an attack has already been planned!`);
+                }
+                // Add to the pending decision
+                pendingAttack.to = territoryId;
+                // Delete the subsequent property to ensure it's not filled in backward
+                delete pendingAttack.quantity;
+                // Respond with a prompt to do more
+                await interaction.editReply(this.getAttackDecisionReply(userId));
+                break;
+            }
+            case 'selectAttackQuantity': {
+                // First, validate that attack decisions are being accepted
+                if (!this.state.attackDecisions) {
+                    throw new Error('I\'m not accepting any decisions related to _attacking_ right now...');
+                }
+                // Instantiate the pending attack if it's missing
+                if (!this.pendingAttackDecisions[userId]) {
+                    this.pendingAttackDecisions[userId] = {};
+                }
+                // Validate the selected quantity
+                // TODO: Validate that the quantity is possible with the selected source territory
+                const quantity = parseInt(selectedValues[0]);
+                if (isNaN(quantity) || quantity < 1) {
+                    throw new Error(`\`${quantity}\` is an invalid quantity of troops!`);
+                }
+                // Add to the pending decision
+                const pendingAttack = this.pendingAttackDecisions[userId];
+                pendingAttack.quantity = quantity;
+                // Respond with a prompt to do more
+                await interaction.editReply(this.getAttackDecisionReply(userId));
+                break;
+            }
+            case 'selectTroopIcon': {
+                // Validate that the user is allowed to select a custom icon
+                if (this.hasCustomTroopIcon(userId)) {
+                    throw new Error(`You already have a custom troop icon! You picked the **${this.getPlayerTroopIcon(userId)}**`);
+                }
+                if (!this.state.players[userId]?.maySelectCustomTroopIcon) {
+                    throw new Error('You don\'t have the privilege of selecting a custom troop icon... how did you find this menu?');
+                }
+                // Validate the value
+                const value = selectedValues[0];
+                if (!RiskGame.config.customTroopIcons.includes(value)) {
+                    throw new Error(`**${value}** is not a valid option! (please see admin)`);
+                }
+                if (this.isTroopIconClaimed(value)) {
+                    throw new Error(`**${value}** has already been claimed. Pick a different one!`);
+                }
+                // Update the state and wipe the flag
+                this.setPlayerTroopIcon(userId, value);
+                delete this.state.players[userId].maySelectCustomTroopIcon;
+                // Confirm the selection
+                await interaction.editReply(`Confirmed! You have selected the **${this.getPlayerTroopIcon(userId)}** as your custom troop icon`);
+                break;
+            }
+            case 'selectHelpOption': {
+                const value = selectedValues[0];
+                const helpOption = RiskGame.config.help[value];
+                if (helpOption) {
+                    const { question, answer } = helpOption;
                     await interaction.editReply({
-                        content: 'What would you like help with?',
+                        content: `**Q:** _${question}_`
+                            + `\n**A:** ${answer}`
+                            + '\nWhat else would you like help with?',
                         components: this.getHelpOptionsActionRow()
                     });
-                    break;
+                } else {
+                    await interaction.editReply('I don\'t recognize that help option...');
                 }
-            }
-        } else if (interaction.isStringSelectMenu()) {
-            const customId = interaction.customId;
-            switch (customId) {
-                case 'game:selectColor': {
-                    // Do basic validation before processing
-                    const draft = this.state.draft;
-                    if (!draft) {
-                        throw new Error('The draft has already ended, why are you clicking this?');
-                    }
-                    const playerDraftInfo = draft[userId];
-                    if (!playerDraftInfo) {
-                        throw new Error('You\'re not in the game... yet?');
-                    }
-                    if (!playerDraftInfo.available) {
-                        throw new Error('It\'s not your turn to draft, silly!');
-                    }
-                    // Validate the player's selected color
-                    const color = interaction.values[0];
-                    if (!color) {
-                        throw new Error('You were supposed to choose a color! (see admin)');
-                    }
-                    if (this.isColorClaimed(color)) {
-                        throw new Error(`**${RiskGame.config.colors[color] ?? 'That color'}** has already been claimed. Pick another color!`);
-                    }
-                    // Save the color as a pending color decision
-                    this.pendingColorSelections[userId] = color;
-                    // Now, prompt for them to choose a starting location
-                    await interaction.editReply({
-                        content: `You've selected **${RiskGame.config.colors[color] ?? color}**. Now, where would you like to start?`,
-                        components: [{
-                            type: ComponentType.ActionRow,
-                            components: [{
-                                type: ComponentType.StringSelect,
-                                custom_id: 'game:selectStartingLocation',
-                                min_values: 1,
-                                max_values: 1,
-                                options: this.getTerritorySelectOptions(this.getOwnerlessTerritories())
-                            }]
-                        }]
-                    });
-                    break;
-                }
-                case 'game:selectStartingLocation': {
-                    // Do basic validation before processing
-                    const draft = this.state.draft;
-                    if (!draft) {
-                        throw new Error('The draft has already ended, why are you clicking this?');
-                    }
-                    const playerDraftInfo = draft[userId];
-                    if (!playerDraftInfo) {
-                        throw new Error('You\'re not in the game... yet?');
-                    }
-                    if (!playerDraftInfo.available) {
-                        throw new Error('It\'s not your turn to draft, silly!');
-                    }
-                    // Validate the player's selected location
-                    const territoryId = interaction.values[0];
-                    if (!territoryId) {
-                        throw new Error('Ummmmm... you were supposed to select a territory...');
-                    }
-                    const existingOwnerId = this.getTerritoryOwner(territoryId);
-                    if (existingOwnerId) {
-                        throw new Error(`You can't select _${this.getTerritoryName(territoryId)}_, it's already been claimed by ${this.getPlayerDisplayName(existingOwnerId)}!`);
-                    }
-                    // Validate the pending selected color too, since it may have been claimed since the last interaction
-                    const color = this.pendingColorSelections[userId];
-                    if (!color) {
-                        throw new Error('You were supposed to choose a color! (see admin)');
-                    }
-                    if (this.isColorClaimed(color)) {
-                        throw new Error(`**${RiskGame.config.colors[color] ?? 'That color'}** has already been claimed. Go back and pick another color!`);
-                    }
-                    // Confirm the selected color and location
-                    this.state.players[userId].color = color;
-                    this.state.territories[territoryId].owner = userId;
-                    this.state.territories[territoryId].troops = 1;
-                    // Delete the pending color selection and mark this player as draft-complete
-                    delete this.pendingColorSelections[userId];
-                    delete draft[userId].available;
-                    // Reply to the interaction
-                    await interaction.editReply(`You have selected _${this.getTerritoryName(territoryId)}_!`);
-                    // Reply for the entire channel to see
-                    const selectionPhrase = randChoice('has set up camp at', 'has selected', 'has posted up at', 'has set up shop at', 'chose', 'has chosen', 'is starting at');
-                    return {
-                        public: [{
-                            content: `<@${userId}> ${selectionPhrase} _${this.getTerritoryName(territoryId)}_!`,
-                            files: [await this.renderBasicMap()]
-                        }]
-                    };
-                }
-                case 'game:selectAdd': {
-                    // First, validate that add decisions are being accepted
-                    if (!this.state.addDecisions) {
-                        throw new Error('I\'m not accepting any decisions related to _adding troops_ right now...');
-                    }
-                    // Validate that the selected territory belong's to this user's team
-                    const selectedTerritoryId = interaction.values[0];
-                    if (this.getTerritoryOwner(selectedTerritoryId) !== this.getPlayerTeam(userId)) {
-                        if (this.isPlayerEliminated(userId)) {
-                            throw new Error(`Your team doesn't own _${this.getTerritoryName(selectedTerritoryId)}_!`);
-                        } else {
-                            throw new Error(`You don't own _${this.getTerritoryName(selectedTerritoryId)}_!`);
-                        }
-                    }
-                    // Validate the pending decision
-                    const additionsRemaining = this.getPlayerNewTroops(userId) - this.getPlayerNumPendingAdditions(userId);
-                    if (additionsRemaining <= 0) {
-                        throw new Error('You\'ve already spent this week\'s troop allowance! Click "Start Over" to clear your decisions');
-                    }
-                    // Add the pending decision
-                    if (!this.state.addDecisions[userId]) {
-                        this.state.addDecisions[userId] = [];
-                    }
-                    const pendingAdditions = this.state.addDecisions[userId];
-                    pendingAdditions.push(selectedTerritoryId);
-                    // Repond with a prompt to do more
-                    await interaction.editReply(this.getAddDecisionReply(userId));
-                    break;
-                }
-                case 'game:selectMoveFrom': {
-                    // First, validate that move decisions are being accepted
-                    if (!this.state.moveDecisions) {
-                        throw new Error('I\'m not accepting any decisions related to _moving troops_ right now...');
-                    }
-                    // Instantiate the pending move if it's missing
-                    if (!this.pendingMoveDecisions[userId]) {
-                        this.pendingMoveDecisions[userId] = {};
-                    }
-                    // Validate the selected source territory
-                    // TODO: Validate that the player can move any troops from this territory
-                    const territoryId = interaction.values[0];
-                    if (this.getTerritoryOwner(territoryId) !== userId) {
-                        throw new Error(`You can't move troops from _${this.getTerritoryName(territoryId)}_, you don't own that territory!`);
-                    }
-                    // Add to the pending decision
-                    const pendingMove = this.pendingMoveDecisions[userId];
-                    pendingMove.from = territoryId;
-                    // Delete the subsequent 2 properties to ensure it's not filled in backward
-                    delete pendingMove.to;
-                    delete pendingMove.quantity;
-                    // Respond with a prompt to do more
-                    await interaction.editReply(this.getMoveDecisionReply(userId));
-                    break;
-                }
-                case 'game:selectMoveTo': {
-                    // First, validate that move decisions are being accepted
-                    if (!this.state.moveDecisions) {
-                        throw new Error('I\'m not accepting any decisions related to _moving troops_ right now...');
-                    }
-                    // Instantiate the pending move if it's missing
-                    if (!this.pendingMoveDecisions[userId]) {
-                        this.pendingMoveDecisions[userId] = {};
-                    }
-                    // Validate the selected destination territory
-                    const territoryId = interaction.values[0];
-                    if (this.getTerritoryOwner(territoryId) !== userId) {
-                        throw new Error(`You can't move troops to _${this.getTerritoryName(territoryId)}_, you don't own that territory!`);
-                    }
-                    // Add to the pending decision
-                    const pendingMove = this.pendingMoveDecisions[userId];
-                    pendingMove.to = territoryId;
-                    // Delete the subsequent property to ensure it's not filled in backward
-                    delete pendingMove.quantity;
-                    // Respond with a prompt to do more
-                    await interaction.editReply(this.getMoveDecisionReply(userId));
-                    break;
-                }
-                case 'game:selectMoveQuantity': {
-                    // First, validate that move decisions are being accepted
-                    if (!this.state.moveDecisions) {
-                        throw new Error('I\'m not accepting any decisions related to _moving troops_ right now...');
-                    }
-                    // Instantiate the pending move if it's missing
-                    if (!this.pendingMoveDecisions[userId]) {
-                        this.pendingMoveDecisions[userId] = {};
-                    }
-                    // Validate the selected quantity
-                    // TODO: Validate that the quantity is possible with the selected source territory
-                    const quantity = parseInt(interaction.values[0]);
-                    if (isNaN(quantity) || quantity < 1) {
-                        throw new Error(`\`${quantity}\` is an invalid quantity of troops!`);
-                    }
-                    // Add to the pending decision
-                    const pendingMove = this.pendingMoveDecisions[userId];
-                    pendingMove.quantity = quantity;
-                    // Respond with a prompt to do more
-                    await interaction.editReply(this.getMoveDecisionReply(userId));
-                    break;
-                }
-                case 'game:selectAttackFrom': {
-                    // First, validate that attack decisions are being accepted
-                    if (!this.state.attackDecisions) {
-                        throw new Error('I\'m not accepting any decisions related to _attacking_ right now...');
-                    }
-                    // Instantiate the pending attack if it's missing
-                    if (!this.pendingAttackDecisions[userId]) {
-                        this.pendingAttackDecisions[userId] = {};
-                    }
-                    // Validate the selected source territory
-                    // TODO: Validate that the player can use any troops from this territory to attack
-                    const territoryId = interaction.values[0];
-                    if (this.getTerritoryOwner(territoryId) !== userId) {
-                        throw new Error(`You can't use troops from _${this.getTerritoryName(territoryId)}_ to attack, you don't own that territory!`);
-                    }
-                    // Add to the pending decision
-                    const pendingAttack = this.pendingAttackDecisions[userId];
-                    pendingAttack.from = territoryId;
-                    // Delete the subsequent 2 properties to ensure it's not filled in backward
-                    delete pendingAttack.to;
-                    delete pendingAttack.quantity;
-                    // Respond with a prompt to do more
-                    await interaction.editReply(this.getAttackDecisionReply(userId));
-                    break;
-                }
-                case 'game:selectAttackTo': {
-                    // First, validate that attack decisions are being accepted
-                    if (!this.state.attackDecisions) {
-                        throw new Error('I\'m not accepting any decisions related to _attacking_ right now...');
-                    }
-                    // Instantiate the pending attack if it's missing
-                    if (!this.pendingAttackDecisions[userId]) {
-                        this.pendingAttackDecisions[userId] = {};
-                    }
-                    // Validate the selected target territory
-                    const territoryId = interaction.values[0];
-                    if (this.getTerritoryOwner(territoryId) === userId) {
-                        throw new Error(`You can't attack _${this.getTerritoryName(territoryId)}_, that's your own territory!`);
-                    }
-                    const pendingAttack = this.pendingAttackDecisions[userId];
-                    if (pendingAttack.from && this.hasAttackDecision(pendingAttack.from, territoryId)) {
-                        // Delete the pending decision to avoid softlocking
-                        delete this.pendingAttackDecisions[userId];
-                        throw new Error(`You can't attack _${this.getTerritoryName(territoryId)}_ from _${this.getTerritoryName(pendingAttack.from)}_, such an attack has already been planned!`);
-                    }
-                    // Add to the pending decision
-                    pendingAttack.to = territoryId;
-                    // Delete the subsequent property to ensure it's not filled in backward
-                    delete pendingAttack.quantity;
-                    // Respond with a prompt to do more
-                    await interaction.editReply(this.getAttackDecisionReply(userId));
-                    break;
-                }
-                case 'game:selectAttackQuantity': {
-                    // First, validate that attack decisions are being accepted
-                    if (!this.state.attackDecisions) {
-                        throw new Error('I\'m not accepting any decisions related to _attacking_ right now...');
-                    }
-                    // Instantiate the pending attack if it's missing
-                    if (!this.pendingAttackDecisions[userId]) {
-                        this.pendingAttackDecisions[userId] = {};
-                    }
-                    // Validate the selected quantity
-                    // TODO: Validate that the quantity is possible with the selected source territory
-                    const quantity = parseInt(interaction.values[0]);
-                    if (isNaN(quantity) || quantity < 1) {
-                        throw new Error(`\`${quantity}\` is an invalid quantity of troops!`);
-                    }
-                    // Add to the pending decision
-                    const pendingAttack = this.pendingAttackDecisions[userId];
-                    pendingAttack.quantity = quantity;
-                    // Respond with a prompt to do more
-                    await interaction.editReply(this.getAttackDecisionReply(userId));
-                    break;
-                }
-                case 'game:selectTroopIcon': {
-                    // Validate that the user is allowed to select a custom icon
-                    if (this.hasCustomTroopIcon(userId)) {
-                        throw new Error(`You already have a custom troop icon! You picked the **${this.getPlayerTroopIcon(userId)}**`);
-                    }
-                    if (!this.state.players[userId]?.maySelectCustomTroopIcon) {
-                        throw new Error('You don\'t have the privilege of selecting a custom troop icon... how did you find this menu?');
-                    }
-                    // Validate the value
-                    const value = interaction.values[0];
-                    if (!RiskGame.config.customTroopIcons.includes(value)) {
-                        throw new Error(`**${value}** is not a valid option! (please see admin)`);
-                    }
-                    if (this.isTroopIconClaimed(value)) {
-                        throw new Error(`**${value}** has already been claimed. Pick a different one!`);
-                    }
-                    // Update the state and wipe the flag
-                    this.setPlayerTroopIcon(userId, value);
-                    delete this.state.players[userId].maySelectCustomTroopIcon;
-                    // Confirm the selection
-                    await interaction.editReply(`Confirmed! You have selected the **${this.getPlayerTroopIcon(userId)}** as your custom troop icon`);
-                    break;
-                }
-                case 'game:selectHelpOption': {
-                    const value = interaction.values[0];
-                    const helpOption = RiskGame.config.help[value];
-                    if (helpOption) {
-                        const { question, answer } = helpOption;
-                        await interaction.editReply({
-                            content: `**Q:** _${question}_`
-                                + `\n**A:** ${answer}`
-                                + '\nWhat else would you like help with?',
-                            components: this.getHelpOptionsActionRow()
-                        });
-                    } else {
-                        await interaction.editReply('I don\'t recognize that help option...');
-                    }
-                    break;
-                }
+                break;
             }
         }
     }
 
-    private getAddDecisionReply(userId: Snowflake): InteractionReplyOptions {
+    private getAddDecisionReply(userId: Snowflake): InteractionEditReplyOptions {
         if (!this.state.addDecisions) {
             throw new Error('I\'m not accepting any decisions related to _adding troops_ right now...');
         }
@@ -3606,7 +3609,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         }
         content += `\nYou can place **${additionsRemaining}** more.`
         // If the player has remaining troops to add, show a territory select
-        const components: APIActionRowComponent<APIMessageActionRowComponent>[] = [];
+        const components: APIMessageTopLevelComponent[] = [];
         if (additionsRemaining > 0) {
             components.push({
                 type: ComponentType.ActionRow,
@@ -3636,13 +3639,12 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             }]
         });
         return {
-            ephemeral: true,
             content,
             components
         };
     }
 
-    private getMoveDecisionReply(userId: Snowflake): InteractionReplyOptions {
+    private getMoveDecisionReply(userId: Snowflake): InteractionEditReplyOptions {
         if (!this.state.moveDecisions) {
             throw new Error('I\'m not accepting any decisions related to _moving troops_ right now...');
         }
@@ -3657,7 +3659,6 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             const validSources = this.getValidMovementSourceTerritoriesForPlayer(userId);
             if (validSources.length > 0) {
                 return {
-                    ephemeral: true,
                     content: 'From where would you like to move troops?',
                     components: [{
                         type: ComponentType.ActionRow,
@@ -3675,7 +3676,6 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 // Clear the pending move to avoid softlocking
                 delete this.pendingMoveDecisions[userId];
                 return {
-                    ephemeral: true,
                     content: 'There are no territories from which you can move troops. Sorry...'
                 };
             }
@@ -3687,7 +3687,6 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 .filter(territoryId => this.getTerritoryOwner(territoryId) === userId);
             if (validDestinations.length > 0) {
                 return {
-                    ephemeral: true,
                     content: `Where should the troops from _${this.getTerritoryName(pendingMove.from)}_ move to?`,
                     components: [{
                         type: ComponentType.ActionRow,
@@ -3705,7 +3704,6 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 // Clear the pending move to avoid softlocking
                 delete this.pendingMoveDecisions[userId];
                 return {
-                    ephemeral: true,
                     content: `There are no valid destinations near _${this.getTerritoryName(pendingMove.from)}_. Sorry...`
                 };
             }
@@ -3717,7 +3715,6 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             const options = this.getQuantitySelectOptions(numTroops);
             if (options.length > 0) {
                 return {
-                    ephemeral: true,
                     content: `How many troops would you like to move from _${this.getTerritoryName(pendingMove.from)}_ to _${this.getTerritoryName(pendingMove.to)}_?`,
                     components: [{
                         type: ComponentType.ActionRow,
@@ -3735,7 +3732,6 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 // Clear the pending move to avoid softlocking
                 delete this.pendingMoveDecisions[userId];
                 return {
-                    ephemeral: true,
                     content: `_${this.getTerritoryName(pendingMove.from)}_ doesn't have enough troops to move. Sorry...`
                 };
             }
@@ -3749,7 +3745,6 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         // Now, show them their decision
         // TODO: Fill out
         return {
-            ephemeral: true,
             content: 'You have chosen the following _move_ action:\n'
                 + this.getMoveDecisionStrings(userId).join('\n')
                 + '\nYou can use the "Start Over" button to delete or change this action.',
@@ -3770,7 +3765,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         };
     }
 
-    private getAttackDecisionReply(userId: Snowflake): InteractionReplyOptions {
+    private getAttackDecisionReply(userId: Snowflake): InteractionEditReplyOptions {
         if (!this.state.attackDecisions) {
             throw new Error('I\'m not accepting any decisions related to _attacking_ right now...');
         }
@@ -3785,7 +3780,6 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             const validSources = this.getValidAttackSourceTerritoriesForPlayer(userId);
             if (validSources.length > 0) {
                 return {
-                    ephemeral: true,
                     content: 'Which territory will launch the attack?',
                     components: [{
                         type: ComponentType.ActionRow,
@@ -3804,7 +3798,6 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 // Clear the pending attack to avoid softlocking
                 delete this.pendingAttackDecisions[userId];
                 return {
-                    ephemeral: true,
                     content: 'There are no territories from which you can attack. Sorry...'
                 };
             }
@@ -3818,7 +3811,6 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 .filter(target => !this.hasAttackDecision(pendingAttackFrom, target));
             if (validTargets.length > 0) {
                 return {
-                    ephemeral: true,
                     content: `Which territory will be attacked by _${this.getTerritoryName(pendingAttack.from)}_?`,
                     components: [{
                         type: ComponentType.ActionRow,
@@ -3836,7 +3828,6 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 // Clear the pending attack to avoid softlocking
                 delete this.pendingAttackDecisions[userId];
                 return {
-                    ephemeral: true,
                     content: `There are no territories that _${this.getTerritoryName(pendingAttack.from)}_ can attack. Sorry...`
                 };
             }
@@ -3848,7 +3839,6 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             const options = this.getQuantitySelectOptions(numTroops);
             if (options.length > 0) {
                 return {
-                    ephemeral: true,
                     content: `How many troops from _${this.getTerritoryName(pendingAttack.from)}_ will be attacking _${this.getTerritoryName(pendingAttack.to)}_? (one must be left behind)`,
                     components: [{
                         type: ComponentType.ActionRow,
@@ -3866,7 +3856,6 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 // Clear the pending attack to avoid softlocking
                 delete this.pendingAttackDecisions[userId];
                 return {
-                    ephemeral: true,
                     content: `_${this.getTerritoryName(pendingAttack.from)}_ doesn't have enough troops to stage an attack. Sorry...`
                 };
             }
@@ -3884,7 +3873,6 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         // Now, show them their decision
         // TODO: Fill out
         return {
-            ephemeral: true,
             content: 'You have chosen the following _attack_ actions:\n'
                 + this.getAttackDecisionStrings(userId).join('\n')
                 + '\nYou can use the "Start Over" button to delete or change these actions.',
@@ -4029,7 +4017,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         }));
     }
 
-    private getHelpOptionsActionRow(): APIActionRowComponent<APIMessageActionRowComponent>[] {
+    private getHelpOptionsActionRow(): APIMessageTopLevelComponent[] {
         return [{
             type: ComponentType.ActionRow,
             components: [{

@@ -1249,6 +1249,11 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
     private async handleBid(type: AuctionType, interaction: ButtonInteraction) {
         const userId = interaction.user.id;
         const auction = this.state.auctions[type];
+        // Validate that the interaction channel is sendable
+        if (!interaction.channel || !interaction.channel.isSendable()) {
+            await interaction.editReply('This action should\'ve happened in a "Sendable" channel (see admin)');
+            return;
+        }
         // Ensure the auction exists and is active
         if (!auction || !auction.active) {
             await interaction.editReply(`You can't place a bid right now, as there's no active ${type} auction!`);
@@ -1286,11 +1291,11 @@ export default class MasterpieceGame extends AbstractGame<MasterpieceGameState> 
         const pieceId = auction.pieceId;
         const pieceName = this.getPiece(pieceId).name;
         await interaction.editReply(`You've placed a bid on _"${pieceName}"_!`);
-        await interaction.channel?.send({
+        await interaction.channel.send({
             content: `<@${userId}> has raised the bid on _"${pieceName}"_ to **$${bidAmount}**!`,
             flags: MessageFlags.SuppressNotifications
         });
-        await interaction.channel?.send({
+        await interaction.channel.send({
             content: `**$${bidAmount + 1}**, anyone?`,
             components: [{
                 type: ComponentType.ActionRow,

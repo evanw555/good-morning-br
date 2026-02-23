@@ -1,6 +1,6 @@
 {
     "name": "good-morning-br",
-    "version": "2.10.96",
+    "version": "2.10.97",
     "description": "Saying \"good morning\" is now a feature-rich Battle Royale experience!",
     "main": "./build/bot.js",
     "author": "Evan Williams",
@@ -8,7 +8,7 @@
         "node": "18.20.4"
     },
     "dependencies": {
-        "discord.js": "14.15.3",
+        "discord.js": "14.24.1",
         "canvas": "2.9.2",
         "evanw555.js": "evanw555/evanw555.js",
         "node-canvas-utils": "evanw555/node-canvas-utils",

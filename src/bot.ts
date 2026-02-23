@@ -1,4 +1,4 @@
-import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, BaseMessageOptions, ButtonStyle, Client, ComponentType, DMChannel, GatewayIntentBits, MessageFlags, PartialMessage, Partials, TextChannel, TextInputStyle, User } from 'discord.js';
+import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, BaseMessageOptions, ButtonStyle, Client, ComponentType, DMChannel, GatewayIntentBits, MessageFlags, OmitPartialGroupDMChannel, PartialMessage, Partials, TextChannel, TextInputStyle, User } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discord.js';
 import { DailyEvent, DailyEventType, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, SubmissionPromptHistory, ReplyToMessageData, MessengerPayload, AnonymousSubmission, GamePlayerAddition, DecisionProcessingResult, FinalizeSungazerPollData, SpecialSungazerTermAward, MEDAL_TYPES } from './types';
 import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, getScaledPoints, getSimpleScaledPoints, text, getRelativeDotwCalendarDate } from './util';
@@ -2035,7 +2035,8 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         state.dequeueNextEvent();
 
         // If we're testing locally, simulate the prize award system by awarding a prize to a random user
-        if (config.testing && state.getEventType() === DailyEventType.GameDecision) {
+        const SEND_TEST_AWARDS = false;
+        if (SEND_TEST_AWARDS && config.testing && state.getEventType() === DailyEventType.GameDecision) {
             const [ randomUser1, randomUser2, randomUser3 ] = shuffle(state.getPlayers());
             if (chance(0.8)) {
                 if (randomUser1) {
@@ -3299,12 +3300,15 @@ client.on('interactionCreate', async (interaction): Promise<void> => {
         // If this is a generic game interaction, pass the handling off to the game instance
         if (rootCustomId === 'game') {
             if (state.hasGame()) {
-                // Defer now, since there's no guarantee how long game implementations will take to reply
-                // (Update ephemeral messages to avoid reply bloat)
-                if (interaction.isMessageComponent() && interaction.message.flags.has('Ephemeral')) {
-                    await interaction.deferUpdate();
-                } else {
-                    await interaction.deferReply({ ephemeral: true });
+                // Defer now, since there's no guarantee how long game implementations will take to reply.
+                // If special suffix is used, don't defer reply (useful for spawning modals)
+                if (!interaction.customId.endsWith(':!!!')) {
+                    // (Update ephemeral messages to avoid reply bloat)
+                    if (interaction.isMessageComponent() && interaction.message.flags.has('Ephemeral')) {
+                        await interaction.deferUpdate();
+                    } else {
+                        await interaction.deferReply({ ephemeral: true });
+                    }
                 }
                 // Handle the game interaction in the game state
                 try {
@@ -3443,7 +3447,7 @@ let tempDungeon: AbstractGame<GameState> | null = null;
 let awaitingGameCommands = false;
 let awaitingSubmission = false;
 
-const processCommands = async (msg: Message): Promise<void> => {
+const processCommands = async (msg: OmitPartialGroupDMChannel<Message<boolean>>): Promise<void> => {
     // First thing's first: force timeout commands
     const forceTimeoutPattern = /^\+?FORCE_TIMEOUT\(([A-Z_]+)\)/;
     const forceTimeoutMatch = msg.content.match(forceTimeoutPattern);
@@ -4090,7 +4094,7 @@ const processCommands = async (msg: Message): Promise<void> => {
     }
 };
 
-const safeProcessCommands = async (msg: Message): Promise<void> => {
+const safeProcessCommands = async (msg: OmitPartialGroupDMChannel<Message<boolean>>): Promise<void> => {
     try {
         await processCommands(msg);
     } catch (err) {
@@ -4125,7 +4129,7 @@ const extractMagicWord = (message: Message): string | undefined => {
 //         .filter(x => x);
 // }
 
-client.on('messageCreate', async (msg: Message): Promise<void> => {
+client.on('messageCreate', async (msg: OmitPartialGroupDMChannel<Message<boolean>>): Promise<void> => {
     const userId: Snowflake = msg.author.id;
     // Feed all incoming messages into the DM reply collector
     await dmReplyCollector.onMessage(msg);
