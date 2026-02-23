@@ -1402,7 +1402,7 @@ export default class CandyLandGame extends AbstractGame<CandyLandGameState> {
             winners,
             specialWinners: specialWinners.map((userId, i) => ({
                 userId,
-                terms: toFixed((n - i) / (n + 1), 3),
+                terms: toFixed((n - i) / (n + 1), 2),
                 description: i === 0
                     ? 'reaching Cute Scott\'s Candy Keep just moments too late to podium'
                     : `finishing in _${getRankString(i + 4)}_ on the final turn`
