@@ -252,6 +252,8 @@ export interface RiskConflictState {
     readonly attackers: RiskConflictAgentData[],
     // If omitted, then this conflict is a "circular" or "symmetric" conflict with no defenders
     defender?: RiskConflictAgentData,
+    /** The number of kills by each user in this conflict. If a user has multiple attack prongs, those get counted together. */
+    readonly kills: Record<Snowflake, number>,
     // The number of attackers at the time of conflict creation (this shouldn't change even if attackers are removed)
     readonly initialProngs: number
 }

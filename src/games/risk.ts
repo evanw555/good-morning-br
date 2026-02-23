@@ -1,8 +1,8 @@
-import { APIActionRowComponent, APIMessageTopLevelComponent, APISelectMenuOption, ActionRowData, AttachmentBuilder, ButtonStyle, ComponentType, GuildMember, Interaction, InteractionEditReplyOptions, InteractionReplyOptions, MessageActionRowComponentData, MessageFlags, ModalBuilder, Snowflake, heading } from "discord.js";
+import { APIActionRowComponent, APIMessageTopLevelComponent, APISelectMenuOption, ActionRowData, AttachmentBuilder, ButtonStyle, ComponentType, GuildMember, Interaction, InteractionEditReplyOptions, InteractionReplyOptions, LabelBuilder, MessageActionRowComponentData, MessageFlags, ModalBuilder, Snowflake, StringSelectMenuBuilder, heading } from "discord.js";
 import { DecisionProcessingResult, GamePlayerAddition, MessengerManifest, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 import { Canvas, Image, createCanvas } from "canvas";
-import { DiscordTimestampFormat, chance, findCycle, getDateBetween, getEvenlyShortened, getJoinedMentions, getMaxKey, getMinKey, getRankString, naturalJoin, randChoice, randInt, shuffle, shuffleWithDependencies, sum, toDiscordTimestamp, toFixed } from "evanw555.js";
+import { DiscordTimestampFormat, chance, findCycle, getDateBetween, getEvenlyShortened, getJoinedMentions, getMaxKey, getMaxKeys, getMinKey, getRankString, incrementProperty, naturalJoin, randChoice, randInt, s, shuffle, shuffleWithDependencies, sum, toDiscordTimestamp, toFixed, withoutDuplicates } from "evanw555.js";
 import { fillBackground, getTextLabel, joinCanvasesHorizontal, joinCanvasesVertical, resize, superimpose, toCircle, withDropShadow } from "node-canvas-utils";
 import { drawBackground, quantify, renderArrow, distance } from "../util";
 import { RiskGameState, RiskMovementData, RiskTerritoryState, RiskPlayerState, RiskConflictState, RiskPlannedAttack, RiskConflictAgentData } from "./types";
@@ -1607,13 +1607,22 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         });
         context.drawImage(titleImage, WIDTH * (3 / 16), (HEIGHT / 6) - (HEIGHT / 16));
 
-        // Draw the names of both participants
-        const NAME_HEIGHT = HEIGHT / 16;
+        // Draw the names and kills of both participants
+        const NAME_HEIGHT = HEIGHT / 12;
+        const KILLS_HEIGHT = HEIGHT / 16;
         const NAME_WIDTH = WIDTH / 3;
+        // Attacker
         const attackerNameLabel = getTextLabel(this.getPlayerDisplayName(attacker.userId), { width: NAME_WIDTH, height: NAME_HEIGHT, align: 'left' });
-        context.drawImage(attackerNameLabel, Math.round(AVATAR_MARGIN), Math.round(HEIGHT - NAME_HEIGHT - AVATAR_MARGIN));
+        context.drawImage(attackerNameLabel, Math.round(AVATAR_MARGIN), Math.round(HEIGHT - KILLS_HEIGHT - NAME_HEIGHT - AVATAR_MARGIN));
+        const attackerKills = conflict.kills[attacker.userId] ?? 0;
+        const attackerKillsLabel = getTextLabel(`${attackerKills} Kill${s(attackerKills)}`, { width: NAME_WIDTH, height: KILLS_HEIGHT, align: 'left' });
+        context.drawImage(attackerKillsLabel, Math.round(AVATAR_MARGIN), Math.round(HEIGHT - KILLS_HEIGHT - AVATAR_MARGIN));
+        // Defender
         const defenderNameLabel = getTextLabel(this.getPlayerDisplayName(defender.userId), { width: NAME_WIDTH, height: NAME_HEIGHT, align: 'right' });
-        context.drawImage(defenderNameLabel, Math.round(WIDTH - NAME_WIDTH - AVATAR_MARGIN), Math.round(HEIGHT - NAME_HEIGHT - AVATAR_MARGIN));
+        context.drawImage(defenderNameLabel, Math.round(WIDTH - NAME_WIDTH - AVATAR_MARGIN), Math.round(HEIGHT - KILLS_HEIGHT - NAME_HEIGHT - AVATAR_MARGIN));
+        const defenderKills = conflict.kills[defender.userId] ?? 0;
+        const defenderKillsLabel = getTextLabel(`${defenderKills} Kill${s(defenderKills)}`, { width: NAME_WIDTH, height: KILLS_HEIGHT, align: 'right' });
+        context.drawImage(defenderKillsLabel, Math.round(WIDTH - NAME_WIDTH - AVATAR_MARGIN), Math.round(HEIGHT - KILLS_HEIGHT - AVATAR_MARGIN));
 
         // Repost the entire canvas with a drop shadow on everything
         context.drawImage(withDropShadow(canvas), 0, 0);
@@ -1931,6 +1940,16 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 const troopLocations = this.getRandomTerritoryTroopLocations(territoryId, numTroops);
                 for (let i = 0; i < troopLocations.length; i++) {
                     const { x, y } = troopLocations[i];
+                    // If this is the first troop, draw it as an avatar instead
+                    // if (i === 0) {
+                    //     const ownerId = this.getTerritoryOwner(territoryId);
+                    //     if (ownerId) {
+                    //         const avatarWidth = troopsWidth * 1.5;
+                    //         const avatar = await this.getAvatar(ownerId);
+                    //         context.drawImage(avatar, x - avatarWidth / 2, y - avatarWidth / 2, avatarWidth, avatarWidth);
+                    //         continue;
+                    //     }
+                    // }
                     const newAddition = troopLocations.length - i <= additions;
                     const invading = troopLocations.length - i <= invadingTroops;
                     const moved = troopLocations.length - i <= movedTroops;
@@ -2495,6 +2514,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         if (this.state.currentConflict) {
             const conflict = this.state.currentConflict;
             const attackers = conflict.attackers;
+            const attackerUserIds = withoutDuplicates(attackers.map(a => a.userId));
             const defender = conflict.defender;
             // If the conflict is a standard conflict...
             if (defender) {
@@ -2515,12 +2535,14 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     if (attackerRolls[i] > defenderRolls[i]) {
                         defender.troops--;
                         defendersLost++;
+                        incrementProperty(conflict.kills, attacker.userId, 1);
                         this.addPlayerKills(attacker.userId, 1);
                         this.addPlayerDeaths(defender.userId, 1);
                         rollWinners.push('attacker');
                     } else {
                         attacker.troops--;
                         attackersLost++;
+                        incrementProperty(conflict.kills, defender.userId, 1);
                         this.addPlayerKills(defender.userId, 1);
                         this.addPlayerDeaths(attacker.userId, 1);
                         rollWinners.push('defender');
@@ -2623,13 +2645,66 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 }
                 // If it's an attacker victory...
                 if (defender.troops === 0) {
-                    // Award capture bonus to the attacker
-                    this.state.players[attacker.userId].captureBonus = true;
-                    // Update the troop counts of both territories
-                    this.setTerritoryTroops(defender.territoryId, attacker.troops);
-                    this.addTerritoryTroops(attacker.territoryId, -attacker.initialTroops);
+                    // First, determine who the capturer actually is (since it could be a different attacker)
+                    let topAttackerId: Snowflake;
+                    // If there was only attacker to begin with, they capture
+                    if (attackerUserIds.length === 1) {
+                        topAttackerId = attackerUserIds[0];
+                        summary += `${this.getPlayerDisplayName(topAttackerId)}** has defeated **${this.getPlayerDisplayName(defender.userId)}**, capturing _${this.getTerritoryName(defender.territoryId)}_!`;
+                    }
+                    // There are multiple attackers, so determine who gets to capture
+                    else {
+                        const highestKillAttackers = getMaxKeys(attackerUserIds, id => conflict.kills[id] ?? 0);
+                        let winnerReason: string;
+                        // If there's one clear highest-kill attacker, let them capture
+                        if (highestKillAttackers.length === 1) {
+                            topAttackerId = highestKillAttackers[0];
+                            const otherTopAttackers = highestKillAttackers.filter(id => id !== topAttackerId);
+                            const otherTopAttackerKills = otherTopAttackers.map(id => conflict.kills[id] ?? 0);
+                            winnerReason = `**${this.getPlayerDisplayName(topAttackerId)}** contributed the most kills (**${conflict.kills[topAttackerId] ?? 0}** > **${otherTopAttackerKills.join(',')}**)`;
+                        }
+                        // There's a tie, so prioritize the current attacker if possible
+                        else if (highestKillAttackers.includes(attacker.userId)) {
+                            const otherTopAttackers = highestKillAttackers.filter(id => id !== attacker.userId);
+                            topAttackerId = attacker.userId;
+                            winnerReason = `**${this.getPlayerDisplayName(topAttackerId)}** tied with ${this.getJoinedDisplayNames(otherTopAttackers)} for most kills (**${conflict.kills[topAttackerId] ?? 0}**) but landed the final kill`;
+                        }
+                        // Else, find another way to assign a capturer
+                        else {
+                            const highestTroopAndKillAttackers = getMaxKeys(highestKillAttackers, id => sum(conflict.attackers.filter(a => a.userId === id).map(a => a.initialTroops)));
+                            // If there's one top contributor, choose them
+                            if (highestTroopAndKillAttackers.length === 1) {
+                                topAttackerId = highestTroopAndKillAttackers[0];
+                                const otherTopAttackers = highestKillAttackers.filter(id => id !== topAttackerId);
+                                // TODO: Actually show the number of troops committed, would be convenient to add a common util for constructing a map from a list of keys and a value function
+                                winnerReason = `**${this.getPlayerDisplayName(topAttackerId)}** tied with ${this.getJoinedDisplayNames(otherTopAttackers)} for most kills (**${conflict.kills[topAttackerId] ?? 0}**) but contributed the most troops initially`;
+                            }
+                            // Else, just choose someone at random
+                            else {
+                                topAttackerId = randChoice(...highestTroopAndKillAttackers);
+                                const otherTopAttackers = highestTroopAndKillAttackers.filter(id => id !== topAttackerId);
+                                winnerReason = `**${this.getPlayerDisplayName(topAttackerId)}** tied with ${this.getJoinedDisplayNames(otherTopAttackers)} for most kills AND most initial troops yet has the favor of RNJesus`
+                            }
+                        }
+                        // Use the reason to construct the summary text
+                        summary += `**${this.getPlayerDisplayName(defender.userId)}** has been defeated! ${winnerReason}, so they are awarded the capture of _${this.getTerritoryName(defender.territoryId)}_`
+                    }
+                    // Determine the capturing agent (by max remaining troops)
+                    // TODO: ALL the winner's troops should capture the territory
+                    // const capturer = getMaxKey(conflict.attackers.filter(a => a.userId === topAttackerId), a => a.troops);
+                    const capturerId = topAttackerId;
+                    // const capturerId = capturer.userId;
+                    // Award capture bonus to the capturer
+                    this.state.players[capturerId].captureBonus = true;
+                    // Update the troop counts of all relevant territories (note that the current attacker has been popped off the queue)
+                    const capturerAgents = [attacker, ...conflict.attackers].filter(a => a.userId === capturerId);
+                    this.setTerritoryTroops(defender.territoryId, 0);
+                    for (const capturer of capturerAgents) {
+                        this.addTerritoryTroops(defender.territoryId, capturer.troops);
+                        this.addTerritoryTroops(capturer.territoryId, -capturer.initialTroops);
+                    }
                     // Update the ownership of the target territory
-                    this.state.territories[defender.territoryId].owner = attacker.userId;
+                    this.state.territories[defender.territoryId].owner = capturerId;
                     // If the defender is now eliminated, handle that
                     const extraSummaries: MessengerPayload[] = [];
                     // TODO: Can we somehow handle the NPC defender case more properly?
@@ -2640,50 +2715,52 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                         const inheritedVassals = this.getPlayerVassals(defender.userId);
                         extraSummaries.push({
                             content: `**${this.getPlayerDisplayName(defender.userId)}** has been eliminated, finishing the season in **${this.getPlayerFinalRankString(defender.userId)}** place! `
-                                + `This player is now a vassal of **${this.getPlayerDisplayName(attacker.userId)}**`
+                                + `This player is now a vassal of **${this.getPlayerDisplayName(capturerId)}**`
                                 + (inheritedVassals.length === 0 ? '' : `, who hereby inherits their ${quantify(inheritedVassals.length, 'vassal')}`),
-                            files: [await this.renderElimination(defender.userId, attacker.userId, inheritedVassals)]
+                            files: [await this.renderElimination(defender.userId, capturerId, inheritedVassals)]
                         });
                         // Delete their color and assign them to the attacker's team
                         delete this.state.players[defender.userId].color;
-                        this.state.players[defender.userId].eliminator = attacker.userId;
+                        this.state.players[defender.userId].eliminator = capturerId;
                     }
                     // Remove any of the attacker's other armies from the attackers list
                     // TODO: This is a hacky way to filter elements from a readonly property, should we change this?
-                    const nf = attackers.length;
-                    for (let i = 0; i < nf; i++) {
-                        const e = attackers.shift();
-                        if (e && e.userId !== attacker.userId) {
-                            attackers.push(e);
-                        } else {
-                            void logger.log(`Removed other attacker at _${this.getTerritoryName(e?.territoryId ?? '')}_ from the ongoing conflict (same owner?)`);
-                        }
-                    }
-                    // If there are other remaining attackers, proceed with the conflict...
-                    if (attackers.length > 0) {
-                        // Set the winner as the new defender
-                        conflict.defender = {
-                            userId: attacker.userId,
-                            territoryId: defender.territoryId,
-                            initialTroops: attacker.troops,
-                            troops: attacker.troops
-                        };
-                        // Add an extra summary showing the updated invasion
-                        extraSummaries.push({
-                            content: `Now, **${this.getPlayerDisplayName(attacker.userId)}** must fend off the other ${quantify(attackers.length, 'attacking army')}...`,
-                            files: [await this.renderInvasion(conflict)],
-                            flags: MessageFlags.SuppressNotifications
-                        });
-                    }
-                    // Otherwise, delete the conflict
-                    else {
-                        delete this.state.currentConflict;
-                    }
+                    // const nf = attackers.length;
+                    // for (let i = 0; i < nf; i++) {
+                    //     const e = attackers.shift();
+                    //     if (e && e.userId !== attacker.userId) {
+                    //         attackers.push(e);
+                    //     } else {
+                    //         void logger.log(`Removed other attacker at _${this.getTerritoryName(e?.territoryId ?? '')}_ from the ongoing conflict (same owner?)`);
+                    //     }
+                    // }
+                    // // If there are other remaining attackers, proceed with the conflict...
+                    // if (attackers.length > 0) {
+                    //     // Set the winner as the new defender
+                    //     conflict.defender = {
+                    //         userId: attacker.userId,
+                    //         territoryId: defender.territoryId,
+                    //         initialTroops: attacker.troops,
+                    //         troops: attacker.troops
+                    //     };
+                    //     // Add an extra summary showing the updated invasion
+                    //     extraSummaries.push({
+                    //         content: `Now, **${this.getPlayerDisplayName(attacker.userId)}** must fend off the other ${quantify(attackers.length, 'attacking army')}...`,
+                    //         files: [await this.renderInvasion(conflict)],
+                    //         flags: MessageFlags.SuppressNotifications
+                    //     });
+                    // }
+                    // // Otherwise, delete the conflict
+                    // else {
+                    //     delete this.state.currentConflict;
+                    // }
+                    // Delete the conflict
+                    delete this.state.currentConflict;
                     // Send a message
                     return {
                         continueProcessing: true,
                         summary: {
-                            content: `${summary}**${this.getPlayerDisplayName(attacker.userId)}** has defeated **${this.getPlayerDisplayName(defender.userId)}**, capturing _${this.getTerritoryName(defender.territoryId)}_!`,
+                            content: summary,
                             files: [conflictRender],
                             flags: MessageFlags.SuppressNotifications
                         },
@@ -2730,6 +2807,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                         if (sourceRolls[j] > targetRolls[j]) {
                             target.troops--;
                             troopsLost[targetIndex]++;
+                            incrementProperty(conflict.kills, attacker.userId, 1);
                             this.addPlayerKills(attacker.userId, 1);
                             this.addPlayerDeaths(target.userId, 1);
                             this.addTerritoryDeaths(target.territoryId, 1);
@@ -2981,6 +3059,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     troops: a.actualQuantity
                 })),
                 defender: selectedDefender,
+                kills: {},
                 initialProngs: selectedAttacks.length
             };
             return {
@@ -3234,7 +3313,10 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 delete this.state.attackDecisions[userId];
                 delete this.state.moveDecisions[userId];
                 // Reply with a confirmation
-                await interaction.editReply('All your decisions have been erased! Use the buttons in the channel to arrange some new ones...');
+                await interaction.editReply({
+                    content: 'All your decisions have been erased! Use the buttons in the channel to arrange some new ones...',
+                    components: []
+                });
                 break;
             }
             case 'reviewDecisions': {
@@ -3368,8 +3450,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 // Delete the pending color selection and mark this player as draft-complete
                 delete this.pendingColorSelections[userId];
                 delete draft[userId].available;
-                // Reply to the interaction
-                await interaction.editReply(`You have selected _${this.getTerritoryName(territoryId)}_!`);
+                // Delete the interaction reply, as a public message is sent to confirm
+                await interaction.deleteReply();
                 // Reply for the entire channel to see
                 const selectionPhrase = randChoice('has set up camp at', 'has selected', 'has posted up at', 'has set up shop at', 'chose', 'has chosen', 'is starting at');
                 return {
