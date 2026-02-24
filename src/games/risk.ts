@@ -393,7 +393,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 unlockableConnections: ['Y'],
                 termini: {
                     M: { x: 653, y: 557 },
-                    O: { x: 577, y: 534 }
+                    O: { x: 577, y: 534 },
+                    Y: { x: 648, y: 661 }
                 }
             },
             Q: {
@@ -436,7 +437,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 connections: ['T'],
                 unlockableConnections: ['Y'],
                 termini: {
-                    T: { x: 85, y: 354 }
+                    T: { x: 85, y: 354 },
+                    Y: { x: 56, y: 385 }
                 }
             },
             T: {
@@ -453,7 +455,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 termini: {
                     I: { x: 160, y: 382 },
                     S: { x: 112, y: 366 },
-                    U: { x: 188, y: 434 }
+                    U: { x: 188, y: 434 },
+                    Y: { x: 131, y: 431 }
                 }
             },
             U: {
@@ -471,7 +474,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     I: { x: 225, y: 422 },
                     Q: { x: 239, y: 436 },
                     T: { x: 203, y: 457 },
-                    V: { x: 237, y: 507 }
+                    V: { x: 237, y: 507 },
+                    Y: { x: 207, y: 527 }
                 }
             },
             V: {
@@ -487,7 +491,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 unlockableConnections: ['Y'],
                 termini: {
                     U: { x: 263, y: 518 },
-                    W: { x: 357, y: 542 }
+                    W: { x: 357, y: 542 },
+                    Y: { x: 300, y: 568 }
                 }
             },
             W: {
@@ -518,7 +523,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 connections: ['W'],
                 unlockableConnections: ['Y'],
                 termini: {
-                    W: { x: 478, y: 587 }
+                    W: { x: 478, y: 587 },
+                    Y: { x: 472, y: 607 }
                 }
             },
             Y: {
@@ -533,7 +539,13 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 connections: ['W'],
                 unlockableConnections: ['P', 'S', 'T', 'U', 'V', 'X'],
                 termini: {
-                    W: { x: 180, y: 657 }
+                    P: { x: 179, y: 693 },
+                    S: { x: 59, y: 601 },
+                    T: { x: 75, y: 612 },
+                    U: { x: 89, y: 616 },
+                    V: { x: 155, y: 667 },
+                    W: { x: 180, y: 657 },
+                    X: { x: 175, y: 686 }
                 }
             }
         },
@@ -2009,12 +2021,18 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         context.drawImage(mapImage, 0, 0);
 
         // Draw unlocked connections
-        // TODO: Hand-draw dotted lines rather than using arrows
         for (const territoryId of this.getTerritories()) {
             const unlockedConnections = this.getUnlockedTerritoryConnections(territoryId);
             for (const otherTerritoryId of unlockedConnections) {
-                const [fromCoordinates, toCoordinates] = this.getTerritoryConnectionCoordinates(territoryId, otherTerritoryId);
-                renderArrow(context, fromCoordinates, toCoordinates, { thickness: 5, tailPadding: 32, tipPadding: 32 });
+                // Since connections are two-way, only fetch overlays if it's in alphabetical order
+                if (territoryId.localeCompare(otherTerritoryId) === -1) {
+                    // TODO: Update image loader to support nullable version if not found
+                    const overlay = await imageLoader.loadImage(`assets/risk/unlockable/${territoryId}${otherTerritoryId}.png`);
+                    context.drawImage(overlay, 0, 0, canvas.width, canvas.height);
+                }
+                // TODO: Arrows if we can somehow tell if the connection image is missing
+                // const [fromCoordinates, toCoordinates] = this.getTerritoryConnectionCoordinates(territoryId, otherTerritoryId);
+                // renderArrow(context, fromCoordinates, toCoordinates, { thickness: 5, tailPadding: 32, tipPadding: 32 });
             }
         }
 

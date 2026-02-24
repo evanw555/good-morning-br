@@ -30,7 +30,7 @@ class ImageLoader {
         } catch (err) {
             // If any fallbacks are specified, try the next one
             if (options?.fallbacks && options.fallbacks.length > 0) {
-                return this.loadImage(options.fallbacks[0], { fallbacks: options.fallbacks.slice(1)})
+                return this.loadImage(options.fallbacks[0], { fallbacks: options.fallbacks.slice(1)});
             }
             // Else, return the generic "broken" image
             if (key !== ImageLoader.BROKEN_IMAGE_PATH) {
