@@ -1581,14 +1581,19 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             backgroundImagePaths.push(`assets/risk/territories/${defender.territoryId}.png`);
         }
         backgroundImagePaths.push(
-            // Then, prioritize an image in the proper direction, but fallback to the opposite if not possible
+            // Then, prioritize an image in the proper direction
             `assets/risk/connections/${from}${to}.png`,
-            `assets/risk/connections/${to}${from}.png`,
-            // Use an image of the defending territory in case nothing else exists
+            // Before falling back to the reverse connection, try the defending territory
             `assets/risk/territories/${defender.territoryId}.png`,
-            // Ultimate generic fallback...
-            'assets/risk/usa.png'
+            // Fall back to the connection in reverse
+            `assets/risk/connections/${to}${from}.png`
         );
+        // Use an image of the attacking territories in case nothing else exists
+        for (const attacker of conflict.attackers) {
+            backgroundImagePaths.push(`assets/risk/territories/${attacker.territoryId}.png`);
+        }
+        // Ultimate generic fallback...
+        backgroundImagePaths.push('assets/risk/usa.png');
         const conflictImage = await imageLoader.loadImage(backgroundImagePaths[0], { fallbacks: backgroundImagePaths.slice(1) });
 
         const WIDTH = RiskGame.config.conflict.dimensions.width;
