@@ -97,7 +97,7 @@ export interface ReplyToMessageData {
     content?: string
 }
 
-export type SungazerPollType = 'submission-prompt' | 'game-type';
+export type SungazerPollType = 'submission-prompt' | 'game-type' | 'game-pre-decision';
 
 export interface FinalizeSungazerPollData {
     type: SungazerPollType,

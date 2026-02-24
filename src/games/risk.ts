@@ -1726,8 +1726,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
     }
 
     private async renderWeeklyPoints(entries: { userId: Snowflake, points: number, troops: number, territoryBonus: number, captureBonus: number, prizeBonus: number }[]): Promise<AttachmentBuilder> {
-        const ROW_HEIGHT = 24;
-        const MAX_BAR_WIDTH = 160;
+        const ROW_HEIGHT = 32;
+        const MAX_BAR_WIDTH = 180;
         const SPACER_WIDTH = ROW_HEIGHT / 8;
 
         const maxPoints = Math.max(...entries.map(e => e.points));
@@ -1773,21 +1773,22 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         }
 
         // Finally, render the legend rows at the bottom
+        const LEGEND_ROW_HEIGHT = Math.round(0.66 * ROW_HEIGHT);
         renders.push(joinCanvasesHorizontal([
             await imageLoader.loadImage('assets/risk/icons/sun.png'),
-            getTextLabel('Points (3 if top ¼, 2 if top ½, 1 if any)', { width: Math.floor(0.75 * WIDTH), height: 0.66 * ROW_HEIGHT, align: 'left' })
+            getTextLabel('Points (3 if top ¼, 2 if top ½, 1 if any)', { width: Math.floor(0.75 * WIDTH), height: LEGEND_ROW_HEIGHT, align: 'left' })
         ], { align: 'resize-to-shortest', spacing: SPACER_WIDTH }));
         renders.push(joinCanvasesHorizontal([
             await imageLoader.loadImage('assets/risk/icons/flag.png'),
-            getTextLabel('Territory bonus (1 per 3)', { width: Math.floor(0.75 * WIDTH), height: 0.66 * ROW_HEIGHT, align: 'left' })
+            getTextLabel('Territory bonus (1 per 3)', { width: Math.floor(0.75 * WIDTH), height: LEGEND_ROW_HEIGHT, align: 'left' })
         ], { align: 'resize-to-shortest', spacing: SPACER_WIDTH }));
         renders.push(joinCanvasesHorizontal([
             await imageLoader.loadImage('assets/risk/icons/redtroop.png'),
-            getTextLabel('Successful attack bonus (max 1)', { width: Math.floor(0.75 * WIDTH), height: 0.66 * ROW_HEIGHT, align: 'left' })
+            getTextLabel('Successful attack bonus (max 1)', { width: Math.floor(0.75 * WIDTH), height: LEGEND_ROW_HEIGHT, align: 'left' })
         ], { align: 'resize-to-shortest', spacing: SPACER_WIDTH }));
         renders.push(joinCanvasesHorizontal([
             await imageLoader.loadImage('assets/risk/icons/medal.png'),
-            getTextLabel('Tuesday contest bonus (1 if podiumed)', { width: Math.floor(0.75 * WIDTH), height: 0.66 * ROW_HEIGHT, align: 'left' })
+            getTextLabel('Tuesday contest bonus (1 if podiumed)', { width: Math.floor(0.75 * WIDTH), height: LEGEND_ROW_HEIGHT, align: 'left' })
         ], { align: 'resize-to-shortest', spacing: SPACER_WIDTH }));
 
         return new AttachmentBuilder(fillBackground(joinCanvasesVertical(renders, { align: 'center', spacing: SPACER_WIDTH }), { background: 'black' }).toBuffer()).setName('risk-weekly.png');
@@ -2659,9 +2660,9 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                         // If there's one clear highest-kill attacker, let them capture
                         if (highestKillAttackers.length === 1) {
                             topAttackerId = highestKillAttackers[0];
-                            const otherTopAttackers = highestKillAttackers.filter(id => id !== topAttackerId);
-                            const otherTopAttackerKills = otherTopAttackers.map(id => conflict.kills[id] ?? 0);
-                            winnerReason = `**${this.getPlayerDisplayName(topAttackerId)}** contributed the most kills (**${conflict.kills[topAttackerId] ?? 0}** > **${otherTopAttackerKills.join(',')}**)`;
+                            const worseAttackers = attackerUserIds.filter(id => id !== topAttackerId);
+                            const worseAttackerKills = worseAttackers.map(id => conflict.kills[id] ?? 0);
+                            winnerReason = `**${this.getPlayerDisplayName(topAttackerId)}** contributed the most kills (**${conflict.kills[topAttackerId] ?? 0}** > **${worseAttackerKills.join(',') || 'N/A'}**)`;
                         }
                         // There's a tie, so prioritize the current attacker if possible
                         else if (highestKillAttackers.includes(attacker.userId)) {
@@ -4113,6 +4114,47 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 }))
             }]
         }];
+    }
+
+    override getPreDecisionSungazerPollData(): { title: string; values: string[]; valueNames?: Record<string, string>; } | undefined {
+        // Abort if we're still in the draft phase
+        if (this.state.draft) {
+            return undefined;
+        }
+        // Turn 1 is the draft, turn 2 is the first round of decisions, so the first time should be right before turn 3 (when the turn value is still 2)
+        if (this.getTurn() < 2) {
+            return undefined;
+        }
+
+        // TODO: Determine the set of territories
+        const values = ['S', 'T', 'U', 'V', 'X', 'NONE'];
+        const valueNames: Record<string, string> = {};
+        for (const value of values) {
+            valueNames[value] = 'Catalina-to-' + this.getTerritoryName(value);
+        }
+        valueNames['NONE'] = 'None.';
+        return {
+            title: 'Sungazers, flex your influence here... which new Ferry route should I open? No ties!',
+            values,
+            valueNames
+        };
+    }
+
+    override onPreDecisionSungazerPoll(winningValues: string[]): MessengerPayload | undefined {
+        // If there was a tie, take no action
+        if (winningValues.length > 1) {
+            // TODO: Say what the tie was
+            return 'Looks like there was a tie. I will take no action, as I expect my Council to be more decisive than that...';
+        }
+        // If nothing was voted for, take no action
+        const value = winningValues[0];
+        if (!value) {
+            return 'Huh? Looks like there was no poll winner? ADMIN HELP!';
+        }
+
+        // TODO: Actually process this result
+        // TODO: Track this in the state so it can be announced the next morning
+        return `**${value}** is the winner (TODO: Make this actually do something)`;
     }
 
     override async getSeasonEndMessages(): Promise<MessengerPayload[]> {

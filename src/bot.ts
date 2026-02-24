@@ -3,7 +3,7 @@ import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discor
 import { DailyEvent, DailyEventType, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, SubmissionPromptHistory, ReplyToMessageData, MessengerPayload, AnonymousSubmission, GamePlayerAddition, DecisionProcessingResult, FinalizeSungazerPollData, SpecialSungazerTermAward, MEDAL_TYPES } from './types';
 import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, getScaledPoints, getSimpleScaledPoints, text, getRelativeDotwCalendarDate } from './util';
 import GoodMorningState from './state';
-import { canonicalizeText, chance, DiscordTimestampFormat, FileStorage, forEachMessage, generateKMeansClusters, getClockTime, getDateBetween, getJoinedMentions, getRandomDateBetween,
+import { canonicalizeText, chance, DiscordTimestampFormat, FileStorage, forEachMessage, generateKMeansClusters, getClockTime, getDateBetween, getJoinedMentions, getMaxKeys, getRandomDateBetween,
     getRankString, getRelativeDateTimeString, getSelectedNode, getSortedKeys, getTodayDateString, getTomorrow, getWordRepetitionScore, LanguageGenerator, loadJson, Messenger,
     naturalJoin, PastTimeoutStrategy, prettyPrint, R9KTextBank, randChoice, randFloat, randInt, s, shuffle, sleep, TimeoutManager, TimeoutOptions, toCalendarDate, toDiscordTimestamp, toFixed, toLetterId} from 'evanw555.js';
 import { AnonymousSubmissionsState } from './submissions';
@@ -2180,6 +2180,31 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                     });
                 }
             }
+            // If there's a game in progress and tomorrow is the game decision, start the pre-decision poll
+            if (state.hasGame() && state.getEventType() === DailyEventType.GameDecision) {
+                // If the game returns poll data to be used this week...
+                const pollData = state.getGame().getPreDecisionSungazerPollData();
+                if (pollData) {
+                    // Only do this if there's no active game/prompt poll...
+                    if (!timeoutManager.hasTimeoutWithType(TimeoutType.FinalizeSungazerPoll) && !timeoutManager.hasTimeoutWithType(TimeoutType.AnonymousSubmissionTypePollStart)) {
+                        // Determine the poll end time
+                        const pollEndDate = new Date();
+                        if (config.testing) {
+                            pollEndDate.setSeconds(pollEndDate.getSeconds() + 15);
+                        } else {
+                            pollEndDate.setHours(pollEndDate.getHours() + 11);
+                        }
+
+                        await controller.startSungazerPoll({
+                            values: pollData.values,
+                            pollEndDate,
+                            type: 'game-pre-decision',
+                            title: pollData.title,
+                            valueNames: pollData.valueNames
+                        });
+                    }
+                }
+            }
         }
 
         // If this is happening at a non-standard time, explicitly warn players (add some tolerance in case of timeout variance)
@@ -2771,6 +2796,9 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         };
         const sortedKeys = shuffle(Object.keys(arg.choices)).sort((x, y) => getVotes(y) - getVotes(x));
         const sortedValues = sortedKeys.map(key => arg.choices[key]);
+        // Also, determine the max keys/values just in case we want to handle ties specially
+        const maxKeys = getMaxKeys(shuffle(Object.keys(arg.choices)), key => getVotes(key));
+        const maxValues = maxKeys.map(key => arg.choices[key]);
 
         switch (arg.type) {
             case 'submission-prompt': {
@@ -2821,6 +2849,23 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
 
                 // Notify the channel
                 await pollMessage.reply(`The results are in, we'll be playing _${GAME_TYPE_NAMES[chosenGameType]}_ ${config.defaultGoodMorningEmoji}`);
+                break;
+            }
+            case 'game-pre-decision': {
+                // Validate
+                if (!state.hasGame()) {
+                    await logger.log(`Aborting ${arg.type} poll end, as there is no game!`);
+                    return;
+                }
+
+                // Invoke the game's pre-decision poll hook
+                const replyPayload = state.getGame().onPreDecisionSungazerPoll(maxValues);
+                await dumpState();
+
+                // If a response was specified, reply to the poll with it
+                if (replyPayload) {
+                    await pollMessage.reply(replyPayload);
+                }
                 break;
             }
         }
