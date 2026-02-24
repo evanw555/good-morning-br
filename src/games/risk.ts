@@ -43,6 +43,7 @@ interface RiskConfig {
         center: Coordinates,
         troopBounds: Coordinates[],
         connections: string[],
+        unlockableConnections?: string[],
         termini: Record<string, Coordinates>
     }>,
     colors: Record<string, string>,
@@ -389,6 +390,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     { x: 673, y: 661 }
                 ],
                 connections: ['M', 'O'],
+                unlockableConnections: ['Y'],
                 termini: {
                     M: { x: 653, y: 557 },
                     O: { x: 577, y: 534 }
@@ -432,6 +434,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     { x: 92, y: 366 }
                 ],
                 connections: ['T'],
+                unlockableConnections: ['Y'],
                 termini: {
                     T: { x: 85, y: 354 }
                 }
@@ -446,6 +449,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     { x: 208, y: 436 }
                 ],
                 connections: ['I', 'S', 'U'],
+                unlockableConnections: ['Y'],
                 termini: {
                     I: { x: 160, y: 382 },
                     S: { x: 112, y: 366 },
@@ -462,6 +466,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     { x: 265, y: 480 }
                 ],
                 connections: ['I', 'Q', 'T', 'V'],
+                unlockableConnections: ['Y'],
                 termini: {
                     I: { x: 225, y: 422 },
                     Q: { x: 239, y: 436 },
@@ -479,6 +484,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     { x: 364, y: 554 }
                 ],
                 connections: ['U', 'W'],
+                unlockableConnections: ['Y'],
                 termini: {
                     U: { x: 263, y: 518 },
                     W: { x: 357, y: 542 }
@@ -510,6 +516,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     { x: 578, y: 635 },
                 ],
                 connections: ['W'],
+                unlockableConnections: ['Y'],
                 termini: {
                     W: { x: 478, y: 587 }
                 }
@@ -524,6 +531,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     { x: 177, y: 700 }
                 ],
                 connections: ['W'],
+                unlockableConnections: ['P', 'S', 'T', 'U', 'V', 'X'],
                 termini: {
                     W: { x: 180, y: 657 }
                 }
@@ -720,11 +728,77 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
     }
 
     private getTerritoryConnections(territoryId: string): string[] {
-        return RiskGame.config.territories[territoryId]?.connections ?? [];
+        // TODO: Is there a better/more efficient way to sort this? Should we be comparing against some master list?
+        return [
+            // The default, static connections for this territory
+            ...(RiskGame.config.territories[territoryId]?.connections ?? []),
+            // The unlockable connections for this territory that are currently unlocked
+            ...this.getUnlockedTerritoryConnections(territoryId)
+        ].sort();
     }
 
     private getNumTerritoryConnections(territoryId: string): number {
         return this.getTerritoryConnections(territoryId).length;
+    }
+
+    private getUnlockableTerritoryConnections(territoryId: string): string[] {
+        return RiskGame.config.territories[territoryId]?.unlockableConnections ?? [];
+    }
+
+    /**
+     * For a given territory, return the IDs of unlockable connections that are currently unlocked.
+     */
+    private getUnlockedTerritoryConnections(territoryId: string): string[] {
+        return this.state.territories[territoryId].unlockedConnections ?? [];
+    }
+
+    private unlockTerritoryConnection(fromTerritoryId: string, toTerritoryId: string) {
+        // Validate that this is possible
+        if (!this.getUnlockableTerritoryConnections(fromTerritoryId).includes(toTerritoryId)) {
+            throw new Error(`Cannot unlock connection from ${fromTerritoryId} to ${toTerritoryId}: this is not unlockable`);
+        }
+        if (this.getUnlockedTerritoryConnections(fromTerritoryId).includes(toTerritoryId)) {
+            throw new Error(`Cannot unlock connection from ${fromTerritoryId} to ${toTerritoryId}: already unlocked`);
+        }
+        if (!this.getUnlockableTerritoryConnections(toTerritoryId).includes(fromTerritoryId)) {
+            throw new Error(`Cannot unlock connection from ${toTerritoryId} to ${fromTerritoryId}: this is not unlockable`);
+        }
+        if (this.getUnlockedTerritoryConnections(toTerritoryId).includes(fromTerritoryId)) {
+            throw new Error(`Cannot unlock connection from ${toTerritoryId} to ${fromTerritoryId}: already unlocked`);
+        }
+        const from = this.state.territories[fromTerritoryId];
+        const to = this.state.territories[toTerritoryId];
+        // Add to unlocked connections
+        from.unlockedConnections = [...(from.unlockedConnections ?? []), toTerritoryId];
+        to.unlockedConnections = [...(to.unlockedConnections ?? []), fromTerritoryId]
+    }
+
+    private lockTerritoryConnection(fromTerritoryId: string, toTerritoryId: string) {
+        // Validate that the lists exist
+        const from = this.state.territories[fromTerritoryId];
+        const to = this.state.territories[toTerritoryId];
+        if (!from.unlockedConnections) {
+            throw new Error(`Cannot lock connection from ${fromTerritoryId} to ${toTerritoryId}: unlocked connections list is missing`);
+        }
+        if (!to.unlockedConnections) {
+            throw new Error(`Cannot lock connection from ${toTerritoryId} to ${fromTerritoryId}: unlocked connections list is missing`);
+        }
+        // Validate that it's unlocked to begin with
+        if (!this.getUnlockedTerritoryConnections(fromTerritoryId).includes(toTerritoryId)) {
+            throw new Error(`Cannot lock connection from ${fromTerritoryId} to ${toTerritoryId}: not unlocked to begin with`);
+        }
+        if (!this.getUnlockedTerritoryConnections(toTerritoryId).includes(fromTerritoryId)) {
+            throw new Error(`Cannot lock connection from ${toTerritoryId} to ${fromTerritoryId}: not unlocked to begin with`);
+        }
+        // Remove from unlocked connections
+        from.unlockedConnections.splice(from.unlockedConnections.indexOf(toTerritoryId), 1);
+        if (from.unlockedConnections.length === 0) {
+            delete from.unlockedConnections;
+        }
+        to.unlockedConnections.splice(to.unlockedConnections.indexOf(fromTerritoryId), 1);
+        if (to.unlockedConnections.length === 0) {
+            delete to.unlockedConnections;
+        }
     }
 
     /**
@@ -736,6 +810,19 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
 
     private getNumHostileTerritoryConnections(territoryId: string): number {
         return this.getHostileTerritoryConnections(territoryId).length;
+    }
+
+    private getTerritoryTerminus(territoryId: string, otherTerritoryId: string): Coordinates {
+        const territoryConfig = RiskGame.config.territories[territoryId];
+        // If for some reason this terminus isn't defined, just default to the territory's center
+        return territoryConfig.termini[otherTerritoryId] ?? territoryConfig.center;
+    }
+
+    private getTerritoryConnectionCoordinates(from: string, to: string): [Coordinates, Coordinates] {
+        return [
+            this.getTerritoryTerminus(from, to),
+            this.getTerritoryTerminus(to, from)
+        ];
     }
 
     /**
@@ -1921,6 +2008,16 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         // Draw the map template as the top layer
         context.drawImage(mapImage, 0, 0);
 
+        // Draw unlocked connections
+        // TODO: Hand-draw dotted lines rather than using arrows
+        for (const territoryId of this.getTerritories()) {
+            const unlockedConnections = this.getUnlockedTerritoryConnections(territoryId);
+            for (const otherTerritoryId of unlockedConnections) {
+                const [fromCoordinates, toCoordinates] = this.getTerritoryConnectionCoordinates(territoryId, otherTerritoryId);
+                renderArrow(context, fromCoordinates, toCoordinates, { thickness: 5, tailPadding: 32, tipPadding: 32 });
+            }
+        }
+
         // If rendering a casualty heat map, draw the death count over each territory
         if (options?.casualtyHeatMap) {
             for (const territoryId of this.getTerritories()) {
@@ -2000,8 +2097,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 const to = options.invasion.defender.territoryId;
                 for (const attacker of attackers) {
                     const from = attacker.territoryId;
-                    const fromCoordinates = RiskGame.config.territories[from].termini[to];
-                    const toCoordinates = RiskGame.config.territories[to].termini[from];
+                    const [fromCoordinates, toCoordinates] = this.getTerritoryConnectionCoordinates(from, to);
                     renderArrow(context, fromCoordinates, toCoordinates);
                 }
             }
@@ -2009,8 +2105,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             else if (attackers.length === 2) {
                 const from = attackers[0].territoryId;
                 const to = attackers[1].territoryId;
-                const fromCoordinates = RiskGame.config.territories[from].termini[to];
-                const toCoordinates = RiskGame.config.territories[to].termini[from];
+                const [fromCoordinates, toCoordinates] = this.getTerritoryConnectionCoordinates(from, to);
                 const midCoordinates = {
                     x: Math.round((fromCoordinates.x + toCoordinates.x) / 2),
                     y: Math.round((fromCoordinates.y + toCoordinates.y) / 2)
@@ -2024,8 +2119,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     // TODO: Validate that this is going in the correct order
                     const from = attackers[i].territoryId;
                     const to = attackers[(i + 1) % attackers.length].territoryId;
-                    const fromCoordinates = RiskGame.config.territories[from].termini[to];
-                    const toCoordinates = RiskGame.config.territories[to].termini[from];
+                    const [fromCoordinates, toCoordinates] = this.getTerritoryConnectionCoordinates(from, to);
                     renderArrow(context, fromCoordinates, toCoordinates);
                 }
             }
@@ -2034,8 +2128,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         // If movements are specified, draw the movement arrows
         if (options?.movements) {
             for (const { from, to } of options.movements) {
-                const fromCoordinates = RiskGame.config.territories[from].termini[to];
-                const toCoordinates = RiskGame.config.territories[to].termini[from];
+                const [fromCoordinates, toCoordinates] = this.getTerritoryConnectionCoordinates(from, to);
                 renderArrow(context, fromCoordinates, toCoordinates);
             }
         }
@@ -2289,6 +2382,12 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 prizeBonus: weeklyPrizeBonus[userId]
             })))]
         });
+
+        // If an announcement is specified, send it now
+        if (this.state.announcement) {
+            messengerPayloads.push(this.state.announcement);
+            delete this.state.announcement;
+        }
 
         return messengerPayloads;
     }
@@ -2651,7 +2750,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     // If there was only attacker to begin with, they capture
                     if (attackerUserIds.length === 1) {
                         topAttackerId = attackerUserIds[0];
-                        summary += `${this.getPlayerDisplayName(topAttackerId)}** has defeated **${this.getPlayerDisplayName(defender.userId)}**, capturing _${this.getTerritoryName(defender.territoryId)}_!`;
+                        summary += `**${this.getPlayerDisplayName(topAttackerId)}** has defeated **${this.getPlayerDisplayName(defender.userId)}**, capturing _${this.getTerritoryName(defender.territoryId)}_!`;
                     }
                     // There are multiple attackers, so determine who gets to capture
                     else {
@@ -4127,14 +4226,22 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         }
 
         // TODO: Determine the set of territories
-        const values = ['S', 'T', 'U', 'V', 'X', 'NONE'];
+        const fromTerritory = 'Y';
+        const toTerritories = ['S', 'T', 'U', 'V', 'X', 'P'];
+        const values: string[] = [];
         const valueNames: Record<string, string> = {};
-        for (const value of values) {
-            valueNames[value] = 'Catalina-to-' + this.getTerritoryName(value);
+        for (const value of toTerritories) {
+            const connectionId = fromTerritory + value;
+            // Check if it's already unlocked
+            const unlocked = this.getTerritoryConnections(fromTerritory).includes(value);
+            values.push(connectionId);
+            valueNames[connectionId] = (unlocked ? 'CLOSE' : 'Open') + ' ' + this.getTerritoryName(fromTerritory) + ' to ' + this.getTerritoryName(value);
         }
-        valueNames['NONE'] = 'None.';
+        // Add the no-op
+        values.push('NONE');
+        valueNames['NONE'] = 'Do nothing.';
         return {
-            title: 'Sungazers, flex your influence here... which new Ferry route should I open? No ties!',
+            title: 'Sungazers, flex your influence here... how should we manipulate the ferry routes this week? No ties!',
             values,
             valueNames
         };
@@ -4152,9 +4259,31 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             return 'Huh? Looks like there was no poll winner? ADMIN HELP!';
         }
 
-        // TODO: Actually process this result
-        // TODO: Track this in the state so it can be announced the next morning
-        return `**${value}** is the winner (TODO: Make this actually do something)`;
+        // If the winning value is none
+        if (value === 'NONE') {
+            return 'You all have decisively opted for no action this week.';
+        }
+
+        // Parse and validate the result
+        const [fromTerritory, toTerritory] = value.split('');
+        if (!fromTerritory || !toTerritory) {
+            return `Huh? \`${value}\` is an invalid territory connection ID. ADMIN HELP!`;
+        }
+
+        // If this connection is already unlocked, close it
+        // TODO: Is there a more comprehensive way to check this?
+        const unlocked = this.getTerritoryConnections(fromTerritory).includes(toTerritory);
+        if (unlocked) {
+            this.lockTerritoryConnection(fromTerritory, toTerritory);
+            this.state.announcement = `The Sungazers have voted to shut down the ferry route between _${this.getTerritoryName(fromTerritory)}_ and _${this.getTerritoryName(toTerritory)}_`;
+            return `The ferry route from _${this.getTerritoryName(fromTerritory)}_ to _${this.getTerritoryName(toTerritory)}_ is no more! I've closed it for you`;
+        }
+        // It's locked currently, so unlock it
+        else {
+            this.unlockTerritoryConnection(fromTerritory, toTerritory);
+            this.state.announcement = `Take note, the Sungazers have voted to open a new ferry route between _${this.getTerritoryName(fromTerritory)}_ and _${this.getTerritoryName(toTerritory)}_`;
+            return `As you wish! I've set up the logistics to get ferries running from _${this.getTerritoryName(fromTerritory)}_ to _${this.getTerritoryName(toTerritory)}_ and vice versa`;
+        }
     }
 
     override async getSeasonEndMessages(): Promise<MessengerPayload[]> {

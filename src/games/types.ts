@@ -230,7 +230,9 @@ export interface RiskTerritoryState {
     owner?: Snowflake,
     troops: number,
     // How many deaths have occurred at this territory regardless of owner
-    deaths?: number
+    deaths?: number,
+    /** List of unlockable connections from this territory that have been unlocked. Represented as territory IDs. */
+    unlockedConnections?: string[]
 }
 
 export interface RiskMovementData {
@@ -276,7 +278,9 @@ export interface RiskGameState extends AbstractGameState<'RISK'> {
     // At the beginning of the game update, the attack decisions are deleted and processed into one indexable map
     plannedAttacks?: Record<string, RiskPlannedAttack>,
     // This represents the current conflict being processed
-    currentConflict?: RiskConflictState
+    currentConflict?: RiskConflictState,
+    /** If specified, this message should be sent when users are making their next decision. */
+    announcement?: string
 }
 
 export type CandyLandBasicColor = 'R' | 'O' | 'Y' | 'G' | 'B' | 'P' | 'K' | 'W';
