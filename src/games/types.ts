@@ -217,11 +217,15 @@ export interface RiskPlayerState {
     maySelectCustomTroopIcon?: true,
     // If true, this player won the weekly contest prize (processed and deleted at each turn start)
     weeklyPrize?: true,
+    /** If true, this user is able to stage an insurrection this week. */
+    mayInsurrect?: true,
     // If true, this player has successfully captured at least one territory since the beginning of the last turn
     captureBonus?: true,
     // Represents the order in which this player was eliminated (e.g. 0 = eliminated first)
     eliminationIndex?: number,
     eliminator?: Snowflake,
+    /** List of players that this player has betrayed (staged an insurrection against). */
+    betrayed?: Snowflake[],
     kills?: number,
     deaths?: number
 }
@@ -257,7 +261,9 @@ export interface RiskConflictState {
     /** The number of kills by each user in this conflict. If a user has multiple attack prongs, those get counted together. */
     readonly kills: Record<Snowflake, number>,
     // The number of attackers at the time of conflict creation (this shouldn't change even if attackers are removed)
-    readonly initialProngs: number
+    readonly initialProngs: number,
+    /** IDs of all the initial participating attackers, with no duplicates. */
+    readonly initialAttackerIds: Snowflake[]
 }
 
 export interface RiskPlannedAttack {
@@ -275,6 +281,7 @@ export interface RiskGameState extends AbstractGameState<'RISK'> {
     addDecisions?: Record<Snowflake, string[]>,
     attackDecisions?: Record<Snowflake, RiskMovementData[]>,
     moveDecisions?: Record<Snowflake, RiskMovementData>,
+    insurrectDecisions?: Record<Snowflake, string>,
     // At the beginning of the game update, the attack decisions are deleted and processed into one indexable map
     plannedAttacks?: Record<string, RiskPlannedAttack>,
     // This represents the current conflict being processed

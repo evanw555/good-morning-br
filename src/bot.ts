@@ -1390,7 +1390,8 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     }
 
     // Send any game-related DMs, if any
-    if (state.getEventType() === DailyEventType.GameDecision && state.hasGame()) {
+    const SEND_DMS_WHILE_TESTING = false;
+    if ((!config.testing || SEND_DMS_WHILE_TESTING) && state.getEventType() === DailyEventType.GameDecision && state.hasGame()) {
         const weeklyDecisionDMs = state.getGame().getWeeklyDecisionDMs();
         const recipients = Object.keys(weeklyDecisionDMs);
         if (recipients.length > 0) {

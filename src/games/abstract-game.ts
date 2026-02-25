@@ -276,7 +276,7 @@ export default abstract class AbstractGame<T extends GameState> {
     }
 
     /**
-     * Returns a mapping from user ID to text string for DMs that should be send to players on the morning of game decisions.
+     * Returns a mapping from user ID to text string for DMs that should be sent to players on the morning of game decisions.
      */
     getWeeklyDecisionDMs(): Record<Snowflake, string> {
         return {};

@@ -2,8 +2,8 @@ import { APIActionRowComponent, APIMessageTopLevelComponent, APISelectMenuOption
 import { DecisionProcessingResult, GamePlayerAddition, MessengerManifest, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 import { Canvas, Image, createCanvas } from "canvas";
-import { DiscordTimestampFormat, chance, findCycle, getDateBetween, getEvenlyShortened, getJoinedMentions, getMaxKey, getMaxKeys, getMinKey, getRankString, incrementProperty, naturalJoin, randChoice, randInt, s, shuffle, shuffleWithDependencies, sum, toDiscordTimestamp, toFixed, withoutDuplicates } from "evanw555.js";
-import { fillBackground, getTextLabel, joinCanvasesHorizontal, joinCanvasesVertical, resize, superimpose, toCircle, withDropShadow } from "node-canvas-utils";
+import { DiscordTimestampFormat, chance, findCycle, getDateBetween, getEvenlyShortened, getJoinedMentions, getMaxKey, getMaxKeys, getMinKey, getRankString, incrementProperty, isObjectEmpty, naturalJoin, randChoice, randInt, s, shuffle, shuffleWithDependencies, sum, toDiscordTimestamp, toFixed, toMapWithDefault, withoutDuplicates } from "evanw555.js";
+import { fillBackground, getTextLabel, joinCanvasesHorizontal, joinCanvasesVertical, resize, superimpose, toCircle, withDropShadow, withOutline } from "node-canvas-utils";
 import { drawBackground, quantify, renderArrow, distance } from "../util";
 import { RiskGameState, RiskMovementData, RiskTerritoryState, RiskPlayerState, RiskConflictState, RiskPlannedAttack, RiskConflictAgentData } from "./types";
 
@@ -892,6 +892,13 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
     }
 
     /**
+     * @returns The display name of the given territory's owner.
+     */
+    private getTerritoryOwnerDisplayName(territoryId: string): string {
+        return this.getPlayerDisplayName(this.getTerritoryOwner(territoryId));
+    }
+
+    /**
      * Gets the number of troops in a particular territory (or 0 if it doesn't exist).
      */
     private getTerritoryTroops(territoryId: string): number {
@@ -999,6 +1006,13 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
 
     private hasWeeklyPrize(userId: Snowflake): boolean {
         return this.state.players[userId]?.weeklyPrize ?? false;
+    }
+
+    /**
+     * @returns Whether the given player may insurrect currently.
+     */
+    private hasInsurrectionPrivilege(userId: Snowflake): boolean {
+        return this.state.players[userId]?.mayInsurrect ?? false;
     }
 
     private hasCaptureBonus(userId: Snowflake): boolean {
@@ -1704,7 +1718,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         }
 
         // Draw the title
-        const titleImage = getTextLabel(`Battle for ${this.getTerritoryName(to)}`, {
+        const isInsurrection = conflict.attackers.every(a => a.territoryId === defender.territoryId);
+        const titleImage = getTextLabel(`${isInsurrection ? 'Insurrection at' : 'Battle for'} ${this.getTerritoryName(to)}`, {
             width: WIDTH * (5 / 8),
             height: HEIGHT / 8,
             font: `italic bold ${HEIGHT / 12}px serif`
@@ -1813,13 +1828,20 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
     }
 
     // TODO: Add to common library
-    private renderBar(width: number, height: number, progress: number, color: string): Canvas {
+    private async renderBar(width: number, height: number, progress: number, color: string, options?: { knife?: boolean }): Promise<Canvas> {
         const canvas = createCanvas(width, height);
         const context = canvas.getContext('2d');
 
         // Draw the bar
         context.fillStyle = color;
         context.fillRect(0, 0, Math.round(width * progress), height);
+
+        // Draw knife, if specified
+        if (options?.knife) {
+            const margin = Math.ceil(height / 24);
+            const knifeIcon = withOutline(resize(await imageLoader.loadImage('assets/risk/icons/knife.png'), { width: height, height: height }), { expandCanvas: true, style: 'white', thickness: margin});
+            context.drawImage(knifeIcon, margin, margin, height - 2 * margin, height - 2 * margin);
+        }
 
         return canvas;
     }
@@ -1863,7 +1885,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             // Add the avatar
             row.push(resize(await this.getAvatar(userId), { width: ROW_HEIGHT }) as Canvas);
             // Add the bar
-            row.push(this.renderBar(MAX_BAR_WIDTH, ROW_HEIGHT, points / maxPoints, this.getPlayerTeamColor(userId)));
+            row.push(await this.renderBar(MAX_BAR_WIDTH, ROW_HEIGHT, points / maxPoints, this.getPlayerTeamColor(userId), { knife: this.hasInsurrectionPrivilege(userId) }));
             // Add the troop number label
             row.push(getTextLabel(troops.toString(), { width: ROW_HEIGHT, height: ROW_HEIGHT, alpha: (troops === 0) ? 0.15 : 1 }));
             // Add the territory bonus number label
@@ -2119,9 +2141,12 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             if (options.invasion.defender) {
                 const to = options.invasion.defender.territoryId;
                 for (const attacker of attackers) {
+                    // Only draw if this is NOT an insurrection
                     const from = attacker.territoryId;
-                    const [fromCoordinates, toCoordinates] = this.getTerritoryConnectionCoordinates(from, to);
-                    renderArrow(context, fromCoordinates, toCoordinates);
+                    if (to !== from) {
+                        const [fromCoordinates, toCoordinates] = this.getTerritoryConnectionCoordinates(from, to);
+                        renderArrow(context, fromCoordinates, toCoordinates);
+                    }
                 }
             }
             // Else if the cycle consists of 2 attackers, draw a two-headed arrow
@@ -2325,6 +2350,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             this.state.addDecisions = {};
             this.state.attackDecisions = {};
             this.state.moveDecisions = {};
+            this.state.insurrectDecisions = {};
         }
 
         const messengerPayloads: MessengerPayload[] = [];
@@ -2393,6 +2419,16 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             // Clear the weekly bonus flags
             delete this.state.players[userId].captureBonus;
             delete this.state.players[userId].weeklyPrize;
+            delete this.state.players[userId].mayInsurrect;
+            // Give insurrect privilege if eliminated and a top performer
+            if (i < 3 && this.isPlayerEliminated(userId)) {
+                this.state.players[userId].mayInsurrect = true;
+            }
+            // If for some reason this player doesn't have a color, assign a random one now
+            if (!this.state.players[userId].color) {
+                const color = randChoice(...this.getAvailableColors());
+                this.state.players[userId].color = color;
+            }
         }
 
         // Show a chart indicating how many troops were awarded this week
@@ -2412,20 +2448,39 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             delete this.state.announcement;
         }
 
+        // If testing, auto-fill player decisions
+        if (this.isTesting()) {
+            this.autoFillPlayerDecisions();
+        }
+
         return messengerPayloads;
     }
 
     override autoFillPlayerDecisions(): void {
         for (const userId of this.getPlayers()) {
-            // Choose additions (even if eliminated, player can still add to territories owned by team)
-            const possibleAdditionTerritories = this.getTerritoriesForPlayerTeam(userId);
-            if (this.state.addDecisions && possibleAdditionTerritories.length > 0) {
-                const additions: string[] = [];
-                for (let i = 0; i < this.getPlayerNewTroops(userId); i++) {
-                    additions.push(randChoice(...possibleAdditionTerritories));
-                }
-                this.state.addDecisions[userId] = additions;
+            this.autoFillPlayerDecision(userId);
+        }
+    }
+
+    private autoFillPlayerDecision(userId: Snowflake) {
+        // Choose additions (even if eliminated, player can still add to territories owned by team)
+        const possibleAdditionTerritories = this.getTerritoriesForPlayerTeam(userId);
+        if (this.state.addDecisions && possibleAdditionTerritories.length > 0 && chance(this.isPlayerEliminated(userId) ? 0.33 : 1)) {
+            const additions: string[] = [];
+            const numAdditions = randInt(0, this.getPlayerNewTroops(userId) + 1);
+            for (let i = 0; i < numAdditions; i++) {
+                additions.push(randChoice(...possibleAdditionTerritories));
             }
+            this.state.addDecisions[userId] = additions;
+        }
+        // If eliminated, try and insurrect
+        if (this.isPlayerEliminated(userId)) {
+            if (this.state.insurrectDecisions && this.hasInsurrectionPrivilege(userId) && possibleAdditionTerritories.length > 0 && chance(0.15 * this.getPlayerNewTroops(userId))) {
+                this.state.insurrectDecisions[userId] = randChoice(...possibleAdditionTerritories);
+            }
+        }
+        // Otherwise, add standard decisions
+        else {
             // Choose attacks
             const possibleAttackTerritories = this.getValidAttackSourceTerritoriesForPlayer(userId);
             if (this.state.attackDecisions && possibleAttackTerritories.length > 0) {
@@ -2464,6 +2519,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         delete this.state.addDecisions;
         delete this.state.attackDecisions;
         delete this.state.moveDecisions;
+        delete this.state.insurrectDecisions;
         delete this.state.plannedAttacks;
 
         // TODO: Return something meaningful
@@ -2555,6 +2611,11 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         return responses;
     }
 
+    override getWeeklyDecisionDMs(): Record<Snowflake, string> {
+        const mayInsurrectIds = this.getPlayers().filter(id => this.hasInsurrectionPrivilege(id));
+        return toMapWithDefault(mayInsurrectIds, 'You were a top GMBR performer this week, so you have the chance to insurrect against your lord...');
+    }
+
     async processPlayerDecisions(): Promise<DecisionProcessingResult> {
         // If the draft is active, handle this primarily
         if (this.state.draft) {
@@ -2625,10 +2686,11 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             }
             // Delete the add decisions to prevent further processing on them
             delete this.state.addDecisions;
+            const totalAdded = sum(Object.values(additions));
             return {
                 continueProcessing: true,
                 summary: {
-                    content: 'Troops were added!',
+                    content: `${quantify(totalAdded, 'troop')} ${totalAdded === 1 ? 'was' : 'were'} added!`,
                     files: [await this.renderAdditions(additions)]
                 }
             };
@@ -2641,6 +2703,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             const defender = conflict.defender;
             // If the conflict is a standard conflict...
             if (defender) {
+                const isInsurrection = attackers.every(a => a.territoryId === defender.territoryId);
                 // The attacker at the head of the queue is the one attacking
                 const attacker = attackers[0];
                 // Now, roll all the dice
@@ -2682,6 +2745,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 attackers.shift();
                 // Say something interesting about this exchange
                 // TODO: Add a lot more cool stuff here
+                const attackerNoun = isInsurrection ? randChoice('insurrectionist', 'rebel', 'freedom fighter') : randChoice('attacker', 'aggressor', 'invader');
                 let summary = '';
                 if (rollWinners.every(w => w === 'neither')) {
                     summary += 'A total standstill as neither attacker overpowers the other!\n';
@@ -2696,14 +2760,18 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 } else if (defender.troops === 1 && attacker.troops === 1) {
                     summary += 'It comes down to a final 1v1...\n';
                 } else if (defender.troops === 1 && rollWinners.every(w => w === 'defender')) {
-                    summary += 'The defender makes a valiant last stand!\n';
+                    if (defender.initialTroops > 1) {
+                        summary += 'The defender makes a valiant last stand!\n';
+                    } else {
+                        summary += 'The sole defender continues to hold his ground.\n';
+                    }
                 } else if (attacker.troops === 1 && rollWinners.every(w => w === 'attacker')) {
-                    summary += 'The last attacker standing continues the fight!\n';
+                    summary += `The last ${attackerNoun} standing continues the fight!\n`;
                 } else if (defendersLost === 2) {
                     if (attacker.troops < defender.troops + 2) {
-                        summary += 'Though outnumbered, the attackers give it their all!\n';
+                        summary += `Though outnumbered, the ${attackerNoun}s give it their all!\n`;
                     } else {
-                        summary += 'The attacker waffle stomps the defending army!\n';
+                        summary += `The ${attackerNoun} waffle stomps the defending army!\n`;
                     }
                 } else if (attackersLost === 2) {
                     if (numTiedRolls === 2) {
@@ -2715,7 +2783,12 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     } else {
                         summary += 'The defenders swing back with a little sick yiik action!\n';
                     }
-                } else {
+                } else if (attackersLost === 1 && defendersLost === 1) {
+                    if (chance(0.5)) {
+                        summary += 'We see a little trade action going on...\n';
+                    } else if (defender.troops > attacker.troops) {
+                        summary += 'The defending forces prolong the conflict, knowing they have an advantage in this battle of attrition.\n';
+                    }
                     // TODO: Improve this...
                     // summary += 'Stuff happened!\n';
                 }
@@ -2738,13 +2811,18 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 // If it's a defender victory...
                 if (attacker.troops === 0) {
                     // Update the attacker territory's troop count
-                    this.addTerritoryTroops(attacker.territoryId, -attacker.initialTroops);
+                    if (!isInsurrection) {
+                        this.addTerritoryTroops(attacker.territoryId, -attacker.initialTroops);
+                    }
                     // If there are other remaining attackers, proceed with the conflict...
                     if (attackers.length > 0) {
+                        const armyNoun = isInsurrection
+                            ? `**${this.getPlayerDisplayName(attacker.userId)}'s** rebel army`
+                            : `the attacking army from _${this.getTerritoryName(attacker.territoryId)}_`;
                         return {
                             continueProcessing: true,
                             summary: {
-                                content: `${summary}**${this.getPlayerDisplayName(defender.userId)}** has fended off the attacking army from _${this.getTerritoryName(attacker.territoryId)}_! `
+                                content: `${summary}**${this.getPlayerDisplayName(defender.userId)}** has fended off ${armyNoun}! `
                                     + quantify(attackers.length, 'army')
                                     + ` to go...`,
                                 files: [conflictRender],
@@ -2756,7 +2834,9 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     this.setTerritoryTroops(defender.territoryId, defender.troops);
                     // Delete the conflict
                     delete this.state.currentConflict;
+                    // TODO: Also somehow add a penalty for the failed insurrectionists (note that previously defeated ones will not be in the state by now)
                     // Send a message
+                    // TODO: Mention that the insurrecionists will be punished
                     return {
                         continueProcessing: true,
                         summary: {
@@ -2820,16 +2900,49 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     // Award capture bonus to the capturer
                     this.state.players[capturerId].captureBonus = true;
                     // Update the troop counts of all relevant territories (note that the current attacker has been popped off the queue)
-                    const capturerAgents = [attacker, ...conflict.attackers].filter(a => a.userId === capturerId);
+                    // TODO: We also need to update the troop counts of the non-capturer territories
+                    const remainingAttackerAgents = [attacker, ...conflict.attackers];
                     this.setTerritoryTroops(defender.territoryId, 0);
-                    for (const capturer of capturerAgents) {
-                        this.addTerritoryTroops(defender.territoryId, capturer.troops);
-                        this.addTerritoryTroops(capturer.territoryId, -capturer.initialTroops);
+                    for (const a of remainingAttackerAgents) {
+                        // If this attacker was awarded the capture, add their troops to the defending territory
+                        if (a.userId === capturerId) {
+                            this.addTerritoryTroops(defender.territoryId, a.troops);
+                            // If it wasn't an insurrection, decrement count of origin territory
+                            if (!isInsurrection) {
+                                this.addTerritoryTroops(a.territoryId, -a.initialTroops);
+                            }
+                        }
+                        // Otherwise, send the remaining troops back to their origin territory
+                        else if (!isInsurrection) {
+                            this.addTerritoryTroops(a.territoryId, a.troops - a.initialTroops);
+                        }
                     }
                     // Update the ownership of the target territory
                     this.state.territories[defender.territoryId].owner = capturerId;
-                    // If the defender is now eliminated, handle that
+                    // If this attacker is back in the game, handle that
                     const extraSummaries: MessengerPayload[] = [];
+                    if (isInsurrection && this.isPlayerEliminated(capturerId)) {
+                        // Wipe any elimination-related data in this player's state
+                        // TODO: The elimination indexes will need to be re-sorted
+                        delete this.state.players[capturerId].eliminator;
+                        delete this.state.players[capturerId].eliminationIndex;
+                        // Before absorbing co-insurrectionists, determine set of original vassals
+                        const originalVassals = this.getPlayerVassals(capturerId);
+                        // For all co-insurrectionists, assign the capturer as their new vassal
+                        const joiningCorebels = conflict.initialAttackerIds.filter(id => id !== capturerId && !originalVassals.includes(id));
+                        for (const id of joiningCorebels) {
+                            this.state.players[id].eliminator = capturerId;
+                        }
+                        const inheritedVassals = this.getPlayerVassals(capturerId).filter(id => !originalVassals.includes(id) && !joiningCorebels.includes(id));
+                        // TODO: Render some sort of insurrection victory image
+                        extraSummaries.push({
+                            content: `**${this.getPlayerDisplayName(capturerId)}** has emerged victorious in the insurrection against **${this.getPlayerDisplayName(defender.userId)}**, bringing them back into the game! `
+                                + (originalVassals.length === 0 ? '' : `Their original vassals (${this.getJoinedDisplayNames(originalVassals)}) are retained as part of this liberation. `)
+                                + (joiningCorebels.length === 0 ? '' : `${this.getJoinedDisplayNames(joiningCorebels)} join${joiningCorebels.length === 1 ? 's' : ''} this faction, despite not leading the insurrection's victory. `)
+                                + (inheritedVassals.length === 0 ? '' : `Their vassals (${this.getJoinedDisplayNames(inheritedVassals)}) are inherited as well.`)
+                        });
+                    }
+                    // If the defender was eliminated, handle that
                     // TODO: Can we somehow handle the NPC defender case more properly?
                     if (defender.userId && this.getNumTerritoriesForPlayer(defender.userId) === 0) {
                         // Mark them as eliminated and assign their elimination index
@@ -2970,6 +3083,57 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     }
                 };
             }
+        }
+        // If there are no insurrect decisions, clear it and move on to avoid further processing
+        if (this.state.insurrectDecisions && isObjectEmpty(this.state.insurrectDecisions)) {
+            delete this.state.insurrectDecisions;
+        }
+        // If the insurrect decisions haven't been fully processed yet, process one
+        if (this.state.insurrectDecisions) {
+            // First, pick one territory
+            const insurrectDecisions = this.state.insurrectDecisions;
+            const territoryId = randChoice(...Object.values(insurrectDecisions));
+            // Determine all the insurrectionists at this territory
+            const insurrectionists = Object.keys(insurrectDecisions).filter(id => insurrectDecisions[id] === territoryId);
+            // Construct a conflict using this info
+            // TODO: Validate that they even have enough reinforcements to do this
+            this.state.currentConflict = {
+                attackers: insurrectionists.map(id => ({
+                    userId: id,
+                    territoryId,
+                    initialTroops: this.getPlayerNewTroops(id),
+                    troops: this.getPlayerNewTroops(id)
+                })),
+                defender: {
+                    userId: this.getTerritoryOwner(territoryId) ?? '',
+                    territoryId,
+                    troops: this.getTerritoryTroops(territoryId),
+                    initialTroops: this.getTerritoryTroops(territoryId)
+                },
+                kills: {},
+                initialProngs: insurrectionists.length,
+                initialAttackerIds: insurrectionists
+            };
+            // Update insurrectionist player state
+            for (const userId of insurrectionists) {
+                // Clear player reinforcement count upfront (for normal conflicts, territory troop counts are updated at the end)
+                delete this.state.players[userId].newTroops;
+                // Delete the players' decisions from the state
+                delete insurrectDecisions[userId];
+            }
+            // If the map is empty, clear it from the state
+            if (isObjectEmpty(insurrectDecisions)) {
+                delete this.state.insurrectDecisions;
+            }
+            // Respond with a render
+            return {
+                continueProcessing: true,
+                summary: {
+                    content: `${this.getJoinedDisplayNames(insurrectionists)} ${insurrectionists.length === 1 ? 'has' : 'have'} staged an insurrection against **${this.getTerritoryOwnerDisplayName(territoryId)}** at _${this.getTerritoryName(territoryId)}_!`,
+                    files: [await this.renderInvasion(this.state.currentConflict)],
+                    flags: MessageFlags.SuppressNotifications
+                }
+            };
         }
         // If the attack decisions haven't been processed yet, process them
         if (this.state.attackDecisions) {
@@ -3183,7 +3347,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 })),
                 defender: selectedDefender,
                 kills: {},
-                initialProngs: selectedAttacks.length
+                initialProngs: selectedAttacks.length,
+                initialAttackerIds: withoutDuplicates(selectedAttacks.map(a => a.userId))
             };
             return {
                 continueProcessing: true,
@@ -3370,10 +3535,69 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 }
                 // Validate that the user is not eliminated
                 if (this.isPlayerEliminated(userId)) {
-                    throw new Error(`You can\'t attack, you\'ve been eliminated! You can only _add_ troops to **${this.getPlayerDisplayName(this.getPlayerTeam(userId))}'s** territories...`);
+                    // TODO: If this user has already betrayed their lord, use different text here
+                    const mayInsurrect = this.hasInsurrectionPrivilege(userId);
+                    await interaction.editReply({
+                        content: `You're eliminated, so you can choose the _good_ path of supporting your lord **${this.getPlayerDisplayName(this.getPlayerTeam(userId))}s**, or the _evil_ path of betrayal to re-enter the game. `
+                            + '- If you choose the _good_ path, you will be rewarded with partial Sungazer terms if your lord wins.'
+                            + '- If you choose the _evil_ path, you have a shot to be back in the game. However, betraying your lord disqualifies you from getting any of the _good_ path perks, should they win. '
+                            // TODO: Show number of failed coups and explain the perks
+                            + (mayInsurrect ? `You have ${quantify(this.getPlayerNewTroops(userId), 'troop')} to use for an insurrection.` : 'You however cannot insurrect this week, you must be a top weekly performer to do this.'),
+                        components: [{
+                            type: ComponentType.ActionRow,
+                            components: [{
+                                type: ComponentType.Button,
+                                custom_id: 'game:add',
+                                label: 'Play Good',
+                                style: ButtonStyle.Success
+                            }, {
+                                type: ComponentType.Button,
+                                custom_id: 'game:insurrect',
+                                label: 'Play Evil',
+                                style: ButtonStyle.Danger,
+                                disabled: mayInsurrect ? undefined : true
+                            }]
+                        }]
+                    });
+                    return;
                 }
                 // Reply with a prompt for them to make decisions
                 await interaction.editReply(this.getAttackDecisionReply(userId));
+                break;
+            }
+            case 'insurrect': {
+                // First, validate that insurrect decisions are being accepted
+                if (!this.state.insurrectDecisions) {
+                    throw new Error('I\'m not accepting any decisions related to _insurrections_ right now...');
+                }
+                // Validate that the user is eliminated
+                if (!this.isPlayerEliminated(userId)) {
+                    throw new Error('You can\'t stage an insurrection, you\'re not currently eliminated!');
+                }
+                // Validate that the player has any troops
+                const numTroops = this.getPlayerNewTroops(userId);
+                if (numTroops === 0) {
+                    await interaction.editReply({
+                        content: 'Try again next week.',
+                        files: ['assets/risk/shrekyouandwhatarmy.gif']
+                    });
+                    return;
+                }
+                // Prompt them to select a territory for their insurrection
+                await interaction.editReply({
+                    content: 'From where would you like to stage this insurrection? This insurrection will take place after troop additions but before any other attacks, '
+                        + `and all **${numTroops}** of your troop${s(numTroops)} will fight for the cause.`,
+                    components: [{
+                        type: ComponentType.ActionRow,
+                        components: [{
+                            type: ComponentType.StringSelect,
+                            custom_id: 'game:selectInsurrectionAt',
+                            min_values: 1,
+                            max_values: 1,
+                            options: this.getOwnedTerritorySelectOptions(this.getTerritoriesForPlayerTeam(userId))
+                        }]
+                    }]
+                });
                 break;
             }
             case 'move': {
@@ -3426,7 +3650,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             }
             case 'clearAll': {
                 // First, validate that any decisions are being accepted
-                if (!this.state.addDecisions || !this.state.attackDecisions || !this.state.moveDecisions) {
+                if (!this.state.addDecisions || !this.state.attackDecisions || !this.state.moveDecisions || !this.state.insurrectDecisions) {
                     throw new Error('I\'m not accepting any decisions right now...');
                 }
                 // Clear this player's decisions
@@ -3435,6 +3659,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 delete this.state.addDecisions[userId];
                 delete this.state.attackDecisions[userId];
                 delete this.state.moveDecisions[userId];
+                delete this.state.insurrectDecisions[userId];
                 // Reply with a confirmation
                 await interaction.editReply({
                     content: 'All your decisions have been erased! Use the buttons in the channel to arrange some new ones...',
@@ -3443,25 +3668,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 break;
             }
             case 'reviewDecisions': {
-                const allDecisionStrings = [...this.getAddDecisionStrings(userId), ...this.getAttackDecisionStrings(userId), ...this.getMoveDecisionStrings(userId)];
-                if (allDecisionStrings.length > 0) {
-                    await interaction.editReply({
-                        content: 'You\'ve made the following decisions:\n'
-                            + allDecisionStrings.join('\n')
-                            + '\nYou can use the "Start Over" button to delete all of these and start over.',
-                        components: [{
-                            type: ComponentType.ActionRow,
-                            components: [{
-                                type: ComponentType.Button,
-                                label: 'Start Over',
-                                style: ButtonStyle.Danger,
-                                custom_id: 'game:clearAll'
-                            }]
-                        }]
-                    });
-                } else {
-                    await interaction.editReply('You don\'t have any actions lined up! Use the buttons in the channel to arrange some actions...');
-                }
+                await interaction.editReply(this.getReviewDecisionReply(userId));
                 break;
             }
             case 'chooseTroopIcon': {
@@ -3758,6 +3965,34 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 await interaction.editReply(this.getAttackDecisionReply(userId));
                 break;
             }
+            case 'selectInsurrectionAt': {
+                // First, validate that insurrect decisions are being accepted
+                if (!this.state.insurrectDecisions || !this.state.addDecisions) {
+                    throw new Error('I\'m not accepting any decisions related to _insurrections_ right now...');
+                }
+                // Validate that the player is eliminated
+                if (!this.isPlayerEliminated(userId)) {
+                    throw new Error('You can\'t stage an insurrection, you\'re not currently eliminated!');
+                }
+                // Validate that the player has any troops
+                const numTroops = this.getPlayerNewTroops(userId);
+                if (numTroops === 0) {
+                    await interaction.editReply({
+                        content: 'Try again next week.',
+                        files: ['assets/risk/shrekyouandwhatarmy.gif']
+                    });
+                    return;
+                }
+                // Validate the selected territory
+                const territoryId = selectedValues[0];
+                if (this.getTerritoryOwner(territoryId) !== this.getPlayerTeam(userId)) {
+                    throw new Error(`You can't stage an insurrection at _${this.getTerritoryName(territoryId)}_, that's owned by **${this.getTerritoryOwnerDisplayName(territoryId)}**! Your lord is **${this.getPlayerDisplayName(this.getPlayerTeam(territoryId))}**`);
+                }
+                // Set the insurrect decision in the state
+                this.state.insurrectDecisions[userId] = territoryId;
+                await interaction.editReply(this.getReviewDecisionReply(userId));
+                break;
+            }
             case 'selectTroopIcon': {
                 // Validate that the user is allowed to select a custom icon
                 if (this.hasCustomTroopIcon(userId)) {
@@ -3797,6 +4032,33 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 }
                 break;
             }
+        }
+    }
+
+    private getReviewDecisionReply(userId: Snowflake): InteractionEditReplyOptions | string {
+        const allDecisionStrings = [
+            ...this.getAddDecisionStrings(userId),
+            ...this.getInsurrectDecisionStrings(userId),
+            ...this.getAttackDecisionStrings(userId),
+            ...this.getMoveDecisionStrings(userId)
+        ];
+        if (allDecisionStrings.length > 0) {
+            return {
+                content: 'You\'ve made the following decisions:\n'
+                    + allDecisionStrings.join('\n')
+                    + '\nYou can use the "Start Over" button to delete all of these and start over.',
+                components: [{
+                    type: ComponentType.ActionRow,
+                    components: [{
+                        type: ComponentType.Button,
+                        label: 'Start Over',
+                        style: ButtonStyle.Danger,
+                        custom_id: 'game:clearAll'
+                    }]
+                }]
+            };
+        } else {
+            return 'You don\'t have any actions lined up! Use the buttons in the channel to arrange some actions...';
         }
     }
 
@@ -4127,6 +4389,22 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             const moveData = this.state.moveDecisions[userId];
             if (moveData) {
                 return [`- Move ${quantify(moveData.quantity, 'troop')} from _${this.getTerritoryName(moveData.from)}_ to _${this.getTerritoryName(moveData.to)}_`];
+            }
+        }
+        return [];
+    }
+
+    private getInsurrectDecisionStrings(userId: Snowflake): string[] {
+        if (this.state.insurrectDecisions) {
+            const territoryId = this.state.insurrectDecisions[userId];
+            if (territoryId) {
+                const strings = [`- Stage insurrection against **${this.getTerritoryOwnerDisplayName(territoryId)}** at _${this.getTerritoryName(territoryId)}_ using your remaining reinforcements`];
+                // If also adding troops, warn them that this means they will lose them
+                const alsoAdding = this.getAddDecisionStrings(userId).length > 0;
+                if (alsoAdding) {
+                    strings.unshift('- **WARNING:** The troops you\'ve placed before the insurrection will be given to your lord');
+                }
+                return strings;
             }
         }
         return [];
