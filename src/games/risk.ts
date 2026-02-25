@@ -3118,6 +3118,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             for (const userId of insurrectionists) {
                 // Clear player reinforcement count upfront (for normal conflicts, territory troop counts are updated at the end)
                 delete this.state.players[userId].newTroops;
+                // Mark this player as having betrayed their lord
+                this.state.players[userId].betrayed = withoutDuplicates([...(this.state.players[userId].betrayed ?? []), this.getTerritoryOwner(territoryId) ?? '']),
                 // Delete the players' decisions from the state
                 delete insurrectDecisions[userId];
             }
@@ -3536,11 +3538,13 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 // Validate that the user is not eliminated
                 if (this.isPlayerEliminated(userId)) {
                     // TODO: If this user has already betrayed their lord, use different text here
+                    const hasBetrayed = (this.state.players[userId]?.betrayed ?? []).includes(this.getPlayerTeam(userId));
                     const mayInsurrect = this.hasInsurrectionPrivilege(userId);
                     await interaction.editReply({
                         content: `You're eliminated, so you can choose the _good_ path of supporting your lord **${this.getPlayerDisplayName(this.getPlayerTeam(userId))}s**, or the _evil_ path of betrayal to re-enter the game. `
-                            + '- If you choose the _good_ path, you will be rewarded with partial Sungazer terms if your lord wins.'
-                            + '- If you choose the _evil_ path, you have a shot to be back in the game. However, betraying your lord disqualifies you from getting any of the _good_ path perks, should they win. '
+                            + '\n- If you choose the _good_ path, you will be rewarded with partial Sungazer terms if your lord wins. '
+                            + (hasBetrayed ? `You however have already betrayed **${this.getPlayerDisplayName(this.getPlayerTeam(userId))}**, so you are no longer eligible to ride on their coattails.` : '')
+                            + '\n- If you choose the _evil_ path, you have a shot to be back in the game. However, betraying your lord disqualifies you from getting any of the _good_ path perks, should they win. '
                             // TODO: Show number of failed coups and explain the perks
                             + (mayInsurrect ? `You have ${quantify(this.getPlayerNewTroops(userId), 'troop')} to use for an insurrection.` : 'You however cannot insurrect this week, you must be a top weekly performer to do this.'),
                         components: [{
