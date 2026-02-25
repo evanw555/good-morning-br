@@ -2,7 +2,7 @@ import { APIActionRowComponent, APIMessageTopLevelComponent, APISelectMenuOption
 import { DecisionProcessingResult, GamePlayerAddition, MessengerManifest, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 import { Canvas, Image, createCanvas } from "canvas";
-import { DiscordTimestampFormat, chance, findCycle, getDateBetween, getEvenlyShortened, getJoinedMentions, getMaxKey, getMaxKeys, getMinKey, getRankString, incrementProperty, isObjectEmpty, naturalJoin, randChoice, randInt, s, shuffle, shuffleWithDependencies, sum, toDiscordTimestamp, toFixed, toMapWithDefault, withoutDuplicates } from "evanw555.js";
+import { DiscordTimestampFormat, chance, findCycle, getDateBetween, getEvenlyShortened, getJoinedMentions, getMaxKey, getMaxKeys, getMinKey, getRankString, getSortedKeys, incrementProperty, isObjectEmpty, naturalJoin, randChoice, randInt, s, shuffle, shuffleWithDependencies, sum, toDiscordTimestamp, toFixed, toMapWithDefault, withoutDuplicates } from "evanw555.js";
 import { fillBackground, getTextLabel, joinCanvasesHorizontal, joinCanvasesVertical, resize, superimpose, toCircle, withDropShadow, withOutline } from "node-canvas-utils";
 import { drawBackground, quantify, renderArrow, distance } from "../util";
 import { RiskGameState, RiskMovementData, RiskTerritoryState, RiskPlayerState, RiskConflictState, RiskPlannedAttack, RiskConflictAgentData } from "./types";
@@ -1110,8 +1110,12 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         return this.state.players[userId]?.eliminationIndex !== undefined;
     }
 
+    private getEliminatedPlayers(): Snowflake[] {
+        return this.getOrderedPlayers().filter(id => this.isPlayerEliminated(id));
+    }
+
     private getNumEliminatedPlayers(): number {
-        return this.getPlayers().filter(userId => this.isPlayerEliminated(userId)).length;
+        return this.getEliminatedPlayers().length;
     }
 
     private getNumRemainingPlayers(): number {
@@ -1129,8 +1133,32 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         return this.state.players[userId].eliminationIndex ?? this.getNumPlayers();
     }
 
-    private setPlayerEliminationIndex(userId: Snowflake, eliminationIndex: number) {
-        this.state.players[userId].eliminationIndex = eliminationIndex;
+    private assignPlayerNextEliminationIndex(userId: Snowflake) {
+        // First, assign this player an index higher than all the other ones
+        const nextEliminationIndex = Math.max(...this.getEliminatedPlayers().map(id => this.getPlayerEliminationIndex(id))) + 1;
+        this.state.players[userId].eliminationIndex = nextEliminationIndex;
+        // Now, clean up the existing indices but preserve the order
+        this.cleanUpEliminationIndices();
+    }
+
+    private clearPlayerEliminationIndex(userId: Snowflake) {
+        delete this.state.players[userId].eliminationIndex;
+        // Also clear the eliminator property just to ensure consistency
+        delete this.state.players[userId].eliminator;
+        // Clean up the remaining indices to ensure there's no gap
+        this.cleanUpEliminationIndices();
+    }
+
+    private cleanUpEliminationIndices() {
+        // TODO: Temp before logging
+        void logger.log(`Elimination indices before cleanup:\n${this.getEliminatedPlayers().map(id => `- **${this.getPlayerEliminationIndex(id)}.** ${this.getPlayerDisplayName(id)}`).join('\n')}`);
+        const sortedEliminatedPlayers = getSortedKeys(this.getEliminatedPlayers(), id => this.getPlayerEliminationIndex(id));
+        for (let i = 0; i < sortedEliminatedPlayers.length; i++) {
+            const id = sortedEliminatedPlayers[i];
+            this.state.players[id].eliminationIndex = i;
+        }
+        // TODO: Temp after logging
+        void logger.log(`Elimination indices after cleanup:\n${this.getEliminatedPlayers().map(id => `- **${this.getPlayerEliminationIndex(id)}.** ${this.getPlayerDisplayName(id)}`).join('\n')}`);
     }
 
     private getPlayerFinalRankString(userId: Snowflake): string {
@@ -1284,6 +1312,9 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         if (territoryIds.length > 0) {
             void logger.log(`Removed ownership from territories ${this.getJoinedTerritoryNames(territoryIds)}`);
         }
+
+        // This may cause a gap in elimination indices, so clean that up now
+        this.cleanUpEliminationIndices();
     }
 
     override addNPCs(): void {
@@ -2923,9 +2954,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     const extraSummaries: MessengerPayload[] = [];
                     if (isInsurrection && this.isPlayerEliminated(capturerId)) {
                         // Wipe any elimination-related data in this player's state
-                        // TODO: The elimination indexes will need to be re-sorted
                         delete this.state.players[capturerId].eliminator;
-                        delete this.state.players[capturerId].eliminationIndex;
+                        this.clearPlayerEliminationIndex(capturerId);
                         // Before absorbing co-insurrectionists, determine set of original vassals
                         const originalVassals = this.getPlayerVassals(capturerId);
                         // For all co-insurrectionists, assign the capturer as their new vassal
@@ -2946,7 +2976,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     // TODO: Can we somehow handle the NPC defender case more properly?
                     if (defender.userId && this.getNumTerritoriesForPlayer(defender.userId) === 0) {
                         // Mark them as eliminated and assign their elimination index
-                        this.setPlayerEliminationIndex(defender.userId, this.getNumEliminatedPlayers());
+                        this.assignPlayerNextEliminationIndex(defender.userId);
                         // Before adjusting this player's eliminator/color, render the elimination image
                         const inheritedVassals = this.getPlayerVassals(defender.userId);
                         extraSummaries.push({
