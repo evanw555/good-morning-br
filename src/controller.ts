@@ -1,7 +1,7 @@
 import { Snowflake, TextChannel } from "discord.js";
 import { DiscordTimestampFormat, FileStorage, LanguageGenerator, Messenger, PastTimeoutStrategy, TimeoutManager, addReactsSync, getPollChoiceKeys, loadJson, naturalJoin, shuffle, toDiscordTimestamp } from "evanw555.js";
 import GoodMorningState from "./state";
-import { FinalizeSungazerPollData, GoodMorningHistory, SungazerPollType, TimeoutType } from "./types";
+import { FinalizeSungazerPollData, GoodMorningHistory, ReplyToMessageData, SungazerPollType, TimeoutType } from "./types";
 
 import logger from "./logger";
 
@@ -141,6 +141,15 @@ class Controller {
         };
         // Use the invoke strategy, all subsequent handlers should validate that it's not too late to use the result
         await this.timeoutManager.registerTimeout(TimeoutType.FinalizeSungazerPoll, options.pollEndDate, { arg, pastStrategy: PastTimeoutStrategy.Invoke });
+
+        // Also, send a warning 5 minutes before the poll ends
+        const warningArg: ReplyToMessageData = {
+            channelId: this.sungazersChannel.id,
+            messageId: pollMessage.id,
+            content: 'Poll ends in 5 minutes ⏳'
+        };
+        const warningDate = new Date(options.pollEndDate.getTime() - (1000 * 60 * 5));
+        await this.timeoutManager.registerTimeout(TimeoutType.ReplyToMessage, warningDate, { arg: warningArg, pastStrategy: PastTimeoutStrategy.Delete });
     }
 }
 
