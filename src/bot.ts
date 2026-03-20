@@ -2580,7 +2580,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             values: proposedTypes,
             pollEndDate,
             type: 'submission-prompt',
-            title: 'What should people submit?'
+            title: 'What should people submit? @everyone'
         });
     },
     [TimeoutType.Nightmare]: async (): Promise<void> => {
