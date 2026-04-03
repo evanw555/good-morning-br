@@ -1,6 +1,6 @@
 import canvas, {  } from 'canvas';
 import { ActionRowData, ButtonStyle, ComponentType, GuildMember, MessageActionRowComponentData, MessageFlags, Snowflake } from "discord.js";
-import { DiscordTimestampFormat, getMostSimilarByNormalizedEditDistance, getRankString, getTodayDateString, naturalJoin, randChoice, getNumberOfDaysUntil, toDiscordTimestamp, toFixed, toDateString, sum } from 'evanw555.js';
+import { DiscordTimestampFormat, getMostSimilarByNormalizedEditDistance, getRankString, naturalJoin, randChoice, getNumberOfDaysUntil, toDiscordTimestamp, toFixed, sum, isToday } from 'evanw555.js';
 import { DecisionProcessingResult, GamePlayerAddition, Medals, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 import { text } from '../util';
@@ -44,7 +44,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
             turn: 0,
             halloween: halloween || undefined,
             goal: 100,
-            endDate: toDateString(endDate),
+            endDate: endDate.getTime(),
             names,
             points,
             actionPointDiffs: {},
@@ -164,7 +164,7 @@ export default class ClassicGame extends AbstractGame<ClassicGameState> {
      * @returns True if today's date is the game's "end date"
      */
     private isTodayEndDate(): boolean {
-        return getTodayDateString() === this.state.endDate;
+        return isToday(this.state.endDate);
     }
 
     async renderState(options?: { showPlayerDecision?: Snowflake, seasonOver?: boolean, admin?: boolean }): Promise<Buffer> {

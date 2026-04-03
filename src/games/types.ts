@@ -329,8 +329,8 @@ export interface ClassicGameState extends AbstractGameState<'CLASSIC'> {
     halloween?: true,
     // Goal as determined by a point threshold
     goal: number,
-    // Goal as determined by a defined end date e.g. "10/28/2023"
-    endDate: string,
+    // Goal as determined by a timestamp (the day on which the season should end)
+    endDate: number,
     points: Record<Snowflake, number>,
     actionPointDiffs: Record<Snowflake, number>,
     names: Record<Snowflake, string>,
