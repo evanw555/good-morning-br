@@ -246,10 +246,15 @@ export interface RawGoodMorningState {
     previousBait?: Bait
     event?: DailyEvent,
     nextEvent?: DailyEvent,
+    // TODO: Is this too hard-coded?
+    /** If true, queue up popcorn on the next possible thursday. */
+    popcornRequested?: true,
     anonymousSubmissions?: RawAnonymousSubmissionsState,
     lastSubmissionWinners?: Snowflake[],
     dailyStatus: Record<Snowflake, DailyPlayerState>,
     players: Record<Snowflake, PlayerState>,
+    /** Completion of this season in the range [0,1] at the time of the last pre-noon. Used for day-by-day comparisons. */
+    previousCompletion?: number,
     /** This should be populated once the desired game type is chosen, then wiped once the game is created (i.e. in the first week only). */
     selectedGameType?: GameType,
     game?: GameState,

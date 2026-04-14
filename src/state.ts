@@ -568,6 +568,17 @@ export default class GoodMorningState {
         }
     }
 
+    /**
+     * @returns Season completion at the time of the last pre-noon.
+     */
+    getSeasonPreviousCompletion(): number {
+        return this.data.previousCompletion ?? 0;
+    }
+
+    setSeasonPreviousCompletion(previousCompletion: number) {
+        this.data.previousCompletion = previousCompletion;
+    }
+
     getWinners(): Snowflake[] {
         if (this.isCasualSeason()) {
             return this.queryOrderedPlayers({ n: 3 });
@@ -873,6 +884,18 @@ export default class GoodMorningState {
     dequeueNextEvent(): void {
         this.data.event = this.data.nextEvent;
         delete this.data.nextEvent;
+    }
+
+    isPopcornRequested(): boolean {
+        return this.data.popcornRequested ?? false;
+    }
+
+    setPopcornRequested(popcornRequested: boolean) {
+        if (popcornRequested) {
+            this.data.popcornRequested = true;
+        } else {
+            delete this.data.popcornRequested;
+        }
     }
 
     /**

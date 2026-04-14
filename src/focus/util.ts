@@ -95,9 +95,9 @@ export async function getRandomFocusGame(): Promise<FocusGameState> {
     // if (wheelOfFortune && chance(0.4)) {
     //     return wheelOfFortune;
     // }
-    // If a wordle solution can be found, return that with 90% odds
+    // If a wordle solution can be found, return that
     const wordleWords = await controller.chooseMagicWords(1, { characters: 6, bonusMultiplier: 8 });
-    if (wordleWords.length > 0 && chance(0.9)) {
+    if (wordleWords.length > 0) {
         return {
             type: 'WORDLE',
             scores: {},
@@ -108,7 +108,7 @@ export async function getRandomFocusGame(): Promise<FocusGameState> {
             }
         };
     }
-    // Else, do popcorn
+    // If somehow wordle count not be started, do a popcorn
     return {
         type: 'POPCORN',
         storySegments: [],

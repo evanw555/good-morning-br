@@ -1,7 +1,7 @@
 import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, BaseMessageOptions, ButtonStyle, Client, ComponentType, DMChannel, GatewayIntentBits, MessageFlags, OmitPartialGroupDMChannel, PartialMessage, Partials, TextChannel, TextInputStyle, User } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discord.js';
 import { DailyEvent, DailyEventType, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, SubmissionPromptHistory, ReplyToMessageData, MessengerPayload, AnonymousSubmission, GamePlayerAddition, DecisionProcessingResult, FinalizeSungazerPollData, SpecialSungazerTermAward, MEDAL_TYPES } from './types';
-import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, getScaledPoints, getSimpleScaledPoints, text, getRelativeDotwCalendarDate } from './util';
+import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, getScaledPoints, getSimpleScaledPoints, text, getRelativeDotwCalendarDate, generateWithAi } from './util';
 import GoodMorningState from './state';
 import { canonicalizeText, chance, DiscordTimestampFormat, FileStorage, forEachMessage, generateKMeansClusters, getClockTime, getDateBetween, getJoinedMentions, getMaxKeys, getRandomDateBetween,
     getRankString, getRelativeDateTimeString, getSelectedNode, getSortedKeys, getTodayDateString, getTomorrow, getWordRepetitionScore, LanguageGenerator, loadJson, Messenger,
@@ -626,6 +626,17 @@ const chooseEvent = async (date: Date): Promise<DailyEvent | undefined> => {
     const relativeCalendarDate = getRelativeDotwCalendarDate(date); // e.g. "11/thu4" for 4th Thursday of November
     if (calendarDate in config.goodMorningMessageOverrides || relativeCalendarDate in config.goodMorningMessageOverrides) {
         return undefined;
+    }
+    // If popcorn is requested for a Thursday, do it
+    if (state.isPopcornRequested() && date.getDay() === 4) {
+        return {
+            type: DailyEventType.HighFocus,
+            focusGame: {
+                type: 'POPCORN',
+                storySegments: [],
+                scores: {}
+            }
+        };
     }
     // The following events are only done on non-casual seasons
     if (!state.isCasualSeason()) {
@@ -1896,12 +1907,32 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             await sleep(10000);
         }
 
+        // Before choosing the next event, update and check the season completion
+        const previousCompletion = state.getSeasonPreviousCompletion();
+        const currentCompletion = state.getSeasonCompletion();
+        if (currentCompletion > previousCompletion) {
+            // If passing the halfway point, queue popcorn
+            if (previousCompletion < 0.5 && currentCompletion >= 0.5) {
+                state.setPopcornRequested(true);
+                // TODO: Temp logging
+                await logger.log(`Just passed halfway point (**${previousCompletion.toFixed(2)}** -> **${currentCompletion.toFixed(2)}**), so popcorn has been requested`);
+            }
+            // Update the previous completion in state
+            state.setSeasonPreviousCompletion(currentCompletion);
+        }
+
         // Determine event for tomorrow
         const nextEvent = await chooseEvent(getTomorrow());
         if (nextEvent && !state.isSeasonGoalReached()) {
             state.setNextEvent(nextEvent);
             // TODO: temporary message to tell admin when a special event has been selected, remove this soon
             await logger.log(`Event for tomorrow has been selected: \`${JSON.stringify(nextEvent)}\``);
+            // If popcorn was selected while requested, clear the request
+            if (nextEvent.type === DailyEventType.HighFocus && nextEvent.focusGame?.type === 'POPCORN') {
+                state.setPopcornRequested(false);
+                // TODO: Temp logging to see this work
+                await logger.log('Popcorn was selected while requested, so the request has been cleared.');
+            }
             // Depending on the type of event chosen for tomorrow, send out a special message
             if (nextEvent.type === DailyEventType.GuestReveille) {
                 await messenger.send(goodMorningChannel, languageGenerator.generate('{reveille.summon}', { player: `<@${nextEvent.user}>` }));
@@ -3746,6 +3777,14 @@ const processCommands = async (msg: OmitPartialGroupDMChannel<Message<boolean>>)
         } else {
             messenger.send(msg.channel, languageGenerator.generate(msg.content.substring(1), { player: `<@${msg.author.id}>` }));
         }
+        return;
+    }
+    // Test out text generation with AI
+    if (msg.content.startsWith('GENERATE_AI')) {
+        const prompt = msg.content.replace('GENERATE_AI', '').trim();
+        await msg.reply('Generating with AI...');
+        const result = await generateWithAi(prompt);
+        await msg.channel.send(result);
         return;
     }
     // Handle sanitized commands
