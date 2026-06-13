@@ -1267,22 +1267,20 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         const lateAdditions: string[] = [];
         // The players passed in are ordered by points, so the best late players get priority
         for (const { userId, displayName, points } of players) {
-            // If adding right before the beginning of week 2 (during week 1), assign this player to a random free territory (if any exist)
-            if (this.getTurn() === 1) {
-                const ownerlessTerritoryIds = this.getOwnerlessTerritories();
-                if (ownerlessTerritoryIds.length > 0) {
-                    const color = randChoice(...this.getAvailableColors());
-                    this.state.players[userId] = {
-                        displayName,
-                        points,
-                        color
-                    };
-                    const territoryId = randChoice(...ownerlessTerritoryIds);
-                    this.state.territories[territoryId].owner = userId;
-                    this.state.territories[territoryId].troops = 1;
-                    lateAdditions.push(`<@${userId}> at _${this.getTerritoryName(territoryId)}_`);
-                    continue;
-                }
+            // If there are any unclaimed territories, assign one to player at random
+            const ownerlessTerritoryIds = this.getOwnerlessTerritories();
+            if (ownerlessTerritoryIds.length > 0) {
+                const color = randChoice(...this.getAvailableColors());
+                this.state.players[userId] = {
+                    displayName,
+                    points,
+                    color
+                };
+                const territoryId = randChoice(...ownerlessTerritoryIds);
+                this.state.territories[territoryId].owner = userId;
+                this.state.territories[territoryId].troops = 1;
+                lateAdditions.push(`<@${userId}> at _${this.getTerritoryName(territoryId)}_`);
+                continue;
             }
             // Else, refuse to add the player
             void logger.log(`Refusing to add late joiner **${displayName}**`);
