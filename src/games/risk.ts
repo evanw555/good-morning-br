@@ -4557,7 +4557,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         }];
     }
 
-    override getPreDecisionSungazerPollData(): { title: string; values: string[]; valueNames?: Record<string, string>; } | undefined {
+    override async getPreDecisionSungazerPollData(): Promise<{ title: string, values: string[], valueNames?: Record<string, string>, preMessages?: MessengerPayload[] } | undefined> {
         // Abort if we're still in the draft phase
         if (this.state.draft) {
             return undefined;
@@ -4585,7 +4585,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         return {
             title: 'Sungazers, flex your influence here... how should we manipulate the ferry routes this week? No ties!',
             values,
-            valueNames
+            valueNames,
+            preMessages: [{ files: [await this.renderStateAttachment()] }]
         };
     }
 

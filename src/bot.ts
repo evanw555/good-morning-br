@@ -2215,10 +2215,15 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             // If there's a game in progress and tomorrow is the game decision, start the pre-decision poll
             if (state.hasGame() && state.getEventType() === DailyEventType.GameDecision) {
                 // If the game returns poll data to be used this week...
-                const pollData = state.getGame().getPreDecisionSungazerPollData();
+                const pollData = await state.getGame().getPreDecisionSungazerPollData();
                 if (pollData) {
                     // Only do this if there's no active game/prompt poll...
                     if (!timeoutManager.hasTimeoutWithType(TimeoutType.FinalizeSungazerPoll) && !timeoutManager.hasTimeoutWithType(TimeoutType.AnonymousSubmissionTypePollStart)) {
+                        // First, send any pre-messages if specified
+                        if (pollData.preMessages) {
+                            await messenger.sendAll(sungazersChannel, pollData.preMessages);
+                        }
+
                         // Determine the poll end time
                         const pollEndDate = new Date();
                         if (config.testing) {
@@ -2227,6 +2232,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                             pollEndDate.setHours(pollEndDate.getHours() + 11);
                         }
 
+                        // Start the actual poll
                         await controller.startSungazerPoll({
                             values: pollData.values,
                             pollEndDate,

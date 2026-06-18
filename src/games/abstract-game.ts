@@ -317,7 +317,7 @@ export default abstract class AbstractGame<T extends GameState> {
         return [];
     }
 
-    getPreDecisionSungazerPollData(): { title: string, values: string[], valueNames?: Record<string, string> } | undefined {
+    async getPreDecisionSungazerPollData(): Promise<{ title: string, values: string[], valueNames?: Record<string, string>, preMessages?: MessengerPayload[] } | undefined> {
         return undefined;
     }
 
