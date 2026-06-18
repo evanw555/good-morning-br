@@ -226,7 +226,11 @@ export interface RiskPlayerState {
     eliminator?: Snowflake,
     /** List of players that this player has betrayed (staged an insurrection against). */
     betrayed?: Snowflake[],
+    /** Mapping of players that this player has supported, in terms of number of reinforcements donated (includes self). */
+    supported?: Record<Snowflake, number>,
+    /** Total number of kills by this player throughout the season. */
     kills?: number,
+    /** Total number of deaths by this player throughout the season. */
     deaths?: number
 }
 

@@ -2696,12 +2696,21 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             for (const userId of Object.keys(addDecisions)) {
                 const territoryIds = addDecisions[userId];
                 for (const territoryId of territoryIds) {
+                    const ownerId = this.getTerritoryOwner(territoryId);
                     // Validate that the player actually has enough new troops to do the addition
                     if (this.getPlayerNewTroops(userId) > 0) {
                         // Do the addition and decrement "new troops" allowance
                         this.addTerritoryTroops(territoryId, 1);
                         this.addPlayerNewTroops(userId, -1);
                         additions[territoryId] = (additions[territoryId] ?? 0) + 1;
+                        // If there is a known owner of this territory (should always be the case), increment this player's support tally for that owner
+                        if (ownerId) {
+                            const player = this.state.players[userId];
+                            if (!player.supported) {
+                                player.supported = {};
+                            }
+                            player.supported[ownerId] = (player.supported[ownerId] ?? 0) + 1;
+                        }
                     }
                     // If not, then log it
                     else {
