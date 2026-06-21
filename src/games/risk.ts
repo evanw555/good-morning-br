@@ -66,8 +66,10 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             },
             ordering: {
                 question: 'In what order do attacks happen?',
-                answer: 'Attacks are generally shuffled, but there are some ordering guarantees. First, all circular/symmetric attacks (e.g. two territories attacking each other) '
-                    + 'will happen first, then all other attacks with the end of the chain being processed first (e.g. if **A** attacks **B** and **B** attacks **C**, **B** will '
+                answer: 'Attacks are generally shuffled, but there are some ordering guarantees:\n'
+                    + '1. Insurrections first.\n'
+                    + '2. Circular/symmetric attacks (e.g. two territories attacking each other)\n'
+                    + '3. All other attacks, with the end of the chain being processed first (e.g. if **A** attacks **B** and **B** attacks **C**, **B** will '
                     + 'attack **C** before **A** attacks **B**). This means that generally, a territory will never launch an attack after being attacked.'
             },
             cycles: {
@@ -79,8 +81,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             },
             multipronged: {
                 question: 'What if two people attack the same territory?',
-                answer: 'This will result in a "multipronged" attack of the defending territory, with the attackers taking turns round-robin. '
-                    + 'Whichever army happens to land the kill will take control of the territory and have to fend off the other attackers.'
+                answer: 'This will result in a "multipronged" attack of the defending territory, with the attackers taking turns round-robin (bigger army first). '
+                    + 'The army securing the most kills captures the territory, and the other armies retreat.'
             },
             dice: {
                 question: 'How do the dice rolls work?',
@@ -92,8 +94,9 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             },
             eliminated: {
                 question: 'Do I still get to play once I\'m eliminated?',
-                answer: 'You will no longer be in the running to win the game and you can no longer plan attacks or movements, but you will still earn reinforcements and be able to place '
-                    + 'them in the territories of the player who currently owns you as a vassal. You can help them by placing your troops, or you can choose to withold them... it\'s up to you.'
+                answer: 'You can no longer plan attacks or movements, but you will still earn reinforcements and be able to place them in the territories of the player who currently owns you as a vassal. '
+                    + 'You can help them by placing your troops, and if they win you will earn partial bonus terms based on your contribution. '
+                    + 'Alternatively, you can insurrect using your reinforcements for a chance to get back in the game. You may only insurrect during weeks where you were a top performer.'
             },
             reinforcements: {
                 question: 'How many reinforcements do I get?',
@@ -102,11 +105,13 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 + '\n- **1** troop if you earn any GMBR points that week, **2** if you\'re in the top 50% of weekly point earners, and **3** if you\'re in the top 25% of weekly point earners.'
                 + '\n- **1** troop if you captured at least one territory the previous week.'
                 + '\n- **1** troop if you place in the top 3 contest winners.'
+                + '\n- Troops are automatically taxed from vassal stockpiles at a rate of **1-per-5** (or **1-per-4** if they\'ve betrayed you).'
             },
             prize: {
                 question: 'What\'s the prize for winning the PTGH contest?',
                 answer: 'If you place 1st, you will be able to select a custom icon for your troops to replace the standard pawn piece icon. '
-                    + 'Additionally, everyone who places in the top 3 will be given one bonus reinforcement troop that week.'
+                    + 'Additionally, everyone who places in the top 3 will be given one bonus reinforcement troop that week. '
+                    + 'If you are eliminated, you will be given the opportunity to insurrect that week.'
             }
         },
         map: {
@@ -1190,6 +1195,16 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
      */
     private getPlayerVassals(userId: Snowflake): Snowflake[] {
         return this.getPlayers().filter(otherId => userId !== otherId && this.getPlayerTeam(otherId) === userId);
+    }
+
+    /**
+     * @returns True if the given player is eliminated and has directly insurrected against their current lord.
+     */
+    private hasPlayerBetrayedTeam(userId: Snowflake): boolean {
+        if (!this.isPlayerEliminated(userId)) {
+            return false;
+        }
+        return (this.state.players[userId]?.betrayed ?? []).includes(this.getPlayerTeam(userId));
     }
 
     override async onDecisionPreNoon(): Promise<MessengerManifest> {
@@ -2449,6 +2464,21 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             delete this.state.players[userId].captureBonus;
             delete this.state.players[userId].weeklyPrize;
             delete this.state.players[userId].mayInsurrect;
+            // If eliminated, check potential auto-taxes...
+            if (this.isPlayerEliminated(userId)) {
+                const lordId = this.getPlayerTeam(userId);
+                // Tax one troop for every N stockpiled
+                const taxThreshold = this.hasPlayerBetrayedTeam(userId) ? 4 : 5;
+                const taxAmount = Math.floor(this.getPlayerNewTroops(userId) / taxThreshold);
+                if (taxAmount > 0) {
+                    this.addPlayerNewTroops(userId, -taxAmount);
+                    this.addPlayerNewTroops(lordId, taxAmount);
+                    messengerPayloads.push({
+                        content: `**${this.getPlayerDisplayName(lordId)}** has automatically taxed **${taxAmount}** troop${s(taxAmount)} from **${this.getPlayerDisplayName(userId)}'s** stockpile (1-per-${taxThreshold})`,
+                        flags: MessageFlags.SuppressNotifications
+                    });
+                }
+            }
             // Give insurrect privilege if eliminated and a top performer
             if (i < 3 && this.isPlayerEliminated(userId)) {
                 this.state.players[userId].mayInsurrect = true;
@@ -3575,10 +3605,10 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 // Validate that the user is not eliminated
                 if (this.isPlayerEliminated(userId)) {
                     // TODO: If this user has already betrayed their lord, use different text here
-                    const hasBetrayed = (this.state.players[userId]?.betrayed ?? []).includes(this.getPlayerTeam(userId));
+                    const hasBetrayed = this.hasPlayerBetrayedTeam(userId);
                     const mayInsurrect = this.hasInsurrectionPrivilege(userId);
                     await interaction.editReply({
-                        content: `You're eliminated, so you can choose the _good_ path of supporting your lord **${this.getPlayerDisplayName(this.getPlayerTeam(userId))}s**, or the _evil_ path of betrayal to re-enter the game. `
+                        content: `You're eliminated, so you can choose the _good_ path of supporting your lord **${this.getPlayerDisplayName(this.getPlayerTeam(userId))}**, or the _evil_ path of betrayal to re-enter the game. `
                             + '\n- If you choose the _good_ path, you will be rewarded with partial Sungazer terms if your lord wins. '
                             + (hasBetrayed ? `You however have already betrayed **${this.getPlayerDisplayName(this.getPlayerTeam(userId))}**, so you are no longer eligible to ride on their coattails.` : '')
                             + '\n- If you choose the _evil_ path, you have a shot to be back in the game. However, betraying your lord disqualifies you from getting any of the _good_ path perks, should they win. '

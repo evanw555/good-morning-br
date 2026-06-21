@@ -1390,9 +1390,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
 
     // If there are any extra begin-turn messages, send them now
     if (extraGameMessages.length > 0) {
-        for (const extraGameMessage of extraGameMessages) {
-            await messenger.send(goodMorningChannel, extraGameMessage);
-        }
+        await messenger.sendAll(goodMorningChannel, extraGameMessages);
     }
 
     // Notify the channel of any birthdays today
@@ -1806,11 +1804,12 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
     },
     [TimeoutType.NextMidMorningC]: async (): Promise<void> => {
         // TODO: Patch notes go here
-        if (getTodayDateString() === '2/4/26') {
+        if (getTodayDateString() === '6/22/26') {
             await messenger.send(goodMorningChannel, `**GMBR Patch Notes ${getTodayDateString()}:**`
-                + '\n- There is once again only one magic word of the day, but the word list has been simplified.'
-                + '\n- The magic word no longer needs to be in your first message of the day for it to count.'
-                + '\n- As more players say the magic word, the reward decreases.');
+                + '\n- Each week in Risk, players automatically tax their vassals\' reinforcement stockpiles once they\'re large enough.'
+                + '\n- The tax rate is 1-per-5 by default, and 1-per-4 after a failed insurrection.'
+                + '\n- Players who successfully insurrect get to keep their original vassals.'
+                + '\n- If two players successfully co-insurrect at the same territory, the stronger co-insurrectionist gets to keep the other as a vassal (inheriting their vassals too).');
         }
         // Send birthday follow-up message if any birthday boys have been active today
         const activeBirthdayBoys = state.getBirthdayBoys().filter(id => state.hasDailyRank(id));
