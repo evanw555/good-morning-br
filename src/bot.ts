@@ -4858,7 +4858,7 @@ client.on('messageCreate', async (msg: OmitPartialGroupDMChannel<Message<boolean
             sungazerRemovalUsers.delete(userId);
         }
         // If asking about their terms, let them know how many they have left
-        if (canonicalizeText(msg.content).includes('terms')) {
+        if (canonicalizeText(msg.content).includes('terms') && msg.content.trim().endsWith('?')) {
             const termsLeft = history.sungazers[userId] ?? 0;
             if (termsLeft === 0) {
                 await logger.log(`<@${userId}> asked about terms but has zero!`);
