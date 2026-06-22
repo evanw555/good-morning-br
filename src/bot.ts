@@ -4857,6 +4857,20 @@ client.on('messageCreate', async (msg: OmitPartialGroupDMChannel<Message<boolean
             await removeSungazer(userId);
             sungazerRemovalUsers.delete(userId);
         }
+        // If asking about their terms, let them know how many they have left
+        if (canonicalizeText(msg.content).includes('terms')) {
+            const termsLeft = history.sungazers[userId] ?? 0;
+            if (termsLeft === 0) {
+                await logger.log(`<@${userId}> asked about terms but has zero!`);
+            } else if (termsLeft < 1) {
+                await messenger.reply(msg, `You only have a partial term left. We're **${Math.round(state.getSeasonCompletion() * 100)}%** into the season, and you're out once we reach **${Math.round(termsLeft * 100)}%**`);
+            } else if (termsLeft === 1) {
+                await messenger.reply(msg, 'This is your last term on the council. Lock in or you\'re out!');
+            } else {
+                // TODO: Use fractional characters instead of decimals
+                await messenger.reply(msg, `You have **${termsLeft}** terms remaining`);
+            }
+        }
         // If replying to a message while prompts are being suggested...
         if (timeoutManager.hasTimeoutWithType(TimeoutType.AnonymousSubmissionTypePollStart) && msg.reference) {
             // If replying to the bot user...
