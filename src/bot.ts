@@ -1814,7 +1814,16 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         // Send birthday follow-up message if any birthday boys have been active today
         const activeBirthdayBoys = state.getBirthdayBoys().filter(id => state.hasDailyRank(id));
         if (activeBirthdayBoys.length > 0) {
-            await messenger.send(goodMorningChannel, `Well ${getJoinedMentions(activeBirthdayBoys)}, are you enjoying your birthday so far?`);
+            await messenger.send(goodMorningChannel, randChoice(
+                `Well ${getJoinedMentions(activeBirthdayBoys)}, are you enjoying your birthday so far?`,
+                `Does anyone have a fond memory of ${getJoinedMentions(activeBirthdayBoys)} they'd like to share? As it's their special day...`,
+                `On this joyous day celebrating ${getJoinedMentions(activeBirthdayBoys)}, let's all share something we love about them`,
+                `I have an idea! Let's all close our eyes and think back to a time ${getJoinedMentions(activeBirthdayBoys)} made us smile ear to ear...`,
+                `There are plenty of things I admire about ${getJoinedMentions(activeBirthdayBoys)}, but I'd like to hear what some others have to say too`,
+                `Let's all go around the room and share a funny birthday joke that incorporates our love and admiration for ${getJoinedMentions(activeBirthdayBoys)}`,
+                `It's been a lovely birthdayous morning, but you know what would make it even better? Sharing an uplifting memory about ${getJoinedMentions(activeBirthdayBoys)}`,
+                `Before having some morning birthday cake, we should share a short affirmation about ${getJoinedMentions(activeBirthdayBoys)}. I'll start: _"my dear dog${s(activeBirthdayBoys.length)}"_`
+            ));
         }
     },
     [TimeoutType.NextPreNoon]: async (): Promise<void> => {
