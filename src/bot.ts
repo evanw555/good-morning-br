@@ -1804,7 +1804,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
     },
     [TimeoutType.NextMidMorningC]: async (): Promise<void> => {
         // TODO: Patch notes go here
-        if (getTodayDateString() === '6/22/26') {
+        if (getTodayDateString() === '6/23/2026') {
             await messenger.send(goodMorningChannel, `**GMBR Patch Notes ${getTodayDateString()}:**`
                 + '\n- Each week in Risk, players automatically tax their vassals\' reinforcement stockpiles once they\'re large enough.'
                 + '\n- The tax rate is 1-per-5 by default, and 1-per-4 after a failed insurrection.'
