@@ -3,8 +3,8 @@ import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discor
 import { DailyEvent, DailyEventType, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, SubmissionPromptHistory, ReplyToMessageData, MessengerPayload, AnonymousSubmission, GamePlayerAddition, DecisionProcessingResult, FinalizeSungazerPollData, SpecialSungazerTermAward, MEDAL_TYPES } from './types';
 import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, getScaledPoints, getSimpleScaledPoints, text, getRelativeDotwCalendarDate, generateWithAi } from './util';
 import GoodMorningState from './state';
-import { canonicalizeText, chance, DiscordTimestampFormat, FileStorage, forEachMessage, generateKMeansClusters, getClockTime, getDateBetween, getJoinedMentions, getMaxKeys, getRandomDateBetween,
-    getRankString, getRelativeDateTimeString, getSelectedNode, getSortedKeys, getTodayDateString, getTomorrow, getWordRepetitionScore, LanguageGenerator, loadJson, Messenger,
+import { canonicalizeText, chance, DiscordTimestampFormat, FileStorage, forEachMessage, generateKMeansClusters, getClockTime, getDateBetween, getJoinedMentions, getMaxKeys, getObjectSize, getRandomDateBetween,
+    getRankString, getRelativeDateTimeString, getSelectedNode, getSortedKeys, getTodayDateString, getTomorrow, getWordRepetitionScore, isObjectEmpty, LanguageGenerator, loadJson, Messenger,
     naturalJoin, PastTimeoutStrategy, prettyPrint, R9KTextBank, randChoice, randFloat, randInt, s, shuffle, sleep, TimeoutManager, TimeoutOptions, toCalendarDate, toDiscordTimestamp, toFixed, toLetterId} from 'evanw555.js';
 import { AnonymousSubmissionsState } from './submissions';
 import ActivityTracker from './activity-tracker';
@@ -792,26 +792,49 @@ const loadSubmissionPromptHistory = async (): Promise<SubmissionPromptHistory> =
     }
 };
 
-const updateSubmissionPromptHistory = async (used: string[], unused: string[], priority: string | undefined) => {
+const updateSubmissionPromptHistory = async (options: { used?: string[], unused?: string[], priority?: string | null, ratings?: Record<string, number> }) => {
     try {
         const promptHistory: SubmissionPromptHistory = await loadSubmissionPromptHistory();
         // Update the used prompts
         const usedSet: Set<string> = new Set(promptHistory.used);
-        for (const prompt of used) {
+        for (const prompt of options.used ?? []) {
             usedSet.add(prompt);
         }
         promptHistory.used = Array.from(usedSet).sort();
         // Update the unused prompts
         const unusedSet: Set<string> = new Set(promptHistory.unused);
-        for (const prompt of unused) {
+        for (const prompt of options.unused ?? []) {
             unusedSet.add(prompt);
         }
         promptHistory.unused = Array.from(unusedSet).filter(p => !usedSet.has(p)).sort();
         // Update or clear the priority prompt
-        if (priority) {
-            promptHistory.priority = priority;
-        } else {
+        if (options.priority) {
+            promptHistory.priority = options.priority;
+        } else if (options.priority === null) {
             delete promptHistory.priority;
+        }
+        // Update the ratings map
+        if (options.ratings) {
+            // TODO: Populate the field if missing
+            if (promptHistory.ratings === undefined) {
+                promptHistory.ratings = {};
+            }
+            // TODO: Add common util for merging maps together to make this easier
+            // First, load all existing ratings and new ratings into map
+            const allRatings: Record<string, number> = {};
+            for (const [prompt, rating] of [...Object.entries(promptHistory.ratings), ...Object.entries(options.ratings)]) {
+                allRatings[prompt] = rating;
+            }
+            // Then, sort the prompts by rating (highest first)
+            const sortedPrompts = getSortedKeys(Object.keys(allRatings), prompt => -(allRatings[prompt] ?? 0));
+            // Then, construct a new map in this order
+            const sortedRatings: Record<string, number> = {};
+            for (const prompt of sortedPrompts) {
+                const rating = allRatings[prompt] ?? 0;
+                sortedRatings[prompt] = rating;
+            }
+            // Finally, write that object back to the history
+            promptHistory.ratings = sortedRatings;
         }
         // Dump it
         await storage.write('prompts.json', JSON.stringify(promptHistory, null, 2));
@@ -853,6 +876,28 @@ const chooseRandomUnusedSubmissionPrompts = async (n: number): Promise<string[]>
     }
     return [];
 };
+
+const getRandomDefaultSubmissionPrompts = async (): Promise<string[]> => {
+    // Come up with a default list of prompts
+    const defaultPrompts = [
+        'pic that goes hard',
+        '2-sentence horror story',
+        'haiku',
+        'poem (ABAB)'
+    ];
+    // Also, try to fetch a couple highly rated past prompts
+    const promptHistory = await loadSubmissionPromptHistory();
+    const ratings = promptHistory.ratings;
+    if (ratings) {
+        const sortedPrompts = getSortedKeys(Object.keys(ratings), prompt => -(ratings[prompt] ?? 0));
+        // Choose from the top quarter of prompts
+        const highlyRatedPrompts = sortedPrompts.slice(0, Math.round(sortedPrompts.length * 0.25));
+        // Add 3 random prompts from this upper slice
+        defaultPrompts.push(...shuffle(highlyRatedPrompts).slice(0, 3));
+    }
+    // Shuffle the default prompt list
+    return shuffle(defaultPrompts);
+}
 
 const sendGoodMorningMessage = async (): Promise<void> => {
     // Get the overridden message for today, if it exists (some events may use this instead)
@@ -1319,6 +1364,20 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
                 'Revealing submissions in 5 minutes', '5 MINUTES!', 'Closing my DMs in 5 minutes', 'Window closes in 5 minutes') + ' ⏳'
         };
         await registerTimeout(TimeoutType.ReplyToMessage, fiveMinuteWarningTime, { arg: warningArg, pastStrategy: PastTimeoutStrategy.Delete });
+        // In case the submissions data doesn't exist, populate it with random data
+        if (!state.hasAnonymousSubmissions()) {
+            const defaultPrompts = await getRandomDefaultSubmissionPrompts();
+            const prompt = randChoice(...defaultPrompts);
+            state.setAnonymousSubmissions({
+                prompt,
+                phase: 'submissions',
+                submissions: {},
+                submissionOwnersByCode: {},
+                votes: {},
+                forfeiters: []
+            });
+            await logger.log(`WARNING! no AS data detected in state, auto-populated with default prompt _"${prompt}"_`);
+        }
     }
 
     const minutesEarly: number = state.getEventType() === DailyEventType.EarlyEnd ? (state.getEvent().minutesEarly ?? 0) : 0;
@@ -2064,6 +2123,52 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             }
         }
 
+        // If today was a submissions day, send out the poll
+        if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
+            const anonymousSubmissions = state.getAnonymousSubmissions();
+            // Only initiate a vote if this prompt wasn't forced
+            if (!anonymousSubmissions.isForcedPrompt()) {
+                // Send the voting message
+                const promptVotingMessage = await messenger.send(goodMorningChannel, {
+                    content: randChoice(
+                        'Well what did you guys think of today\'s prompt?',
+                        'So today\'s prompt... sneed it or keep it?',
+                        'Did you all like today\'s prompt?',
+                        'Well, was today\'s prompt good?'
+                    ),
+                    components: [{
+                        type: ComponentType.ActionRow,
+                        components: [{
+                            type: ComponentType.Button,
+                            style: ButtonStyle.Success,
+                            emoji: '👍',
+                            customId: 'rateASPrompt:true'
+                        }, {
+                            type: ComponentType.Button,
+                            style: ButtonStyle.Danger,
+                            emoji: '👎',
+                            customId: 'rateASPrompt:false'
+                        }]
+                    }],
+                    flags: MessageFlags.SuppressNotifications
+                }, { immediate: true });
+                // If the message was sent, save the rating info to state
+                if (promptVotingMessage) {
+                    // TODO: Add a setter so we can avoid using the raw state
+                    state.setSubmissionPromptRatings({
+                        prompt: anonymousSubmissions.getPrompt(),
+                        message: promptVotingMessage.id,
+                        votes: {},
+                        participants: anonymousSubmissions.getSubmitters()
+                    });
+                    // Schedule a timeout to finalize the ratings
+                    const ratingEndDate = new Date();
+                    ratingEndDate.setHours(ratingEndDate.getHours() + 6, randInt(0, 60), randInt(0, 60));
+                    await timeoutManager.registerTimeout(TimeoutType.AnonymousSubmissionPromptRatingEnd, ratingEndDate, { pastStrategy: PastTimeoutStrategy.Invoke });
+                }
+            }
+        }
+
         // Update player activity counters (this can only be done after all things which can possibly award points)
         const newStreakUsers: Snowflake[] = state.incrementPlayerActivities();
         // Award prizes to all players who just achieved full streaks
@@ -2149,9 +2254,29 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             }
             // If the anonymous submissions prompt hasn't been set, see if the prompt selection process should start
             if (!state.hasAnonymousSubmissions()) {
+                // First and foremost, if on prompt probation then we never want prompt suggestion to happen
+                if (state.isOnSubmissionPromptProbation()) {
+                    // If tomorrow is a submissions day, skip directly to prompt voting
+                    if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
+                        // Let the gazers know that their prompt options are predetermined
+                        await messenger.send(sungazersChannel, 'Gazers... your last prompt was so poorly received that I\'m gonna have to curate the choices myself today');
+                        await sleep(5000);
+                        // Come up with a default list of prompts
+                        const defaultPrompts = await getRandomDefaultSubmissionPrompts();
+                        // Start the prompt poll using only a few of these options
+                        const pollEndDate = new Date();
+                        pollEndDate.setHours(pollEndDate.getHours() + 8);
+                        await controller.startSungazerPoll({
+                            values: defaultPrompts.slice(0, randChoice(3, 4)),
+                            pollEndDate,
+                            type: 'submission-prompt',
+                            title: 'What should people submit? @everyone'
+                        });
+                    }
+                }
                 // If tomorrow is a submissions day then kick off a basic prompt poll now
                 // TODO: If the high-effort poll gets delayed for long enough, this could theoretically kick off in parallel. HANDLE THIS!
-                if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
+                else if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
                     // Accept suggestions for 4 hours
                     const pollStartDate = new Date();
                     pollStartDate.setHours(pollStartDate.getHours() + 4);
@@ -2628,6 +2753,51 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             title: 'What should people submit? @everyone'
         });
     },
+    [TimeoutType.AnonymousSubmissionPromptRatingEnd]: async (messageId: Snowflake): Promise<void> => {
+        // TODO: Add getter for this rather than accessing raw state
+        const ratingState = state.getSubmissionPromptRatings();
+        if (!ratingState) {
+            await logger.log('Attempting finalize prompt ratings with no rating state! Aborting...');
+            return;
+        }
+        // Try to fetch the rating message
+        const message = await goodMorningChannel.messages.fetch(ratingState.message);
+        // If there were somehow no votes, abort
+        if (isObjectEmpty(ratingState.votes)) {
+            // Wipe the rating state
+            state.clearSubmissionPromptRatings();
+            await dumpState();
+            // Edit the message
+            await message.edit({
+                components: [],
+                content: message.content + '\n-# **Result:** No votes.'
+            });
+            return;
+        }
+        // Count up the votes
+        let totalRating = 0;
+        let denom = 0;
+        for (const [userId, rating] of Object.entries(ratingState.votes)) {
+            const rMult = ratingState.participants.includes(userId) ? 1 : 0.5;
+            totalRating += (rating ? 1 : 0) * rMult;
+            denom += rMult;
+        }
+        const averageRating = totalRating / denom;
+        const approved = averageRating > 0.5;
+        // Wipe the rating state
+        state.clearSubmissionPromptRatings();
+        // Either place the gazers on prompt probation or take them off of it
+        state.setSubmissionPromptProbation(!approved);
+        await dumpState();
+        // Save the rating to prompt history
+        await updateSubmissionPromptHistory({ ratings: { [ratingState.prompt]: averageRating }});
+        // Edit the message
+        await message.edit({
+            components: [],
+            content: message.content + `\n-# **Result:** Prompt ${approved ? 'approved' : 'disapproved'}`
+        });
+        // TODO: Should the gazers be notified if they're on prompt probation?
+    },
     [TimeoutType.Nightmare]: async (): Promise<void> => {
         if (state.getEventType() !== DailyEventType.Nightmare) {
             await logger.log('Attempting to trigger nightmare timeout without a nightmare event! Aborting...');
@@ -2863,15 +3033,18 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                     submissions: {},
                     submissionOwnersByCode: {},
                     votes: {},
-                    forfeiters: []
+                    forfeiters: [],
+                    forcedPrompt: state.isOnSubmissionPromptProbation() ? true : undefined
                 });
+                // Now that the prompt has been forced, end prompt probation for now
+                state.clearSubmissionPromptProbation();
                 await dumpState();
 
                 // Update the submission prompt history
-                await updateSubmissionPromptHistory([chosenPrompt], sortedValues, runnerUpPrompt);
+                await updateSubmissionPromptHistory({ used: [chosenPrompt], unused: sortedValues, priority: runnerUpPrompt ?? null });
 
                 // TODO: Temp logging the make sure this works correctly
-                await logger.log('__Prompt voting results:__\n' + sortedKeys.map(key => `**(${getVotes(key)})** _${arg.choices[key]}_`));
+                await logger.log('__Prompt voting results:__\n' + sortedKeys.map(key => `**(${getVotes(key)})** _${arg.choices[key]}_`).join('\n'));
 
                 // Notify the channel
                 await pollMessage.reply(`The results are in, everyone will be sending me a _${chosenPrompt}_ ${config.defaultGoodMorningEmoji}. You can start sending me submissions now!`);
@@ -3387,6 +3560,45 @@ client.on('interactionCreate', async (interaction): Promise<void> => {
                 }]
             });
             return;
+        }
+        // If this is an interaction rating the previous prompt...
+        if (rootCustomId === 'rateASPrompt' && interaction.isMessageComponent()) {
+            const ratingState = state.getSubmissionPromptRatings();
+            // Validate this can be done at this time
+            if (!ratingState) {
+                await interaction.reply({
+                    ephemeral: true,
+                    content: 'We aren\'t currently rating the prompt. Wrong time?'
+                });
+                return;
+            }
+            if (interaction.message.id !== ratingState.message) {
+                await interaction.reply({
+                    ephemeral: true,
+                    content: 'You\'re trying to rate an old prompt. Bad boy!'
+                });
+                return;
+            }
+            await interaction.deferReply({ ephemeral: true });
+            const isParticipant = ratingState.participants.includes(interaction.user.id);
+            const rating = customIdSegments[1] === 'true';
+            // Write to state
+            ratingState.votes[interaction.user.id] = rating;
+            await dumpState();
+            // Reply to the user
+            const ratingText = rating
+                ? randChoice('given the prompt an upvote', 'given the prompt an updoot', 'approved the prompt', 'put your stamp of approval on today\'s prompt')
+                : randChoice('declared the prompt to be shit', 'declared the prompt to be some ahhh', 'given the prompt a thumbs down');
+            await interaction.editReply(`Thanks! You've ${ratingText}` + (isParticipant ? '' : '. You didn\'t participate today so you only get half a vote.'));
+            // TODO: Temp logging to see how this works
+            let totalRating = 0;
+            let denom = 0;
+            for (const [id, r] of Object.entries(ratingState.votes)) {
+                const rMult = ratingState.participants.includes(id) ? 1 : 0.5;
+                totalRating += (r ? 1 : 0) * rMult;
+                denom += rMult;
+            }
+            await logger.log(`**${state.getPlayerDisplayName(interaction.user.id)}** rated the prompt **${rating}** (num **${getObjectSize(ratingState.votes)}**, avg. **${totalRating / denom}**)`);
         }
         // If this is a generic game interaction, pass the handling off to the game instance
         if (rootCustomId === 'game') {

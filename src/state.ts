@@ -5,7 +5,7 @@ import AbstractGame from "./games/abstract-game";
 import ClassicGame from "./games/classic";
 import MazeGame from "./games/maze";
 import logger from "./logger";
-import { Bait, Combo, DailyEvent, DailyEventType, DailyPlayerState, FullDate, PlayerState, RawAnonymousSubmissionsState, RawGoodMorningState, Season, SeasonEndResults } from "./types";
+import { Bait, Combo, DailyEvent, DailyEventType, DailyPlayerState, FullDate, PlayerState, RawAnonymousSubmissionsState, RawGoodMorningState, Season, SeasonEndResults, SubmissionPromptRatings } from "./types";
 import IslandGame from "./games/island";
 import { AnonymousSubmissionsState } from "./submissions";
 import ArenaGame from "./games/arena";
@@ -997,6 +997,34 @@ export default class GoodMorningState {
 
     clearLastSubmissionWinners() {
         delete this.data.lastSubmissionWinners;
+    }
+
+    getSubmissionPromptRatings(): SubmissionPromptRatings | undefined {
+        return this.data.submissionPromptRatings;
+    }
+
+    setSubmissionPromptRatings(ratings: SubmissionPromptRatings) {
+        this.data.submissionPromptRatings = ratings;
+    }
+
+    clearSubmissionPromptRatings() {
+        delete this.data.submissionPromptRatings;
+    }
+
+    isOnSubmissionPromptProbation(): boolean {
+        return this.data.submissionPromptProbation ?? false;
+    }
+
+    setSubmissionPromptProbation(probation: boolean) {
+        if (probation) {
+            this.data.submissionPromptProbation = true;
+        } else {
+            delete this.data.submissionPromptProbation;
+        }
+    }
+
+    clearSubmissionPromptProbation() {
+        delete this.data.submissionPromptProbation;
     }
 
     getFocusGame(): FocusGameState {

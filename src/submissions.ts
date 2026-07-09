@@ -164,6 +164,10 @@ export class AnonymousSubmissionsState {
         return this.data.selectSubmissionMessage;
     }
 
+    isForcedPrompt(): boolean {
+        return this.data.forcedPrompt ?? false;
+    }
+
     hasUserVoted(userId: Snowflake): boolean {
         return userId in this.data.votes;
     }

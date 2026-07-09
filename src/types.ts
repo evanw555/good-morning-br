@@ -16,6 +16,7 @@ export enum TimeoutType {
     AnonymousSubmissionReveal = 'ANONYMOUS_SUBMISSION_REVEAL',
     AnonymousSubmissionVotingReminder = 'ANONYMOUS_SUBMISSION_VOTING_REMINDER',
     AnonymousSubmissionTypePollStart = 'ANONYMOUS_SUBMISSION_TYPE_POLL_START',
+    AnonymousSubmissionPromptRatingEnd = 'ANONYMOUS_SUBMISSION_PROMPT_RATING_END',
     Nightmare = 'NIGHTMARE',
     HomeStretchSurprise = 'HOME_STRETCH_SURPRISE',
     // GMBR 2.0 events
@@ -226,7 +227,20 @@ export interface RawAnonymousSubmissionsState {
     votes: Record<Snowflake, string[]>, // Map of UserId -> list of submission codes
     forfeiters: Snowflake[], // List of UserIds
     rootSubmissionMessage?: Snowflake, // MessageId
-    selectSubmissionMessage?: Snowflake // MessageId
+    selectSubmissionMessage?: Snowflake, // MessageId
+    /** If true, this submission was forced as a result of a low rating. */
+    forcedPrompt?: true
+}
+
+export interface SubmissionPromptRatings {
+    /** The prompt itself. */
+    prompt: string,
+    /** ID of the message where users can rate the prompt. */
+    message: Snowflake,
+    /** Mapping from user ID to whether the prompt was liked. */
+    votes: Record<Snowflake, boolean>,
+    /** List of users who participated in the contest and thus earn full votes. */
+    participants: Snowflake[]
 }
 
 export interface RawGoodMorningState {
@@ -251,6 +265,10 @@ export interface RawGoodMorningState {
     popcornRequested?: true,
     anonymousSubmissions?: RawAnonymousSubmissionsState,
     lastSubmissionWinners?: Snowflake[],
+    /** If present, we are currently voting on whether the previous prompt was good or not. */
+    submissionPromptRatings?: SubmissionPromptRatings,
+    /** If true, the gazer are on prompt probation and thus the next prompt will be auto-suggested. */
+    submissionPromptProbation?: true,
     dailyStatus: Record<Snowflake, DailyPlayerState>,
     players: Record<Snowflake, PlayerState>,
     /** Completion of this season in the range [0,1] at the time of the last pre-noon. Used for day-by-day comparisons. */
@@ -315,5 +333,8 @@ export interface SubmissionPromptHistory {
     used: string[],
     unused: string[],
     /** Unused prompt that should always be suggested. */
-    priority?: string
+    priority?: string,
+    /** Mapping from prompt to prompt rating in the range [0, 1]. Not all prompts have been rated. */
+    // TODO: Make this non-optional.
+    ratings?: Record<string, number>
 }
