@@ -1907,7 +1907,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         await registerTimeout(TimeoutType.BaitingStart, baitingStartTime, { pastStrategy: PastTimeoutStrategy.Delete }, { testingSeconds: 2 });
 
         // Check the results of anonymous submissions
-        if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
+        if (state.getEventType() === DailyEventType.AnonymousSubmissions && state.hasAnonymousSubmissions()) {
             // ...if the votes haven't been finalized already
             if (state.isAcceptingAnonymousSubmissionVotes()) {
                 await finalizeAnonymousSubmissions();
@@ -1916,8 +1916,6 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             } else {
                 await logger.log('Aborting pre-noon submission finalizing, as the submissions are not currently in the voting phase.');
             }
-            // Wipe the submissions data from the state since we're done with it completely
-            state.clearAnonymousSubmissions();
         }
 
         // Award prizes to the players with the most wishes
@@ -2125,47 +2123,53 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
 
         // If today was a submissions day, send out the poll
         if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
-            const anonymousSubmissions = state.getAnonymousSubmissions();
-            // Only initiate a vote if this prompt wasn't forced
-            if (!anonymousSubmissions.isForcedPrompt()) {
-                // Send the voting message
-                const promptVotingMessage = await messenger.send(goodMorningChannel, {
-                    content: randChoice(
-                        'Well what did you guys think of today\'s prompt?',
-                        'So today\'s prompt... sneed it or keep it?',
-                        'Did you all like today\'s prompt?',
-                        'Well, was today\'s prompt good?'
-                    ),
-                    components: [{
-                        type: ComponentType.ActionRow,
+            if (state.hasAnonymousSubmissions()) {
+                const anonymousSubmissions = state.getAnonymousSubmissions();
+                // Only initiate a vote if this prompt wasn't forced
+                if (!anonymousSubmissions.isForcedPrompt()) {
+                    // Send the voting message
+                    const promptVotingMessage = await messenger.send(goodMorningChannel, {
+                        content: randChoice(
+                            'Well what did you guys think of today\'s prompt?',
+                            'So today\'s prompt... sneed it or keep it?',
+                            'Did you all like today\'s prompt?',
+                            'Well, was today\'s prompt good?'
+                        ),
                         components: [{
-                            type: ComponentType.Button,
-                            style: ButtonStyle.Success,
-                            emoji: '👍',
-                            customId: 'rateASPrompt:true'
-                        }, {
-                            type: ComponentType.Button,
-                            style: ButtonStyle.Danger,
-                            emoji: '👎',
-                            customId: 'rateASPrompt:false'
-                        }]
-                    }],
-                    flags: MessageFlags.SuppressNotifications
-                }, { immediate: true });
-                // If the message was sent, save the rating info to state
-                if (promptVotingMessage) {
-                    // TODO: Add a setter so we can avoid using the raw state
-                    state.setSubmissionPromptRatings({
-                        prompt: anonymousSubmissions.getPrompt(),
-                        message: promptVotingMessage.id,
-                        votes: {},
-                        participants: anonymousSubmissions.getSubmitters()
-                    });
-                    // Schedule a timeout to finalize the ratings
-                    const ratingEndDate = new Date();
-                    ratingEndDate.setHours(ratingEndDate.getHours() + 6, randInt(0, 60), randInt(0, 60));
-                    await timeoutManager.registerTimeout(TimeoutType.AnonymousSubmissionPromptRatingEnd, ratingEndDate, { pastStrategy: PastTimeoutStrategy.Invoke });
+                            type: ComponentType.ActionRow,
+                            components: [{
+                                type: ComponentType.Button,
+                                style: ButtonStyle.Success,
+                                emoji: '👍',
+                                customId: 'rateASPrompt:true'
+                            }, {
+                                type: ComponentType.Button,
+                                style: ButtonStyle.Danger,
+                                emoji: '👎',
+                                customId: 'rateASPrompt:false'
+                            }]
+                        }],
+                        flags: MessageFlags.SuppressNotifications
+                    }, { immediate: true });
+                    // If the message was sent, save the rating info to state
+                    if (promptVotingMessage) {
+                        // TODO: Add a setter so we can avoid using the raw state
+                        state.setSubmissionPromptRatings({
+                            prompt: anonymousSubmissions.getPrompt(),
+                            message: promptVotingMessage.id,
+                            votes: {},
+                            participants: anonymousSubmissions.getSubmitters()
+                        });
+                        // Schedule a timeout to finalize the ratings
+                        const ratingEndDate = new Date();
+                        ratingEndDate.setHours(ratingEndDate.getHours() + 6, randInt(0, 60), randInt(0, 60));
+                        await timeoutManager.registerTimeout(TimeoutType.AnonymousSubmissionPromptRatingEnd, ratingEndDate, { pastStrategy: PastTimeoutStrategy.Invoke });
+                    }
                 }
+                // Wipe the submissions data from the state since we're done with it completely
+                state.clearAnonymousSubmissions();
+            } else {
+                await logger.log('WARNING! Attempting to begin ratings and clear with no submissions data in state, aborting...');
             }
         }
 
