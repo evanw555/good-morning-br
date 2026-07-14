@@ -3079,7 +3079,9 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                         content: `${summary}${quantify(attacker.troops, 'attacker troop')} remaining vs **${defender.troops}** defending...`,
                         files: [conflictRender],
                         flags: MessageFlags.SuppressNotifications
-                    }
+                    },
+                    // Next dice roll should always be in one minute
+                    delayOverride: 60 * 1000
                 };
             }
             // Else, the conflict is a circular conflict...
@@ -3147,7 +3149,9 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                         content: 'The circular conflict rages on!',
                         files: [conflictRender],
                         flags: MessageFlags.SuppressNotifications
-                    }
+                    },
+                    // Next dice roll should always be in one minute
+                    delayOverride: 60 * 1000
                 };
             }
         }
@@ -3201,7 +3205,9 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     content: `${this.getJoinedDisplayNames(insurrectionists)} ${insurrectionists.length === 1 ? 'has' : 'have'} staged an insurrection against **${this.getTerritoryOwnerDisplayName(territoryId)}** at _${this.getTerritoryName(territoryId)}_!`,
                     files: [await this.renderInvasion(this.state.currentConflict)],
                     flags: MessageFlags.SuppressNotifications
-                }
+                },
+                // Slightly shorter delay between conflict introduction and the actual rolls
+                delayMultiplier: 0.5
             };
         }
         // If the attack decisions haven't been processed yet, process them
@@ -3425,7 +3431,9 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     content: summaryContent,
                     files: [await this.renderInvasion(this.state.currentConflict)],
                     flags: MessageFlags.SuppressNotifications
-                }
+                },
+                // Slightly shorter delay between conflict introduction and the actual rolls
+                delayMultiplier: 0.5
             };
         }
         // If there are 3 or fewer remaining players, add the final winners (causing the game to end at noon)

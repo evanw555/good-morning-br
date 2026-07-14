@@ -196,7 +196,9 @@ export interface DecisionProcessingResult {
     continueProcessing: boolean,
     // If specified, the delay for the subsequent update will be scaled by this amount.
     delayMultiplier?: number,
-    // If specified, the next update will be scheduled for this particular time (as arguments of Date#setHours). Overrides the relative delay and multiplier system.
+    // If specified, the delay for the subsequent update will be this exact amount. Overrides relative delay and multiplier.
+    delayOverride?: number,
+    // If specified, the next update will be scheduled for this particular time (as arguments of Date#setHours). Overrides the relative delay, multiplier, and delay override options.
     nextUpdateTime?: [number, number, number]
 }
 

@@ -2924,26 +2924,18 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                 // If a specific time was set for the next update...
                 // It's possible that this might be in the past, but that's ok (see below)
                 nextProcessDate.setHours(...processingResult.nextUpdateTime);
+            } else if (processingResult.delayOverride) {
+                // Else, if an overridden delay in millis was specified...
+                nextProcessDate.setTime(nextProcessDate.getTime() + processingResult.delayOverride);
             } else {
                 // Else, schedule the next update using a random delay (shorter if it's later in the day)
-                let baseDelayMinutes: number = 1;
-                if (new Date().getHours() >= 11) {
-                    if (new Date().getMinutes() >= 30) {
-                        baseDelayMinutes = randFloat(0.33, 1.66);
-                    } else {
-                        baseDelayMinutes = randFloat(1, 5);
-                    }
-                } else if (new Date().getHours() >= 10) {
-                    baseDelayMinutes = randFloat(5, 15);
-                } else if (new Date().getHours() >= 9) {
-                    baseDelayMinutes = randFloat(10, 25);
-                } else {
-                    baseDelayMinutes = randFloat(20, 35);
-                }
-                // Apply a multiplier at the granularity of seconds
-                const delaySeconds = Math.floor((baseDelayMinutes * 60) * (processingResult.delayMultiplier ?? 1));
+                const noon = new Date();
+                noon.setHours(12, 0, 0, 0);
+                const millisUntilNoon = Math.max(1000, noon.getTime() - new Date().getTime());
+                // Essentially, the next update is one eighth of the time until noon (with random variance and optional multiplier)
+                const updateDelay = Math.floor((millisUntilNoon / 8) * randFloat(0.9, 1.1) * (processingResult.delayMultiplier ?? 1));
                 // Now, actually apply the delay to the scheduled date
-                nextProcessDate.setSeconds(nextProcessDate.getSeconds() + delaySeconds);
+                nextProcessDate.setTime(nextProcessDate.getTime() + updateDelay);
             }
             // Schedule the next update using this calculated date (use the "invoke" past strategy just in case the specified date is in the past)
             await registerTimeout(TimeoutType.ProcessGameDecisions, nextProcessDate, { pastStrategy: PastTimeoutStrategy.Invoke }, { testingSeconds: 3 });
