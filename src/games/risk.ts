@@ -1198,13 +1198,20 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
     }
 
     /**
+     * @returns True if the given player has betrayed the second given player.
+     */
+    private hasPlayerBetrayedPlayer(userId: Snowflake, otherUserId: Snowflake): boolean {
+        return (this.state.players[userId]?.betrayed ?? []).includes(otherUserId);
+    }
+
+    /**
      * @returns True if the given player is eliminated and has directly insurrected against their current lord.
      */
     private hasPlayerBetrayedTeam(userId: Snowflake): boolean {
         if (!this.isPlayerEliminated(userId)) {
             return false;
         }
-        return (this.state.players[userId]?.betrayed ?? []).includes(this.getPlayerTeam(userId));
+        return this.hasPlayerBetrayedPlayer(userId, this.getPlayerTeam(userId));
     }
 
     override async onDecisionPreNoon(): Promise<MessengerManifest> {
@@ -1540,6 +1547,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         const crossOutImage = await imageLoader.loadImage('assets/common/crossout.png');
         for (let j = 0; j < n; j++) {
             const attacker = attackers[j];
+            // In a circular conflict, player is a betrayer if they've betrayed anyone else in the conflict at all
+            const isBetrayer = attackers.some(other => attacker.userId !== other.userId && this.hasPlayerBetrayedPlayer(attacker.userId, other.userId));
             const rolls = options.attackerRolls[j];
             const troopsLost = options.troopsLost[j];
             const rollWinners = options.rollWinners[j];
@@ -1572,7 +1581,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 const x = WIDTH * ((2 + j * 3) / numColumns);
                 const y = HEIGHT * ((2 + i) / 6);
                 const roll = rolls[i];
-                const dieImage = await imageLoader.loadImage(`assets/common/dice/r${roll}.png`);
+                const dieImage = await imageLoader.loadImage(`assets/common/dice/${isBetrayer ? 'b' : 'r'}${roll}.png`);
                 context.drawImage(dieImage, x - DIE_WIDTH / 2, y - DIE_WIDTH / 2, DIE_WIDTH, DIE_WIDTH);
             }
             // Draw the avatar above the dice column
@@ -1683,7 +1692,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             const x = WIDTH * (3 / 8);
             const y = HEIGHT * ((2 + i) / 6);
             const roll = options.attackerRolls[i];
-            const dieImage = await imageLoader.loadImage(`assets/common/dice/r${roll}.png`);
+            const isBetrayer = this.hasPlayerBetrayedPlayer(attacker.userId, defender.userId);
+            const dieImage = await imageLoader.loadImage(`assets/common/dice/${isBetrayer ? 'b' : 'r'}${roll}.png`);
             context.drawImage(dieImage, x - DIE_WIDTH / 2, y - DIE_WIDTH / 2, DIE_WIDTH, DIE_WIDTH);
         }
 
@@ -1713,7 +1723,8 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             const x = WIDTH * (5 / 8);
             const y = HEIGHT * ((2 + i) / 6);
             const roll = options.defenderRolls[i];
-            const dieImage = await imageLoader.loadImage(`assets/common/dice/w${roll}.png`);
+            const isBetrayer = this.hasPlayerBetrayedPlayer(defender.userId, attacker.userId);
+            const dieImage = await imageLoader.loadImage(`assets/common/dice/${isBetrayer ? 'b' : 'w'}${roll}.png`);
             context.drawImage(dieImage, x - DIE_WIDTH / 2, y - DIE_WIDTH / 2, DIE_WIDTH, DIE_WIDTH);
         }
 
@@ -2774,11 +2785,13 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 const isInsurrection = attackers.every(a => a.territoryId === defender.territoryId);
                 // The attacker at the head of the queue is the one attacking
                 const attacker = attackers[0];
+                const isAttackerBetrayer = this.hasPlayerBetrayedPlayer(attacker.userId, defender.userId);
+                const isDefenderBetrayer = this.hasPlayerBetrayedPlayer(defender.userId, attacker.userId);
                 // Now, roll all the dice
                 const attackerDice = Math.min(3, attacker.troops);
                 const defenderDice = Math.min(2, defender.troops);
-                const attackerRolls = this.getSortedDiceRolls(attackerDice);
-                const defenderRolls = this.getSortedDiceRolls(defenderDice);
+                const attackerRolls = this.getSortedDiceRolls(attackerDice, { betrayer: isAttackerBetrayer });
+                const defenderRolls = this.getSortedDiceRolls(defenderDice, { betrayer: isDefenderBetrayer });
                 const numComparisons = Math.min(attackerDice, defenderDice);
                 let attackersLost = 0;
                 let defendersLost = 0;
@@ -2815,9 +2828,12 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 // TODO: Add a lot more cool stuff here
                 const attackerNoun = isInsurrection ? randChoice('insurrectionist', 'rebel', 'freedom fighter') : randChoice('attacker', 'aggressor', 'invader');
                 let summary = '';
-                if (rollWinners.every(w => w === 'neither')) {
+                if (attackerRolls.every(r => r === 6) || defenderRolls.every(r => r === 6)) {
+                    summary += 'Oops! All sixes.\n';
+                } else if (rollWinners.every(w => w === 'neither')) {
                     summary += 'A total standstill as neither attacker overpowers the other!\n';
                 } else if (rollWinners.length === 3) {
+                    // TODO: Is this even possible in a non-circular conflict?
                     if (rollWinners.every(w => w === 'attacker')) {
                         summary += 'Absolute bloodshed!\n';
                     } else if (rollWinners.every(w => w === 'defender')) {
@@ -2829,17 +2845,47 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     summary += 'It comes down to a final 1v1...\n';
                 } else if (defender.troops === 1 && rollWinners.every(w => w === 'defender')) {
                     if (defender.initialTroops > 1) {
-                        summary += 'The defender makes a valiant last stand!\n';
+                        summary += chance(0.75)
+                            ? 'The defender makes a valiant last stand!\n'
+                            : 'He will die with his boots on.\n';
                     } else {
                         summary += 'The sole defender continues to hold his ground.\n';
                     }
                 } else if (attacker.troops === 1 && rollWinners.every(w => w === 'attacker')) {
-                    summary += `The last ${attackerNoun} standing continues the fight!\n`;
+                    if (attacker.initialTroops > 1) {
+                        summary += randChoice(
+                            `The last ${attackerNoun} finds himself atop Little Big Yiik.\n`,
+                            `The last ${attackerNoun} standing continues the fight!\n`,
+                            'He will die with his boots on.\n'
+                        );
+                    } else {
+                        summary += `The lone gunman refuses to stand down.\n`;
+                    }
                 } else if (defendersLost === 2) {
                     if (attacker.troops < defender.troops + 2) {
-                        summary += `Though outnumbered, the ${attackerNoun}s give it their all!\n`;
+                        summary += chance(0.75)
+                            ? `Though outnumbered, the ${attackerNoun}s give it their all!\n`
+                            : `Face-to-face with a more powerful opponent, the ${attackerNoun}s channel the Heart of The Cards.\n`;
                     } else {
-                        summary += `The ${attackerNoun} waffle stomps the defending army!\n`;
+                        summary += chance(0.75)
+                            ? `The ${attackerNoun} waffle stomps the defending army!\n`
+                            : `The ${attackerNoun} ${randChoice('stomps', 'sends', 'shoves')} the defending army down the shower drain!\n`;
+                    }
+                } else if (isAttackerBetrayer) {
+                    if (attackerRolls.includes(0)) {
+                        if (attackersLost === 0) {
+                            summary += `Holy ${randChoice('macaroni', 'moly', 'shooting stars', 'crap', 'cow')}! The ${attackerNoun}s push forward in spite of their cursed rolls.\n`;
+                        } else {
+                            summary += `The ${attackerNoun} tastes the bitter curse of the betrayer's dice.\n`;
+                        }
+                    }
+                } else if (isDefenderBetrayer) {
+                    if (defenderRolls.includes(0)) {
+                        if (attackersLost === 0) {
+                            summary += `Holy ${randChoice('macaroni', 'moly', 'shooting stars', 'crap', 'cow')}! The defenders remain unscathed in spite of their cursed rolls.\n`;
+                        } else {
+                            summary += `The defender reaps what he sows.\n`;
+                        }
                     }
                 } else if (attackersLost === 2) {
                     if (numTiedRolls === 2) {
@@ -2849,16 +2895,24 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                     } else if (defender.troops < defender.initialTroops && defender.troops < attacker.troops + 2) {
                         summary += 'The defenders refuse to give up, swinging back with a little bit of that you-know-what!\n';
                     } else {
-                        summary += 'The defenders swing back with a little sick yiik action!\n';
+                        summary += chance(0.75)
+                            ? 'The defenders swing back with a little sick yiik action!\n'
+                            : 'The defenders swing back with a little action that\'s anything but on-the-surface!\n';
                     }
                 } else if (attackersLost === 1 && defendersLost === 1) {
                     if (chance(0.5)) {
                         summary += 'We see a little trade action going on...\n';
-                    } else if (defender.troops > attacker.troops) {
+                    } else if (defender.troops > attacker.troops && chance(0.5)) {
                         summary += 'The defending forces prolong the conflict, knowing they have an advantage in this battle of attrition.\n';
                     }
                     // TODO: Improve this...
                     // summary += 'Stuff happened!\n';
+                } else if (attackerRolls.every(r => r < 4) && defenderRolls.every(r => r < 4)) {
+                    summary += randChoice(
+                        'Shit rolls all around.\n',
+                        'Both sides roll some ass.\n',
+                        'The dice yield some abysmal dogshit.\n'
+                    );
                 }
                 // If the counter-attack is over...
                 // if (conflict.symmetrical && (conflict.attackerTroops === 0 || conflict.defenderTroops === 0)) {
@@ -3072,11 +3126,15 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 }
                 // Otherwise, the attacker is still engaged in this ongoing conflict so add them back to the queue
                 attackers.push(attacker);
+                // If there's nothing else to say, provide an update of the remaining troops
+                if (!summary) {
+                    summary += `${quantify(attacker.troops, 'attacker troop')} remaining vs **${defender.troops}** defending...`;
+                }
                 // Provide an update of the conflict
                 return {
                     continueProcessing: true,
                     summary: {
-                        content: `${summary}${quantify(attacker.troops, 'attacker troop')} remaining vs **${defender.troops}** defending...`,
+                        content: summary,
                         files: [conflictRender],
                         flags: MessageFlags.SuppressNotifications
                     },
@@ -3091,8 +3149,10 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 const attackerRolls: number[][] = [];
                 for (let i = 0; i < n; i++) {
                     const attacker = attackers[i];
+                    // In a circular conflict, player is a betrayer if they've betrayed anyone else in the conflict at all
+                    const isBetrayer = attackers.some(other => attacker.userId !== other.userId && this.hasPlayerBetrayedPlayer(attacker.userId, other.userId));
                     const dice = Math.min(3, attacker.troops);
-                    const rolls = this.getSortedDiceRolls(dice);
+                    const rolls = this.getSortedDiceRolls(dice, { betrayer: isBetrayer });
                     attackerRolls[i] = rolls;
                 }
                 // Now compare each set of rolls with the set ahead
@@ -3507,10 +3567,11 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         return dependencies;
     }
 
-    private getSortedDiceRolls(n: number): number[] {
+    private getSortedDiceRolls(n: number, options?: { betrayer?: boolean }): number[] {
         const result: number[] = [];
         for (let i = 0; i < n; i++) {
-            result.push(randInt(1, 7));
+            const roll = randInt((options?.betrayer ? 0 : 1), 7);
+            result.push(roll);
         }
         return result.sort().reverse();
     }
