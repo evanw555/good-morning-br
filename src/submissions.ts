@@ -321,13 +321,12 @@ export class AnonymousSubmissionsState {
         return results.map((r) => {
             const userId = r.userId;
             const code = r.code;
-            // TODO: Including margin for now to ensure it works properly. Remove after testing this out
             if (r.disqualified) {
-                return `**DQ**: ${code} ~~<@${userId}>~~ \`${r.medalsString}=${r.score} (Δ${r.margin})\``;
+                return `**DQ**: ${code} ~~<@${userId}>~~ \`${r.medalsString}=${r.score}`;
             } else if (r.forfeited) {
-                return `**${getRankString(r.rank)}(F)**: ${code} ~~<@${userId}>~~ \`${r.medalsString}=${r.score} (Δ${r.margin})\``;
+                return `**${getRankString(r.rank)}(F)**: ${code} ~~<@${userId}>~~ \`${r.medalsString}=${r.score}`;
             } else {
-                return `**${getRankString(r.rank)}**: ${code} <@${userId}> \`${r.medalsString}=${r.score} (Δ${r.margin})\``;
+                return `**${getRankString(r.rank)}**: ${code} <@${userId}> \`${r.medalsString}=${r.score}`;
             }
         }).join('\n');
     }
