@@ -239,8 +239,8 @@ export interface SubmissionPromptRatings {
     prompt: string,
     /** ID of the message where users can rate the prompt. */
     message: Snowflake,
-    /** Mapping from user ID to whether the prompt was liked. */
-    votes: Record<Snowflake, boolean>,
+    /** Mapping from user ID to prompt rating from 0 (disapprove) to 1 (approve). */
+    votes: Record<Snowflake, number>,
     /** List of users who participated in the contest and thus earn full votes. */
     participants: Snowflake[]
 }

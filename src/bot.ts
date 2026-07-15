@@ -2141,12 +2141,17 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                                 type: ComponentType.Button,
                                 style: ButtonStyle.Success,
                                 emoji: '👍',
-                                customId: 'rateASPrompt:true'
+                                customId: 'rateASPrompt:1'
+                            }, {
+                                type: ComponentType.Button,
+                                style: ButtonStyle.Secondary,
+                                emoji: randChoice('🫳', '🫴', '🤏', '🤷‍♂️', '😐'),
+                                customId: 'rateASPrompt:0.5'
                             }, {
                                 type: ComponentType.Button,
                                 style: ButtonStyle.Danger,
                                 emoji: '👎',
-                                customId: 'rateASPrompt:false'
+                                customId: 'rateASPrompt:0'
                             }]
                         }],
                         flags: MessageFlags.SuppressNotifications
@@ -2782,9 +2787,9 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         let totalRating = 0;
         let denom = 0;
         for (const [userId, rating] of Object.entries(ratingState.votes)) {
-            const rMult = ratingState.participants.includes(userId) ? 1 : 0.5;
-            totalRating += (rating ? 1 : 0) * rMult;
-            denom += rMult;
+            const weight = ratingState.participants.includes(userId) ? 1 : 0.5;
+            totalRating += rating * weight;
+            denom += weight;
         }
         const averageRating = totalRating / denom;
         const approved = averageRating > 0.5;
@@ -2798,7 +2803,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         // Edit the message
         await message.edit({
             components: [],
-            content: message.content + `\n-# **Result:** Prompt ${approved ? 'approved' : 'disapproved'}`
+            content: message.content + `\n-# **Result:** ${approved ? '👍' : '👎'}`
         });
         // TODO: Should the gazers be notified if they're on prompt probation?
     },
@@ -3577,22 +3582,34 @@ client.on('interactionCreate', async (interaction): Promise<void> => {
             }
             await interaction.deferReply({ ephemeral: true });
             const isParticipant = ratingState.participants.includes(interaction.user.id);
-            const rating = customIdSegments[1] === 'true';
+            const rating = parseFloat(customIdSegments[1]);
+            if (isNaN(rating) || rating < 0 || rating > 1) {
+                await interaction.reply({
+                    ephemeral: true,
+                    content: `\`"${rating}"\` is not a valid rating (see admin)`
+                });
+                return;
+            }
             // Write to state
             ratingState.votes[interaction.user.id] = rating;
             await dumpState();
             // Reply to the user
-            const ratingText = rating
-                ? randChoice('given the prompt an upvote', 'given the prompt an updoot', 'approved the prompt', 'put your stamp of approval on today\'s prompt')
-                : randChoice('declared the prompt to be shit', 'declared the prompt to be some ahhh', 'given the prompt a thumbs down');
+            let ratingText: string;
+            if (rating > 0.8) {
+                ratingText = randChoice('given the prompt an upvote', 'given the prompt an updoot', 'approved the prompt', 'put your stamp of approval on today\'s prompt');
+            } else if (rating < 0.2) {
+                ratingText = randChoice('declared the prompt to be shit', 'declared the prompt to be some ahhh', 'given the prompt a thumbs down', 'called the prompt abysmal dogshit');
+            } else {
+                ratingText = randChoice('rated the prompt as meh', 'given the prompt a meh rating', 'said whatever', 'said wugever', 'said me_tired', 'declared the prompt to be mid ahhhhh', 'decisively said IDK');
+            }
             await interaction.editReply(`Thanks! You've ${ratingText}` + (isParticipant ? '' : '. You didn\'t participate today so you only get half a vote.'));
             // TODO: Temp logging to see how this works
             let totalRating = 0;
             let denom = 0;
             for (const [id, r] of Object.entries(ratingState.votes)) {
-                const rMult = ratingState.participants.includes(id) ? 1 : 0.5;
-                totalRating += (r ? 1 : 0) * rMult;
-                denom += rMult;
+                const weight = ratingState.participants.includes(id) ? 1 : 0.5;
+                totalRating += r * weight;
+                denom += weight;
             }
             await logger.log(`**${state.getPlayerDisplayName(interaction.user.id)}** rated the prompt **${rating}** (num **${getObjectSize(ratingState.votes)}**, avg. **${totalRating / denom}**)`);
         }

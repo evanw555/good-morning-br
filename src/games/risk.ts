@@ -672,6 +672,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
     }
 
     override getDebugText(): string {
+        // TODO: Compute contribution for top 3 players
         return `Risk Game (${this.getNumRemainingPlayers()} remaining, ${this.getTotalTroops()} troops, ${this.getAverageTerritoryTroops().toFixed(2)} average)`
     }
 
