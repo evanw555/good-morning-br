@@ -2,7 +2,7 @@ import { APIActionRowComponent, APIMessageTopLevelComponent, APISelectMenuOption
 import { DecisionProcessingResult, GamePlayerAddition, MessengerManifest, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 import { Canvas, Image, createCanvas } from "canvas";
-import { DiscordTimestampFormat, chance, findCycle, getDateBetween, getEvenlyShortened, getJoinedMentions, getMaxKey, getMaxKeys, getMinKey, getRankString, getSortedKeys, incrementProperty, isObjectEmpty, naturalJoin, randChoice, randInt, s, shuffle, shuffleWithDependencies, sum, toDiscordTimestamp, toFixed, toMapWithDefault, withoutDuplicates } from "evanw555.js";
+import { DiscordTimestampFormat, chance, findCycle, getDateBetween, getEvenlyShortened, getJoinedMentions, getMaxKey, getMaxKeys, getMinKey, getRankString, getSortedKeys, incrementProperty, isObjectEmpty, naturalJoin, randChoice, randInt, s, shuffle, shuffleWithDependencies, sum, toDiscordTimestamp, toFixed, toMap, toMapWithDefault, withoutDuplicates } from "evanw555.js";
 import { fillBackground, getTextLabel, joinCanvasesHorizontal, joinCanvasesVertical, resize, superimpose, toCircle, withDropShadow, withOutline } from "node-canvas-utils";
 import { drawBackground, quantify, renderArrow, distance } from "../util";
 import { RiskGameState, RiskMovementData, RiskTerritoryState, RiskPlayerState, RiskConflictState, RiskPlannedAttack, RiskConflictAgentData } from "./types";
@@ -88,7 +88,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 question: 'How do the dice rolls work?',
                 answer: 'As in actual Risk, attackers will roll one die for each troop in their attacking army (up to **3**) and defenders will roll one die for each '
                     + 'troop in their defending territory (up to **2**). The highest roll from each person is compared, and whoever rolls lower loses one troop. If both '
-                    + 'players rolled at least two dice, then the second highest roll from each person is compared and used to determine who loses a troop. In the case of '
+                    + 'players rolled at least two dice, then the second highest roll from each person is compared and used to determine who loses another troop. In the case of '
                     + 'a tie, the attacker will lose a troop (defender\'s advantage). Whoever loses all their troops in the conflict first loses the conflict. If the attacker '
                     + 'wins, they claim the defending territory, possibly eliminating the defending player.'
             },
@@ -96,7 +96,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 question: 'Do I still get to play once I\'m eliminated?',
                 answer: 'You can no longer plan attacks or movements, but you will still earn reinforcements and be able to place them in the territories of the player who currently owns you as a vassal. '
                     + 'You can help them by placing your troops, and if they win you will earn partial bonus terms based on your contribution. '
-                    + 'Alternatively, you can insurrect using your reinforcements for a chance to get back in the game. You may only insurrect during weeks where you were a top performer.'
+                    + 'Alternatively, you can insurrect using your reinforcements for a chance to get back in the game. You may only insurrect during weeks where you were a top 3 performer.'
             },
             reinforcements: {
                 question: 'How many reinforcements do I get?',
@@ -110,8 +110,14 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             prize: {
                 question: 'What\'s the prize for winning the PTGH contest?',
                 answer: 'If you place 1st, you will be able to select a custom icon for your troops to replace the standard pawn piece icon. '
-                    + 'Additionally, everyone who places in the top 3 will be given one bonus reinforcement troop that week. '
-                    + 'If you are eliminated, you will be given the opportunity to insurrect that week.'
+                    + 'Additionally, everyone who places in the top 3 will be given one bonus reinforcement troop that week.'
+            },
+            insurrection: {
+                question: 'How does insurrecting work?',
+                answer: 'If you are a top 3 weekly performer after having been eliminated, you can choose to use all your reinforcements to insurrect at one of your team\'s territories. '
+                    + 'Your troops will go up against however many troops are at that territory. If you win, you will be back in the game at that territory with your remaining army. '
+                    + 'For the remainder of the game, you will be marked as having "betrayed" your team\'s leader. When in a conflict against someone you\'ve betrayed, you will roll '
+                    + 'the cursed _Betrayer\'s Dice_, which roll `0-6` rather than the standard `1-6`.'
             }
         },
         map: {
@@ -672,8 +678,15 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
     }
 
     override getDebugText(): string {
-        // TODO: Compute contribution for top 3 players
-        return `Risk Game (${this.getNumRemainingPlayers()} remaining, ${this.getTotalTroops()} troops, ${this.getAverageTerritoryTroops().toFixed(2)} average)`
+        let text = `Risk Game (${this.getNumRemainingPlayers()} remaining, ${this.getTotalTroops()} troops, ${this.getAverageTerritoryTroops().toFixed(2)} average)`;
+        // TODO: Temp logging to test contribution computations
+        const top3Players = this.getOrderedPlayers().slice(0, 3);
+        for (const userId of top3Players) {
+            const contribution = this.getPlayerTeamContribution(userId);
+            text += `\n- **${this.getPlayerDisplayName(userId)}** contrib: `
+                + Object.entries(contribution).map(([id, c]) => `**${this.getPlayerDisplayName(id)}** (${(c * 100).toFixed(1)}%)`).join(', ');
+        }
+        return text;
     }
 
     override getDecisionPhases(): { key: string; millis: number; }[] {
@@ -1196,6 +1209,21 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
      */
     private getPlayerVassals(userId: Snowflake): Snowflake[] {
         return this.getPlayers().filter(otherId => userId !== otherId && this.getPlayerTeam(otherId) === userId);
+    }
+
+    /**
+     * @returns A mapping from user ID to the relative contribution of each player on their team in the range [0, 1].
+     */
+    private getPlayerTeamContribution(userId: Snowflake): Record<Snowflake, number> {
+        // First, determine the total contributions
+        const ids = [userId, ...this.getPlayerVassals(userId)];
+        const contributions = toMap(ids, id => (this.state.players[id]?.supported ?? {})[userId] ?? 0);
+        // TODO: Temp fix to ensure the team leader has at least one
+        contributions[userId] = Math.max(1, contributions[userId]);
+        // Then, determine relative contribution
+        const total = sum(Object.values(contributions)) || 1;
+        const relative = toMap(ids, id => contributions[id] / total);
+        return relative;
     }
 
     /**
