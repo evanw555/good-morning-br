@@ -143,12 +143,14 @@ class Controller {
         await this.timeoutManager.registerTimeout(TimeoutType.FinalizeSungazerPoll, options.pollEndDate, { arg, pastStrategy: PastTimeoutStrategy.Invoke });
 
         // Also, send a warning 5 minutes before the poll ends
+        const FIVE_MINUTES = 5 * 60 * 1000;
         const warningArg: ReplyToMessageData = {
             channelId: this.sungazersChannel.id,
             messageId: pollMessage.id,
-            content: 'Poll ends in 5 minutes ⏳'
+            content: 'Poll ends in 5 minutes ⏳',
+            ttl: FIVE_MINUTES
         };
-        const warningDate = new Date(options.pollEndDate.getTime() - (1000 * 60 * 5));
+        const warningDate = new Date(options.pollEndDate.getTime() - FIVE_MINUTES);
         await this.timeoutManager.registerTimeout(TimeoutType.ReplyToMessage, warningDate, { arg: warningArg, pastStrategy: PastTimeoutStrategy.Delete });
     }
 }

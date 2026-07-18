@@ -95,7 +95,12 @@ export interface ReplyToMessageData {
      * If no message ID is provided, then the message won't be a reply.
      */
     messageId?: Snowflake,
-    content?: string
+    content?: string,
+    /**
+     * If specified, this message will be deleted after the specified amount of time (in millis)
+     * has elapsed after the message has been sent.
+     */
+    ttl?: number
 }
 
 export type SungazerPollType = 'submission-prompt' | 'game-type' | 'game-pre-decision';

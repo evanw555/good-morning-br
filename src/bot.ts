@@ -2970,16 +2970,17 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
     },
     [TimeoutType.ReplyToMessage]: async (arg): Promise<void> => {
         if (arg) {
-            const { channelId, messageId, content } = arg as ReplyToMessageData;
+            const { channelId, messageId, content, ttl } = arg as ReplyToMessageData;
             try {
                 const channel = await client.channels.fetch(channelId);
                 if (channel instanceof TextChannel) {
                     // If no message ID provided, just send the message
                     if (messageId) {
                         const message = await channel.messages.fetch(messageId);
-                        await messenger.reply(message, content || 'Bump!');
+                        // TODO: If we add support for a delete message timeout, then use that instead to support deletions after reboot
+                        await messenger.reply(message, content || 'Bump!', { ttl });
                     } else {
-                        await messenger.send(channel, content || 'Bump!');
+                        await messenger.send(channel, content || 'Bump!', { ttl });
                     }
                 } else {
                     await logger.log(`Cannot reply to message, \`${channelId}\` is not a text channel`);
