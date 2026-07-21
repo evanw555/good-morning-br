@@ -890,8 +890,8 @@ const getRandomDefaultSubmissionPrompts = async (): Promise<string[]> => {
     const ratings = promptHistory.ratings;
     if (ratings) {
         const sortedPrompts = getSortedKeys(Object.keys(ratings), prompt => -(ratings[prompt] ?? 0));
-        // Choose from the top quarter of prompts
-        const highlyRatedPrompts = sortedPrompts.slice(0, Math.round(sortedPrompts.length * 0.25));
+        // Choose from the top quarter of prompts (or the top 3 if there are too few)
+        const highlyRatedPrompts = sortedPrompts.slice(0, Math.max(3, Math.round(sortedPrompts.length * 0.25)));
         // Add 3 random prompts from this upper slice
         defaultPrompts.push(...shuffle(highlyRatedPrompts).slice(0, 3));
     }
