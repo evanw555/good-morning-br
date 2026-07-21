@@ -2857,7 +2857,7 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
                 // TODO: Add a lot more cool stuff here
                 const attackerNoun = isInsurrection ? randChoice('insurrectionist', 'rebel', 'freedom fighter') : randChoice('attacker', 'aggressor', 'invader');
                 let summary = '';
-                if (attackerRolls.every(r => r === 6) || defenderRolls.every(r => r === 6)) {
+                if ((attackerDice  > 1 && attackerRolls.every(r => r === 6)) || (defenderDice > 1 && defenderRolls.every(r => r === 6))) {
                     summary += 'Oops! All sixes.\n';
                 } else if (rollWinners.every(w => w === 'neither')) {
                     summary += 'A total standstill as neither attacker overpowers the other!\n';
