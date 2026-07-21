@@ -3276,7 +3276,7 @@ const logTimeouts = async (): Promise<void> => {
     await guildOwnerDmChannel.send(timeoutManager.toStrings().map(entry => `- ${entry}`).join('\n') || '_No timeouts._');
 };
 
-client.on('ready', async (): Promise<void> => {
+client.on('clientReady', async (): Promise<void> => {
     // First, validate the config file to ensure it conforms to the schema
     validateConfig(config);
 
