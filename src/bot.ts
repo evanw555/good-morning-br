@@ -2013,8 +2013,8 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             }
         }
 
-        // If there's a pre-determined submissions prompt, notify the players
-        if (state.hasAnonymousSubmissions()) {
+        // If there's a pre-determined submissions prompt, notify the players (check phase since today's submission may still be in state)
+        if (state.isAcceptingAnonymousSubmissions()) {
             const prompt = state.getAnonymousSubmissions().getPrompt();
             if (nextEvent && nextEvent.type === DailyEventType.AnonymousSubmissions) {
                 await messenger.send(goodMorningChannel, `Reminder that tomorrow's submission prompt is _"${prompt}"_! I'm already accepting submissions`);

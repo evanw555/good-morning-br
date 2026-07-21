@@ -322,11 +322,11 @@ export class AnonymousSubmissionsState {
             const userId = r.userId;
             const code = r.code;
             if (r.disqualified) {
-                return `**DQ**: ${code} ~~<@${userId}>~~ \`${r.medalsString}=${r.score}`;
+                return `**DQ**: ${code} ~~<@${userId}>~~ \`${r.medalsString}=${r.score}\``;
             } else if (r.forfeited) {
-                return `**${getRankString(r.rank)}(F)**: ${code} ~~<@${userId}>~~ \`${r.medalsString}=${r.score}`;
+                return `**${getRankString(r.rank)}(F)**: ${code} ~~<@${userId}>~~ \`${r.medalsString}=${r.score}\``;
             } else {
-                return `**${getRankString(r.rank)}**: ${code} <@${userId}> \`${r.medalsString}=${r.score}`;
+                return `**${getRankString(r.rank)}**: ${code} <@${userId}> \`${r.medalsString}=${r.score}\``;
             }
         }).join('\n');
     }
