@@ -4698,12 +4698,30 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
         // TODO: Determine the set of territories
         const fromTerritory = 'Y';
         const toTerritories = ['S', 'T', 'U', 'V', 'X', 'P'];
+
+        // Skip this if the owner of the island owns most of the destination territories
+        const fromOwner = this.getTerritoryOwner(fromTerritory);
+        const toOwners = toTerritories.map(id => this.getTerritoryOwner(id));
+        const numSame = toOwners.filter(id => id === fromOwner).length
+        const percentSame = numSame / toOwners.length;
+        if (percentSame >= (2/3)) {
+            // TODO: Temp logging to see how this works
+            await logger.log(`Aborting Risk sungazer poll: **${Math.round(percentSame * 100)}%** of destinations owned by **${this.getPlayerDisplayName(fromOwner)}**`);
+            return undefined;
+        }
+
         const values: string[] = [];
         const valueNames: Record<string, string> = {};
         for (const value of toTerritories) {
+            const owner = this.getTerritoryOwner(value);
             const connectionId = fromTerritory + value;
             // Check if it's already unlocked
             const unlocked = this.getTerritoryConnections(fromTerritory).includes(value);
+            // Skip this connection if it's locked and owned by the origin owner
+            if (!unlocked && owner === fromOwner) {
+                continue;
+            }
+            // Add this connection option
             values.push(connectionId);
             valueNames[connectionId] = (unlocked ? 'CLOSE' : 'Open') + ' ' + this.getTerritoryName(fromTerritory) + ' to ' + this.getTerritoryName(value);
         }
