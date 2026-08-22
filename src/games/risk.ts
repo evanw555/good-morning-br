@@ -1,5 +1,5 @@
 import { APIActionRowComponent, APIMessageTopLevelComponent, APISelectMenuOption, ActionRowData, AttachmentBuilder, ButtonStyle, ComponentType, GuildMember, Interaction, InteractionEditReplyOptions, InteractionReplyOptions, LabelBuilder, MessageActionRowComponentData, MessageFlags, ModalBuilder, Snowflake, StringSelectMenuBuilder, heading } from "discord.js";
-import { DecisionProcessingResult, GamePlayerAddition, MessengerManifest, MessengerPayload, PrizeType } from "../types";
+import { DecisionProcessingResult, GamePlayerAddition, MessengerManifest, MessengerPayload, PrizeType, SeasonEndResults, SpecialSungazerTermAward } from "../types";
 import AbstractGame from "./abstract-game";
 import { Canvas, Image, createCanvas } from "canvas";
 import { DiscordTimestampFormat, chance, findCycle, getDateBetween, getEvenlyShortened, getJoinedMentions, getMaxKey, getMaxKeys, getMinKey, getRankString, getSortedKeys, incrementProperty, isObjectEmpty, naturalJoin, randChoice, randInt, s, shuffle, shuffleWithDependencies, sum, toDiscordTimestamp, toFixed, toMap, toMapWithDefault, withoutDuplicates } from "evanw555.js";
@@ -4792,5 +4792,47 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             `<@${this.getWinners()[2]}> came in third, then <@${this.getWinners()[1]}> followed in second`,
             `But only one could be crowned champion of this _risky_ endeavor... <@${this.getWinners()[0]}>!`
         ];
+    }
+
+    override getSeasonEndResults(cumulativePoints?: Record<string, number> | undefined): SeasonEndResults {
+        const winners = this.getWinners();
+
+        // Determine the special winners
+        const specialWinners: SpecialSungazerTermAward[] = [];
+        // For each actual winner, determine the relative contribution of their vassals
+        let index = 0;
+        for (const winner of winners) {
+            // Compute the base terms, i.e. how many standard terms they're awarded
+            const baseTerms = 3 - index;
+            index++;
+            // Compute the relative contribution of this player's team
+            const contribMap = this.getPlayerTeamContribution(winner);
+            // Don't include the winner himself
+            delete contribMap[winner];
+            // For each vassal...
+            for (const [vassal, contribution] of Object.entries(contribMap)) {
+                // Player has betrayed their lord, so add message without awarding terms
+                if (this.hasPlayerBetrayedPlayer(vassal, winner)) {
+                    specialWinners.push({
+                        userId: vassal,
+                        description: `betraying ${this.getPlayerDisplayName(winner)} despite contributing **${(contribution * 100).toFixed(1)}%** of their reinforcements`,
+                        terms: 0
+                    });
+                }
+                // Otherwise, award terms
+                else {
+                    specialWinners.push({
+                        userId: vassal,
+                        description: `contributing **${(contribution * 100).toFixed(1)}%** of ${this.getPlayerDisplayName(winner)}'s reinforcements`,
+                        terms: contribution * baseTerms
+                    });
+                }
+            }
+        }
+
+        return {
+            winners,
+            specialWinners
+        };
     }
 }

@@ -360,11 +360,18 @@ const updateSungazers = async (winners: { gold?: Snowflake, silver?: Snowflake, 
     // Add any special terms
     if (winners.special) {
         for (const { userId, terms, description } of winners.special) {
-            await updateSungazer(userId, terms);
-            await sleep(2000);
-            // TODO: Make these more dynamic based on if they're already on the council or not
-            // TODO: Use nice fraction text
-            await messenger.send(sungazerChannel, `For ${description}, <@${userId}> has been awarded **${terms}** special terms on the council`);
+            // If actually awarding terms
+            if (terms > 0) {
+                await updateSungazer(userId, terms);
+                await sleep(2000);
+                // TODO: Make these more dynamic based on if they're already on the council or not
+                // TODO: Use nice fraction text
+                await messenger.send(sungazerChannel, `For ${description}, <@${userId}> has been awarded **${terms}** special term${s(terms)} on the council`);
+            }
+            // If just posting a message with no award
+            else {
+                await messenger.send(sungazerChannel, `For ${description}, <@${userId}> is awarded no special terms`);
+            }
         }
     }
     // Finally, remove any sungazer who's reached the end of their term (use less-than-or-equals just in case a fractional term slipped through the cracks)
