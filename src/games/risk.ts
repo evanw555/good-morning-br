@@ -10,6 +10,12 @@ import { RiskGameState, RiskMovementData, RiskTerritoryState, RiskPlayerState, R
 import logger from "../logger";
 import imageLoader from "../image-loader";
 
+/**
+ * TODO: For next season:
+ * - Add new vassal "modes" e.g. vassals captured by taking their home territory or gravestone
+ * - Team contribution should take into account all players, not just vassals (since former vassals could've contributed)
+ */
+
 interface Coordinates {
     x: number,
     y: number
@@ -4811,21 +4817,24 @@ export default class RiskGame extends AbstractGame<RiskGameState> {
             delete contribMap[winner];
             // For each vassal...
             for (const [vassal, contribution] of Object.entries(contribMap)) {
-                // Player has betrayed their lord, so add message without awarding terms
-                if (this.hasPlayerBetrayedPlayer(vassal, winner)) {
-                    specialWinners.push({
-                        userId: vassal,
-                        description: `betraying ${this.getPlayerDisplayName(winner)} despite contributing **${(contribution * 100).toFixed(1)}%** of their reinforcements`,
-                        terms: 0
-                    });
-                }
-                // Otherwise, award terms
-                else {
-                    specialWinners.push({
-                        userId: vassal,
-                        description: `contributing **${(contribution * 100).toFixed(1)}%** of ${this.getPlayerDisplayName(winner)}'s reinforcements`,
-                        terms: contribution * baseTerms
-                    });
+                // If the vassal contributed anything at all...
+                if (contribution > 0) {
+                    // Player has betrayed their lord, so add message without awarding terms
+                    if (this.hasPlayerBetrayedPlayer(vassal, winner)) {
+                        specialWinners.push({
+                            userId: vassal,
+                            description: `betraying ${this.getPlayerDisplayName(winner)} despite contributing **${(contribution * 100).toFixed(1)}%** of their reinforcements`,
+                            terms: 0
+                        });
+                    }
+                    // Otherwise, award terms
+                    else {
+                        specialWinners.push({
+                            userId: vassal,
+                            description: `contributing **${(contribution * 100).toFixed(1)}%** of ${this.getPlayerDisplayName(winner)}'s reinforcements`,
+                            terms: toFixed(contribution * baseTerms, 2)
+                        });
+                    }
                 }
             }
         }
