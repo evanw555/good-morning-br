@@ -51,6 +51,9 @@ messenger.setMemberResolver(async (id) => {
     return await guild.members.fetch(id);
 });
 
+// TODO: Move this to config file maybe?
+const MAX_PROMPT_LENGTH = 100;
+
 process.on('uncaughtException', async (err) => {
     await logger.log(`**FATAL** uncaught exception: \`${err}\``);
 });
@@ -2723,8 +2726,13 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         let proposalSet: Set<string> = new Set();
         const messages = await sungazersChannel.messages.fetch({ after: messageId });
         for (const message of messages.toJSON()) {
+            // If replying to prompt soliciting message...
             if (message.reference?.messageId === messageId) {
-                proposalSet.add(message.content.trim().toLowerCase());
+                // Validate the prompt before adding to the set
+                const sanitized = message.content.trim().toLowerCase();
+                if (sanitized.length <= MAX_PROMPT_LENGTH && !sanitized.includes('\n')) {
+                    proposalSet.add(sanitized);
+                }
             }
         }
 
@@ -2747,7 +2755,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         const maxAlternatives: number = 20;
         if (proposalSet.size > maxAlternatives) {
             await logger.log(`Too many anonymous submission type proposals, truncating from **${proposalSet.size}** to **${maxAlternatives}**`);
-            proposalSet = new Set(Array.from(proposalSet).slice(0, maxAlternatives));
+            proposalSet = new Set(shuffle(Array.from(proposalSet)).slice(0, maxAlternatives));
         }
 
         // Shuffle all the prompts
@@ -2769,7 +2777,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             title: 'What should people submit? @everyone'
         });
     },
-    [TimeoutType.AnonymousSubmissionPromptRatingEnd]: async (messageId: Snowflake): Promise<void> => {
+    [TimeoutType.AnonymousSubmissionPromptRatingEnd]: async (): Promise<void> => {
         // TODO: Add getter for this rather than accessing raw state
         const ratingState = state.getSubmissionPromptRatings();
         if (!ratingState) {
@@ -3422,7 +3430,7 @@ client.on('guildMemberRemove', async (member): Promise<void> => {
 });
 
 client.on('shardError', async (error, shardId) => {
-    await logger.log(`Shard Error: \`${shardId}\`, error: \`${error}\``);
+    // await logger.log(`Shard Error: \`${shardId}\`, error: \`${error}\``);
 });
 
 client.on('shardDisconnect', async (closeEvent, shardId) => {
@@ -3443,7 +3451,8 @@ client.on('shardReady', async (shardId, unavailableGuilds) => {
     await logger.log(`Shard Ready: \`${shardId}\` (**${unavailableGuilds?.size ?? 'N/A'}** unavailable guilds), restarting bot...`);
     // This event typically results in the bot becoming unreachable/disconnected for some reason, so just reboot (but not on reboot)
     if (guildOwnerDmChannel && goodMorningChannel) {
-        await logger.log('Shard Ready after bot is already ready, exiting...');
+        await logger.log('Shard Ready after bot is already ready, exiting in 60 seconds...');
+        await sleep(60 * 1000)
         process.exit(0);
     }
 });
@@ -5112,15 +5121,26 @@ client.on('messageCreate', async (msg: OmitPartialGroupDMChannel<Message<boolean
             if (reference.author.id === msg.client.user.id) {
                 // If the suggested prompt uses improper grammar, urge the user to edit their message
                 const sanitized = msg.content.trim().toLowerCase();
-                if (sanitized.startsWith('a ') || sanitized.startsWith('an ') || sanitized.startsWith('the ')) {
+                const firstWord = sanitized.split(' ')[0];
+                // Warn about leading articles
+                if (firstWord === 'a' || firstWord === 'an' || firstWord === 'the') {
                     if (chance(0.5)) {
                         await messenger.reply(msg, 'Do not start your prompts with "a", "an", or "the". Please edit and remove it.', { ttl: 60_000 });
                     } else {
                         await messenger.reply(msg, 'Please edit your suggestion to remove the unnecessary leading article 🤓', { ttl: 60_000 });
                     }
                 }
-                if (sanitized && sanitized.split(' ')[0].endsWith('s')) {
+                // Warn about pluralization
+                if (firstWord.endsWith('s') && !firstWord.endsWith('\'s')) {
                     await messenger.reply(msg, languageGenerator.generate('Stop pluralizing your {!prompts|suggestions|suggested prompts} {!please|you dunce} 😡'), { ttl: 60_000 });
+                }
+                // Warn about prompt length
+                if (sanitized.length > MAX_PROMPT_LENGTH) {
+                    await messenger.reply(msg, `I will not accept prompts longer than **${MAX_PROMPT_LENGTH}** characters, and yours is **${sanitized.length}**`, { ttl: 60_000 });
+                }
+                // Warn about newlines
+                if (sanitized.includes('\n')) {
+                    await messenger.reply(msg, 'I will not accept prompts with multiple lines', { ttl: 60_000 });
                 }
             }
         }
