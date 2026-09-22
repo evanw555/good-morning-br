@@ -16,7 +16,7 @@ class Logger {
         if (text.length > 1990) {
             text = text.substring(0, 1990) + '...';
         }
-        console.log(text);
+        console.log(`[${new Date().toLocaleTimeString()}] ${text.trim()}`);
         if (this.channel) {
             try {
                 await this.channel.send(text);

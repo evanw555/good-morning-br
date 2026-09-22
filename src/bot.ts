@@ -3292,6 +3292,8 @@ const logTimeouts = async (): Promise<void> => {
 };
 
 client.on('clientReady', async (): Promise<void> => {
+    await logger.log('Client Ready!');
+
     // First, validate the config file to ensure it conforms to the schema
     validateConfig(config);
 
@@ -3448,7 +3450,7 @@ client.on('shardResume', async (shardId, replayedEvents) => {
 });
 
 client.on('shardReady', async (shardId, unavailableGuilds) => {
-    await logger.log(`Shard Ready: \`${shardId}\` (**${unavailableGuilds?.size ?? 'N/A'}** unavailable guilds), restarting bot...`);
+    await logger.log(`Shard Ready: \`${shardId}\` (**${unavailableGuilds?.size ?? 'N/A'}** unavailable guilds)`);
     // This event typically results in the bot becoming unreachable/disconnected for some reason, so just reboot (but not on reboot)
     if (guildOwnerDmChannel && goodMorningChannel) {
         await logger.log('Shard Ready after bot is already ready, exiting in 60 seconds...');
@@ -5158,5 +5160,7 @@ client.on('messageUpdate', async (oldMessage: PartialMessage | Message, newMessa
         }
     }
 });
+
+void logger.log('Client logging in...');
 
 client.login(auth.token);
