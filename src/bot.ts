@@ -420,11 +420,27 @@ const updateFractionalSungazers = async () => {
     if (fractionalExpirees.length === 0) {
         return;
     }
+    // Determine what the actual term is of the user(s) being booted
+    const term = Math.max(...fractionalExpirees.map(id => history.sungazers[id]));
     // Get the sungazer channel
     const sungazerChannel: TextBasedChannel = (await guild.channels.fetch(config.sungazers.channel)) as TextBasedChannel;
     // Remove these sungazers
+    let text = '{$tags}... we\'re glad you joined us through this portion of the season, but we\'ve reached your stop. Farewell for now!';
+    if (term < 0.1) {
+        text = 'Well did you enjoy your little sneak peek, {$tags}? Hopefully your short time as a {!Gazer|Sungazer} {!motivates|inspires} you to {!fight|claw} your way back in. See you soon 😉';
+    } else if (term > 0.9) {
+        text = 'The season is almost complete, yet I have to let {$tags} go early. We hope to see you right back here in just a week or two 😉';
+    } else if (term > 0.45 && term < 0.55) {
+        text = 'The first half of this season is over, meaning that it\'s time for {$tags} to say goodbye! I hope you enjoyed your half-term as much as I did';
+    } else if (term > 0.21 && term < 0.29) {
+        text = '{$tags}... your quarter-term is up! Fight like hell for the remaining three quarters so we can see your return';
+    } else if (term > 0.71 && term < 0.79) {
+        text = '{$tags}... there\'s only one quarter {!left|remaining} in this season, which means it\'s time to pack your bags. Farewell for now, my friend!';
+    } else if (term > 0.575 && term < 0.625) {
+        text = '{$tags}... I just took a look at your tickets, and it says you were only entitled to ⅗ of a term. I could boot you now, but how about we _compromise_ and I give you a few hours to say goodbye?';
+    }
     // TODO: Make this message dynamic based on size of fractional term (e.g. halfway, quarter, near end)
-    await messenger.send(sungazerChannel, `${getJoinedMentions(fractionalExpirees)}... we're glad you joined us through this portion of the season, but we've reached your stop. Farewell for now!`);
+    await messenger.send(sungazerChannel, languageGenerator.generate(text, { tags: getJoinedMentions(fractionalExpirees) }));
     for (const userId of fractionalExpirees) {
         // Remove from state, when they post without being in the state, it will remove them
         delete history.sungazers[userId];
@@ -2564,6 +2580,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             if (submission.url) {
                 try {
                     // Crop to square to force it into a Canvas so the buffer can be accessed
+                    // TODO: Note that this will fail for .webp files, to fix this we'd need the full attachment here
                     const downloadedImage = cropToSquare(await loadImage(submission.url));
                     await sharedStorage.writeBlob(`blobs/misc/${new Date().getTime()}.png`, downloadedImage.toBuffer());
                 } catch (err) {
