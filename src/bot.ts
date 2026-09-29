@@ -4,7 +4,7 @@ import { DailyEvent, DailyEventType, GoodMorningHistory, Season, TimeoutType, Co
 import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, getScaledPoints, getSimpleScaledPoints, text, getRelativeDotwCalendarDate, generateWithAi } from './util';
 import GoodMorningState from './state';
 import { canonicalizeText, chance, DiscordTimestampFormat, FileStorage, forEachMessage, generateKMeansClusters, getClockTime, getDateBetween, getJoinedMentions, getMaxKeys, getObjectSize, getRandomDateBetween,
-    getRankString, getRelativeDateTimeString, getSelectedNode, getSortedKeys, getTodayDateString, getTomorrow, getWordRepetitionScore, isObjectEmpty, LanguageGenerator, loadJson, Messenger,
+    getRankString, getRelativeDateTimeString, getSelectedNode, getSortedKeys, getTodayDateString, getTomorrow, getWordRepetitionScore, isObjectEmpty, isPast, LanguageGenerator, loadJson, Messenger,
     naturalJoin, PastTimeoutStrategy, prettyPrint, R9KTextBank, randChoice, randFloat, randInt, s, shuffle, sleep, TimeoutManager, TimeoutOptions, toCalendarDate, toDiscordTimestamp, toFixed, toLetterId} from 'evanw555.js';
 import { AnonymousSubmissionsState } from './submissions';
 import ActivityTracker from './activity-tracker';
@@ -1356,6 +1356,14 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         }
     }
 
+    // Determine what the "target noon" is, so timeouts can be scheduled relative to this
+    const targetNoon = new Date();
+    targetNoon.setHours(12, 0, 0, 0);
+    // If this is in the past, this is an abnormal afternoon wake-up, so target much later
+    if (isPast(targetNoon)) {
+        targetNoon.setHours(new Date().getHours() + 3, 0, 0, 0);
+    }
+
     // Set timeout to prime the game processing loop
     if (state.getEventType() === DailyEventType.GameUpdate) {
         const firstDecisionProcessDate: Date = new Date();
@@ -1376,9 +1384,9 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         // First, cancel all pending submission prompt polls (if any have been delayed for long enough)
         await controller.cancelTimeoutsWithType(TimeoutType.AnonymousSubmissionTypePollStart);
         await controller.cancelTimeoutsWithType(TimeoutType.FinalizeSungazerPoll);
-        // Set timeout for anonymous submission reveal
-        const submissionRevealTime = new Date();
-        submissionRevealTime.setHours(10, 50, 0, 0);
+        // Set timeout for anonymous submission reveal (an hour and 10 minutes before target noon e.g. 10:50AM normally)
+        const submissionRevealTime = new Date(targetNoon);
+        submissionRevealTime.setMinutes(submissionRevealTime.getMinutes() - 70);
         // We register this with the "Invoke" strategy since we want it to happen before Pre-Noon (with which it's registered in parallel)
         await registerTimeout(TimeoutType.AnonymousSubmissionReveal, submissionRevealTime, { pastStrategy: PastTimeoutStrategy.Invoke });
         // Also, register a reply to give users a 5 minute warning
@@ -1407,9 +1415,9 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     }
 
     const minutesEarly: number = state.getEventType() === DailyEventType.EarlyEnd ? (state.getEvent().minutesEarly ?? 0) : 0;
-    // Set timeout for when morning almost ends
-    const preNoonToday: Date = new Date();
-    preNoonToday.setHours(11, randInt(48, 56) - minutesEarly, randInt(0, 60), 0);
+    // Set timeout for when morning almost ends (about 4-12 minutes before target noon)
+    const preNoonToday: Date = new Date(targetNoon);
+    preNoonToday.setMinutes(preNoonToday.getMinutes() - randInt(4, 12) - minutesEarly, preNoonToday.getSeconds() - randInt(0, 60), 0);
     // We register this with the "Increment Hour" strategy since its subsequent timeout (Noon) is registered in series
     await registerTimeout(TimeoutType.NextPreNoon, preNoonToday, { pastStrategy: PastTimeoutStrategy.IncrementHour });
 
@@ -1926,6 +1934,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         // We register this with the "Increment Hour" strategy since its subsequent timeout (GoodMorning) is registered in series
         await registerTimeout(TimeoutType.NextNoon, noonToday, { pastStrategy: PastTimeoutStrategy.IncrementHour }, { testingSeconds: 3 });
         // Set timeout for when baiting starts
+        // TODO: Handle how this works if it's past noon already
         const baitingStartTime: Date = new Date();
         baitingStartTime.setHours(11, 59, 0, 0);
         baitingStartTime.setMinutes(baitingStartTime.getMinutes() - minutesEarly);
