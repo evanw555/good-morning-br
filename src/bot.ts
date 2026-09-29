@@ -2573,12 +2573,15 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         await dumpState();
 
         // Schedule voting reminders
-        for (const minutes of [20, 40]) {
-            // Make this relative just in case this is happening later than usual
-            const reminderTime: Date = new Date();
-            reminderTime.setMinutes(reminderTime.getMinutes() + minutes);
-            // We register these with the "Delete" strategy since they are terminal and aren't needed if in the past
-            registerTimeout(TimeoutType.AnonymousSubmissionVotingReminder, reminderTime, { pastStrategy: PastTimeoutStrategy.Delete });
+        const preNoonDate = timeoutManager.getDateForTimeoutWithType(TimeoutType.NextPreNoon);
+        if (preNoonDate) {
+            // Schedule one reminder every 20 minutes until pre-noon
+            const preNoonTimestamp = preNoonDate.getTime();
+            const DELTA_MILLIS = 1000 * 60 * 20;
+            for (let timestamp = new Date().getTime() + DELTA_MILLIS; timestamp += DELTA_MILLIS; timestamp < preNoonTimestamp) {
+                // We register these with the "Delete" strategy since they are terminal and aren't needed if in the past
+                registerTimeout(TimeoutType.AnonymousSubmissionVotingReminder, new Date(timestamp), { pastStrategy: PastTimeoutStrategy.Delete });
+            }
         }
 
         // Shuffle all the revelant user IDs
