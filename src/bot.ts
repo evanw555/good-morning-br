@@ -1,4 +1,4 @@
-import { ActivityType, ApplicationCommandOptionType, AttachmentBuilder, BaseMessageOptions, ButtonStyle, Client, ComponentType, DMChannel, GatewayIntentBits, MessageFlags, OmitPartialGroupDMChannel, PartialMessage, Partials, TextChannel, TextInputStyle, User } from 'discord.js';
+import { APIApplicationCommandOption, ActivityType, ApplicationCommandOptionType, AttachmentBuilder, BaseMessageOptions, ButtonStyle, Client, ComponentType, DMChannel, GatewayIntentBits, MessageFlags, OmitPartialGroupDMChannel, PartialMessage, Partials, TextChannel, TextInputStyle, User } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discord.js';
 import { DailyEvent, DailyEventType, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, SubmissionPromptHistory, ReplyToMessageData, MessengerPayload, AnonymousSubmission, GamePlayerAddition, DecisionProcessingResult, FinalizeSungazerPollData, SpecialSungazerTermAward, MEDAL_TYPES } from './types';
 import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, getScaledPoints, getSimpleScaledPoints, text, getRelativeDotwCalendarDate, generateWithAi } from './util';
@@ -1536,10 +1536,10 @@ const processSubmissionVote = async (userId: Snowflake, submissionCodes: string[
     const anonymousSubmissions = state.getAnonymousSubmissions();
     const isSubmitterVote: boolean = anonymousSubmissions.isSubmitter(userId);
     const submissionCodeSet: Set<string> = new Set(submissionCodes);
-    // Require at least three votes (or one less than the total number of votes if there aren't enough submissions)
-    // Due to prior validation, there will always be two or more submissions, so this min will always be computed as at least 1
-    const maxRequiredVotes: number = 3;
-    const minRequiredVotes: number = Math.min(maxRequiredVotes, anonymousSubmissions.getSubmissionCodes().length - 1);
+    // Before the voting phase starts, there is validation that aborts if there are less than 2 submissions.
+    // Number of required votes is computed based on the number of submissions to ensure it's feasible.
+    const maxRequiredVotes = anonymousSubmissions.getMaxRequiredVotes();
+    const minRequiredVotes = anonymousSubmissions.getMinRequiredVotes();
     // Do some validation on the vote before processing it further
     if (submissionCodes.length === 0) {
         await callback(`I don\'t understand, please tell me which submissions you\'re voting for. Choose from ${naturalJoin([...anonymousSubmissions.getSubmissionCodes()])}.`);
@@ -2531,7 +2531,11 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
 
         // If nobody sent anything at all, abort!
         if (userIds.length === 0) {
-            await messenger.send(goodMorningChannel, `My inbox is empty... This day, **${toCalendarDate(new Date())}**, shall live in infamy...`);
+            // Skip to the results phase to prevent further action
+            anonymousSubmissions.setPhase('results');
+            await dumpState();
+            // Notify everyone that nothing has happened
+            await messenger.send(goodMorningChannel, `My inbox is empty... This day, **${getTodayDateString()}**, shall live in infamy...`);
             return;
         }
 
@@ -2540,7 +2544,10 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             const soleUserId: Snowflake = userIds[0];
             // Award the player double the grand contest award
             state.awardPoints(soleUserId, 2 * config.grandContestAward);
+            state.resetDaysSinceLGM(soleUserId);
             await awardPrize(soleUserId, 'submissions1', 'Thank you for being the only participant today');
+            // Skip to the results phase to prevent further action
+            anonymousSubmissions.setPhase('results');
             await dumpState();
             // Notify the channel
             await messenger.send(goodMorningChannel, `My oh my! Looks like <@${soleUserId}> was the only friend to submit anything, so I have rewarded him greatly for his undying loyalty...`);
@@ -2555,6 +2562,15 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             anonymousSubmissions.setRootSubmissionMessage(rootSubmissionMessage.id);
         }
         await dumpState();
+
+        // Schedule voting reminders
+        for (const minutes of [20, 40]) {
+            // Make this relative just in case this is happening later than usual
+            const reminderTime: Date = new Date();
+            reminderTime.setMinutes(reminderTime.getMinutes() + minutes);
+            // We register these with the "Delete" strategy since they are terminal and aren't needed if in the past
+            registerTimeout(TimeoutType.AnonymousSubmissionVotingReminder, reminderTime, { pastStrategy: PastTimeoutStrategy.Delete });
+        }
 
         // Shuffle all the revelant user IDs
         shuffle(userIds);
@@ -2597,8 +2613,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         await guild.commands.create({
             name: 'vote',
             description: `Vote for a ${anonymousSubmissions.getPrompt().slice(0, 50)}`,
-            // TODO: What do we do if there are 2-3 submissions?
-            options: [
+            options : [
                 {
                     type: ApplicationCommandOptionType.String,
                     name: 'first',
@@ -2621,6 +2636,8 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                     choices
                 }
             ]
+            // Right-size the options list to only require the min required number of votes
+            .slice(0, anonymousSubmissions.getMinRequiredVotes()) as APIApplicationCommandOption[]
          });
 
         // Advance to the voting phase
@@ -2660,14 +2677,6 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         // } catch (err) {
         //     await logger.log(`Failed to send select submission message: \`${err}\``);
         // }
-
-        // Schedule voting reminders
-        [[11, 10], [11, 30]].forEach(([hour, minute]) => {
-            const reminderTime: Date = new Date();
-            reminderTime.setHours(hour, minute);
-            // We register these with the "Delete" strategy since they are terminal and aren't needed if in the past
-            registerTimeout(TimeoutType.AnonymousSubmissionVotingReminder, reminderTime, { pastStrategy: PastTimeoutStrategy.Delete });
-        });
     },
     [TimeoutType.AnonymousSubmissionVotingReminder]: async (): Promise<void> => {
         // Validate that the current event is correct
@@ -2701,7 +2710,9 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         } else if (delinquents.length > 1) {
             // Send a voting notification to the channel
             try {
-                const reminderText = `If you haven't already, please vote on your favorite ${anonymousSubmissions.getPrompt()} with \`/vote\`!`;
+                const reminderText = `If you haven't already, please vote on your favorite ${anonymousSubmissions.getPrompt()} with \`/vote\`!`
+                    // If no one has voted, there is possibly an issue with the /vote command so we should suggest DM voting
+                    + (anonymousSubmissions.hasAnyoneVoted() ? '' : ' You can also send me a DM to vote e.g. "A B C"');
                 if (anonymousSubmissions.hasRootSubmissionMessage()) {
                     const rootSubmissionMessage: Message = await goodMorningChannel.messages.fetch(anonymousSubmissions.getRootSubmissionMessage());
                     await messenger.reply(rootSubmissionMessage, reminderText);

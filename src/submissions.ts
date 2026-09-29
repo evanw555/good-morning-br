@@ -1,6 +1,6 @@
 import { Snowflake } from "discord.js";
 import { AnonymousSubmission, AnonymousSubmissionsPhase, RawAnonymousSubmissionsState } from "./types";
-import { getRankString, naturalJoin, s, toFixed } from "evanw555.js";
+import { getObjectSize, getRankString, naturalJoin, s, toFixed } from "evanw555.js";
 
 declare interface AnonymousSubmissionVotingResult {
     code: string,
@@ -109,6 +109,14 @@ export class AnonymousSubmissionsState {
         return this.data.votes;
     }
 
+    getNumVotes(): number {
+        return getObjectSize(this.getVotes());
+    }
+
+    hasAnyoneVoted(): boolean {
+        return this.getNumVotes() > 0;
+    }
+
     getSubmitterVotes(): Record<Snowflake, string[]> {
         const submitterVotes: Record<Snowflake, string[]> = {};
         for (const [userId, _votes] of Object.entries(this.getVotes())) {
@@ -210,6 +218,23 @@ export class AnonymousSubmissionsState {
 
     isCodeDisqualified(code: string): boolean {
         return this.isUserDeadbeat(this.getOwnerOfSubmission(code));
+    }
+
+    /**
+     * @returns Max number of votes required per participant
+     */
+    getMaxRequiredVotes(): number {
+        return 3;
+    }
+
+    /**
+     * @returns Min number of votes required per participant
+     */
+    getMinRequiredVotes(): number {
+        // Require at least three votes (or one less than the total number of votes if there aren't enough submissions)
+        // Due to prior validation aborting the voting phase if there are no submissions or only one submission,
+        // there will always be two or more submissions, so this min will always be computed as at least 1
+        return Math.min(this.getMaxRequiredVotes(), this.getNumSubmissions() - 1);
     }
 
     private computeAudienceVote(): string[] {
