@@ -5173,7 +5173,7 @@ client.on('messageCreate', async (msg: OmitPartialGroupDMChannel<Message<boolean
                     }
                 }
                 // Warn about pluralization
-                if (firstWord.endsWith('s') && !firstWord.endsWith('\'s')) {
+                if (firstWord.match(/[^'’‘‛＇ʼʻʹ]s$/)) {
                     await messenger.reply(msg, languageGenerator.generate('Stop pluralizing your {!prompts|suggestions|suggested prompts} {!please|you dunce} 😡'), { ttl: 60_000 });
                 }
                 // Warn about prompt length
