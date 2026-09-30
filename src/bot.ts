@@ -1395,7 +1395,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         const warningArg: ReplyToMessageData = {
             channelId: goodMorningChannel.id,
             content: randChoice('5 minute warning', '5 minutes left, submit now or hold your peace', '5 minutes left', 'You have 5 minutes',
-                'Revealing submissions in 5 minutes', '5 MINUTES!', 'Closing my DMs in 5 minutes', 'Window closes in 5 minutes') + ' ⏳'
+                'Revealing submissions in 5 minutes', '5 MINUTES!', 'Closing my DMs in 5 minutes', 'Window closes in 5 minutes', 'FIVE MORE MINUTES AAAAAAAAAAAAAA') + ' ⏳'
         };
         await registerTimeout(TimeoutType.ReplyToMessage, fiveMinuteWarningTime, { arg: warningArg, pastStrategy: PastTimeoutStrategy.Delete });
         // In case the submissions data doesn't exist, populate it with random data
@@ -2572,17 +2572,11 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         }
         await dumpState();
 
-        // Schedule voting reminders
-        const preNoonDate = timeoutManager.getDateForTimeoutWithType(TimeoutType.NextPreNoon);
-        if (preNoonDate) {
-            // Schedule one reminder every 20 minutes until pre-noon
-            const preNoonTimestamp = preNoonDate.getTime();
-            const DELTA_MILLIS = 1000 * 60 * 20;
-            for (let timestamp = new Date().getTime() + DELTA_MILLIS; timestamp += DELTA_MILLIS; timestamp < preNoonTimestamp) {
-                // We register these with the "Delete" strategy since they are terminal and aren't needed if in the past
-                registerTimeout(TimeoutType.AnonymousSubmissionVotingReminder, new Date(timestamp), { pastStrategy: PastTimeoutStrategy.Delete });
-            }
-        }
+        // Prime voting reminder loop to start 20 minutes from now
+        const in20Minutes = new Date();
+        in20Minutes.setMinutes(in20Minutes.getMinutes() + 20);
+        // We register these with the "Delete" strategy since they are terminal and aren't needed if in the past
+        await registerTimeout(TimeoutType.AnonymousSubmissionVotingReminder, in20Minutes, { pastStrategy: PastTimeoutStrategy.Delete });
 
         // Shuffle all the revelant user IDs
         shuffle(userIds);
@@ -2714,6 +2708,12 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             await logger.log('Aborting submission voting reminder, as there\'s no root submission message ID.');
             return;
         }
+
+        // Schedule next voting reminder
+        const in20Minutes = new Date();
+        in20Minutes.setMinutes(in20Minutes.getMinutes() + 20);
+        // We register these with the "Delete" strategy since they are terminal and aren't needed if in the past
+        registerTimeout(TimeoutType.AnonymousSubmissionVotingReminder, in20Minutes, { pastStrategy: PastTimeoutStrategy.Delete });
 
         const delinquents: Snowflake[] = anonymousSubmissions.getDeadbeats();
         if (delinquents.length === 1) {
