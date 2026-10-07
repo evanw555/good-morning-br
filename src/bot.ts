@@ -1205,8 +1205,9 @@ const registerGoodMorningTimeout = async (): Promise<void> => {
         nextMorning.setDate(nextMorning.getDate() + 1);
     }
 
-    // We register this with the "Increment Day" strategy since it happens at a particular time and it's not competing with any other triggers.
-    await registerTimeout(TimeoutType.NextGoodMorning, nextMorning, { pastStrategy: PastTimeoutStrategy.IncrementDay });
+    // We register this with the "Invoke" strategy since it needs to happen every day, and all subsequent events are scheduled dynamically.
+    // e.g. the pre-noon event is pushed back beyond noon if the GM is triggered later than expected.
+    await registerTimeout(TimeoutType.NextGoodMorning, nextMorning, { pastStrategy: PastTimeoutStrategy.Invoke });
 };
 
 const registerGuestReveilleFallbackTimeout = async (): Promise<void> => {
@@ -1362,6 +1363,21 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
     // If this is in the past, this is an abnormal afternoon wake-up, so target much later
     if (isPast(targetNoon)) {
         targetNoon.setHours(new Date().getHours() + 3, 0, 0, 0);
+        await logger.log(`Noon has already past, pushing target noon back to ${toDiscordTimestamp(targetNoon, DiscordTimestampFormat.LongTime)}`);
+    }
+    // Otherwise, check if the target noon needs to be pushed back despite it still being in the future
+    else {
+        const now = new Date();
+        // If it's anonymous submissions day and it's too late for the reveal, push the noon back
+        if (state.getEventType() === DailyEventType.AnonymousSubmissions && now.getHours() >= 10) {
+            targetNoon.setHours(14, 0, 0, 0);
+            await logger.log(`It's past 10am on a submissions day, pushing target noon back to ${toDiscordTimestamp(targetNoon, DiscordTimestampFormat.LongTime)}`);
+        }
+        // If waking up later than any normal event count possibly wake up, push it back
+        else if (now.getHours() === 11 && now.getMinutes() > 30) {
+            targetNoon.setHours(13, 0, 0, 0);
+            await logger.log(`It's past 11:30am, pushing target noon back to ${toDiscordTimestamp(targetNoon, DiscordTimestampFormat.LongTime)}`);
+        }
     }
 
     // Set timeout to prime the game processing loop
@@ -2464,6 +2480,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             const nextSeasonStart: Date = new Date();
             nextSeasonStart.setHours(8, 0, 0, 0);
             nextSeasonStart.setDate(nextSeasonStart.getDate() + 15 - nextSeasonStart.getDay());
+            // Use the "Increment Day" strategy for the first GM of the season, since there wouldn't be a noticeable gap
             await registerTimeout(TimeoutType.NextGoodMorning, nextSeasonStart, { pastStrategy: PastTimeoutStrategy.IncrementDay });
             await logger.log(`Registered next season's first GM for **${getRelativeDateTimeString(nextSeasonStart)}**`);
             // If the submissions prompt was held over, notify the sungazers
