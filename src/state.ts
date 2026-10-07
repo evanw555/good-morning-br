@@ -658,6 +658,20 @@ export default class GoodMorningState {
         }
     }
 
+    forgiveDailyPenalties(userId: Snowflake) {
+        const pointsLost = this.getPointsLostToday(userId);
+        // Award these points back
+        this.awardPoints(userId, pointsLost);
+        // Clear the daily points lost counter
+        delete this.getOrCreateDailyStatus(userId).pointsLost;
+        // Reduce the daily points earned counter as though nothing happened
+        this.getOrCreateDailyStatus(userId).pointsEarned = toFixed(this.getPointsEarnedToday(userId) - pointsLost);
+        // Reduce season total deductions count
+        this.getOrCreatePlayer(userId).deductions = toFixed(this.getPlayerDeductions(userId) - pointsLost);
+        // TODO: Temp logging to see how this works
+        void logger.log(`Forgave **${pointsLost}** point penalty by **${this.getPlayerDisplayName(userId)}**`);
+    }
+
     getPointsEarnedToday(userId: Snowflake): number {
         return this.getDailyStatus(userId)?.pointsEarned ?? 0;
     }
@@ -666,8 +680,12 @@ export default class GoodMorningState {
         return this.getDailyStatus(userId)?.pointsLost ?? 0;
     }
 
+    getPlayersPenalizedToday(): Snowflake[] {
+        return this.getPlayers().filter(id => this.wasPlayerPenalizedToday(id));
+    }
+
     wasPlayerPenalizedToday(userId: Snowflake): boolean {
-        return (this.getDailyStatus(userId)?.pointsLost ?? 0) > 0;
+        return this.getPointsLostToday(userId) > 0;
     }
 
     incrementAllLGMs(): void {

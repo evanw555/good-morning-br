@@ -3847,6 +3847,15 @@ const processCommands = async (msg: OmitPartialGroupDMChannel<Message<boolean>>)
         }
         return members;
     };
+    // Priority command: forgive daily point penalties
+    if (msg.content === 'FORGIVE_PENALTIES') {
+        const playersToForgive = state.getPlayersPenalizedToday();
+        for (const userId of playersToForgive) {
+            state.forgiveDailyPenalties(userId);
+        }
+        await messenger.send(goodMorningChannel, `At the suggestion of my disciple, I have forgiven the daily sins of ${getJoinedMentions(playersToForgive)}. Peace be upon ye ${config.defaultGoodMorningEmoji}`);
+        return;
+    }
     // Priority command: force set next submission prompt
     if (msg.content.startsWith('SET_PROMPT')) {
         const prompt = msg.content.replace('SET_PROMPT', '').trim().toLowerCase();
@@ -4114,9 +4123,9 @@ const processCommands = async (msg: OmitPartialGroupDMChannel<Message<boolean>>)
             const potentialMagicWordRecipients = state.getPotentialMagicWordRecipients();
             msg.reply(state.getOrderedPlayers()
                 .map((key) => {
-                    const gamePoints = (state.hasGame() && state.getGame().hasPlayer(key)) ? state.getGame().getPoints(key) : '???';
-                    return `- <@${key}>: **${gamePoints}/${state.getPlayerPoints(key)}**`
-                        + (state.isPlayerInGame(key) ? '' : ' _(NEW)_')
+                    const gamePoints = (state.hasGame() && state.getGame().hasPlayer(key)) ? `${state.getGame().getPoints(key)}/` : '';
+                    return `- <@${key}>: **${gamePoints}${state.getPlayerPoints(key)}**`
+                        + ((state.isPlayerInGame(key) || state.isCasualSeason()) ? '' : ' _(NEW)_')
                         + (state.getPlayerDaysSinceLGM(key) ? ` ${state.getPlayerDaysSinceLGM(key)}d` : '')
                         + (state.getPlayerDeductions(key) ? (' -' + state.getPlayerDeductions(key)) : '')
                         + (state.isLastSubmissionWinner(key) ? '👑' : '')
