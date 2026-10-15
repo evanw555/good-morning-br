@@ -336,7 +336,7 @@ export async function generateWithAi(prompt: string): Promise<string> {
         apiKey: AUTH.openAiKey
     });
     const response = await openai.completions.create({
-        model: "gpt-3.5-turbo-instruct",
+        model: "gpt-5.6-terra",
         prompt,
         temperature: 0.9,
         max_tokens: 256,
@@ -351,6 +351,18 @@ export async function generateSynopsisWithAi(story: string): Promise<string> {
     return await generateWithAi('The following is a story told by several different storytellers:\n\n'
         + story
         + '\n\nThis concludes the story. Now that the story has ended, please give a synopsis of the story, explaining the premise, conflict, and characters.')
+}
+
+export async function generateWithResponsesAi(instructions: string, input: string): Promise<string> {
+    const openai = new OpenAI({
+        apiKey: AUTH.openAiKey
+    });
+    const response = await openai.responses.create({
+        model: "gpt-5.6-terra",
+        instructions,
+        input
+    });
+    return response.output_text
 }
 
 /**

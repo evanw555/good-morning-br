@@ -1,7 +1,7 @@
 import { APIApplicationCommandOption, ActivityType, ApplicationCommandOptionType, AttachmentBuilder, BaseMessageOptions, ButtonStyle, Client, ComponentType, DMChannel, GatewayIntentBits, MessageFlags, OmitPartialGroupDMChannel, PartialMessage, Partials, TextChannel, TextInputStyle, User } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discord.js';
 import { DailyEvent, DailyEventType, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, SubmissionPromptHistory, ReplyToMessageData, MessengerPayload, AnonymousSubmission, GamePlayerAddition, DecisionProcessingResult, FinalizeSungazerPollData, SpecialSungazerTermAward, MEDAL_TYPES } from './types';
-import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, getScaledPoints, getSimpleScaledPoints, text, getRelativeDotwCalendarDate, generateWithAi } from './util';
+import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, getScaledPoints, getSimpleScaledPoints, text, getRelativeDotwCalendarDate, generateWithAi, generateWithResponsesAi } from './util';
 import GoodMorningState from './state';
 import { canonicalizeText, chance, DiscordTimestampFormat, FileStorage, forEachMessage, generateKMeansClusters, getClockTime, getDateBetween, getJoinedMentions, getMaxKeys, getObjectSize, getRandomDateBetween,
     getRankString, getRelativeDateTimeString, getSelectedNode, getSortedKeys, getTodayDateString, getTomorrow, getWordRepetitionScore, isObjectEmpty, isPast, LanguageGenerator, loadJson, Messenger,
@@ -4104,12 +4104,22 @@ const processCommands = async (msg: OmitPartialGroupDMChannel<Message<boolean>>)
         return;
     }
     // Test out text generation with AI
-    if (msg.content.startsWith('GENERATE_AI')) {
-        const prompt = msg.content.replace('GENERATE_AI', '').trim();
-        await msg.reply('Generating with AI...');
+    if (msg.content.startsWith('GENERATE_COMPLETIONS_AI')) {
+        const prompt = msg.content.replace('GENERATE_COMPLETIONS_AI', '').trim();
+        await msg.reply('Generating with Completions AI...');
         const result = await generateWithAi(prompt);
         await msg.channel.send(result);
         return;
+    }
+    // Test out text generation with Responses AI
+    if (msg.content.startsWith('GENERATE_RESPONSES_AI')) {
+        const [instructions, input] = msg.content.replace('GENERATE_RESPONSES_AI', '').trim().split('\n').map(x => x.trim());
+        if (instructions && input) {
+            await msg.reply('Generating with Responses AI...');
+            const result = await generateWithResponsesAi(instructions, input);
+            await msg.channel.send(result);
+            return;
+        }
     }
     // Handle sanitized commands
     const sanitizedText: string = msg.content.trim().toLowerCase();
