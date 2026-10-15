@@ -330,6 +330,7 @@ export function text(input: string, variables?: Record<string, string>): string 
 
 /**
  * Using some text prompt, use OpenAI to generate a text response.
+ * // TODO: The completions API is deprecated now. GET RID OF IT!!!
  */
 export async function generateWithAi(prompt: string): Promise<string> {
     const openai = new OpenAI({
@@ -348,9 +349,10 @@ export async function generateWithAi(prompt: string): Promise<string> {
 }
 
 export async function generateSynopsisWithAi(story: string): Promise<string> {
-    return await generateWithAi('The following is a story told by several different storytellers:\n\n'
-        + story
-        + '\n\nThis concludes the story. Now that the story has ended, please give a synopsis of the story, explaining the premise, conflict, and characters.')
+    return await generateWithResponsesAi('I am showing you a story told in turn by several different storytellers. '
+        + 'Please give a synopsis of the story, explaining the premise, conflict, and characters. '
+        + 'Respond in plaintext with plain language.',
+        story);
 }
 
 export async function generateWithResponsesAi(instructions: string, input: string): Promise<string> {

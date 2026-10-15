@@ -1,7 +1,7 @@
 import { APIApplicationCommandOption, ActivityType, ApplicationCommandOptionType, AttachmentBuilder, BaseMessageOptions, ButtonStyle, Client, ComponentType, DMChannel, GatewayIntentBits, MessageFlags, OmitPartialGroupDMChannel, PartialMessage, Partials, TextChannel, TextInputStyle, User } from 'discord.js';
 import { Guild, GuildMember, Message, Snowflake, TextBasedChannel } from 'discord.js';
 import { DailyEvent, DailyEventType, GoodMorningHistory, Season, TimeoutType, Combo, CalendarDate, PrizeType, Bait, SubmissionPromptHistory, ReplyToMessageData, MessengerPayload, AnonymousSubmission, GamePlayerAddition, DecisionProcessingResult, FinalizeSungazerPollData, SpecialSungazerTermAward, MEDAL_TYPES } from './types';
-import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, getScaledPoints, getSimpleScaledPoints, text, getRelativeDotwCalendarDate, generateWithAi, generateWithResponsesAi } from './util';
+import { hasVideo, validateConfig, reactToMessage, extractYouTubeId, toSubmissionEmbed, toSubmission, getMessageMentions, getScaledPoints, getSimpleScaledPoints, text, getRelativeDotwCalendarDate, generateWithAi, generateWithResponsesAi, generateSynopsisWithAi } from './util';
 import GoodMorningState from './state';
 import { canonicalizeText, chance, DiscordTimestampFormat, FileStorage, forEachMessage, generateKMeansClusters, getClockTime, getDateBetween, getJoinedMentions, getMaxKeys, getObjectSize, getRandomDateBetween,
     getRankString, getRelativeDateTimeString, getSelectedNode, getSortedKeys, getTodayDateString, getTomorrow, getWordRepetitionScore, isObjectEmpty, isPast, LanguageGenerator, loadJson, Messenger,
@@ -4120,6 +4120,14 @@ const processCommands = async (msg: OmitPartialGroupDMChannel<Message<boolean>>)
             await msg.channel.send(result);
             return;
         }
+    }
+    // Test out synopsis generation with AI
+    if (msg.content.startsWith('GENERATE_SYNOPSIS_AI')) {
+        const input = msg.content.replace('GENERATE_SYNOPSIS_AI', '').trim();
+        await msg.reply('Generating synopsis with AI...');
+        const result = await generateSynopsisWithAi(input);
+        await msg.channel.send(result);
+        return;
     }
     // Handle sanitized commands
     const sanitizedText: string = msg.content.trim().toLowerCase();
