@@ -350,7 +350,8 @@ export async function generateWithAi(prompt: string): Promise<string> {
 
 export async function generateSynopsisWithAi(story: string): Promise<string> {
     return await generateWithResponsesAi('I am showing you a story told in turn by several different storytellers. '
-        + 'Please give a short synopsis of the story, speculate on the backstory or potential future of one of the characters, and provide an honest opinion of whether this was an appropriate "good morning" story. '
+        + 'Please give a short synopsis of the story, speculate on the backstory or potential future of one of the characters, and provide an honest opinion of whether this was a compelling "good morning" story. '
+        + 'Do not "respond" to me or my instructions, give your thoughts as though you are initiating a dialogue with the storytellers after hearing the story. '
         + 'Respond in plaintext with plain language. Do not exceed 150 words.',
         story);
 }
