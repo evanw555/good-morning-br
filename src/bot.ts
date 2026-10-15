@@ -2494,6 +2494,16 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
 
         // Finally, log the final state for today
         await logJsonAsFile('GMBR state', state.toCompactJson());
+
+        // After everything else, confirm that the popcorn synopsis API is still working
+        if (state.getEventType() === DailyEventType.HighFocus && state.getEvent().focusGame?.type === 'POPCORN') {
+            try {
+                const result = await generateSynopsisWithAi('This is a very short story. I am at the top of a castle, but cannot figure out how to make my way down. The end.');
+                await logger.log(`**Popcorn Synopsis Test:**\n${result}`);
+            } catch (err) {
+                await logger.log(`WARNING! Popcorn synopsis AI is broken: \`${err}\``);
+            }
+        }
     },
     [TimeoutType.GuestReveilleFallback]: async (): Promise<void> => {
         // Take action if the guest reveiller hasn't said GM
