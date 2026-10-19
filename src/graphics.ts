@@ -103,27 +103,30 @@ export async function renderCasualLeaderboard(state: GoodMorningState, medals: R
         const textWidth = context.measureText(displayName).width;
 
         // Draw an arrow representing how many points a user has gained.
-        // Reduce length by a little just so it doesn't look so cramped
-        const arrowLength = (state.getPlayerPoints(userId) - state.getPlayerLastWeekPoints(userId)) * PIXELS_PER_POINT - BAR_PADDING;
+        const arrowLength = (state.getPlayerPoints(userId) - state.getPlayerLastWeekPoints(userId)) * PIXELS_PER_POINT;
         if (arrowLength > 0) {
-            const arrowTailX = BASE_BAR_X + BAR_PADDING + (state.getPlayerLastWeekPoints(userId) * PIXELS_PER_POINT);
-            // If it's long enough, render as an arrow
-            if (arrowLength > BAR_HEIGHT / 3) {
-                const thickness = Math.min(BAR_HEIGHT * 0.4, arrowLength / 2);
-                renderArrow(context,
-                    { x: arrowTailX, y: baseY + BAR_HEIGHT / 2 },
-                    { x: arrowTailX + arrowLength, y: baseY + BAR_HEIGHT / 2 },
-                    {
-                        thickness,
-                        fillStyle: 'rgba(255,255,255,0.4)',
-                        strokeStyle: 'rgba(255,255,255,0)'
-                    }
-                );
-            }
-            // Otherwise, just render as a box
-            else {
-                context.fillStyle = 'rgba(255,255,255,0.4)';
-                context.fillRect(arrowTailX, baseY + 2 * BAR_PADDING, arrowLength, BAR_HEIGHT - 4 * BAR_PADDING);
+            // Shift everything over to the left a little bit to account for right-padding while keeping the appropriate length
+            const arrowTailX = BASE_BAR_X + BAR_PADDING + actualBarWidth - arrowLength - BAR_PADDING;
+            // Only draw the arrow if there's enough room for it, since it's all shifted left
+            if (arrowTailX < BASE_BAR_X + BAR_PADDING * 2) {
+                // If it's long enough, render as an arrow
+                if (arrowLength > BAR_HEIGHT / 3) {
+                    const thickness = Math.min(BAR_HEIGHT * 0.375, arrowLength / 2);
+                    renderArrow(context,
+                        { x: arrowTailX, y: baseY + BAR_HEIGHT / 2 },
+                        { x: arrowTailX + arrowLength, y: baseY + BAR_HEIGHT / 2 },
+                        {
+                            thickness,
+                            fillStyle: 'rgba(255,255,255,0.4)',
+                            strokeStyle: 'rgba(255,255,255,0)'
+                        }
+                    );
+                }
+                // Otherwise, just render as a box
+                else {
+                    context.fillStyle = 'rgba(255,255,255,0.4)';
+                    context.fillRect(arrowTailX, baseY + 2 * BAR_PADDING, arrowLength, BAR_HEIGHT - 4 * BAR_PADDING);
+                }
             }
         }
 
