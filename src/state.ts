@@ -250,6 +250,20 @@ export default class GoodMorningState {
         return result;
     }
 
+    /**
+     * @returns Last week's cumulative points snapshot for some player.
+     */
+    getPlayerLastWeekPoints(userId: Snowflake): number {
+        return this.getPlayer(userId)?.lastWeekPoints ?? 0;
+    }
+
+    /**
+     * Sets a players's last-week points snapshot to their current cumulative points.
+     */
+    updatePlayerLastWeekPoints(userId: Snowflake) {
+        this.getOrCreatePlayer(userId).lastWeekPoints = this.getPlayerPoints(userId);
+    }
+
     getPlayerActivity(userId: Snowflake): ActivityTracker {
         return new ActivityTracker(this.getPlayer(userId)?.activity);
     }

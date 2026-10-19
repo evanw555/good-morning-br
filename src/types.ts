@@ -134,6 +134,7 @@ export type PrizeType = 'submissions1' | 'submissions1-tied'
 export interface PlayerState {
     displayName: string,
     cumulativePoints: number,
+    lastWeekPoints?: number,
     muted?: true,
     votingProbation?: true,
     activity?: string,

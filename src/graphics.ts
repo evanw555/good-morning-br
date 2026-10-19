@@ -7,6 +7,7 @@ import GoodMorningState from './state';
 import { Medals } from './types';
 
 import imageLoader from './image-loader';
+import { renderArrow } from './util';
 
 // TODO: This logic is horrible, please clean it up
 // TODO: Can we collapse this with the classic game render logic?
@@ -100,6 +101,19 @@ export async function renderCasualLeaderboard(state: GoodMorningState, medals: R
         // Must set the font before measuring the width
         context.font = `${textHeight}px sans-serif`;
         const textWidth = context.measureText(displayName).width;
+
+        // Draw an arrow representing how many points a user has gained
+        const arrowTailX = state.getPlayerLastWeekPoints(userId) * PIXELS_PER_POINT;
+        if (arrowTailX < actualBarWidth) {
+            renderArrow(context,
+                { x: arrowTailX, y: baseY + BAR_HEIGHT / 2 },
+                { x: actualBarWidth, y: baseY + BAR_HEIGHT / 2 },
+                {
+                    thickness: BAR_HEIGHT / 2,
+                    fillStyle: 'rgba(255,255,255,0.5)'
+                }
+            );
+        }
 
         // If the text for this user no longer fits in the bar, place the text after the bar for all remaining entries
         if (textInsideBar) {

@@ -2108,6 +2108,10 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                     content: languageGenerator.generate('{weeklyUpdate}', { season: state.getSeasonNumber().toString(), top: `<@${top}>`, second: `<@${second}>` }),
                     files: [new AttachmentBuilder(await renderCasualLeaderboard(state, history.medals)).setName('weekly-update.png')]
                 });
+                // Update weekly points for all players for next week's render
+                for (const userId of state.getPlayers()) {
+                    state.updatePlayerLastWeekPoints(userId);
+                }
             }
         }
 
@@ -3245,6 +3249,12 @@ const loadState = async (): Promise<void> => {
         state = new GoodMorningState(await storage.readJson('state'));
         // Temporary logic to initialize newly introduced properties
         // ...
+        for (const userId of state.getPlayers()) {
+            // If their last week points are zero, assume they're undefined and populate them
+            if (state.getPlayerLastWeekPoints(userId) === 0) {
+                state.updatePlayerLastWeekPoints(userId);
+            }
+        }
     } catch (err) {
         // Specifically check for file-not-found errors to make sure we don't overwrite anything
         if (err.code === 'ENOENT') {
