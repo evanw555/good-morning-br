@@ -4165,6 +4165,13 @@ const processCommands = async (msg: OmitPartialGroupDMChannel<Message<boolean>>)
             await dumpState();
             await msg.reply('Dumped state!');
         }
+        // Show the casual leaderboard
+        else if (sanitizedText === 'rendercasualleaderboard' && state.isCasualSeason()) {
+            await msg.reply({
+                content: 'Here is the casual leaderboard render',
+                files: [await renderCasualLeaderboard(state, history.medals)]
+            });
+        }
         // Test the experimental clusters logic
         else if (sanitizedText.includes('clusters')) {
             // msg.reply(JSON.stringify(generateKMeansClusters(state.points, 3)));
