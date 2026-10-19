@@ -4166,7 +4166,7 @@ const processCommands = async (msg: OmitPartialGroupDMChannel<Message<boolean>>)
             await msg.reply('Dumped state!');
         }
         // Show the casual leaderboard
-        else if (sanitizedText === 'rendercasualleaderboard' && state.isCasualSeason()) {
+        else if (sanitizedText.includes('rendercasualleaderboard') && state.isCasualSeason()) {
             await msg.reply({
                 content: 'Here is the casual leaderboard render',
                 files: [await renderCasualLeaderboard(state, history.medals)]
