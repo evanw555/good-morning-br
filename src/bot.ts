@@ -4955,6 +4955,18 @@ client.on('messageCreate', async (msg: OmitPartialGroupDMChannel<Message<boolean
                 }
             }
 
+            // If the player is handicapped and set up a streak in a casual season...
+            const effectiveStreak = state.getPlayerActivity(userId).getStreak() + 1;
+            if (state.isCasualSeason() && state.doesPlayerNeedHandicap(userId) && effectiveStreak > 2) {
+                // Award one point for each day of streak
+                state.awardPoints(userId, effectiveStreak);
+                await dumpState();
+                dailyVolatileLog.push([new Date(), `Awarded <@${userId}> ${effectiveStreak} bonus points for ${effectiveStreak}-day casual handicap streak`]);
+                // Notify the player
+                void messenger.dm(userId, `You're on a **${effectiveStreak}**-day streak! I'm giving you **${effectiveStreak}x** bonus points until you're caught up 🔥`);
+                await logger.log(`Notified <@${userId}> of ${effectiveStreak}-day casual handicap streak`);
+            }
+
             // If the player said today's magic word for the first time, reward them and let them know privately (even if it's not their first message)
             if (extractedMagicWord && !state.hasDailyMagicWordRank(userId)) {
                 // Assign them a rank to prevent them from saying it again, regardless of whether they're rewarded
