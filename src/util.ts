@@ -216,7 +216,7 @@ export function drawBackground(context: NodeCanvasRenderingContext2D, image: Can
 }
 
 // TODO: Move to common library
-export function renderArrow(context: CanvasRenderingContext2D, from: Coordinates, to: Coordinates, options?: { thickness?: number, tipLength?: number, fillStyle?: string, tailPadding?: number, tipPadding?: number }): {
+export function renderArrow(context: CanvasRenderingContext2D, from: Coordinates, to: Coordinates, options?: { thickness?: number, tipLength?: number, fillStyle?: string, strokeStyle?: string, tailPadding?: number, tipPadding?: number }): {
     tail: Coordinates,
     center: Coordinates,
     head: Coordinates,
@@ -280,7 +280,7 @@ export function renderArrow(context: CanvasRenderingContext2D, from: Coordinates
 
     context.fillStyle = options?.fillStyle ?? 'white';
     context.fill();
-    context.strokeStyle = 'black';
+    context.strokeStyle = options?.strokeStyle ?? 'black';
     context.lineWidth = 2;
     context.stroke();
 
