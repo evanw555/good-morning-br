@@ -106,14 +106,14 @@ export async function renderCasualLeaderboard(state: GoodMorningState, medals: R
         const arrowLength = (state.getPlayerPoints(userId) - state.getPlayerLastWeekPoints(userId)) * PIXELS_PER_POINT;
         if (arrowLength > 0) {
             const arrowTailX = BASE_BAR_X + BAR_PADDING + actualBarWidth - arrowLength;
+            const thickness = Math.min(BAR_HEIGHT / 3, arrowLength / 2);
             renderArrow(context,
                 { x: arrowTailX, y: baseY + BAR_HEIGHT / 2 },
                 { x: arrowTailX + arrowLength, y: baseY + BAR_HEIGHT / 2 },
                 {
-                    thickness: BAR_HEIGHT / 3,
-                    tipLength: Math.min(BAR_HEIGHT / 3, arrowLength / 2),
-                    fillStyle: 'rgba(255,255,255,0.5)',
-                    strokeStyle: 'rgba(255,255,255,0.25)'
+                    thickness,
+                    fillStyle: 'rgba(255,255,255,0.4)',
+                    strokeStyle: 'rgba(255,255,255,0)'
                 }
             );
         }
