@@ -102,20 +102,29 @@ export async function renderCasualLeaderboard(state: GoodMorningState, medals: R
         context.font = `${textHeight}px sans-serif`;
         const textWidth = context.measureText(displayName).width;
 
-        // Draw an arrow representing how many points a user has gained
-        const arrowLength = (state.getPlayerPoints(userId) - state.getPlayerLastWeekPoints(userId)) * PIXELS_PER_POINT;
+        // Draw an arrow representing how many points a user has gained.
+        // Reduce length by a little just so it doesn't look so cramped
+        const arrowLength = (state.getPlayerPoints(userId) - state.getPlayerLastWeekPoints(userId)) * PIXELS_PER_POINT - BAR_PADDING;
         if (arrowLength > 0) {
-            const arrowTailX = BASE_BAR_X + BAR_PADDING + actualBarWidth - arrowLength;
-            const thickness = Math.min(BAR_HEIGHT / 3, arrowLength / 2);
-            renderArrow(context,
-                { x: arrowTailX, y: baseY + BAR_HEIGHT / 2 },
-                { x: arrowTailX + arrowLength, y: baseY + BAR_HEIGHT / 2 },
-                {
-                    thickness,
-                    fillStyle: 'rgba(255,255,255,0.4)',
-                    strokeStyle: 'rgba(255,255,255,0)'
-                }
-            );
+            const arrowTailX = BASE_BAR_X + BAR_PADDING + (state.getPlayerLastWeekPoints(userId) * PIXELS_PER_POINT);
+            // If it's long enough, render as an arrow
+            if (arrowLength > BAR_HEIGHT / 3) {
+                const thickness = Math.min(BAR_HEIGHT * 0.4, arrowLength / 2);
+                renderArrow(context,
+                    { x: arrowTailX, y: baseY + BAR_HEIGHT / 2 },
+                    { x: arrowTailX + arrowLength, y: baseY + BAR_HEIGHT / 2 },
+                    {
+                        thickness,
+                        fillStyle: 'rgba(255,255,255,0.4)',
+                        strokeStyle: 'rgba(255,255,255,0)'
+                    }
+                );
+            }
+            // Otherwise, just render as a box
+            else {
+                context.fillStyle = 'rgba(255,255,255,0.4)';
+                context.fillRect(arrowTailX, baseY + 2 * BAR_PADDING, arrowLength, BAR_HEIGHT - 4 * BAR_PADDING);
+            }
         }
 
         // If the text for this user no longer fits in the bar, place the text after the bar for all remaining entries
