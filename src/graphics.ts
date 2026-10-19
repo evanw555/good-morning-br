@@ -108,7 +108,7 @@ export async function renderCasualLeaderboard(state: GoodMorningState, medals: R
             // Shift everything over to the left a little bit to account for right-padding while keeping the appropriate length
             const arrowTailX = BASE_BAR_X + BAR_PADDING + actualBarWidth - arrowLength - BAR_PADDING;
             // Only draw the arrow if there's enough room for it, since it's all shifted left
-            if (arrowTailX < BASE_BAR_X + BAR_PADDING * 2) {
+            if (arrowTailX > BASE_BAR_X + BAR_PADDING) {
                 // If it's long enough, render as an arrow
                 if (arrowLength > BAR_HEIGHT / 3) {
                     const thickness = Math.min(BAR_HEIGHT * 0.375, arrowLength / 2);
