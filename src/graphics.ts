@@ -110,13 +110,12 @@ export async function renderCasualLeaderboard(state: GoodMorningState, medals: R
             // Only draw the arrow if there's enough room for it, since it's all shifted left
             if (arrowTailX > BASE_BAR_X + BAR_PADDING) {
                 // If it's long enough, render as an arrow
-                if (arrowLength > BAR_HEIGHT / 3) {
-                    const thickness = Math.min(BAR_HEIGHT * 0.375, arrowLength / 2);
+                if (arrowLength > BAR_HEIGHT / 2) {
                     renderArrow(context,
                         { x: arrowTailX, y: baseY + BAR_HEIGHT / 2 },
                         { x: arrowTailX + arrowLength, y: baseY + BAR_HEIGHT / 2 },
                         {
-                            thickness,
+                            thickness: Math.round(BAR_HEIGHT * 0.375),
                             fillStyle: 'rgba(255,255,255,0.4)',
                             strokeStyle: 'rgba(255,255,255,0)'
                         }
