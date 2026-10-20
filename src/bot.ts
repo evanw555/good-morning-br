@@ -2240,6 +2240,27 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             await awardPrize(userId, 'streak', `Thank you for bringing us Good Morning cheer for **${ActivityTracker.CAPACITY}** consecutive days`);
         }
 
+        // Apply casual season handicap streak bonuses
+        if (state.isCasualSeason()) {
+            const handicapStreakLog: string[] = [];
+            const handicappedPlayers = state.getPlayers().filter(id => state.doesPlayerNeedHandicap(id));
+            for (const userId of handicappedPlayers) {
+                const streak = state.getPlayerActivity(userId).getStreak();
+                if (streak > 3) {
+                    // Award one point for each day of streak
+                    state.awardPoints(userId, streak);
+                    // Notify the player
+                    void messenger.dm(userId, `You're on a **${streak}**-day streak! I'm giving you **${streak}x** bonus points until you're caught up 🔥`, { immediate: true });
+                    // Log the streak bonus
+                    dailyVolatileLog.push([new Date(), `Awarded <@${userId}> ${streak} bonus points for ${streak}-day casual handicap streak`]);
+                    handicapStreakLog.push(`**${state.getPlayerDisplayName(userId)}** with **${streak}** day${s(streak)}`);
+                }
+            }
+            if (handicapStreakLog.length > 0) {
+                await logger.log(`Notified players of handicap streak bonuses: ${naturalJoin(handicapStreakLog)}`);
+            }
+        }
+
         // Activate the queued up event (this can only be done after all thing which process the morning's event)
         state.dequeueNextEvent();
 
@@ -4953,18 +4974,6 @@ client.on('messageCreate', async (msg: OmitPartialGroupDMChannel<Message<boolean
                         reactToMessage(msg, state.getGoodMorningEmoji());
                     }
                 }
-            }
-
-            // If the player is handicapped and set up a streak in a casual season...
-            const effectiveStreak = state.getPlayerActivity(userId).getStreak() + 1;
-            if (state.isCasualSeason() && state.doesPlayerNeedHandicap(userId) && effectiveStreak > 2) {
-                // Award one point for each day of streak
-                state.awardPoints(userId, effectiveStreak);
-                await dumpState();
-                dailyVolatileLog.push([new Date(), `Awarded <@${userId}> ${effectiveStreak} bonus points for ${effectiveStreak}-day casual handicap streak`]);
-                // Notify the player
-                void messenger.dm(userId, `You're on a **${effectiveStreak}**-day streak! I'm giving you **${effectiveStreak}x** bonus points until you're caught up 🔥`);
-                await logger.log(`Notified <@${userId}> of ${effectiveStreak}-day casual handicap streak`);
             }
 
             // If the player said today's magic word for the first time, reward them and let them know privately (even if it's not their first message)

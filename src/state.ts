@@ -335,11 +335,11 @@ export default class GoodMorningState {
 
     /**
      * Returns true if the given player should receive a handicap.
-     * For casual seasons, this is determined as being > 20% into the season while being < 50% the top player's points.
+     * For casual seasons, this is determined as being > 20% into the season while being < 60% the top player's points.
      */
     doesPlayerNeedHandicap(userId: Snowflake): boolean {
         if (this.isCasualSeason()) {
-            return this.getSeasonCompletion() > 0.2 && this.getPlayerRelativePoints(userId) < 0.5;
+            return this.getSeasonCompletion() > 0.2 && this.getPlayerRelativePoints(userId) < 0.6;
         } else {
             return this.hasGame() && this.getGame().doesPlayerNeedHandicap(userId);
         }
