@@ -2246,7 +2246,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             const handicappedPlayers = state.getPlayers().filter(id => state.doesPlayerNeedHandicap(id));
             for (const userId of handicappedPlayers) {
                 const streak = state.getPlayerActivity(userId).getStreak();
-                if (streak > 3) {
+                if (streak >= 3) {
                     // Award one point for each day of streak
                     state.awardPoints(userId, streak);
                     // Notify the player
