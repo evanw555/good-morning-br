@@ -31,7 +31,7 @@ const OFFSETS_BY_DIRECTION: Record<Direction, [number, number]> = {
     right: [0, 1]
 };
 
-type BasicActionName = Direction | 'pause' | 'unlock' | 'lock' | 'punch' | 'warp' | 'coin';
+type BasicActionName = Direction | 'pause' | 'unlock' | 'lock' | 'jam' | 'punch' | 'warp' | 'coin';
 type ActionName = BasicActionName | MazeItemName;
 
 const ITEM_NAME_RECORD: Record<MazeItemName, boolean> = {
@@ -53,6 +53,7 @@ const ACTION_SYMBOLS: Record<ActionName, string> = {
     pause: '⏸️',
     unlock: '🔓',
     lock: '🔒',
+    jam: '🪑',
     punch: '🥊',
     warp: '🎱',
     coin: '🪙',
@@ -131,12 +132,13 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
     getHelpText(): string {
         // TODO: Update this for the new season
         return 'Here are the possible actions you may take and their associated costs:\n'
-                + '`up`, `down`, `left`, `right`: move one step in such direction. Costs `1`\n'
-                + '`unlock`: open all doorways adjacent to you (or just one e.g. `unlock:b12`). Cost is denoted on each doorway, and is reduced with each unlock\n'
-                + '`lock`: close all doorways adjacent to you (or just one e.g. `lock:b12`). Cost is denoted on each doorway\n'
-                + '`punch`: 75% chance of knocking out any player adjacent to you, stunning them for `3` moves. Some of their money may fall onto the floor around them. Costs `1`\n'
-                + '`warp`: warp to a random player. Costs `0.5` for each week that has elapsed\n'
-                + '`pause`: do nothing. Free\n\n'
+                + '- Say a location e.g. `b12` to walk there. Costs `1` point per step. You can manually step by saying `up`, `down`, `left`, or `right`\n'
+                + '- `unlock`: open all doorways adjacent to you (or just one e.g. `unlock:b12`). Cost is denoted on each doorway, and is reduced with each unlock\n'
+                + '- `lock`: close all doorways adjacent to you (or just one e.g. `lock:b12`). Costs `1`\n'
+                + '- `jam`: jam all adjacent doorways, raising their cost by some amount `1-5` (or just one e.g. `jam:b12`). Costs `1`\n'
+                + '- `punch`: 75% chance of knocking out any player adjacent to you, stunning them for `3` moves. Some of their money may fall onto the floor around them. Costs `1`\n'
+                + '- `warp`: warp to a random player. Costs `0.5` for each week that has elapsed\n'
+                + '- `pause`: do nothing. Free\n\n'
             + 'Misc Rules:\n'
                 + '1. If you do not choose your actions, actions will be chosen for you (use `pause` to do nothing instead).\n'
                 + '2. In a given turn, one action is processed from each player in a _semi-random_ order until all players have no actions left '
@@ -706,10 +708,11 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
             'down': { cost: 1, description: 'Move down 1 tile' },
             'left': { cost: 1, description: 'Move left 1 tile' },
             'right': { cost: 1, description: 'Move right 1 tile' },
-            'pause': { cost: 0, description: 'Do nothing' },
+            'pause': { cost: this.getActionCost('pause'), description: 'Do nothing' },
             'unlock': { cost: 'N', description: 'Open adjacent doorways' },
-            'lock': { cost: 'N', description: 'Close adjacent doorways' },
-            'punch': { cost: 1, description: 'Try to KO adjacent players' },
+            'lock': { cost: this.getActionCost('lock'), description: 'Close adjacent doorways' },
+            'jam': { cost: this.getActionCost('jam'), description: 'Jam adjacent doorways' },
+            'punch': { cost: this.getActionCost('punch'), description: 'Try to KO adjacent players' },
             'warp': { cost: this.getActionCost('warp'), description: 'Warp to a random player' }
         };
     }
@@ -1960,13 +1963,18 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                 return cost;
             },
             'lock': () => {
-                let cost = 0;
-                for (const { r, c } of this.getAdjacentLocationsOrOverride(location, argLocation)) {
-                    if (this.isTileType(r, c, TileType.OPENED_DOORWAY)) {
-                        cost += this.state.doorwayCosts[MazeGame.getLocationString(r, c)];
-                    }
-                }
-                return cost;
+                // TODO: Making lock actions cost 1 point to encourage people to do it (also it won't be necessary with the step-through changes)
+                // let cost = 0;
+                // for (const { r, c } of this.getAdjacentLocationsOrOverride(location, argLocation)) {
+                //     if (this.isTileType(r, c, TileType.OPENED_DOORWAY)) {
+                //         cost += this.state.doorwayCosts[MazeGame.getLocationString(r, c)];
+                //     }
+                // }
+                // return cost;
+                return 1;
+            },
+            'jam': () => {
+                return 1;
             },
             'punch': () => {
                 return 1;
@@ -2315,6 +2323,26 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                             pushNonCollapsableStatement(`**${player.displayName}** locked a doorway`);
                         } else {
                             pushNonCollapsableStatement(`**${player.displayName}** locked **${numDoorwaysLocked}** doorways`);
+                        }
+                        return true;
+                    },
+                    jam: (arg) => {
+                        const argLocation: MazeLocation | undefined = MazeGame.parseLocationString(arg);
+                        let numDoorwaysJammed = 0;
+                        let costAdded = 0;
+                        for (const { r, c } of this.getAdjacentLocationsOrOverride({ r: player.r, c: player.c }, argLocation)) {
+                            if (this.isTileType(r, c, TileType.DOORWAY) || this.isTileType(r, c, TileType.OPENED_DOORWAY)) {
+                                const locationString = MazeGame.getLocationString(r, c);
+                                const amount = randInt(1, 6);
+                                this.state.doorwayCosts[locationString] = (this.state.doorwayCosts[locationString] ?? 0) + amount;
+                                numDoorwaysJammed++;
+                                costAdded += amount;
+                            }
+                        }
+                        if (numDoorwaysJammed === 1) {
+                            pushNonCollapsableStatement(`**${player.displayName}** jammed a doorway (**+${costAdded}**)`);
+                        } else {
+                            pushNonCollapsableStatement(`**${player.displayName}** jammed **${numDoorwaysJammed}** doorways (**+${costAdded}**)`);
                         }
                         return true;
                     },
