@@ -68,7 +68,8 @@ const ACTION_SYMBOLS: Record<ActionName, string> = {
 interface PathingOptions {
     useDoorways?: boolean,
     addedOccupiedTileCost?: number,
-    obstacles?: MazeLocation[]
+    obstacles?: MazeLocation[],
+    openings?: MazeLocation[]
 }
 
 export default class MazeGame extends AbstractGame<MazeGameState> {
@@ -1707,6 +1708,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
 
         const player = this.state.players[userId];
         const newLocation = { r: player.r, c: player.c };
+        const doorwaysToBeOpened: Set<string> = new Set();
         const playerPoints: number = player.points;
         let cost: number = 0;
 
@@ -1788,7 +1790,10 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
             if (this.isTileType(nr, nc, TileType.DOORWAY)) {
                 newLocation.r += dr;
                 newLocation.c += dc;
-                warnings.push(`⚠️ Doorway at **${MazeGame.getLocationString(nr, nc)}** must be unlocked, whether by you or someone else.`);
+                // Only warn if they haven't planned to open this doorway
+                if (!doorwaysToBeOpened.has(MazeGame.getLocationString(nr, nc))) {
+                    warnings.push(`⚠️ Doorway at **${MazeGame.getLocationString(nr, nc)}** must be unlocked, whether by you or someone else.`);
+                }
             } else if (this.isWalkable(nr, nc)) {
                 newLocation.r += dr;
                 newLocation.c += dc;
@@ -1807,7 +1812,16 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
             // If this is just a location, path to that location and add to the inputs
             const shorthandLocation = MazeGame.parseLocationString(input);
             if (shorthandLocation) {
-                const actions = this.getNextActionsToLocation(newLocation, shorthandLocation);
+                // Consider all doorways planned to be unlocked as openings
+                const openings = Array.from(doorwaysToBeOpened)
+                    .map(d => MazeGame.parseLocationString(d))
+                    .filter(d => d) as MazeLocation[];
+                // If the target location is a doorway, let them step into it (to support auto step-through)
+                if (this.isDoorway(shorthandLocation)) {
+                    openings.push(shorthandLocation);
+                }
+                // Calculate the sequence of steps needed to get to the target location, considering these openings
+                const actions = this.getNextActionsToLocation(newLocation, shorthandLocation, { openings });
                 if (actions.length === 0) {
                     throw new Error(`Cannot path from **${MazeGame.getLocationString(newLocation.r, newLocation.c)}** to **${input.toUpperCase()}**, maybe you forgot to unlock a door or something?`)
                 }
@@ -1846,10 +1860,19 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                 case 'key':
                     validateDoorwayAction(argLocation, c);
                     warnings.push(`ℹ️ Doorways are halved in cost when unlocked, so subsequent actions taken on a doorway you unlock will be cheaper.`);
+                    // This doorway(s) should now be unlocked, so consider it unlocked for the remaining validations
+                    const targetDoorways = this.getAdjacentLocationsOrOverride(newLocation, argLocation).filter(l => this.isDoorway(l));
+                    for (const targetDoorway of targetDoorways) {
+                        doorwaysToBeOpened.add(MazeGame.getLocationString(targetDoorway.r, targetDoorway.c));
+                    }
                     break;
                 case 'lock':
                     validateDoorwayAction(argLocation, 'lock');
-                    warnings.push(`ℹ️ Doorways are halved in cost when unlocked, so you may end up spending fewer points than expected.`);
+                    // TODO: Lock actions only cost 1 point now, so we don't need this. Remove if we decide to keep this reduced cost.
+                    // warnings.push(`ℹ️ Doorways are halved in cost when unlocked, so you may end up spending fewer points than expected.`);
+                    break;
+                case 'jam':
+                    validateDoorwayAction(argLocation, 'jam');
                     break;
                 case 'seal':
                     validateDoorwayAction(argLocation, 'seal');
@@ -2720,9 +2743,9 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         return this.searchToGoal(player.r, player.c, { addedOccupiedTileCost: 4 }).semanticSteps.slice(0, n);
     }
 
-    getNextActionsToLocation(from: MazeLocation, to: MazeLocation) {
+    getNextActionsToLocation(from: MazeLocation, to: MazeLocation, options?: { openings?: MazeLocation[] }) {
         // Treat player-occupied tiles as only a little costly to slightly distribute pathing (for players that are engaging)
-        return this.search(from, to, { addedOccupiedTileCost: 1 }).semanticSteps;
+        return this.search(from, to, { addedOccupiedTileCost: 1, openings: options?.openings ?? [] }).semanticSteps;
     }
 
     getNumStepsToLocation(from: MazeLocation, to: MazeLocation): number {
@@ -2763,7 +2786,12 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
             if (options?.obstacles && options.obstacles.some(o => r === o.r && c === o.c)) {
                 return null;
             }
-            // Else, do a more calculation of the realistic cost
+            // If simulating an opening at this location, treat this location as walkable
+            if (options?.openings && options?.openings.some(o => r === o.r && c === o.c)) {
+                // TODO: This doesn't account for occupied tiles. We should probably take this into account.
+                return 1;
+            }
+            // Else, do a calculation of the realistic cost
             const locationString = MazeGame.getLocationString(r, c);
             if (options?.useDoorways && tile === TileType.DOORWAY && locationString in this.state.doorwayCosts) {
                 // Multiply doorway cost by 2 since it's risky
