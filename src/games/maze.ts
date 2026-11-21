@@ -108,6 +108,8 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                 + 'Some moves are secret and can only be performed once unlocked. '
                 + 'The next day (Sunday), your moves will be performed one-by-one.',
             // TODO: Add temp text indicating new features for this season
+            'New in this season is the ability to say where you want to walk, rather than having to say each step manually!',
+            'There will be new features and improvements, to be revealed soon...'
         ];
     }
 
@@ -132,7 +134,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                 + '`up`, `down`, `left`, `right`: move one step in such direction. Costs `1`\n'
                 + '`unlock`: open all doorways adjacent to you (or just one e.g. `unlock:b12`). Cost is denoted on each doorway, and is reduced with each unlock\n'
                 + '`lock`: close all doorways adjacent to you (or just one e.g. `lock:b12`). Cost is denoted on each doorway\n'
-                + '`punch`: 75% chance of knocking out any player adjacent to you, stunning them for `3` moves. Some of their money may fall onto the floor around them. Costs `2`\n'
+                + '`punch`: 75% chance of knocking out any player adjacent to you, stunning them for `3` moves. Some of their money may fall onto the floor around them. Costs `1`\n'
                 + '`warp`: warp to a random player. Costs `0.5` for each week that has elapsed\n'
                 + '`pause`: do nothing. Free\n\n'
             + 'Misc Rules:\n'
@@ -144,12 +146,12 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                 + '5. If you somehow walk into a wall, your turn is ended.\n'
                 + '6. If you walk into another player and they have no more actions remaining, you will shove them forward. '
                     + 'If you cannot shove them forward, you will shove them to either side. '
-                    + 'If neither side is vacant, you will auto-punch them for 2 points (if you have 4+ points). '
+                    + 'If neither side is vacant, you will auto-punch them for 1 point (if you have 2+ points). '
                     + 'If you cannot afford to auto-punch, your turn will be ended early.\n'
                 + '7. If your turn is ended early due to any of these reasons, you will only lose points for each action taken.\n'
                 + '8. If you warp, you will be KO\'ed at the end of your turn so that others can walk past you.\n'
                 + '9. If you warp multiple times in one turn, all subsequent warps will only go through if it brings you closer to the goal.\n\n'
-            + 'Send me a DM with your chosen actions e.g. `up right unlock right pause right punch lock:b12 down`';
+            + 'Send me a DM with your chosen actions e.g. `b11 unlock right pause right punch lock:b12 down`';
     }
 
     getDebugText(): string {
@@ -560,7 +562,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
     }
 
     private drawImageOnTile(context: CanvasRenderingContext2D, image: Canvas, r: number, c: number): void {
-        context.drawImage(canvas, c * MazeGame.TILE_SIZE, r * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE, MazeGame.TILE_SIZE);
+        context.drawImage(image, c * MazeGame.TILE_SIZE, r * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE, MazeGame.TILE_SIZE);
     }
 
     private drawRandomPolygonOnTile(context: CanvasRenderingContext2D, r: number, c: number, options?: { numVertices?: number, minRadius?: number, maxRadius?: number }): void {
@@ -707,7 +709,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
             'pause': { cost: 0, description: 'Do nothing' },
             'unlock': { cost: 'N', description: 'Open adjacent doorways' },
             'lock': { cost: 'N', description: 'Close adjacent doorways' },
-            'punch': { cost: 2, description: 'Try to KO adjacent players' },
+            'punch': { cost: 1, description: 'Try to KO adjacent players' },
             'warp': { cost: this.getActionCost('warp'), description: 'Warp to a random player' }
         };
     }
@@ -803,6 +805,12 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
     addPoints(userId: Snowflake, points: number): void {
         if (isNaN(points)) {
             logger.log(`WARNING! Tried to award \`${points}\` points to **${this.getDisplayName(userId)}** (maze)`);
+            return;
+        }
+
+        if (!this.hasPlayer(userId)) {
+            // TODO: Better log?
+            logger.log(`Failed to add points for player ${userId} who is not in the game`);
             return;
         }
 
@@ -1691,7 +1699,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
     }
 
     override async addPlayerDecision(userId: Snowflake, text: string): Promise<MessengerPayload> {
-        const commands: string[] = text.replace(/\s+/g, ' ').trim().split(' ').map(c => c.toLowerCase());
+        const inputs: string[] = text.replace(/\s+/g, ' ').trim().split(' ').map(c => c.toLowerCase());
         const warnings: string[] = [];
 
         const player = this.state.players[userId];
@@ -1710,41 +1718,41 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         }
 
         // Prevent pause-griefing
-        if (commands.filter(c => c === 'pause').length > 3) {
+        if (inputs.filter(c => c === 'pause').length > 3) {
             throw new Error('You can pause no more than 3 times per turn');
         }
 
         // Ensure that turns with warps only include only warps (delaying may give a better outcome)
-        const isWarping: boolean = commands.includes('warp');
+        const isWarping: boolean = inputs.includes('warp');
         if (isWarping) {
             const MAX_WARPS: number = 3;
             if (playerPoints > this.getActionCost('warp', newLocation) * (MAX_WARPS + 1)) {
                 throw new Error('Don\'t you think you\'re a little rich to be warping? When I was your age, I WALKED all the way to the goal...');
             }
-            if (!commands.every(c => c === 'warp')) {
+            if (!inputs.every(c => c === 'warp')) {
                 throw new Error('If you warp this turn, ALL your actions must be warps');
             }
-            if (commands.length > MAX_WARPS) {
+            if (inputs.length > MAX_WARPS) {
                 throw new Error(`You may only warp at most ${MAX_WARPS} times per turn`);
             }
         }
 
         // Ensure that finished players can only trap/boulder/coin
-        if (player.finished && !commands.every(c => c.startsWith('trap') || c.startsWith('boulder') || c.startsWith('coin'))) {
+        if (player.finished && !inputs.every(c => c.startsWith('trap') || c.startsWith('boulder') || c.startsWith('coin'))) {
             throw new Error('You\'ve already finished, the only action you can take now is to place traps, boulders, and coins')
         }
 
         // For each known item type, ensure the player isn't using more than they currently own
         for (const itemName of ITEM_NAMES) {
             const numAvailable: number = this.getPlayerItemCount(userId, itemName);
-            if (commands.filter(c => c.split(':')[0] === itemName).length > numAvailable) {
+            if (inputs.filter(c => c.split(':')[0] === itemName).length > numAvailable) {
                 throw new Error(`You're trying to use more **${itemName}** items than you currently have! You only have **${numAvailable}**`);
             }
         }
 
         // If using boulders, ensure placing them doesn't block anyone
-        if (commands.some(c => c.startsWith('boulder:'))) {
-            const boulderLocations = commands.filter(c => c.startsWith('boulder:'))
+        if (inputs.some(c => c.startsWith('boulder:'))) {
+            const boulderLocations = inputs.filter(c => c.startsWith('boulder:'))
                 .map(c => c.split(':')[1])
                 .map(l => MazeGame.parseLocationString(l) as MazeLocation);
             if (!this.canAllPlayersReachGoal(boulderLocations)) {
@@ -1786,8 +1794,25 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
             }
         };
 
-        for (const command of commands) {
-            const [c, arg] = command.split(':') as [ActionName, string];
+        const commands: string[] = [];
+
+        while (inputs.length > 0) {
+            const input = inputs.shift();
+            if (!input) {
+                throw new Error('Failed to shift next input (see admin)');
+            }
+            // If this is just a location, path to that location and add to the inputs
+            const shorthandLocation = MazeGame.parseLocationString(input);
+            if (shorthandLocation) {
+                const actions = this.getNextActionsToLocation(newLocation, shorthandLocation);
+                if (actions.length === 0) {
+                    throw new Error(`Cannot path from **${MazeGame.getLocationString(newLocation.r, newLocation.c)}** to **${input.toUpperCase()}**, maybe you forgot to unlock a door or something?`)
+                }
+                // Add the inputs and continue to processing them as though they were added directly by the player
+                inputs.unshift(...actions);
+                continue;
+            }
+            const [c, arg] = input.split(':') as [ActionName, string];
             // Ensure that non-finished players aren't trying to use secret winner-only moves
             // TODO: Extend this logic to other possible winner-only actions
             if (!player.finished) {
@@ -1803,6 +1828,9 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                     throw new Error(`Location **${arg}** is out-of-bounds!`);
                 }
             }
+            // Add the validated input to the final commands list
+            commands.push(input);
+            // Add to the estimated total turn cost
             cost += this.getActionCost(c, newLocation, arg);
             switch (c) {
                 case 'up':
@@ -1886,7 +1914,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                     // TODO: Do validation?
                     break;
                 default:
-                    throw new Error(`\`${command}\` is an invalid action!`);
+                    throw new Error(`\`${input}\` is an invalid action!`);
             }
         }
 
@@ -1941,7 +1969,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                 return cost;
             },
             'punch': () => {
-                return 2;
+                return 1;
             },
             'warp': () => {
                 return Math.ceil(this.getTurn() / 2);
@@ -2202,14 +2230,14 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                                         movePlayerTo(blockingUserId, sideLocation);
                                         return true;
                                     }
-                                    // Else, if the player has 4+ points, then auto-punch (threshold accounts for punching then walking fully past)
+                                    // Else, if the player has 2+ points, then auto-punch (threshold accounts for punching then stepping onto them)
                                     // TODO: Should this be configurable? Can players opt-out? Should it be another price?
-                                    else if (this.getPoints(userId) >= 4) {
+                                    else if (this.getPoints(userId) >= this.getActionCost('punch') + 1) {
                                         // Stun the other player (their turn is over so 1 is sufficient)
                                         blockingUser.stuns = 1;
                                         pushNonCollapsableStatement(`**${player.displayName}** slapped **${blockingUser.displayName}** onto the floor`);
                                         // Consume points
-                                        this.addPoints(userId, -2);
+                                        this.addPoints(userId, -this.getActionCost('punch'));
                                         // Do NOT consume an action this turn
                                         return false;
                                     }
@@ -2649,8 +2677,13 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
             throw new Error(`Cannot get next actions toward goal for nonexistent player \`${userId}\``);
         }
         const player = this.state.players[userId];
-        // Treat player-occupied tiles as very costly to create more distributed pathing
+        // Treat player-occupied tiles as very costly to create more distributed pathing (for default actions)
         return this.searchToGoal(player.r, player.c, { addedOccupiedTileCost: 4 }).semanticSteps.slice(0, n);
+    }
+
+    getNextActionsToLocation(from: MazeLocation, to: MazeLocation) {
+        // Treat player-occupied tiles as only a little costly to slightly distribute pathing (for players that are engaging)
+        return this.search(from, to, { addedOccupiedTileCost: 1 }).semanticSteps;
     }
 
     getNumStepsToLocation(from: MazeLocation, to: MazeLocation): number {

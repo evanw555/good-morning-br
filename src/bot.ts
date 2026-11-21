@@ -1474,9 +1474,7 @@ const wakeUp = async (sendMessage: boolean): Promise<void> => {
         if (state.getGame().getTurn() === 1) {
             // If it's the first week, send the introduction messages for this game
             const introductionMessages = await state.getGame().getIntroductionMessages();
-            for (const messengerPayload of introductionMessages) {
-                await messenger.send(goodMorningChannel, messengerPayload);
-            }
+            await messenger.sendAll(goodMorningChannel, introductionMessages);
         } else {
             // If it's not the first week, send the state image for this week
             const attachment = new AttachmentBuilder(await state.getGame().renderState()).setName(`game-turn${state.getGame().getTurn()}-decision.png`);
@@ -3562,7 +3560,7 @@ client.on('guildUnavailable', async (guild) => {
 });
 
 client.on('error', async (error) => {
-    await logger.log(`Discord Error Event: \`${error}\``);
+    await logger.log(`Discord Error Event:\n\`\`\`\n${error.stack}\n\`\`\``);
 });
 
 client.on('warn', async (message) => {
@@ -3905,6 +3903,37 @@ const processCommands = async (msg: OmitPartialGroupDMChannel<Message<boolean>>)
         }
         return members;
     };
+    // Priority command: send game decision messages
+    if (msg.content.replace('?', '').replace('+', '') === 'SEND_GAME_DECISION_MESSAGES') {
+        await msg.reply('Sending game decision messages again...');
+        if (state.getEventType() === DailyEventType.GameDecision && state.hasGame()) {
+            if (state.getGame().getTurn() === 1) {
+                // If it's the first week, send the introduction messages for this game
+                const introductionMessages = await state.getGame().getIntroductionMessages();
+                await messenger.sendAll(goodMorningChannel, introductionMessages);
+            } else {
+                // If it's not the first week, send the state image for this week
+                const attachment = new AttachmentBuilder(await state.getGame().renderState()).setName(`game-turn${state.getGame().getTurn()}-decision.png`);
+                await messenger.send(goodMorningChannel, {
+                    files: [attachment],
+                    components: state.getGame().getDecisionActionRow()
+                });
+            }
+            // Send the instructions for this game no matter the week
+            await messenger.send(goodMorningChannel, state.getGame().getInstructionsText());
+            // Get decision phases that need to be scheduled
+            // for (const decisionPhase of state.getGame().getDecisionPhases()) {
+            //     // Process the decision phase date as either being a relative value or a specific delay in millis
+            //     const phaseDate = decisionPhase.along
+            //         ? getDateBetween(new Date(), preNoonToday, decisionPhase.along)
+            //         : new Date(new Date().getTime() + (decisionPhase.millis ?? 0));
+            //     await registerTimeout(TimeoutType.GameDecisionPhase, phaseDate, { arg: decisionPhase.key, pastStrategy: PastTimeoutStrategy.Invoke});
+            // }
+        } else {
+            await msg.reply('It\'s not a decision day, or no game in state!');
+        }
+        return;
+    }
     // Priority command: forgive daily point penalties
     if (msg.content === 'FORGIVE_PENALTIES') {
         const playersToForgive = state.getPlayersPenalizedToday();
