@@ -136,7 +136,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                 + '- `unlock`: open all doorways adjacent to you (or just one e.g. `unlock:b12`). Cost is denoted on each doorway, and is reduced with each unlock\n'
                 + '- `lock`: close all doorways adjacent to you (or just one e.g. `lock:b12`). Costs `1`\n'
                 + '- `jam`: jam all adjacent doorways, raising their cost by some amount `1-5` (or just one e.g. `jam:b12`). Costs `1`\n'
-                + '- `punch`: 75% chance of knocking out any player adjacent to you, stunning them for `3` moves. Some of their money may fall onto the floor around them. Costs `1`\n'
+                + '- `punch`: 75% chance of knocking out any player adjacent to you (50% chance for players diagonally), stunning them for `3` moves. Some of their money may fall onto the floor around them. Costs `1`\n'
                 + '- `warp`: warp to a random player. Costs `0.5` for each week that has elapsed\n'
                 + '- `pause`: do nothing. Free\n\n'
             + 'Misc Rules:\n'
@@ -2348,42 +2348,53 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                     },
                     punch: () => {
                         let nearPlayer = false;
+                        const doPunch = (otherPlayerId: Snowflake, odds: number) => {
+                            // If this player isn't currently stunned, attempt to punch them
+                            if (!this.isPlayerStunned(otherPlayerId)) {
+                                nearPlayer = true;
+                                const otherPlayer = this.state.players[otherPlayerId];
+                                if (otherPlayer.invincible) {
+                                    pushNonCollapsableStatement(`**${player.displayName}** threw fists at the invincible **${otherPlayer.displayName}** to no avail`);
+                                } else if (chance(odds)) {
+                                    // Stun the other player
+                                    otherPlayer.stuns = 3;
+                                    // Get a random number of coins to spawn limited by (1) the number of possible locations, and (2) the other player's points
+                                    const possibleLocations = this.getAdjacentLocations(otherPlayer).filter(l => this.isTileType(l.r, l.c, TileType.EMPTY) && !this.isPlayerAtLocation(l));
+                                    const maxNumCoins = Math.min(possibleLocations.length, Math.floor(this.getPoints(otherPlayerId)));
+                                    // TODO: Is it OP to keep this at max? Uncomment the RNG if so
+                                    const numCoins = maxNumCoins; // randInt(0, 1 + maxNumCoins);
+                                    if (numCoins > 0) {
+                                        // Place coins onto a random selection of those locations
+                                        shuffle(possibleLocations);
+                                        const coinSpawnLocations = possibleLocations.slice(0, numCoins);
+                                        for (const location of coinSpawnLocations) {
+                                            this.state.map[location.r][location.c] = TileType.COIN;
+                                        }
+                                        // Deduct points from the other player
+                                        this.addPoints(otherPlayerId, -numCoins);
+                                        pushNonCollapsableStatement(`**${player.displayName}** knocked out **${otherPlayer.displayName}** (shaking **$${numCoins}** from his pockets onto the floor)`);
+                                    } else {
+                                        pushNonCollapsableStatement(`**${player.displayName}** knocked out **${otherPlayer.displayName}**`);
+                                    }
+                                } else {
+                                    pushNonCollapsableStatement(`**${player.displayName}** tried to punch **${otherPlayer.displayName}** and missed`);
+                                }
+                            }
+                        };
                         // For each location adjacent to the player...
                         for (const adjacentLocation of this.getAdjacentLocations({ r: player.r, c: player.c })) {
                             const adjacentPlayerIds = this.getPlayersAtLocation(adjacentLocation);
                             // For each player in this adjacent location...
                             for (const otherPlayerId of adjacentPlayerIds) {
-                                // If this player isn't currently stunned, attempt to punch them
-                                if (!this.isPlayerStunned(otherPlayerId)) {
-                                    nearPlayer = true;
-                                    const otherPlayer = this.state.players[otherPlayerId];
-                                    if (otherPlayer.invincible) {
-                                        pushNonCollapsableStatement(`**${player.displayName}** threw fists at the invincible **${otherPlayer.displayName}** to no avail`);
-                                    } else if (chance(0.75)) {
-                                        // Stun the other player
-                                        otherPlayer.stuns = 3;
-                                        // Get a random number of coins to spawn limited by (1) the number of possible locations, and (2) the other player's points
-                                        const possibleLocations = this.getAdjacentLocations(otherPlayer).filter(l => this.isTileType(l.r, l.c, TileType.EMPTY) && !this.isPlayerAtLocation(l));
-                                        const maxNumCoins = Math.min(possibleLocations.length, Math.floor(this.getPoints(otherPlayerId)));
-                                        // TODO: Is it OP to keep this at max? Uncomment the RNG if so
-                                        const numCoins = maxNumCoins; // randInt(0, 1 + maxNumCoins);
-                                        if (numCoins > 0) {
-                                            // Place coins onto a random selection of those locations
-                                            shuffle(possibleLocations);
-                                            const coinSpawnLocations = possibleLocations.slice(0, numCoins);
-                                            for (const location of coinSpawnLocations) {
-                                                this.state.map[location.r][location.c] = TileType.COIN;
-                                            }
-                                            // Deduct points from the other player
-                                            this.addPoints(otherPlayerId, -numCoins);
-                                            pushNonCollapsableStatement(`**${player.displayName}** knocked out **${otherPlayer.displayName}** (shaking **$${numCoins}** from his pockets onto the floor)`);
-                                        } else {
-                                            pushNonCollapsableStatement(`**${player.displayName}** knocked out **${otherPlayer.displayName}**`);
-                                        }
-                                    } else {
-                                        pushNonCollapsableStatement(`**${player.displayName}** tried to punch **${otherPlayer.displayName}** and missed`);
-                                    }
-                                }
+                                doPunch(otherPlayerId, 0.75);
+                            }
+                        }
+                        // For each location diagonal to the player...
+                        for (const diagonalLocation of this.getDiagonallyAdjacentLocations({ r: player.r, c: player.c })) {
+                            const diagonalPlayerIds = this.getPlayersAtLocation(diagonalLocation);
+                            // For each player in this diagonal location...
+                            for (const otherPlayerId of diagonalPlayerIds) {
+                                doPunch(otherPlayerId, 0.5);
                             }
                         }
                         if (!nearPlayer) {
@@ -2769,6 +2780,10 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         }));
     }
 
+    /**
+     * @param n Magnitude of the offset
+     * @returns Offset vectors in the four cardinal directions.
+     */
     private static getCardinalOffsets(n: number = 1): [[number, number], [number, number], [number, number], [number, number]] {
         return [[-n, 0], [n, 0], [0, -n], [0, n]];
     }
@@ -2918,6 +2933,30 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
 
     private isAdjacent(l1: MazeLocation, l2: MazeLocation): boolean {
         return this.getAdjacentLocations(l1).some(la => la.r === l2.r && la.c === l2.c);
+    }
+
+    /**
+     * @param n Magnitude of the offset
+     * @returns Offset vectors in the four intercardinal (i.e. diagonal) directions.
+     */
+    private static getIntercardinalOffsets(n: number = 1): [[number, number], [number, number], [number, number], [number, number]] {
+        return [[-n, n], [n, n], [n, -n], [-n, -n]];
+    }
+
+    private getDiagonallyAdjacentLocations(location: MazeLocation | undefined): MazeLocation[] {
+        // Emergency fallback
+        if (!location) {
+            return [];
+        }
+        const result: MazeLocation[] = [];
+        for (const [dr, dc] of MazeGame.getIntercardinalOffsets()) {
+            const nr = location.r + dr;
+            const nc = location.c + dc;
+            if (this.isInBounds(nr, nc)) {
+                result.push({ r: nr, c: nc });
+            }
+        }
+        return result;
     }
 
     getMapFairness(): { min: number, max: number, naive: number, fairness: number, description: string } {
