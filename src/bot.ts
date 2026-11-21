@@ -3242,7 +3242,7 @@ const processGameDecision = async (userId: Snowflake, decision: string, source: 
     // Handle help requests
     if (decision.trim().toLowerCase() === 'help') {
         await logger.log(`<@${userId}> asked for help! (${source})`);
-        await callback({ content: game.getHelpText() });
+        await callback({ content: game.getHelpText().slice(0, 1999) });
         return;
     }
     try {
