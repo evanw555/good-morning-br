@@ -2115,39 +2115,45 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                     if (this.getTileAtUser(userId) === TileType.HIDDEN_TRAP) {
                         this.state.map[player.r][player.c] = TileType.TRAP;
                         trapRevealed = true;
-                        if (trapOwnerId) {
-                            pushNonCollapsableStatement(`**${player.displayName}** revealed a hidden trap placed by **${this.getDisplayName(trapOwnerId)}**`);
-                        } else {
-                            pushNonCollapsableStatement(`**${player.displayName}** revealed a hidden trap`);
-                        }
+                        pushNonCollapsableStatement(
+                            (player.stuns ? `**${player.displayName}'s** unconscious body` : `**${player.displayName}**`)
+                            + ' revealed a hidden trap'
+                            + (trapOwnerId ? ` placed by **${this.getDisplayName(trapOwnerId)}**` : '')
+                        );
                     }
                     // Handle revealed traps (this will trigger if the above condition is triggered)
                     if (this.getTileAtUser(userId) === TileType.TRAP) {
-                        // Only trigger this trap if the user has an origin location which is different than their current location.
-                        // This is prevent an infinite loop (and situations which don't make sense)
                         const trapDestination = player.originLocation;
-                        if (trapDestination && !(player.r === trapDestination.r && player.c === trapDestination.c)) {
-                            // Track how much "progress" was lost (steps back to the origin location)
-                            const destinationString = MazeGame.getLocationString(trapDestination.r, trapDestination.c);
-                            const progressLost = this.getNumStepsToLocation(trapDestination, player) || 1;
-                            // Stun the player
-                            player.stuns = 1;
-                            // Add a statement about this trap being triggered
+                        if (trapDestination) {
                             const trapText = !trapOwnerId ? 'a trap' : `**${this.getDisplayName(trapOwnerId)}'s** trap`;
-                            logger.log(`\`${this.getDisplayName(userId)}\` triggered ${trapText} at \`${locationString}\` (progress lost: **${progressLost}**)`);
-                            if (trapRevealed) {
-                                pushNonCollapsableStatement(`was sent back to **${destinationString}**`);
-                            } else {
-                                pushNonCollapsableStatement(`**${player.displayName}** stepped on ${trapText} and was sent back to **${destinationString}**`);
+                            // If this trap would sent them to their current location, do nothing to prevent an infinite loop
+                            if (player.r === trapDestination.r && player.c === trapDestination.c) {
+                                // TODO: Any way to reword this considering if it was just revealed or not?
+                                pushNonCollapsableStatement(`**${player.displayName}** stepped on ${trapText} but was considerate enough to not step inside and cause an infinite loop`);
                             }
-                            // If the trap has an owner, reward the owner (1 point for each "step" back)
-                            if (trapOwnerId) {
-                                this.addPoints(trapOwnerId, progressLost);
-                                pushNonCollapsableStatement(`**${this.getDisplayName(trapOwnerId)}** earned **$${progressLost}** for trapping`);
+                            // Otherwise, trigger the trap
+                            else {
+                                // Track how much "progress" was lost (steps back to the origin location)
+                                const destinationString = MazeGame.getLocationString(trapDestination.r, trapDestination.c);
+                                const progressLost = this.getNumStepsToLocation(trapDestination, player) || 1;
+                                // Stun the player
+                                player.stuns = 1;
+                                // Add a statement about this trap being triggered
+                                logger.log(`\`${this.getDisplayName(userId)}\` triggered ${trapText} at \`${locationString}\` (progress lost: **${progressLost}**)`);
+                                if (trapRevealed) {
+                                    pushNonCollapsableStatement(`was sent back to **${destinationString}**`);
+                                } else {
+                                    pushNonCollapsableStatement(`**${player.displayName}** stepped on ${trapText} and was sent back to **${destinationString}**`);
+                                }
+                                // If the trap has an owner, reward the owner (1 point for each "step" back)
+                                if (trapOwnerId) {
+                                    this.addPoints(trapOwnerId, progressLost);
+                                    pushNonCollapsableStatement(`**${this.getDisplayName(trapOwnerId)}** earned **$${progressLost}** for trapping`);
+                                }
+                                // We move the player last so that any resulting movement triggers are after the log statements are added
+                                this.addRenderLine({ r: player.r, c: player.c }, trapDestination, 'red');
+                                movePlayerTo(userId, trapDestination);
                             }
-                            // We move the player last so that any resulting movement triggers are after the log statements are added
-                            this.addRenderLine({ r: player.r, c: player.c }, trapDestination, 'red');
-                            movePlayerTo(userId, trapDestination);
                         } else {
                             logger.log(`Unable to trigger trap for \`${this.getDisplayName(userId)}\` (origin=\`${JSON.stringify(player.originLocation)}\`)`);
                         }
@@ -2166,7 +2172,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                             }
                         } else {
                             if (this.getPlayerStuns(someOtherPlayerId)) {
-                                pushNonCollapsableStatement(`**${player.displayName}** got off **${this.getDisplayName(someOtherPlayerId)}'s** lifeless body and stepped aside`);
+                                pushNonCollapsableStatement(`**${player.displayName}** stepped over **${this.getDisplayName(someOtherPlayerId)}'s** lifeless body`);
                             } else {
                                 pushNonCollapsableStatement(`**${player.displayName}** got off the shoulders of **${this.getDisplayName(someOtherPlayerId)}** and stepped aside`);
                             }
@@ -2945,8 +2951,9 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         }
         let bestLocation: MazeLocation | undefined = undefined;
         let lowestCostToGoal: number = Number.POSITIVE_INFINITY;
-        for (const adjacentLocation of this.getAdjacentLocations(location)) {
+        for (const adjacentLocation of shuffle(this.getAdjacentLocations(location))) {
             // Only consider locations that are walkable, vacant, and not traps (because that would be unfair...)
+            // TODO: Checking if it's vacant prevents infinite loops (rolling back and forth), but prevents chaining turn-end moves. We should support this while preventing infinite loops.
             if (this.isLocationShovable(adjacentLocation) && !this.isTrap(adjacentLocation)) {
                 // If the cost is the lowest so far, use it...
                 const costToGoal = this.approximateCostToGoal(adjacentLocation.r, adjacentLocation.c);
