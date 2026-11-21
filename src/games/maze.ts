@@ -2,7 +2,7 @@ import canvas, { Canvas, CanvasRenderingContext2D } from 'canvas';
 import { AttachmentBuilder, GuildMember, MessageFlags, Snowflake } from 'discord.js';
 import { getRankString, getNumberBetween, naturalJoin, randInt, shuffle, toLetterId, fromLetterId, AStarPathFinder, shuffleWithDependencies, toFixed, collapseRedundantStrings, chance, randChoice, findCycle, s } from 'evanw555.js';
 import { getTextLabel, toCircle } from "node-canvas-utils";
-import { DecisionProcessingResult, GamePlayerAddition, MessengerPayload, PrizeType } from "../types";
+import { DecisionProcessingResult, GamePlayerAddition, MessengerManifest, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 import { MazeItemName, MazeLocation, MazeGameState, MazeLine, MazePlayerState } from './types';
 
@@ -128,6 +128,17 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
             // TODO: Temp message to notify players of changes, remove this after 4/22/23
             // + '\n**Changes since last week:**'
             // + '\n⭐ TODO';
+    }
+
+    override async onDecisionPreNoon(): Promise<MessengerManifest> {
+        return {
+            public: [{
+                content: 'Reminder! You have until tomorrow morning to pick your actions',
+                files: [await this.renderStateAttachment()]
+            }, {
+                content: 'DM what you plan on doing (e.g. "b12 punch" to walk to B12 then punch), or DM me "help" if you need help'
+            }]
+        };
     }
 
     getHelpText(): string {
@@ -1792,7 +1803,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                 newLocation.c += dc;
                 // Only warn if they haven't planned to open this doorway
                 if (!doorwaysToBeOpened.has(MazeGame.getLocationString(nr, nc))) {
-                    warnings.push(`⚠️ Doorway at **${MazeGame.getLocationString(nr, nc)}** must be unlocked, whether by you or someone else.`);
+                    warnings.push(`⚠️ If the doorway at **${MazeGame.getLocationString(nr, nc)}** is still locked when you walk into it, you will automatically pay to unlock it.`);
                 }
             } else if (this.isWalkable(nr, nc)) {
                 newLocation.r += dr;
@@ -1940,7 +1951,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                     // TODO: Do validation?
                     break;
                 default:
-                    throw new Error(`\`${input}\` is an invalid action!`);
+                    throw new Error(`\`${input}\` is an invalid action! DM me "help" for help`);
             }
         }
 
@@ -2210,6 +2221,13 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                     const nc = player.c + dc;
                     const currentLocation = { r: player.r, c: player.c };
                     const newLocation = { r: nr, c: nc };
+                    // If walking into a locked doorway, queue up an unlock action
+                    if (this.isTileType(nr, nc, TileType.DOORWAY)) {
+                        this.state.decisions[userId].unshift(`unlock:${MazeGame.getLocationString(nr, nc)}`);
+                        pushNonCollapsableStatement(`**${player.displayName}** fumbled around for his wallet`);
+                        // Don't consume this action, as the queued-up unlock would then be deleted
+                        return false;
+                    }
                     let skipStepMessage = false;
                     this.addRenderLine(currentLocation, newLocation, player.invincible ? 'rainbow' : undefined);
                     // Handle situations where another user is standing in the way
