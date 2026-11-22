@@ -1908,6 +1908,23 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                 }
             }
         }
+        // If today is a game decision day
+        if (state.getEventType() === DailyEventType.GameDecision && state.hasGame()) {
+            const game = state.getGame();
+            const messengerManifest = await game.onDecisionMidMorning();
+            // If any payloads were returned, send them to the channel or DMs
+            // TODO(2): Add support for this in the messenger utility
+            if (messengerManifest) {
+                if (messengerManifest.public) {
+                    await messenger.sendAll(goodMorningChannel, messengerManifest.public);
+                }
+                if (messengerManifest.dms) {
+                    for (const [recipientId, payloads] of Object.entries(messengerManifest.dms)) {
+                        await messenger.dmAll(recipientId, payloads);
+                    }
+                }
+            }
+        }
     },
     [TimeoutType.NextMidMorningC]: async (): Promise<void> => {
         // TODO: Patch notes go here

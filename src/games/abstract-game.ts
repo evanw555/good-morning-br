@@ -122,6 +122,13 @@ export default abstract class AbstractGame<T extends GameState> {
         return [];
     }
     /**
+     * This is invoked during one of the mid-morning timeouts.
+     * @returns Messages to be sent to the good morning channel
+     */
+    async onDecisionMidMorning(): Promise<MessengerManifest> {
+        return {};
+    }
+    /**
      * This is invoked at the end of the game decision pre-noon timeout.
      * @returns Messages to be sent to the good morning channel
      */

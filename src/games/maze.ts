@@ -132,6 +132,34 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
             // + '\n⭐ TODO';
     }
 
+    override async onDecisionMidMorning(): Promise<MessengerManifest> {
+        return {
+            public: ['**Tip:** ' + randChoice(
+                'The winner of the Tuesday contest is given the choice between two powerful items',
+                'The third place winner of the Tuesday contest gets a `trap` item',
+                'Whenever a trap is triggered, the player who placed it is rewarded with points equal to the trapped player\'s lost progress',
+                'Traps are triggered if you land on one with no remaining actions. Usually this is only the one space you end your turn on, but you can then be shoved into one after that...',
+                'If you shove a player down a hallway, they will trigger any traps they pass over (traps are triggered if a player has no actions left)',
+                'If you walk into a doorway without explicitly unlocking it, you will automatically pay to unlock it',
+                'Jamming doors using `jam` can increase the cost of a doorway by up to **5** points at the cost of only **1** point. Players behind you won\'t like this...',
+                'Any doorway action such as `unlock` can be done on a single doorway by saying e.g. `unlock:b12`',
+                'Long, straight hallways can be very powerful for someone who is gifted the `charge` item...',
+                'You cannot `warp` to another user if you can afford more than **4** warp actions (get moving)',
+                'If you warp to another player and end your turn on a trap, you will trigger that trap (get owned)',
+                'Any player who has no remaining actions can be shoved by another player, which can even trigger traps they are shoved into',
+                'Players who say _good morning_ for **10** days in a row are gifted a `trap` item',
+                'Never make assumptions! Doorways can be permanently sealed by players with the right item...',
+                'Even doorways that cost **$99** can be unlocked for free by players with the right item...',
+                'If you save up too much money, you will be nerfed. Get moving!',
+                'Remember to lock doors behind you! Use `lock` or `lock:b12` to lock a specific door',
+                'If you knock out another player with a `punch`, they\'re out cold for **3** turns and they will drop enough coins to fill all open adjacent spaces',
+                'Punching a player adjacent to you is **75%* accurate, but punching a player diagonal from you is only **50%** accurate.',
+                'Farm points by placing traps in areas where players will likely end their turn (or be shoved into...)',
+                'If you land on a trap, you will be sent back to wherever you started your turn. You will _not_ get your points back.'
+            )]
+        };
+    }
+
     override async onDecisionPreNoon(): Promise<MessengerManifest> {
         return {
             public: [{
@@ -287,7 +315,9 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
 
     override doesPlayerNeedNerf(userId: string): boolean {
         // Player needs nerf if we're 20% into the season and player is in the top 3 ranks
-        return this.getSeasonCompletion() > 0.2 && this.getPlayerRank(userId) <= 3;
+        return (this.getSeasonCompletion() > 0.2 && this.getPlayerRank(userId) <= 3)
+            // OR if the player has over 20 points
+            || this.getPoints(userId) >= 20
     }
 
     async renderState(options?: { showPlayerDecision?: Snowflake, admin?: boolean }): Promise<Buffer> {
