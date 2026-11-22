@@ -8,6 +8,7 @@ import { MazeItemName, MazeLocation, MazeGameState, MazeLine, MazePlayerState } 
 
 import logger from '../logger';
 import imageLoader from '../image-loader';
+import { distance } from '../util';
 
 enum TileType {
     INVALID = -1,
@@ -79,6 +80,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
     private static readonly STYLE_SKY: string = 'hsl(217, 94%, 69%)';
     private static readonly STYLE_DARK_SKY: string = 'hsl(217, 90%, 64%)';
     private static readonly STYLE_LIGHT_SKY: string = 'hsl(217, 85%, 75%)';
+    private static readonly STYLE_TRAIL: string = 'hsl(217, 85%, 82%)';
     private static readonly STYLE_CLOUD: string = 'rgba(222, 222, 222, 1)';
     private static readonly STYLE_WARP_PATH: string = 'rgba(98, 11, 212, 0.5)';
     private static readonly STYLE_HEAVY_PATH: string = 'rgba(255, 0, 0, 0.75)';
@@ -649,8 +651,8 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                 context.setLineDash([Math.floor(MazeGame.TILE_SIZE / 4), Math.floor(MazeGame.TILE_SIZE / 4)]);
             } else {
                 // Draw dashed movement lines
-                context.lineWidth = 3;
-                context.strokeStyle = MazeGame.STYLE_LIGHT_SKY;
+                context.lineWidth = 4;
+                context.strokeStyle = MazeGame.STYLE_TRAIL;
                 context.setLineDash([Math.floor(MazeGame.TILE_SIZE / 12), Math.floor(MazeGame.TILE_SIZE / 12)]);
             }
             context.beginPath();
@@ -1644,6 +1646,40 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                 }
             }
         }
+    }
+
+    private getTilesInStraightPathBetween(from: MazeLocation, to: MazeLocation): MazeLocation[] {
+        const tiles: MazeLocation[] = [];
+        const d = distance({ x: from.c, y: from.r }, { x: to.c, y: to.r });
+        const stepR = (to.r - from.r) / (4 * d);
+        const stepC = (to.c - from.c) / (4 * d);
+        let rf = from.r + 0.5;
+        let rc = from.c + 0.5;
+        // TODO: Shouldn't be a while-true loop, bad
+        while (true) {
+            const r = Math.floor(rf);
+            const c = Math.floor(rc);
+            // If the list doesn't contain this one already, add it
+            if (tiles.every(t => r !== t.r && c !== t.c)) {
+                tiles.push({ r, c });
+            }
+            // If at the destination tile, return now
+            if (r === to.r && c === to.c) {
+                return tiles;
+            }
+            // If out of bounds, return now
+            if (!this.isInBounds(r, c)) {
+                return tiles;
+            }
+            // Advance
+            rf += stepR;
+            rc += stepC;
+        }
+    }
+
+    private isInLineOfSight(from: MazeLocation, to: MazeLocation): boolean {
+        return this.getTilesInStraightPathBetween(from, to)
+            .every(t => this.isWalkable(t.r, t.c));
     }
 
     private getHiddenTrapsForPlayer(userId: Snowflake): { r: number, c: number }[] {
