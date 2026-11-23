@@ -1,14 +1,14 @@
-import canvas, { Canvas, CanvasRenderingContext2D } from 'canvas';
+import canvas, { Canvas, CanvasRenderingContext2D, createCanvas } from 'canvas';
 import { AttachmentBuilder, GuildMember, MessageFlags, Snowflake } from 'discord.js';
 import { getRankString, getNumberBetween, naturalJoin, randInt, shuffle, toLetterId, fromLetterId, AStarPathFinder, shuffleWithDependencies, toFixed, collapseRedundantStrings, chance, randChoice, findCycle, s } from 'evanw555.js';
 import { getTextLabel, toCircle } from "node-canvas-utils";
 import { DecisionProcessingResult, GamePlayerAddition, MessengerManifest, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 import { MazeItemName, MazeLocation, MazeGameState, MazeLine, MazePlayerState } from './types';
+import { distance } from '../util';
 
 import logger from '../logger';
 import imageLoader from '../image-loader';
-import { distance } from '../util';
 
 enum TileType {
     INVALID = -1,
@@ -156,7 +156,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                 'If you save up too much money, you will be nerfed. Get moving!',
                 'Remember to lock doors behind you! Use `lock` or `lock:b12` to lock a specific door',
                 'If you knock out another player with a `punch`, they\'re out cold for **3** turns and they will drop enough coins to fill all open adjacent spaces',
-                'Punching a player adjacent to you is **75%* accurate, but punching a player diagonal from you is only **50%** accurate.',
+                'Punching a player adjacent to you is **75%** accurate, but punching a player diagonal from you is only **50%** accurate.',
                 'Farm points by placing traps in areas where players will likely end their turn (or be shoved into...)',
                 'If you land on a trap, you will be sent back to wherever you started your turn. You will _not_ get your points back.'
             )]
@@ -431,6 +431,11 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
 
         // Render all unfinished players (always render stunned players first so they're beneath others)
         const renderOrderedUserIds = this.getUnfinishedPlayers().sort((a, b) => (this.isPlayerStunned(b) ? 1 : 0) - (this.isPlayerStunned(a) ? 1 : 0));
+        // Render the motion blurs first
+        for (const userId of renderOrderedUserIds) {
+            await this.renderPlayerBlur(context, userId);
+        }
+        // Render the main avatars afterward
         for (const userId of renderOrderedUserIds) {
             await this.renderPlayer(context, userId);
         }
@@ -607,10 +612,63 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
 
     private async renderPlayer(context: CanvasRenderingContext2D, userId: Snowflake): Promise<void> {
         const player = this.state.players[userId];
+        const render = await this.getPlayerRender(userId);
+
+        this.drawImageAroundTile(context, render, player.r, player.c);
+    }
+
+    private async renderPlayerBlur(context: CanvasRenderingContext2D, userId: Snowflake): Promise<void> {
+        const player = this.state.players[userId];
+        const render = await this.getPlayerRender(userId, { hideX: true });
+
+        // Draw the "movement" blur
+        if (player.previousLocation && !MazeGame.locationEquals(player.previousLocation, player)) {
+            const d = distance({ x: player.previousLocation.c, y: player.previousLocation.r }, { x: player.c, y: player.r });
+            const theta = Math.atan2(player.previousLocation.r - player.r, player.previousLocation.c - player.c);
+            // const displacements = (d > 3)
+            //     ? [[0.75, 0.05], [0.5, 0.1], [0.4, 0.25], [0.3, 0.4], [0.2, 0.5], [0.1, 0.6], [0.05, 0.65], [0.025, 0.75]]
+            //     : [[0.75, 0.05], [0.5, 0.1], [0.4, 0.25], [0.3, 0.35], [0.2, 0.45], [0.1, 0.6], [0.05, 0.75]];
+            let displacement = 0.025;
+            let alpha = 0.8;
+            while (displacement <= 0.75) {
+                const dr = d * displacement * Math.sin(theta);
+                const dc = d * displacement * Math.cos(theta);
+                context.globalAlpha = (0.75 - displacement) * 0.75; // alpha;
+                this.drawImageAroundTile(context, render, player.r + dr, player.c + dc);
+                // Accelerate the displacement
+                displacement *= 1.4;
+                // Decay the alpha
+                alpha *= 0.85;
+            }
+            // for (const [displacement, alpha] of displacements) {
+            //     // const canvas = createCanvas(render.width, render.height);
+            //     // const context = canvas.getContext('2d');
+            //     // context.globalAlpha = 1 - distance;
+            //     // context.drawImage(render, 0, 0);
+            //     const dr = d * displacement * Math.sin(theta);
+            //     const dc = d * displacement * Math.cos(theta);
+            //     context.globalAlpha = alpha;
+            //     this.drawImageAroundTile(context, render, player.r + dr, player.c + dc);
+            // }
+            context.globalAlpha = 1;
+
+            // TODO: Temp to see if this is working properly
+            // const label = getTextLabel(player.displayName);
+            // this.drawImageOnTile(context, label, player.previousLocation.r, player.previousLocation.c);
+        }
+    }
+
+    private async getPlayerRender(userId: Snowflake, options?: { hideX?: boolean }): Promise<Canvas> {
+        const player = this.state.players[userId];
+
+        const MARGIN = 2;
+
+        const canvas = createCanvas(MazeGame.TILE_SIZE + 2 * MARGIN, MazeGame.TILE_SIZE + 2 * MARGIN);
+        const context = canvas.getContext('2d');
 
         // Draw outline (rainbow if invincible, black otherwise)
-        const outlineX = (player.c + .5) * MazeGame.TILE_SIZE;
-        const outlineY = (player.r + .5) * MazeGame.TILE_SIZE;
+        const outlineX = MARGIN + .5 * MazeGame.TILE_SIZE;
+        const outlineY = MARGIN + .5 * MazeGame.TILE_SIZE;
         const outlineRadius = MazeGame.TILE_SIZE / 2 + 1;
         if (player.invincible) {
             const n = 32;
@@ -633,26 +691,29 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
 
         // Draw inner stuff
         const avatarImage = toCircle(await imageLoader.loadAvatar(userId), { alpha: this.isPlayerStunned(userId) ? 0.4 : 1 });
-        context.drawImage(avatarImage, player.c * MazeGame.TILE_SIZE, player.r * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE, MazeGame.TILE_SIZE);
+        context.drawImage(avatarImage, MARGIN, MARGIN, MazeGame.TILE_SIZE, MazeGame.TILE_SIZE);
 
         // If the user is stunned, draw something to indicate this
-        if (this.isPlayerStunned(userId)) {
+        if (this.isPlayerStunned(userId) && !options?.hideX) {
             // If the player has pending decisions, show the stuns left; else just draw an X
             if (this.hasPendingDecisions(userId)) {
                 const stunsLabel = this.getTileLabel(this.getPlayerStuns(userId).toString(), `bold ${MazeGame.TILE_SIZE * .85}px arial`, 'red');
-                this.drawImageOnTile(context, stunsLabel, player.r, player.c);
+                // TODO: This is a dumb hack to draw onto the center of this canvas, need proper util for this instead
+                this.drawImageOnTile(context, stunsLabel, 0, 0);
             } else {
                 context.strokeStyle = 'red';
                 context.lineWidth = 2;
                 context.setLineDash([]);
                 context.beginPath();
-                context.moveTo(player.c * MazeGame.TILE_SIZE, player.r * MazeGame.TILE_SIZE);
-                context.lineTo((player.c + 1) * MazeGame.TILE_SIZE, (player.r + 1) * MazeGame.TILE_SIZE);
-                context.moveTo((player.c + 1) * MazeGame.TILE_SIZE, player.r * MazeGame.TILE_SIZE);
-                context.lineTo(player.c * MazeGame.TILE_SIZE, (player.r + 1) * MazeGame.TILE_SIZE);
+                context.moveTo(0, 0);
+                context.lineTo(canvas.width, canvas.height);
+                context.moveTo(canvas.width, 0);
+                context.lineTo(0, canvas.height);
                 context.stroke();
             }
         }
+
+        return canvas;
     }
 
     private getTileLabel(text: string, font: string, style: string): Canvas {
@@ -661,6 +722,12 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
 
     private drawImageOnTile(context: CanvasRenderingContext2D, image: Canvas, r: number, c: number): void {
         context.drawImage(image, c * MazeGame.TILE_SIZE, r * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE, MazeGame.TILE_SIZE);
+    }
+
+    private drawImageAroundTile(context: CanvasRenderingContext2D, image: Canvas, r: number, c: number): void {
+        const centerX = (c + 0.5) * MazeGame.TILE_SIZE;
+        const centerY = (r + 0.5) * MazeGame.TILE_SIZE;
+        context.drawImage(image, centerX - (image.width / 2), centerY - (image.height / 2));
     }
 
     private drawRandomPolygonOnTile(context: CanvasRenderingContext2D, r: number, c: number, options?: { numVertices?: number, minRadius?: number, maxRadius?: number }): void {
@@ -834,6 +901,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
             const player = this.state.players[userId];
             // Reset per-turn metadata and statuses
             player.originLocation = { r: player.r, c: player.c };
+            delete player.previousLocation;
             delete player.stuns;
             delete player.invincible;
             delete player.warped;
@@ -891,6 +959,8 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         for (const userId of this.getPlayers()) {
             const player = this.state.players[userId];
             delete player.itemOffers;
+            // Wipe previous location to avoid showing movement blur on turn on
+            delete player.previousLocation;
         }
 
         // Add the universal turn-end message and state render
@@ -2390,6 +2460,11 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
     override async processPlayerDecisions(): Promise<DecisionProcessingResult> {
         // Delete all render lines (this is not done in the inner method since we want to show long paths for multiple consecutive actions)
         this.state.lines = [];
+        // Delete player previous locations (same reasoning as above)
+        for (const userId of this.getPlayers()) {
+            const player = this.state.players[userId];
+            delete player.previousLocation;
+        }
 
         // Process one action for each player, and repeat so long as the inner method says it's ok
         const summaries: string[] = [];
@@ -2447,11 +2522,15 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
             flushCollapsableStatements();
             summaryData.statements.push(s);
         };
-        const movePlayerTo = (userId: Snowflake, location: MazeLocation) => {
+        const movePlayerTo = (userId: Snowflake, location: MazeLocation, options?: { preservePreviousLocation?: boolean }) => {
             const player = this.state.players[userId]
             // If the player is finished, no movement actions should be processed on them
             if (!player || player.finished) {
                 return;
+            }
+            // Update the player's previous location
+            if (!options?.preservePreviousLocation) {
+                player.previousLocation = { r: player.r, c: player.c };
             }
             // Move the player
             player.r = location.r;
@@ -2999,7 +3078,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                         }
                         // Get the list of tiles traversed
                         // TODO: Use tiles from the actual LOS check
-                        const losTiles = this.getTilesInStraightPathBetween(player, argLocation);
+                        const losTiles = this.getTilesInStraightPathBetween(player, argLocation, { dr1: 0.5, dc1: 0.5, dr2: 0.5, dc2: 0.5 });
                         const estimatedDistance = this.getNumStepsToLocation(player, argLocation);
                         // Add warp line
                         this.addRenderLine({ r: player.r, c: player.c }, argLocation, 'warp');
@@ -3091,7 +3170,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                     }
                     // Hack to handle end-of-turn movement triggers e.g. traps
                     // (since decisions aren't consumed until after the action is processed, so the final step didn't trigger this)
-                    movePlayerTo(userId, player);
+                    movePlayerTo(userId, player, { preservePreviousLocation: true });
                 }
             } else {
                 // Emergency fallback just in case the player has an empty decision list
