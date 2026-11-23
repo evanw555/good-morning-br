@@ -4190,6 +4190,24 @@ const processCommands = async (msg: OmitPartialGroupDMChannel<Message<boolean>>)
         }
         return;
     }
+    // Test out maze LOS
+    if (msg.content.includes('showlos')) {
+        const [root, from, to] = msg.content.split(' ');
+        if (state.hasGame()) {
+            const game = state.getGame();
+            if (game instanceof MazeGame) {
+                const map = await game.renderLOS(from, to);
+                await msg.reply({
+                    files: [map.toBuffer()]
+                });
+            } else {
+                await msg.reply('Current game is not a maze game');
+            }
+        } else {
+            await msg.reply('No game in state');
+        }
+        return;
+    }
     // Test out text generation with AI
     if (msg.content.startsWith('GENERATE_COMPLETIONS_AI')) {
         const prompt = msg.content.replace('GENERATE_COMPLETIONS_AI', '').trim();

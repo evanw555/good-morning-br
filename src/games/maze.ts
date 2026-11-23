@@ -82,6 +82,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
     private static readonly STYLE_LIGHT_SKY: string = 'hsl(217, 85%, 75%)';
     private static readonly STYLE_TRAIL: string = 'hsl(217, 85%, 82%)';
     private static readonly STYLE_CLOUD: string = 'rgba(222, 222, 222, 1)';
+    private static readonly STYLE_LINE_OF_SIGHT: string = 'rgba(255, 68, 224, 0.4)';
     private static readonly STYLE_WARP_PATH: string = 'rgba(98, 11, 212, 0.5)';
     private static readonly STYLE_HEAVY_PATH: string = 'rgba(255, 0, 0, 0.75)';
 
@@ -320,7 +321,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
             || this.getPoints(userId) >= 20
     }
 
-    async renderState(options?: { showPlayerDecision?: Snowflake, admin?: boolean }): Promise<Buffer> {
+    private async renderMap(options?: { showPlayerDecision?: Snowflake, admin?: boolean }): Promise<Canvas> {
         const WIDTH: number = this.state.columns * MazeGame.TILE_SIZE;
         const HEIGHT: number = this.state.rows * MazeGame.TILE_SIZE;
         const c = canvas.createCanvas(WIDTH, HEIGHT);
@@ -403,7 +404,19 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
             }
         }
 
-        // Draw the sun at the center
+        // If showing player decision, show player's LOS
+        if (options?.showPlayerDecision) {
+            const playerLocation = this.getPlayerLocation(options.showPlayerDecision);
+            if (playerLocation) {
+                const losTiles = this.getAllTilesInLineOfSight(playerLocation);
+                context.fillStyle = MazeGame.STYLE_LINE_OF_SIGHT;
+                for (const tile of losTiles) {
+                    context.fillRect(tile.c * MazeGame.TILE_SIZE, tile.r * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE, MazeGame.TILE_SIZE);
+                }
+            }
+        }
+
+        // Draw the sun at the goal
         const sunImage = await imageLoader.loadImage('assets/sun4.png');
         context.drawImage(sunImage, (this.getGoalColumn() - .5) * MazeGame.TILE_SIZE, (this.getGoalRow() - .5) * MazeGame.TILE_SIZE, 2 * MazeGame.TILE_SIZE, 2 * MazeGame.TILE_SIZE);
 
@@ -451,9 +464,15 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
             context.globalAlpha = 1;
         }
 
+        return c;
+    }
+
+    async renderState(options?: { showPlayerDecision?: Snowflake, playerDecisionLogs?: { cost: string, description: string }[], admin?: boolean }): Promise<Buffer> {
+        const renderedMap = await this.renderMap(options);
+
         const SIDEBAR_WIDTH = MazeGame.TILE_SIZE * 11;
-        const TOTAL_WIDTH = WIDTH + MazeGame.TILE_SIZE + SIDEBAR_WIDTH;
-        const TOTAL_HEIGHT = HEIGHT + MazeGame.TILE_SIZE;
+        const TOTAL_WIDTH = renderedMap.width + MazeGame.TILE_SIZE + SIDEBAR_WIDTH;
+        const TOTAL_HEIGHT = renderedMap.height + MazeGame.TILE_SIZE;
         const masterImage = canvas.createCanvas(TOTAL_WIDTH, TOTAL_HEIGHT);
         const c2 = masterImage.getContext('2d');
 
@@ -461,7 +480,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         c2.font = `${MazeGame.TILE_SIZE * .6}px sans-serif`;
         c2.fillStyle = 'black';
         c2.fillRect(0, 0, TOTAL_WIDTH, TOTAL_HEIGHT);
-        c2.drawImage(c, MazeGame.TILE_SIZE, MazeGame.TILE_SIZE);
+        c2.drawImage(renderedMap, MazeGame.TILE_SIZE, MazeGame.TILE_SIZE);
         for (let r = 0; r < this.state.rows; r++) {
             const text = toLetterId(r);
             if (r % 2 === 0) {
@@ -485,13 +504,35 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         const rowsNeeded = this.getNumPlayers() + Object.keys(this.getChoices()).length + 6;
         const heightPerRow = Math.floor(MazeGame.TILE_SIZE * Math.min(1, this.state.rows / rowsNeeded));
 
-        // Render usernames in order of location
+        // Render sidebar header
         const MARGIN = 0.5 * MazeGame.TILE_SIZE;
         c2.font = `${heightPerRow * .75}px sans-serif`;
         let y = 2;
         c2.fillStyle = 'white';
-        const leftTextX = WIDTH + MazeGame.TILE_SIZE + MARGIN;
+        const leftTextX = renderedMap.width + MazeGame.TILE_SIZE + MARGIN;
         c2.fillText(`Season ${this.getSeasonNumber()}, Week ${this.state.turn}, Action ${this.state.action}`, leftTextX, MazeGame.TILE_SIZE);
+
+        // Show extra info if this is a player decision
+        if (options?.showPlayerDecision) {
+            y++;
+            c2.fillStyle = 'red';
+            c2.fillText('Red = your planned path', leftTextX, y * heightPerRow, TOTAL_WIDTH - leftTextX);
+            y++;
+            for (const logRow of options?.playerDecisionLogs ?? []) {
+                y++;
+                // Draw the cost
+                const leftTextWidth = 1.5 * MazeGame.TILE_SIZE;
+                c2.fillText(logRow.cost, leftTextX, y * heightPerRow, leftTextWidth);
+                // Draw the description
+                c2.fillText(logRow.description, leftTextX + leftTextWidth + MARGIN, y * heightPerRow, TOTAL_WIDTH - leftTextX);
+            }
+            y += 2;
+            c2.fillStyle = 'rgb(255, 68, 224)';
+            c2.fillText('Pink = your line-of-sight', leftTextX, y * heightPerRow, TOTAL_WIDTH - leftTextX);
+            y++;
+        }
+
+        // Render usernames in order of location
         for (const userId of this.getOrganizedPlayers()) {
             y++;
             const player = this.state.players[userId];
@@ -1678,38 +1719,169 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         }
     }
 
-    private getTilesInStraightPathBetween(from: MazeLocation, to: MazeLocation): MazeLocation[] {
-        const tiles: MazeLocation[] = [];
-        const d = distance({ x: from.c, y: from.r }, { x: to.c, y: to.r });
-        const stepR = (to.r - from.r) / (4 * d);
-        const stepC = (to.c - from.c) / (4 * d);
-        let rf = from.r + 0.5;
-        let rc = from.c + 0.5;
+    private getTilesInStraightPathBetween(from: MazeLocation, to: MazeLocation, options?: { dr1?: number, dc1?: number, dr2?: number, dc2?: number }): { tiles: MazeLocation[], checks: { rf: number, cf: number }[] } {
+        const result = {
+            tiles: [] as MazeLocation[],
+            checks: [] as { rf: number, cf: number }[]
+        };
+        // const tiles: MazeLocation[] = [];
+        const r1 = from.r + (options?.dr1 ?? 0);
+        const c1 = from.c + (options?.dc1 ?? 0);
+        const r2 = to.r + (options?.dr2 ?? 0);
+        const c2 = to.c + (options?.dc2 ?? 0);
+        const d = distance({ x: c1, y: r1 }, { x: c2, y: r2 });
+        const stepR = (r2 - r1) / (4 * d);
+        const stepC = (c2 - c1) / (4 * d);
+        let rf = r1;
+        let cf = c1;
         // TODO: Shouldn't be a while-true loop, bad
         while (true) {
             const r = Math.floor(rf);
-            const c = Math.floor(rc);
+            const c = Math.floor(cf);
             // If the list doesn't contain this one already, add it
-            if (tiles.every(t => r !== t.r && c !== t.c)) {
-                tiles.push({ r, c });
+            if (result.tiles.every(t => r !== t.r || c !== t.c)) {
+                result.tiles.push({ r, c });
             }
+            result.checks.push({ rf, cf });
             // If at the destination tile, return now
             if (r === to.r && c === to.c) {
-                return tiles;
+                return result;
             }
             // If out of bounds, return now
             if (!this.isInBounds(r, c)) {
-                return tiles;
+                return result;
             }
             // Advance
             rf += stepR;
-            rc += stepC;
+            cf += stepC;
+        }
+    }
+
+    private getLineOfSightTiles(from: MazeLocation, to: MazeLocation, options?: { dr1?: number, dc1?: number, dr2?: number, dc2?: number }): { los: boolean, tiles: MazeLocation[], checks: { rf: number, cf: number }[] } {
+        const result = {
+            los: true,
+            tiles: [] as MazeLocation[],
+            checks: [] as { rf: number, cf: number }[]
+        };
+        // const tiles: MazeLocation[] = [];
+        const r1 = from.r + (options?.dr1 ?? 0);
+        const c1 = from.c + (options?.dc1 ?? 0);
+        const r2 = to.r + (options?.dr2 ?? 0);
+        const c2 = to.c + (options?.dc2 ?? 0);
+        const d = distance({ x: c1, y: r1 }, { x: c2, y: r2 });
+        const stepR = (r2 - r1) / (4 * d);
+        const stepC = (c2 - c1) / (4 * d);
+        let rf = r1;
+        let cf = c1;
+        // TODO: Shouldn't be a while-true loop, bad
+        while (true) {
+            const r = Math.floor(rf);
+            const c = Math.floor(cf);
+            // If the list doesn't contain this one already, add it
+            if (result.tiles.every(t => r !== t.r || c !== t.c)) {
+                // If not walkable, abort here
+                if (!this.isWalkable(r, c)) {
+                    result.los = false;
+                    return result;
+                }
+                result.tiles.push({ r, c });
+            }
+            result.checks.push({ rf, cf });
+            // If at the destination tile, return now
+            if (r === to.r && c === to.c) {
+                return result;
+            }
+            // If out of bounds, return now
+            if (!this.isInBounds(r, c)) {
+                return result;
+            }
+            // Advance
+            rf += stepR;
+            cf += stepC;
         }
     }
 
     private isInLineOfSight(from: MazeLocation, to: MazeLocation): boolean {
-        return this.getTilesInStraightPathBetween(from, to)
-            .every(t => this.isWalkable(t.r, t.c));
+        for (const dr1 of [0.1, 0.9]) {
+            for (const dc1 of [0.1, 0.9]) {
+                for (const dr2 of [0.1, 0.9]) {
+                    for (const dc2 of [0.1, 0.9]) {
+                        const hasLos = this.getTilesInStraightPathBetween(from, to, { dr1, dc1, dr2, dc2 }).tiles
+                            .every(t => this.isWalkable(t.r, t.c));
+                        if (hasLos) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    private getAllTilesInLineOfSight(from: MazeLocation): MazeLocation[] {
+        const result: MazeLocation[] = [];
+        for (let r = 0; r < this.state.rows; r++) {
+            for (let c = 0; c < this.state.columns; c++) {
+                // if (r === from.r && c === from.c) {
+                //     continue;
+                // }
+                if (this.isInLineOfSight(from, { r, c })) {
+                    result.push({ r, c });
+                }
+            }
+        }
+        return result;
+    }
+
+    async renderLOS(from: string, to: string): Promise<Canvas> {
+        const map = await this.renderMap();
+        const context = map.getContext('2d');
+
+        const fromLocation = MazeGame.parseLocationString(from);
+        if (!fromLocation) {
+            throw new Error(`Invalid from location: ${from}`);
+        }
+        const toLocation = MazeGame.parseLocationString(to);
+        // Checking a specific line
+        if (toLocation) {
+            const losTiles: Set<string> = new Set();
+            for (const dr1 of [0.1, 0.9]) {
+                for (const dc1 of [0.1, 0.9]) {
+                    for (const dr2 of [0.1, 0.9]) {
+                        for (const dc2 of [0.1, 0.9]) {
+                            const result = this.getLineOfSightTiles(fromLocation, toLocation, { dr1, dc1, dr2, dc2 });
+
+                            for (const tile of result.tiles) {
+                                losTiles.add(MazeGame.getLocationString(tile.r, tile.c));
+                                // context.fillRect(tile.c * MazeGame.TILE_SIZE, tile.r * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE, MazeGame.TILE_SIZE);
+                            }
+                            context.fillStyle = 'green';
+                            for (const check of result.checks) {
+                                context.fillRect(check.cf * MazeGame.TILE_SIZE - 1, check.rf * MazeGame.TILE_SIZE - 1, 2, 2);
+                            }
+                        }
+                    }
+                }
+            }
+            context.fillStyle = 'rgba(200,0,200,0.5)';
+            for (const tile of losTiles) {
+                const { r, c } = MazeGame.parseLocationString(tile) as MazeLocation;
+                context.fillRect(c * MazeGame.TILE_SIZE, r * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE, MazeGame.TILE_SIZE);
+            }
+
+            return map;
+        }
+        // Check LOS from one area
+        else {
+            context.fillStyle = 'green';
+            context.fillRect(fromLocation.c * MazeGame.TILE_SIZE, fromLocation.r * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE, MazeGame.TILE_SIZE);
+            context.fillStyle = 'rgba(200,0,200,0.5)';
+            for (const { r, c } of this.getAllTilesInLineOfSight(fromLocation)) {
+                context.fillRect(c * MazeGame.TILE_SIZE, r * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE, MazeGame.TILE_SIZE);
+            }
+
+            return map;
+        }
     }
 
     private getHiddenTrapsForPlayer(userId: Snowflake): { r: number, c: number }[] {
@@ -1789,6 +1961,22 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         const playerPoints: number = player.points;
         let cost: number = 0;
 
+        const renderLogs: { cost: string, description: string }[] = [];
+        let logWalkingCost = 0;
+        let lastLogCost = 0;
+        let lastLogLocation = MazeGame.getLocationString(newLocation.r, newLocation.c);
+        const addRenderLog = (text: string) => {
+            const currentLocation = MazeGame.getLocationString(newLocation.r, newLocation.c);
+            if (logWalkingCost > 0 && currentLocation !== lastLogLocation) {
+                lastLogLocation = currentLocation;
+                renderLogs.push({ cost: `-$${logWalkingCost}`, description: `walk to ${currentLocation}` });
+                lastLogCost += logWalkingCost;
+                logWalkingCost = 0;
+            }
+            renderLogs.push({ cost: `-$${cost - lastLogCost}`, description: text });
+            lastLogCost = cost;
+        };
+
         // Abort if the player is already knocked out
         if (this.isPlayerStunned(userId)) {
             throw new Error('Don\'t you remember? You were knocked out for having no points! No action for you this week, my friend...');
@@ -1853,6 +2041,9 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                 if (!this.isAdjacent(newLocation, targetLocation)) {
                     throw new Error(`You can't ${action} **${targetLocationString}** from **${newLocationString}**, as those locations aren't adjacent!`);
                 }
+                addRenderLog(`${action} ${MazeGame.getLocationString(targetLocation.r, targetLocation.c)}`);
+            } else {
+                addRenderLog(`${action} adjacent doors`);
             }
             // In all cases, validate that there's at least one adjacent doorway
             if (!this.isNextToDoorway(newLocation)) {
@@ -1932,6 +2123,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                 case 'left':
                 case 'right':
                     validateMovementAction(c);
+                    logWalkingCost++;
                     break;
                 case 'unlock':
                 case 'key':
@@ -1982,6 +2174,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                     } else {
                         throw new Error(`Can't place a ${c} at **${arg}**, try a different spot.`);
                     }
+                    addRenderLog(`place ${c} at ${arg}`);
                     break;
                 case 'charge':
                     if (!argLocation) {
@@ -2009,16 +2202,30 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                     // Update the new temp location to the target location
                     newLocation.r = argLocation.r;
                     newLocation.c = argLocation.c;
+                    addRenderLog(`${c} to ${arg}`);
                     break;
                 case 'punch':
+                    addRenderLog('punch other players');
+                    break;
                 case 'warp':
+                    addRenderLog('warp to a random player');
+                    break;
                 case 'star':
+                    addRenderLog('activate star');
+                    break;
                 case 'pause':
-                    // TODO: Do validation?
+                    addRenderLog('do nothing');
                     break;
                 default:
                     throw new Error(`\`${input}\` is an invalid action! DM me "help" for help`);
             }
+        }
+
+        addRenderLog('end turn');
+
+        // Remind the player about targeted actions if they are opening multiple doorways
+        if (doorwaysToBeOpened.size > 1) {
+            warnings.push(`ℹ️ You are opening multiple doorways, remember that you can target only one using e.g. \`unlock:${randChoice(...doorwaysToBeOpened)}\``);
         }
 
         // Warn the player if they may run out of points
@@ -2026,12 +2233,20 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
             warnings.push(`⚠️ You currently have **${Math.floor(playerPoints)}** points, yet these actions cost **${cost}**. Unless you collect points mid-turn, you'll be KO'ed when you run out of points.`);
         }
 
+        // De-dupe warnings
+        const dedupedWarnings: string[] = [];
+        for (const warning of warnings) {
+            if (!dedupedWarnings.includes(warning)) {
+                dedupedWarnings.push(warning);
+            }
+        }
+
         this.state.decisions[userId] = commands;
         return {
             content: `Valid actions, your new location will be **${isWarping ? '???' : MazeGame.getLocationString(newLocation.r, newLocation.c)}**. `
                 + `This will consume **${cost}** of your **${Math.floor(playerPoints)}** points if successful. `
-                + (warnings.length > 0 ? ' _BUT PLEASE NOTE THE FOLLOWING:_\n' + warnings.join('\n') : ''),
-            files: [new AttachmentBuilder(await this.renderState({ showPlayerDecision: userId })).setName(`game-turn${this.getTurn()}-confirmation.png`)]
+                + (dedupedWarnings.length > 0 ? ' _BUT PLEASE NOTE THE FOLLOWING:_\n' + dedupedWarnings.join('\n') : ''),
+            files: [new AttachmentBuilder(await this.renderState({ showPlayerDecision: userId, playerDecisionLogs: renderLogs })).setName(`game-turn${this.getTurn()}-confirmation.png`)]
         };
     }
 

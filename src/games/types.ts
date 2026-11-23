@@ -36,7 +36,10 @@ export interface MazePlayerState {
     finished?: boolean,
     stuns?: number,
     invincible?: boolean,
+    /** Where the player started their turn. */
     originLocation?: MazeLocation,
+    /** Where the player was on the previous action. */
+    previousLocation?: MazeLocation,
     warped?: boolean
 }
 
