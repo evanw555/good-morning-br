@@ -60,6 +60,8 @@ export interface MazeGameState extends AbstractGameState<'MAZE'> {
     goal: MazeLocation,
     homeStretch?: boolean,
     doorwayCosts: Record<string, number>,
+    /** Value of coins on each tile. */
+    coinValues?: Record<string, number>,
     trapOwners: Record<string, Snowflake>,
     players: Record<Snowflake, MazePlayerState>,
     lines: MazeLine[],

@@ -362,7 +362,11 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                     context.setLineDash([]);
                     this.drawRandomPolygonOnTile(context, r, c);
                 } else if (this.isTileType(r, c, TileType.COIN)) {
+                    const coinValue = this.getCoinValueAtLocation({ r, c });
                     context.drawImage(coinImage, c * MazeGame.TILE_SIZE, r * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE, MazeGame.TILE_SIZE);
+                    // TODO: Use unique sprites
+                    const valueLabel = this.getTileLabel(coinValue.toString(), `${MazeGame.TILE_SIZE * .6}px sans-serif`, 'black');
+                    this.drawImageOnTile(context, valueLabel, r, c);
                 } else if (this.isCloudy(r, c)) {
                     context.fillStyle = MazeGame.STYLE_CLOUD;
                     context.beginPath();
@@ -461,6 +465,11 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
             context.setLineDash([]);
             context.globalAlpha = 0.75;
             this.renderPath(context, locationsToGoal);
+            // Render the shortest path from the start to the finish, considering doorways
+            const actionsToGoalWithDoorways: Direction[] = this.searchToGoal(dummyStart.r, dummyStart.c, { useDoorways: true }).semanticSteps;
+            const locationsToGoalWithDoorways: MazeLocation[] = MazeGame.getSequenceOfLocations(dummyStart, actionsToGoalWithDoorways);
+            context.strokeStyle = 'cyan';
+            this.renderPath(context, locationsToGoalWithDoorways);
             context.globalAlpha = 1;
         }
 
@@ -867,7 +876,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                 const coinLocations = this.getRandomVacantLocationsBehindPlayer(topPlayerId, numCoins);
                 // Add coins to all these locations
                 for (const coinLocation of coinLocations) {
-                    this.state.map[coinLocation.r][coinLocation.c] = TileType.COIN;
+                    this.placeCoinAtLocation(coinLocation, randChoice(1, 1, 2, 3));
                 }
             }
         }
@@ -1485,6 +1494,16 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
             };
         }
 
+        // For each location, fill in coin values
+        const coinValues: Record<string, number> = {};
+        for (let r = 0; r < rows; r++) {
+            for (let c =  0; c < columns; c++) {
+                if (map[r][c] === TileType.COIN) {
+                    coinValues[MazeGame.getLocationString(r, c)] = randChoice(1, 2, 3);
+                }
+            }
+        }
+
         const game = new MazeGame({
             type: 'MAZE',
             season,
@@ -1497,6 +1516,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
             map,
             goal,
             doorwayCosts,
+            coinValues,
             trapOwners: {},
             players,
             lines: []
@@ -1666,7 +1686,12 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
     }
 
     private isWalkableTileType(t: TileType): boolean {
-        return t === TileType.EMPTY || t === TileType.OPENED_DOORWAY || t === TileType.CHEST || t === TileType.HIDDEN_TRAP || t === TileType.TRAP || t === TileType.COIN;
+        return t === TileType.EMPTY
+            || t === TileType.OPENED_DOORWAY
+            || t === TileType.CHEST
+            || t === TileType.HIDDEN_TRAP
+            || t === TileType.TRAP
+            || t === TileType.COIN;
     }
 
     private isSealable(r: number, c: number): boolean {
@@ -1675,7 +1700,23 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
 
     private isPlaceable(r: number, c: number): boolean {
         // Users can only place tiles over empty spots, hidden traps, or coins
-        return this.isTileType(r, c, TileType.EMPTY) || this.isTileType(r, c, TileType.HIDDEN_TRAP) || this.isTileType(r, c, TileType.COIN);
+        return this.isTileType(r, c, TileType.EMPTY)
+            || this.isTileType(r, c, TileType.HIDDEN_TRAP)
+            || this.isTileType(r, c, TileType.COIN);
+    }
+
+    private placeCoinAtLocation(location: MazeLocation, value: number) {
+        this.state.map[location.r][location.c] = TileType.COIN;
+        if (this.state.coinValues === undefined) {
+            this.state.coinValues = {};
+        }
+        // Set the coin value at this location (or increase it, if there's already value there)
+        const locationString = MazeGame.getLocationString(location.r, location.c);
+        this.state.coinValues[locationString] = (this.state.coinValues[locationString] ?? 0) + value;
+    }
+
+    private getCoinValueAtLocation(location: MazeLocation): number {
+        return (this.state.coinValues ?? {})[MazeGame.getLocationString(location.r, location.c)] ?? 0;
     }
 
     private isTrap(location: MazeLocation): boolean {
@@ -2060,7 +2101,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                 newLocation.c += dc;
                 // Only warn if they haven't planned to open this doorway
                 if (!doorwaysToBeOpened.has(MazeGame.getLocationString(nr, nc))) {
-                    warnings.push(`⚠️ If the doorway at **${MazeGame.getLocationString(nr, nc)}** is still locked when you walk into it, you will automatically pay to unlock it.`);
+                    warnings.push(`⚠️ You aren't explicitly unlocking **${MazeGame.getLocationString(nr, nc)}**, so this cost estimate doesn't take into account the outcome of you paying to auto-unlock it.`);
                 }
             } else if (this.isWalkable(nr, nc)) {
                 newLocation.r += dr;
@@ -2100,11 +2141,11 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
             const [c, arg] = input.split(':') as [ActionName, string];
             // Ensure that non-finished players aren't trying to use secret winner-only moves
             // TODO: Extend this logic to other possible winner-only actions
-            if (!player.finished) {
-                if (c === 'coin') {
-                    throw new Error(`\`${c}\` is an invalid action!`);
-                }
-            }
+            // if (!player.finished) {
+            //     if (c === 'coin') {
+            //         throw new Error(`\`${c}\` is an invalid action!`);
+            //     }
+            // }
             // Parse and validate the location param (if one was provided)
             const argLocation: MazeLocation | undefined = MazeGame.parseLocationString(arg);
             if (argLocation) {
@@ -2169,12 +2210,16 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                     if (this.isGoal(argLocation.r, argLocation.c)) {
                         throw new Error(`You can\'t place a ${c} on the goal!`);
                     }
-                    if (this.isPlaceable(argLocation.r, argLocation.c)) {
+                    // If placing over a coin, just increase that coin's value
+                    if (c === 'coin' && this.isTileType(argLocation.r, argLocation.c, TileType.COIN)) {
                         // COOL
+                        addRenderLog(`buff coin at ${arg}`);
+                    } else if (this.isPlaceable(argLocation.r, argLocation.c)) {
+                        // COOL
+                        addRenderLog(`place ${c} at ${arg}`);
                     } else {
                         throw new Error(`Can't place a ${c} at **${arg}**, try a different spot.`);
                     }
-                    addRenderLog(`place ${c} at ${arg}`);
                     break;
                 case 'charge':
                     if (!argLocation) {
@@ -2298,7 +2343,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                 return Math.ceil(this.getTurn() / 2);
             },
             'coin': () => {
-                return 4;
+                return 3;
             }
         };
         if (action in actionCosts) {
@@ -2379,12 +2424,16 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
             player.c = location.c;
             // Check to see if the player has collected any coins
             if (this.isTileType(player.r, player.c, TileType.COIN)) {
+                const coinValue = this.getCoinValueAtLocation(player);
                 // Set the tile back to empty
                 this.state.map[player.r][player.c] = TileType.EMPTY;
+                // Delete the coin value
+                if (this.state.coinValues) {
+                    delete this.state.coinValues[MazeGame.getLocationString(player.r, player.c)];
+                }
                 // Award the user and notify
-                const coinValue = randChoice(1, 2, 2, 3, 3, 4);
                 this.addPoints(userId, coinValue);
-                pushNonCollapsableStatement(`**${this.getDisplayName(userId)}** collected a gold coin worth **$${coinValue}**`);
+                pushNonCollapsableStatement(`**${this.getDisplayName(userId)}** collected a coin worth **$${coinValue}**`);
             }
             // Check if the player is at the goal
             if (this.isGoal(player.r, player.c)) {
@@ -2696,7 +2745,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                                         shuffle(possibleLocations);
                                         const coinSpawnLocations = possibleLocations.slice(0, numCoins);
                                         for (const location of coinSpawnLocations) {
-                                            this.state.map[location.r][location.c] = TileType.COIN;
+                                            this.placeCoinAtLocation(location, 1);
                                         }
                                         // Deduct points from the other player
                                         this.addPoints(otherPlayerId, -numCoins);
@@ -2764,8 +2813,12 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                         }
                         // Place the coin if it doesn't cover any traps
                         if (!this.isTrap(targetLocation)) {
-                            this.state.map[targetLocation.r][targetLocation.c] = TileType.COIN;
-                            pushNonCollapsableStatement(`**${player.displayName}** placed a coin at **${arg.toUpperCase()}**`);
+                            this.placeCoinAtLocation(targetLocation, randChoice(1, 1, 2, 3));
+                            if (this.getCoinValueAtLocation(targetLocation) > 1) {
+                                pushNonCollapsableStatement(`**${player.displayName}** stacked another coin at **${arg.toUpperCase()}**`);
+                            } else {
+                                pushNonCollapsableStatement(`**${player.displayName}** placed a coin at **${arg.toUpperCase()}**`);
+                            }
                         }
                         return true;
                     },
