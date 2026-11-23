@@ -5,7 +5,7 @@ export interface MazeLocation {
     c: number
 }
 
-export type MazeItemName = 'trap' | 'boulder' | 'seal' | 'key' | 'star' | 'charge';
+export type MazeItemName = 'trap' | 'boulder' | 'seal' | 'key' | 'star' | 'charge' | 'blink';
 
 export interface MazeLine {
     from: MazeLocation,

@@ -41,7 +41,8 @@ const ITEM_NAME_RECORD: Record<MazeItemName, boolean> = {
     trap: true,
     key: true,
     star: true,
-    charge: true
+    charge: true,
+    blink: true
 };
 const ITEM_NAMES: MazeItemName[] = Object.keys(ITEM_NAME_RECORD) as MazeItemName[];
 const VALID_ITEMS: Set<string> = new Set(ITEM_NAMES);
@@ -63,7 +64,8 @@ const ACTION_SYMBOLS: Record<ActionName, string> = {
     trap: '🕳️',
     key: '🔑',
     star: '⭐',
-    charge: '🏈'
+    charge: '🏈',
+    blink: '👁️'
 };
 
 interface PathingOptions {
@@ -997,8 +999,11 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                 + 'If you use the key but no doorways are opened (e.g. door was already opened by someone else), then it will not be consumed. '
                 + 'Any doorway you unlock using the key will thereafter be halved in cost, as with the standard `unlock` move.',
             charge: 'You can use `charge` to charge as far as you want in a particular direction in one single move '
-                + '(e.g. `charge:b12` to charge to location `b:12`). Any players standing in the way will be knocked out and you will not bump into them. '
-                + 'There must be a path to the target location and it must be directly up, down, left, or right from you.'
+                + '(e.g. `charge:b12` to charge to location `b12`). Any players standing in the way will be knocked out and you will not bump into them. '
+                + 'There must be a path to the target location and it must be directly up, down, left, or right from you.',
+            blink: 'You can use `blink` to teleport to any location in your line-of-sight at the time of use (e.g. `blink:b12` to blink to location `b12`). '
+                + 'When you blink, some of your coins will fall out of your pockets (roughly **1** point per **4** tiles) and you\'ll be knocked out. '
+                + 'If you try to blink somewhere that happens to be out of sight, then the item won\'t be consumed.'
         };
         return itemInstructions[item] ?? 'Not sure what this item is, I don\'t recognize it. Please reach out to the admin!';
     }
@@ -1183,7 +1188,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
             return { r: location.r, c: location.c - 1};
         } else if (action === 'right') {
             return { r: location.r, c: location.c + 1 };
-        } else if (action.startsWith('charge')) {
+        } else if (action.startsWith('charge') || action.startsWith('blink')) {
             const [actionName, arg] = action.split(':');
             return MazeGame.parseLocationString(arg) ?? location;
         } else {
@@ -1705,6 +1710,13 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
             || this.isTileType(r, c, TileType.COIN);
     }
 
+    /**
+     * @returns True if the tile is empty and occupied by no players.
+     */
+    private isVacant(location: MazeLocation): boolean {
+        return this.isTileType(location.r, location.c, TileType.EMPTY) && !this.isPlayerAtLocation(location);
+    }
+
     private placeCoinAtLocation(location: MazeLocation, value: number) {
         this.state.map[location.r][location.c] = TileType.COIN;
         if (this.state.coinValues === undefined) {
@@ -1760,6 +1772,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         }
     }
 
+    // TODO: Can remove this redundant method, or somehow refactor it with the one that short-circuits
     private getTilesInStraightPathBetween(from: MazeLocation, to: MazeLocation, options?: { dr1?: number, dc1?: number, dr2?: number, dc2?: number }): { tiles: MazeLocation[], checks: { rf: number, cf: number }[] } {
         const result = {
             tiles: [] as MazeLocation[],
@@ -2213,10 +2226,10 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                     // If placing over a coin, just increase that coin's value
                     if (c === 'coin' && this.isTileType(argLocation.r, argLocation.c, TileType.COIN)) {
                         // COOL
-                        addRenderLog(`buff coin at ${arg}`);
+                        addRenderLog(`buff coin at ${arg.toUpperCase()}`);
                     } else if (this.isPlaceable(argLocation.r, argLocation.c)) {
                         // COOL
-                        addRenderLog(`place ${c} at ${arg}`);
+                        addRenderLog(`place ${c} at ${arg.toUpperCase()}`);
                     } else {
                         throw new Error(`Can't place a ${c} at **${arg}**, try a different spot.`);
                     }
@@ -2241,13 +2254,34 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                     const intermediateLocations = this.getLocationsBetween(newLocation, argLocation);
                     for (const intermediateLocation of intermediateLocations) {
                         if (!this.isWalkable(intermediateLocation.r, intermediateLocation.c)) {
-                            throw new Error(`You can't charge to **${arg}**, as obstacle at **${MazeGame.getLocationString(intermediateLocation.r, intermediateLocation.c)}** is in the way!`);
+                            throw new Error(`You can't charge to **${arg.toUpperCase()}**, as obstacle at **${MazeGame.getLocationString(intermediateLocation.r, intermediateLocation.c)}** is in the way!`);
                         }
                     }
                     // Update the new temp location to the target location
                     newLocation.r = argLocation.r;
                     newLocation.c = argLocation.c;
-                    addRenderLog(`${c} to ${arg}`);
+                    addRenderLog(`${c} to ${arg.toUpperCase()}`);
+                    break;
+                case 'blink':
+                    if (!argLocation) {
+                        if (arg) {
+                            throw new Error(`**${arg}** is not a valid location on the map!`);
+                        } else {
+                            throw new Error('You must specify a location to blink to! (e.g. `blink:b12`)');
+                        }
+                    }
+                    // Validate that the location isn't the current location
+                    if (argLocation.r === newLocation.r && argLocation.c === newLocation.c) {
+                        throw new Error('You can\'t blink to yourself, you silly goose!');
+                    }
+                    // Validate that the blink location would be within LOS
+                    if (!this.isInLineOfSight(newLocation, argLocation)) {
+                        throw new Error(`You can\'t blink from **${MazeGame.getLocationString(newLocation.r, newLocation.c)}** to **${arg.toUpperCase()}**, it's not within the line-of-sight`);
+                    }
+                    // Update the new temp location to the target location
+                    newLocation.r = argLocation.r;
+                    newLocation.c = argLocation.c;
+                    addRenderLog(`${c} to ${arg.toUpperCase()}`);
                     break;
                 case 'punch':
                     addRenderLog('punch other players');
@@ -2736,7 +2770,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                                     // Stun the other player
                                     otherPlayer.stuns = 3;
                                     // Get a random number of coins to spawn limited by (1) the number of possible locations, and (2) the other player's points
-                                    const possibleLocations = this.getAdjacentLocations(otherPlayer).filter(l => this.isTileType(l.r, l.c, TileType.EMPTY) && !this.isPlayerAtLocation(l));
+                                    const possibleLocations = this.getAdjacentLocations(otherPlayer).filter(l => this.isVacant(l));
                                     const maxNumCoins = Math.min(possibleLocations.length, Math.floor(this.getPoints(otherPlayerId)));
                                     // TODO: Is it OP to keep this at max? Uncomment the RNG if so
                                     const numCoins = maxNumCoins; // randInt(0, 1 + maxNumCoins);
@@ -2945,6 +2979,57 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                         }
                         this.addRenderLine(previousLocation, { r: player.r, c: player.c }, 'red');
                         pushNonCollapsableStatement(getChargeText(false));
+                        return true;
+                    },
+                    blink: (arg) => {
+                        const argLocation: MazeLocation | undefined = MazeGame.parseLocationString(arg);
+                        // Emergency fallback (this shouldn't happen)
+                        if (!argLocation) {
+                            player.stuns = 1;
+                            endTurn = true;
+                            pushNonCollapsableStatement(`**${player.displayName}** tried to blink with his eyes closed and passed out`);
+                            return false;
+                        }
+                        // Validate that this location is in LOS
+                        if (!this.isInLineOfSight(player, argLocation)) {
+                            player.stuns = 1;
+                            endTurn = true;
+                            pushNonCollapsableStatement(`**${player.displayName}** tried to blink behind a wall and got a massive cortisol spike`);
+                            return false;
+                        }
+                        // Get the list of tiles traversed
+                        // TODO: Use tiles from the actual LOS check
+                        const losTiles = this.getTilesInStraightPathBetween(player, argLocation);
+                        const estimatedDistance = this.getNumStepsToLocation(player, argLocation);
+                        // Add warp line
+                        this.addRenderLine({ r: player.r, c: player.c }, argLocation, 'warp');
+                        // Move to the new location
+                        movePlayerTo(userId, argLocation);
+                        // Place coins on some of the tiles
+                        const coinTiles = losTiles.tiles.filter(t => this.isVacant(t));
+                        let coinsDropped = 0;
+                        for (const tile of shuffle(coinTiles)) {
+                            if (chance(0.25) && this.getPoints(userId) >= 1) {
+                                this.addPoints(userId, -1);
+                                this.placeCoinAtLocation(tile, 1);
+                                coinsDropped++;
+                            }
+                        }
+                        // Knock the player out and end their turn
+                        player.stuns = 1;
+                        endTurn = true;
+                        pushNonCollapsableStatement(`**${player.displayName}** blinked to **${arg.toUpperCase()}** (saved **${estimatedDistance}** step${s(estimatedDistance)} but dropped **${coinsDropped}** coin${s(coinsDropped)} along the way)`);
+                        // Determine if any players were telefragged
+                        for (const otherPlayerId of this.getPlayersAtLocation(argLocation)) {
+                            if (otherPlayerId !== userId) {
+                                const otherPlayer = this.state.players[otherPlayerId];
+                                if (!otherPlayer.invincible) {
+                                    otherPlayer.stuns = 3;
+                                    // TODO: Also drop their coins
+                                    pushNonCollapsableStatement(`telefragged **${otherPlayer.displayName}**`);
+                                }
+                            }
+                        }
                         return true;
                     }
                 };
