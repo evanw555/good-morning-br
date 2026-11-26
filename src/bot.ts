@@ -2237,8 +2237,11 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                         content: randChoice(
                             'Well what did you guys think of today\'s prompt?',
                             'So today\'s prompt... sneed it or keep it?',
+                            `_${anonymousSubmissions.getPrompt()}_... sneed it or keep it?`,
                             'Did you all like today\'s prompt?',
-                            'Well, was today\'s prompt good?'
+                            `Did you all like _${anonymousSubmissions.getPrompt()}_ as a prompt?`,
+                            'Well, was today\'s prompt good?',
+                            `Was _${anonymousSubmissions.getPrompt()}_ a solid prompt?`,
                         ),
                         components: [{
                             type: ComponentType.ActionRow,
@@ -2250,8 +2253,13 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                             }, {
                                 type: ComponentType.Button,
                                 style: ButtonStyle.Secondary,
-                                emoji: randChoice('🫳', '🫴', '🤏', '🤷‍♂️', '😐'),
-                                customId: 'rateASPrompt:0.5'
+                                emoji: '🙂',
+                                customId: 'rateASPrompt:0.667'
+                            }, {
+                                type: ComponentType.Button,
+                                style: ButtonStyle.Secondary,
+                                emoji: '🙁',
+                                customId: 'rateASPrompt:0.333'
                             }, {
                                 type: ComponentType.Button,
                                 style: ButtonStyle.Danger,
@@ -3815,6 +3823,7 @@ client.on('interactionCreate', async (interaction): Promise<void> => {
             } else if (rating < 0.2) {
                 ratingText = randChoice('declared the prompt to be shit', 'declared the prompt to be some ahhh', 'given the prompt a thumbs down', 'called the prompt abysmal dogshit');
             } else {
+                // TODO: Handle ratings like 0.667 and 0.333, although this is clear enough for now
                 ratingText = randChoice('rated the prompt as meh', 'given the prompt a meh rating', 'said whatever', 'said wugever', 'said me_tired', 'declared the prompt to be mid ahhhhh', 'decisively said IDK');
             }
             await interaction.editReply(`Thanks! You've ${ratingText}` + (isParticipant ? '' : '. You didn\'t participate today so you only get half a vote.'));
