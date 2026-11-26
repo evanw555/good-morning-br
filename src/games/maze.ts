@@ -76,7 +76,7 @@ interface PathingOptions {
 }
 
 export default class MazeGame extends AbstractGame<MazeGameState> {
-    private static readonly TILE_SIZE: number = 24;
+    private static readonly TILE_SIZE: number = 32;
     private static readonly STARTER_POINTS: number = 3;
 
     private static readonly STYLE_SKY: string = 'hsl(217, 94%, 69%)';
