@@ -172,8 +172,8 @@ export class AnonymousSubmissionsState {
         return this.data.selectSubmissionMessage;
     }
 
-    isForcedPrompt(): boolean {
-        return this.data.forcedPrompt ?? false;
+    isRateablePrompt(): boolean {
+        return !this.data.skipPromptRating;
     }
 
     hasUserVoted(userId: Snowflake): boolean {

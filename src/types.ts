@@ -108,7 +108,9 @@ export type SungazerPollType = 'submission-prompt' | 'game-type' | 'game-pre-dec
 export interface FinalizeSungazerPollData {
     type: SungazerPollType,
     messageId: Snowflake,
-    choices: Record<string, string>
+    choices: Record<string, string>,
+    /** If true, this poll was for a submissions prompt that should not be rated afterward. */
+    skipPromptRating?: true
 }
 
 export interface DailyPlayerState {
@@ -236,8 +238,8 @@ export interface RawAnonymousSubmissionsState {
     forfeiters: Snowflake[], // List of UserIds
     rootSubmissionMessage?: Snowflake, // MessageId
     selectSubmissionMessage?: Snowflake, // MessageId
-    /** If true, this submission was forced as a result of a low rating. */
-    forcedPrompt?: true
+    /** If true, this submission prompt should not be rated. */
+    skipPromptRating?: true
 }
 
 export interface SubmissionPromptRatings {
@@ -275,8 +277,8 @@ export interface RawGoodMorningState {
     lastSubmissionWinners?: Snowflake[],
     /** If present, we are currently voting on whether the previous prompt was good or not. */
     submissionPromptRatings?: SubmissionPromptRatings,
-    /** If true, the gazer are on prompt probation and thus the next prompt will be auto-suggested. */
-    submissionPromptProbation?: true,
+    /** If present, skip prompt suggestion and instead force a poll or a particular prompt. */
+    promptSuggestionOverride?: 'first-week' | 'mid-season' | 'probation',
     dailyStatus: Record<Snowflake, DailyPlayerState>,
     players: Record<Snowflake, PlayerState>,
     /** Completion of this season in the range [0,1] at the time of the last pre-noon. Used for day-by-day comparisons. */

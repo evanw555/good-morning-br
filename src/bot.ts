@@ -585,6 +585,8 @@ const advanceSeason = async (): Promise<{ gold?: Snowflake, silver?: Snowflake, 
         goodMorningEmoji: config.defaultGoodMorningEmoji,
         dailyStatus: {},
         players: {},
+        // Set a prompt suggestion override for the first week
+        promptSuggestionOverride: 'first-week',
         // Just in case there's a prompt that needs to be held over into the next season
         anonymousSubmissions: state.getRawAnonymousSubmissions()
     });
@@ -849,6 +851,7 @@ const updateSubmissionPromptHistory = async (options: { used?: string[], unused?
             // First, load all existing ratings and new ratings into map
             const allRatings: Record<string, number> = {};
             for (const [prompt, rating] of [...Object.entries(promptHistory.ratings), ...Object.entries(options.ratings)]) {
+                // TODO: If the prompt had an existing rating (for some reason...), take the average of the two
                 allRatings[prompt] = rating;
             }
             // Then, sort the prompts by rating (highest first)
@@ -871,24 +874,28 @@ const updateSubmissionPromptHistory = async (options: { used?: string[], unused?
     }
 };
 
+const getRandomLegacyPrompt = () => {
+    return randChoice(
+        // 50% chance to suggest a text prompt
+        randChoice("haiku", "limerick", "poem (ABAB)", "2-sentence horror story", "fake movie title", `${randInt(6, 12)}-word story`),
+        // 50% chance to suggest an image prompt
+        randChoice("pic that goes hard", "cursed image", "dummy stupid pic", "pic that goes adorable", randChoice("pic that goes ruh", "pic that goes buh"))
+    );
+};
+
 /**
  * Get a number of random unused submission prompts, including the priority prompt (if it exists).
  * Will not necessarily return N prompts, but will never return more than N prompts.
  * @param n Number of random unused prompts to get
  * @returns List of random unused prompts
  */
-const chooseRandomUnusedSubmissionPrompts = async (n: number): Promise<string[]> => {
+const getRandomUnusedSubmissionPrompts = async (n: number): Promise<string[]> => {
     try {
         const promptHistory = await loadSubmissionPromptHistory();
         const choices = promptHistory.unused;
         if (choices.length === 0) {
             // Random fallback
-            return [randChoice(
-                // 50% chance to suggest a text prompt
-                randChoice("haiku", "limerick", "poem (ABAB)", "2-sentence horror story", "fake movie title", `${randInt(6, 12)}-word story`),
-                // 50% chance to suggest an image prompt
-                randChoice("pic that goes hard", "cursed image", "dummy stupid pic", "pic that goes adorable", randChoice("pic that goes ruh", "pic that goes buh"))
-            )];
+            return [getRandomLegacyPrompt()];
         }
         // Populate the list with N unused prompts in a random order
         const result = shuffle(choices).slice(0, n);
@@ -903,11 +910,36 @@ const chooseRandomUnusedSubmissionPrompts = async (n: number): Promise<string[]>
     return [];
 };
 
+/**
+ * Get a number of random used submission prompts.
+ * @param n Number of random used prompts to get
+ * @param options.excludeRated If true, prompts that have been rated already will be excluded
+ * @returns List of random used prompts
+ */
+const getRandomUsedSubmissionPrompts = async (n: number, options?: { excludeRated?: boolean }): Promise<string[]> => {
+    try {
+        const promptHistory = await loadSubmissionPromptHistory();
+        // The possible choices are all used prompts (exclude already-rated ones if specified)
+        const choices = promptHistory.used.filter(p => !options?.excludeRated || (promptHistory.ratings ?? {})[p] === undefined);
+        // Random fallback in case no choices were found
+        if (choices.length === 0) {
+            // Random fallback
+            return [getRandomLegacyPrompt()];
+        }
+        // Return N used prompts in a random order
+        return shuffle(choices).slice(0, n);
+    } catch (err) {
+        await logger.log(`Unhandled exception while choosing random used prompt:\n\`\`\`${err.message}\`\`\``);
+    }
+    return [];
+};
+
 const getRandomDefaultSubmissionPrompts = async (): Promise<string[]> => {
     // Come up with a default list of prompts
     const defaultPrompts = [
         'pic that goes hard',
         '2-sentence horror story',
+        `${randInt(6, 12)}-word story`,
         'haiku',
         'poem (ABAB)'
     ];
@@ -916,14 +948,14 @@ const getRandomDefaultSubmissionPrompts = async (): Promise<string[]> => {
     const ratings = promptHistory.ratings;
     if (ratings) {
         const sortedPrompts = getSortedKeys(Object.keys(ratings), prompt => -(ratings[prompt] ?? 0));
-        // Choose from the top quarter of prompts (or the top 3 if there are too few)
-        const highlyRatedPrompts = sortedPrompts.slice(0, Math.max(3, Math.round(sortedPrompts.length * 0.25)));
-        // Add 3 random prompts from this upper slice
-        defaultPrompts.push(...shuffle(highlyRatedPrompts).slice(0, 3));
+        // Choose from the top quarter of prompts (or the top 4 if there are too few)
+        const highlyRatedPrompts = sortedPrompts.slice(0, Math.max(4, Math.round(sortedPrompts.length * 0.25)));
+        // Add 4 random prompts from this upper slice
+        defaultPrompts.push(...shuffle(highlyRatedPrompts).slice(0, 4));
     }
     // Shuffle the default prompt list
     return shuffle(defaultPrompts);
-}
+};
 
 const sendGoodMorningMessage = async (): Promise<void> => {
     // Get the overridden message for today, if it exists (some events may use this instead)
@@ -2042,11 +2074,14 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         const previousCompletion = state.getSeasonPreviousCompletion();
         const currentCompletion = state.getSeasonCompletion();
         if (currentCompletion > previousCompletion) {
-            // If passing the halfway point, queue popcorn
+            // If passing the halfway point, set some flags in the state
             if (previousCompletion < 0.5 && currentCompletion >= 0.5) {
+                // Request popcorn as the next event
                 state.setPopcornRequested(true);
+                // Override the next prompt suggestion
+                state.setPromptSuggestionOverride('mid-season');
                 // TODO: Temp logging
-                await logger.log(`Just passed halfway point (**${previousCompletion.toFixed(2)}** -> **${currentCompletion.toFixed(2)}**), so popcorn has been requested`);
+                await logger.log(`Just passed halfway point (**${previousCompletion.toFixed(2)}** -> **${currentCompletion.toFixed(2)}**), so popcorn and old used prompt have been requested`);
             }
             // Update the previous completion in state
             state.setSeasonPreviousCompletion(currentCompletion);
@@ -2195,8 +2230,8 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
             if (state.hasAnonymousSubmissions()) {
                 const anonymousSubmissions = state.getAnonymousSubmissions();
-                // Only initiate a vote if this prompt wasn't forced
-                if (!anonymousSubmissions.isForcedPrompt()) {
+                // Only initiate a vote if this prompt is rateable
+                if (anonymousSubmissions.isRateablePrompt()) {
                     // Send the voting message
                     const promptVotingMessage = await messenger.send(goodMorningChannel, {
                         content: randChoice(
@@ -2354,24 +2389,72 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
             }
             // If the anonymous submissions prompt hasn't been set, see if the prompt selection process should start
             if (!state.hasAnonymousSubmissions()) {
-                // First and foremost, if on prompt probation then we never want prompt suggestion to happen
-                if (state.isOnSubmissionPromptProbation()) {
-                    // If tomorrow is a submissions day, skip directly to prompt voting
+                // If there's a prompt suggestion override, ensure that prompt suggestion never happens
+                if (state.hasPromptSuggestionOverride()) {
+                    // If tomorrow is a submissions day...
                     if (state.getEventType() === DailyEventType.AnonymousSubmissions) {
-                        // Let the gazers know that their prompt options are predetermined
-                        await messenger.send(sungazersChannel, 'Gazers... your last prompt was so poorly received that I\'m gonna have to curate the choices myself today');
-                        await sleep(5000);
-                        // Come up with a default list of prompts
-                        const defaultPrompts = await getRandomDefaultSubmissionPrompts();
-                        // Start the prompt poll using only a few of these options
-                        const pollEndDate = new Date();
-                        pollEndDate.setHours(pollEndDate.getHours() + 8);
-                        await controller.startSungazerPoll({
-                            values: defaultPrompts.slice(0, randChoice(3, 4)),
-                            pollEndDate,
-                            type: 'submission-prompt',
-                            title: 'What should people submit? @everyone'
-                        });
+                        // Handle prompt selection based on specific scenarios
+                        switch (state.getPromptSuggestionOverride()) {
+                            // On the first week, force PTGH
+                            case 'first-week': {
+                                // Let the gazers know that the prompt has been chosen for them
+                                await messenger.send(sungazersChannel, `This season, we'll be starting things off with a classic _pic that goes hard_ contest. You can DM me your hard pics now ${config.defaultGoodMorningEmoji}`);
+                                // Set the prompt directly in the state
+                                state.setAnonymousSubmissions({
+                                    prompt: 'pic that goes hard',
+                                    phase: 'submissions',
+                                    submissions: {},
+                                    submissionOwnersByCode: {},
+                                    votes: {},
+                                    forfeiters: [],
+                                    // PTGH doesn't need to be rated
+                                    skipPromptRating: true
+                                });
+                                break;
+                            }
+                            // Halfway through the season, poll a previously used prompt
+                            case 'mid-season': {
+                                // Let the gazers know that their prompt options are predetermined
+                                await messenger.send(sungazersChannel, 'Gazers! We\'re halfway through the season, so let\'s dig through the reruns for tomorrow\'s prompt...');
+                                await sleep(5000);
+                                // Come up with a default list of prompts
+                                const oldUsedPrompts = await getRandomUsedSubmissionPrompts(10, { excludeRated: true });
+                                // Start the prompt poll using only a few of these options
+                                const pollEndDate = new Date();
+                                pollEndDate.setHours(pollEndDate.getHours() + 8);
+                                await controller.startSungazerPoll({
+                                    values: oldUsedPrompts,
+                                    pollEndDate,
+                                    type: 'submission-prompt',
+                                    title: 'Which old prompt should we use? @everyone'
+                                    // Note that the old used prompt should be rated despite being forced (flag not set here)
+                                });
+                                break;
+                            }
+                            // On probation, so poll a set of "vetted" prompts
+                            case 'probation': {
+                                // Let the gazers know that their prompt options are predetermined
+                                await messenger.send(sungazersChannel, 'Gazers... your last prompt was so poorly received that I\'m gonna have to curate the choices myself today');
+                                await sleep(5000);
+                                // Come up with a default list of prompts
+                                const defaultPrompts = await getRandomDefaultSubmissionPrompts();
+                                // Start the prompt poll using only a few of these options
+                                const pollEndDate = new Date();
+                                pollEndDate.setHours(pollEndDate.getHours() + 8);
+                                await controller.startSungazerPoll({
+                                    values: defaultPrompts.slice(0, randChoice(3, 4)),
+                                    pollEndDate,
+                                    type: 'submission-prompt',
+                                    title: 'What should people submit? @everyone',
+                                    // Since the prompts are sourced from old rated prompts, they don't need to be rated afterward
+                                    skipPromptRating: true
+                                });
+                                break;
+                            }
+                        }
+                        // Clear the prompt suggestion override
+                        state.clearPromptSuggestionOverride();
+                        await dumpState();
                     }
                 }
                 // If tomorrow is a submissions day then kick off a basic prompt poll now
@@ -2386,7 +2469,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                     const fyiMessage = await sungazersChannel.send(fyiText);
                     // Schedule timeouts to prime the suggestions with a couple random unused prompts (use delete strategy because it's not required)
                     // If it's the first week of the season, stick with classic prompt
-                    const unusedPrompts = state.isFirstWeek() ? ['pic that goes hard'] : (await chooseRandomUnusedSubmissionPrompts(randChoice(1, 2)));
+                    const unusedPrompts = state.isFirstWeek() ? ['pic that goes hard'] : (await getRandomUnusedSubmissionPrompts(randChoice(1, 2)));
                     for (const unusedPrompt of unusedPrompts) {
                         const arg: ReplyToMessageData = {
                             channelId: fyiMessage.channelId,
@@ -2408,7 +2491,7 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                         + `Reply to this message before ${toDiscordTimestamp(pollStartDate, DiscordTimestampFormat.ShortTime)} to suggest a prompt ${config.defaultGoodMorningEmoji}`;
                     const fyiMessage = await sungazersChannel.send(fyiText);
                     // Schedule timeouts to prime the suggestions with several random unused prompts (use delete strategy because it's not required)
-                    const unusedPrompts = await chooseRandomUnusedSubmissionPrompts(randChoice(3, 4));
+                    const unusedPrompts = await getRandomUnusedSubmissionPrompts(randChoice(3, 4));
                     for (const unusedPrompt of unusedPrompts) {
                         const arg: ReplyToMessageData = {
                             channelId: fyiMessage.channelId,
@@ -2917,8 +3000,10 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
         const approved = averageRating > 0.5;
         // Wipe the rating state
         state.clearSubmissionPromptRatings();
-        // Either place the gazers on prompt probation or take them off of it
-        state.setSubmissionPromptProbation(!approved);
+        // If the prompt was not approved, override the next prompt suggestion
+        if (!approved) {
+            state.setPromptSuggestionOverride('probation');
+        }
         await dumpState();
         // Save the rating to prompt history
         await updateSubmissionPromptHistory({ ratings: { [ratingState.prompt]: averageRating }});
@@ -3158,10 +3243,8 @@ const TIMEOUT_CALLBACKS: Record<TimeoutType, (arg?: any) => Promise<void>> = {
                     submissionOwnersByCode: {},
                     votes: {},
                     forfeiters: [],
-                    forcedPrompt: state.isOnSubmissionPromptProbation() ? true : undefined
+                    skipPromptRating: arg.skipPromptRating
                 });
-                // Now that the prompt has been forced, end prompt probation for now
-                state.clearSubmissionPromptProbation();
                 await dumpState();
 
                 // Update the submission prompt history
@@ -4591,7 +4674,7 @@ const processCommands = async (msg: OmitPartialGroupDMChannel<Message<boolean>>)
                 }
             }
             const s = new AnonymousSubmissionsState({
-                prompt: await chooseRandomUnusedSubmissionPrompts(1)[0],
+                prompt: await getRandomUnusedSubmissionPrompts(1)[0],
                 forfeiters,
                 phase: 'results',
                 submissionOwnersByCode,

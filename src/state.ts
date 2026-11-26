@@ -1043,20 +1043,24 @@ export default class GoodMorningState {
         delete this.data.submissionPromptRatings;
     }
 
-    isOnSubmissionPromptProbation(): boolean {
-        return this.data.submissionPromptProbation ?? false;
+    getPromptSuggestionOverride() {
+        return this.data.promptSuggestionOverride;
     }
 
-    setSubmissionPromptProbation(probation: boolean) {
-        if (probation) {
-            this.data.submissionPromptProbation = true;
+    hasPromptSuggestionOverride(): boolean {
+        return this.data.promptSuggestionOverride !== undefined;
+    }
+
+    setPromptSuggestionOverride(override: 'first-week' | 'mid-season' | 'probation' | undefined) {
+        if (override) {
+            this.data.promptSuggestionOverride = override;
         } else {
-            delete this.data.submissionPromptProbation;
+            delete this.data.promptSuggestionOverride;
         }
     }
 
-    clearSubmissionPromptProbation() {
-        delete this.data.submissionPromptProbation;
+    clearPromptSuggestionOverride() {
+        this.setPromptSuggestionOverride(undefined);
     }
 
     getFocusGame(): FocusGameState {

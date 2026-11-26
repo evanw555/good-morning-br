@@ -112,7 +112,7 @@ class Controller {
         return words.filter(w => !options?.characters || w.length === options.characters).slice(0, n);
     }
 
-    async startSungazerPoll(options: { values: string[], pollEndDate: Date, type: SungazerPollType, title: string, valueNames?: Record<string, string> }) {
+    async startSungazerPoll(options: { values: string[], pollEndDate: Date, type: SungazerPollType, title: string, valueNames?: Record<string, string>, skipPromptRating?: true }) {
         const valueNames = options.valueNames ?? {};
 
         // Abort if trying to start a poll with <2 choices
@@ -137,7 +137,8 @@ class Controller {
         const arg: FinalizeSungazerPollData = {
             type: options.type,
             messageId: pollMessage.id,
-            choices
+            choices,
+            skipPromptRating: options?.skipPromptRating
         };
         // Use the invoke strategy, all subsequent handlers should validate that it's not too late to use the result
         await this.timeoutManager.registerTimeout(TimeoutType.FinalizeSungazerPoll, options.pollEndDate, { arg, pastStrategy: PastTimeoutStrategy.Invoke });
