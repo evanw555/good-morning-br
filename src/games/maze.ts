@@ -1,7 +1,7 @@
-import canvas, { Canvas, CanvasRenderingContext2D, createCanvas } from 'canvas';
+import canvas, { Canvas, CanvasRenderingContext2D, Image, createCanvas } from 'canvas';
 import { AttachmentBuilder, GuildMember, MessageFlags, Snowflake } from 'discord.js';
 import { getRankString, getNumberBetween, naturalJoin, randInt, shuffle, toLetterId, fromLetterId, AStarPathFinder, shuffleWithDependencies, toFixed, collapseRedundantStrings, chance, randChoice, findCycle, s } from 'evanw555.js';
-import { getTextLabel, toCircle } from "node-canvas-utils";
+import { getTextLabel, toCircle, withDropShadow, withOutline } from "node-canvas-utils";
 import { DecisionProcessingResult, GamePlayerAddition, MessengerManifest, MessengerPayload, PrizeType } from "../types";
 import AbstractGame from "./abstract-game";
 import { MazeItemName, MazeLocation, MazeGameState, MazeLine, MazePlayerState } from './types';
@@ -328,7 +328,6 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         const HEIGHT: number = this.state.rows * MazeGame.TILE_SIZE;
         const c = canvas.createCanvas(WIDTH, HEIGHT);
         const context = c.getContext('2d');
-        const coinImage = await imageLoader.loadImage('assets/coin.png');
 
         // Fill the blue sky background
         context.fillStyle = MazeGame.STYLE_SKY;
@@ -365,10 +364,23 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
                     this.drawRandomPolygonOnTile(context, r, c);
                 } else if (this.isTileType(r, c, TileType.COIN)) {
                     const coinValue = this.getCoinValueAtLocation({ r, c });
-                    context.drawImage(coinImage, c * MazeGame.TILE_SIZE, r * MazeGame.TILE_SIZE, MazeGame.TILE_SIZE, MazeGame.TILE_SIZE);
-                    // TODO: Use unique sprites
-                    const valueLabel = this.getTileLabel(coinValue.toString(), `${MazeGame.TILE_SIZE * .6}px sans-serif`, 'black');
-                    this.drawImageOnTile(context, valueLabel, r, c);
+                    let coinImage: Image;
+                    if (coinValue === 1) {
+                        coinImage = await imageLoader.loadImage('assets/maze/coins/bronze.png');
+                    } else if (coinValue === 2) {
+                        coinImage = await imageLoader.loadImage('assets/maze/coins/silver.png');
+                    } else if (coinValue === 3) {
+                        coinImage = await imageLoader.loadImage('assets/maze/coins/gold.png');
+                    } else {
+                        coinImage = await imageLoader.loadImage('assets/maze/coins/gold-blank.png');
+                    }
+                    context.drawImage(coinImage, (c + 0.05) * MazeGame.TILE_SIZE, (r + 0.05) * MazeGame.TILE_SIZE, 0.9 * MazeGame.TILE_SIZE, 0.9 * MazeGame.TILE_SIZE);
+                    // If the value is above 3, write the value
+                    if (coinValue > 3) {
+                        // Write the value over the coin
+                        const valueLabel = withOutline(this.getTileLabel(coinValue.toString(), `${MazeGame.TILE_SIZE * .6}px sans-serif`, 'rgb(237,199,111)'), { style: 'rgba(0,0,0,0.4)', thickness: Math.round(MazeGame.TILE_SIZE / 24), expandCanvas: true });
+                        this.drawImageOnTile(context, valueLabel, r, c - 0.05);
+                    }
                 } else if (this.isCloudy(r, c)) {
                     context.fillStyle = MazeGame.STYLE_CLOUD;
                     context.beginPath();
@@ -526,7 +538,7 @@ export default class MazeGame extends AbstractGame<MazeGameState> {
         let y = 2;
         c2.fillStyle = 'white';
         const leftTextX = renderedMap.width + MazeGame.TILE_SIZE + MARGIN;
-        c2.fillText(`Season ${this.getSeasonNumber()}, Week ${this.state.turn}, Action ${this.state.action}`, leftTextX, MazeGame.TILE_SIZE);
+        c2.fillText(`Season ${this.getSeasonNumber()}, Week ${this.state.turn}, Action ${this.state.action}`, leftTextX, MazeGame.TILE_SIZE, masterImage.width - leftTextX);
 
         // Show extra info if this is a player decision
         if (options?.showPlayerDecision) {
